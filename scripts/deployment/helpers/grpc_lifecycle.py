@@ -382,7 +382,7 @@ def _legacy_owned_domain_uri(config: dict, feature: dict, outputs: dict) -> str:
     # The certificate resource output can include the optional final slash on
     # a versionless Secret URI. Accept that exact form, never another secret,
     # version, query or extra path segment.
-    if feature.get("certificateSecretUri") not in (expected, expected + "/"):
+    if feature.get("legacyCertificateSecretUri", feature.get("certificateSecretUri")) not in (expected, expected + "/"):
         raise ValueError("Legacy API Management certificate must use the exact owned versionless Key Vault secret")
     return expected
 

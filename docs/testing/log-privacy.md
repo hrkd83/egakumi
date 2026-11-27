@@ -1,8 +1,8 @@
-# アクセスログのquery非保持
+# AppGWとFirewallのURLログ保護
 
 Application Gatewayのアクセスログでは、URLのqueryを含み得る`RequestQuery`・`OriginalRequestUriWithArgs`・`RequestUri`を対象に非保持を設定します。WAFの`logScrubbing`はWAFログを対象にするため、アクセスログには別の取り込み変換が必要です。本書は配備資材の保存経路と既存環境の更新手順を説明します。実環境への反映状態・実測結果は[動作テストの判定](integration-tests.md)と、その試行の証跡で確認してください。
 
-コマンドはリポジトリルートで実行し、[第1章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で設定した`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を使います。計画・実測記録は同じ環境の領域へ保存します。
+コマンドはリポジトリルートで実行し、[第01章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で設定した`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を使います。計画・実測記録は同じ環境の領域へ保存します。
 
 ## Coreの保存経路
 
@@ -23,6 +23,14 @@ AppGW WAF    → 既存WAF logScrubbing → LAW、および監査Storageへの�
 CoreのアクセスログはStorageへ直接送る設定から外し、変換後のLAW exportへ変更します。既存の6テーブル（AppRequests／AppDependencies／AppExceptions／AppTraces／AppEvents／Syslog）は同じexport設定に残します。新しい`am-agwaccesslogs`にも環境で選択した保持保護を適用し、既存のLocked保護を短縮・解除しません。以前の直接診断用コンテナーは既存記録を保持します。
 
 通常の構築ではmonitoring段階でDCRと監査保存先を作成し、hookがWorkspaceへの関連付けを確認します。続くcore段階へ実DCR IDを引き継ぎ、Workspaceの再PUTで関連付けを消さないようにします。他者のWorkspace変換DCRが既に関連付いている場合、Coreがそれを置換せず、管理者による変換の統合を要求します。
+
+## FirewallのTLS検査ログ
+
+`AZFWApplicationRule`と`AZFWThreatIntel`の`TargetUrl`にはTLS検査した要求のURLが入る場合があります。既存のWorkspace変換に2テーブルを追加し、取り込み前に`TargetUrl`を空にします。FQDN、アクション、発生時刻とTLS検査の判定は調査に使えます。 [Application Ruleのテーブル仕様](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwapplicationrule) · [Threat Intelのテーブル仕様](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwthreatintel)
+
+この2分類は専用の診断設定から変換付きLAWに送ります。既存のCore診断設定では対象2分類の直接転送を停止し、Network Rule、IDPS、メトリクスの経路と既存の監査Blobを保全します。Coreの外側に同じ分類や全ログを転送する設定がある場合は、所有者が保存先を確認するまで事前照合で停止します。
+
+Azure反映時は変換の適用を待ち、架空の識別文字列を含む新しいTLS検査要求で、`AZFWApplicationRule`の`IsTlsInspected`と空の`TargetUrl`を照合します。`AZFWThreatIntel`も対象行を取得できる場合は同じ列を確認します。両分類のStorage直送が停止し、他分類の保存が継続することを確認してから実利用へ進みます。以前に保持したBlobの内容は変更しません。 [Workspace変換の有効化と待ち時間](https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-transformations-create)
 
 ## 既存環境の段階更新
 

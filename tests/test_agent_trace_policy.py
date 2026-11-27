@@ -274,7 +274,7 @@ class AgentTraceExpressionTests(unittest.TestCase):
         variant_methods = []
         selector = ['public static string ConfigurationDecision(Context context, string surface, int variant) {']
         selector.append('if (variant < 0) return surface == "protocol" ? ProtocolDecision(context) : McpDecision(context);')
-        for surface, label, filename in (("protocol", "Protocol", "protocol.xml"), ("mcp", "Mcp", "mcp.xml")):
+        for surface, label, filename in (("protocol", "Protocol", "stream.xml"), ("mcp", "Mcp", "generated.xml")):
             decision = actual_expression(filename, './inbound/set-variable[@name="gatewayDecision"]')
             selector.append('if (surface == "' + surface + '") { switch (variant) {')
             for index, (_, encoded) in enumerate(cls.configuration_variants):
@@ -292,9 +292,9 @@ class AgentTraceExpressionTests(unittest.TestCase):
             ("__COMMON_FAILURE__", "core-common-authentication.xml", './choose/otherwise/choose/when', "condition"),
             ("__PREPARATION_FAILURE__", "core-api-request-preparation.xml", './choose/when', "condition"),
             ("__HTTP_DECISION__", "core-api-authentication-result.xml", './set-variable', "value"),
-            ("__PROTOCOL_DECISION__", "protocol.xml", './inbound/set-variable[@name="gatewayDecision"]', "value"),
-            ("__MCP_DECISION__", "mcp.xml", './inbound/set-variable[@name="gatewayDecision"]', "value"),
-            ("__HTTP_FAILURE__", "gateway.xml", None, "condition"),
+            ("__PROTOCOL_DECISION__", "stream.xml", './inbound/set-variable[@name="gatewayDecision"]', "value"),
+            ("__MCP_DECISION__", "generated.xml", './inbound/set-variable[@name="gatewayDecision"]', "value"),
+            ("__HTTP_FAILURE__", "rest.xml", None, "condition"),
             ("__TRACE__", "audit-context.xml", './set-variable[@name="gatewayAgentTrace"]', "value"),
         ):
             if marker == "__USER_ERROR__":
@@ -312,7 +312,7 @@ class AgentTraceExpressionTests(unittest.TestCase):
             else:
                 replacement = actual_expression(filename, xpath, attribute)
             source = source.replace(marker, replacement.replace("__AUTHORIZATION_BASE64__", authorization))
-        for marker, filename in (("__PROTOCOL_FAILURE__", "protocol.xml"), ("__MCP_FAILURE__", "mcp.xml")):
+        for marker, filename in (("__PROTOCOL_FAILURE__", "stream.xml"), ("__MCP_FAILURE__", "generated.xml")):
             root = ET.parse(policy_fixture_path(POLICIES, filename)).getroot()
             node = next(branch for branch in root.findall('./inbound/choose/when') if 'gatewayDecision' in branch.get('condition', ''))
             value = node.get("condition").strip()
@@ -388,50 +388,15 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
 
 class AgentTracePlacementTests(unittest.TestCase):
-    def test_mode_reconstruction_is_removed_only_from_protocol_and_mcp_authentication_handoff(self):
-        for filename in ("protocol.xml", "mcp.xml"):
-            with self.subTest(template=filename):
-                root = ET.parse(policy_fixture_path(POLICIES, filename)).getroot()
-                decision = root.find('./inbound/set-variable[@name="gatewayDecision"]').get('value')
-                self.assertNotIn("Convert.FromBase64String", decision)
-                self.assertNotIn("__AUTHORIZATION_BASE64__", decision)
-                self.assertNotIn('config["mode"]', decision)
-                self.assertNotIn('context.Request.Headers', decision)
-                self.assertNotIn('gatewayKeyHeader', decision)
-                self.assertIn('if (context.Subscription != null)', decision)
-                self.assertNotIn('gatewayCommonAuthenticationValidated', decision)
-                self.assertIn('gatewayEntraAuthenticationValidated', decision)
-                self.assertIn('JObject.Parse((string)context.Variables["gatewayUserAuthentication"])', decision)
-                self.assertIn('user["callerId"]', decision)
-                self.assertIn('user["allocationId"]', decision)
-                self.assertNotIn('Guid.TryParse', decision)
-                self.assertNotIn('Guid.Empty', decision)
-                self.assertNotIn('user["schemaVersion"]', decision)
-                self.assertNotIn('ToString("D")', decision)
-                self.assertNotIn('"user:" +', decision)
-                self.assertNotIn('user["callerId"] !=', decision)
-                self.assertNotIn('user["allocationId"] !=', decision)
-                guard = next(node for node in root.findall('./inbound/choose/when')
-                             if 'gatewayDecision' in node.get('condition', ''))
-                self.assertEqual(guard.find('./return-response/set-status').get('code'), '500')
-        mcp = ET.parse(policy_fixture_path(POLICIES, "mcp.xml")).getroot()
-        argument_guard = mcp.find('./inbound/set-variable[@name="gatewayMcpArgumentError"]').get('value')
-        self.assertIn('JObject.Parse((string)context.Variables["gatewayControlSettings"])', argument_guard)
-        self.assertIn('config["operationConstraints"]?[name]', argument_guard)
-        preparation = ET.parse(policy_fixture_path(POLICIES, "core-api-request-preparation.xml")).getroot()
-        failure = preparation.find('./choose/when')
-        self.assertIn('gatewayCommonAuthenticationValidated', failure.get('condition'))
-        self.assertEqual(failure.find('./return-response/set-status').get('code'), '503')
-
     def test_all_formal_templates_authenticate_and_stop_failures_before_trace(self):
-        for filename in ("gateway.xml", "protocol.xml", "mcp.xml"):
+        for filename in ("rest.xml", "stream.xml", "generated.xml"):
             with self.subTest(template=filename):
                 inbound = ET.parse(policy_fixture_path(POLICIES, filename)).find("inbound")
                 nodes = list(inbound)
                 base = inbound.find("base")
                 preparation = inbound.find("include-fragment[@fragment-id='core-api-request-preparation']")
                 trace = inbound.find("include-fragment[@fragment-id='core-audit-context']")
-                if filename == "gateway.xml":
+                if filename == "rest.xml":
                     writer = inbound.find("include-fragment[@fragment-id='core-api-authentication-result']")
                 else:
                     writer = inbound.find("set-variable[@name='gatewayDecision']")

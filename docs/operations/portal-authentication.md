@@ -31,9 +31,9 @@ python3 -B scripts/operations/portal_auth_certificate.py prepare --config "$DEPL
 
 ## 初期構築と既存環境への限定追加
 
-新規構築は標準の`azd up`を使います。Coreが署名用ID、証明書Job用の運用IDと権限、専用ACA環境とプライベート接続を準備します。非公開ACRへ登録した固定イメージでPortal署名Jobの`Initialize`を実行します。`postprovision`が公開`.cer`と初期証明書stateを収集します。専用Portal EntraアプリのClient IDはこの段階で不要です。初期発行・取得が失敗した場合は構築完了処理を停止し、Coreの作成記録を保持して生成した秘密入り入力を回収します。
+新規構築は[Coreの初回構築](../setup/08-provision-core.md)で`azd up`を使います。`azd provision`でも同じCore工程を実行できます。Coreが署名用ID、証明書Job用の運用IDと権限、専用ACA環境とプライベート接続を準備します。非公開ACRへ登録した固定イメージでPortal署名Jobの`Initialize`を実行します。`postprovision`が公開`.cer`と初期証明書stateを収集します。専用Portal EntraアプリのClient IDはこの段階で不要です。初期発行・取得が失敗した場合は構築完了処理を停止し、Coreの作成記録を保持して生成した秘密入り入力を回収します。
 
-従来のVM方式で構築済みの環境へ証明書準備だけを追加する場合は、旧方式用の`initialize`を選びます。空の環境からのJob方式は前段の`azd up`を使います。対象は署名ID、カスタムロール定義、対象鍵scopeのロール割当、管理VM Run Commandの計4資源です。既存Portal・管理VM・KV・所有RG、管理VMのCertificates Officer権限、TLS Run Commandの正常終了とPowerShell準備を読み取りで照合します。KVへの実通信と実runtimeの版は発行workerも検査します。
+従来のVM方式で構築済みの環境へ証明書準備だけを追加する場合は、旧方式用の`initialize`を選びます。対象は署名ID、カスタムロール定義、対象鍵scopeのロール割当、管理VM Run Commandの計4資源です。既存Portal・管理VM・KV・所有RG、管理VMのCertificates Officer権限、TLS Run Commandの正常終了とPowerShell準備を読み取りで照合します。KVへの実通信と実runtimeの版は発行workerも検査します。
 
 ```sh
 # 既存環境の初期発行計画。3部品のwhat-ifと保護checkpointを作成
@@ -99,4 +99,4 @@ KVの要求が送られたか不明でpendingも結果もない場合、checkpoi
 
 Entra担当は旧アプリのPortal専用Redirect URIだけを利用先確認後に撤去します。CMが使うsecret、Redirect URI、権限は残します。旧secret値・CM共用資材を自動削除する操作はありません。旧イメージによる復旧を終えた後、ソースに残る移行用secret処理も別途差分確認して撤去します。
 
-実環境の証跡は`.local/<environment>/evidence/`へ保存します。公開の検証記録には独立した合成値と一般化した結果だけを記載します。[構築手順](../setup/entra-portal.md)と[受入試験](../testing/portal-authentication-tests.md)を併せて確認してください。
+実環境の証跡は`.local/<environment>/evidence/`へ保存します。公開の検証記録には独立した合成値と一般化した結果だけを記載します。[構築手順](../setup/09-egakumi-portal.md)と[受入試験](../testing/portal-authentication-tests.md)を併せて確認してください。

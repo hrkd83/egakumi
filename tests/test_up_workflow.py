@@ -1,8 +1,7 @@
-"""Exercise the foundation-to-application hook boundary without starting Azure work."""
+"""Validate the shared Core workflow and its handoff without starting Azure work."""
 import contextlib
 import io
 import json
-import os
 from pathlib import Path
 import re
 import shlex
@@ -10,7 +9,6 @@ import unittest
 from unittest import mock
 
 from lifecycle_fixtures import LifecycleFixture, lifecycle
-import deploy_applications as applications
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,50 +51,21 @@ def hook_arguments(name, script):
 
 
 class UpWorkflowTests(LifecycleFixture, unittest.TestCase):
-    def test_application_completion_hook_has_terminal_access_and_propagates_failure(self):
-        hook = hooks()["postup"]
-        self.assertEqual(hook["interactive"], "true")
-        self.assertEqual(hook["shell"], "sh")
-        self.assertEqual(hook.get("continueOnError", "false"), "false")
-        self.assertIn("--execute", hook_arguments("postup", "deploy_applications.py"))
+    def test_up_uses_only_the_shared_core_provision_workflow(self):
+        project = (ROOT / "azure.yaml").read_text(encoding="utf-8")
+        workflows = project.split("workflows:\n", 1)[1].split("hooks:\n", 1)[0]
+        self.assertEqual(workflows.split(), ["up:", "-", "azd:", "provision"])
+        self.assertEqual(set(hooks()), {"preprovision", "postprovision", "predown", "postdown"})
+        self.assertEqual(hooks()["preprovision"]["interactive"], "true")
+        self.assertEqual(hook_arguments("preprovision", "lifecycle.py"), ["preprovision"])
         self.assertEqual(hook_arguments("postprovision", "lifecycle.py"), ["postprovision"])
 
-    def test_five_app_up_does_not_deploy_before_the_manual_registration_handoff(self):
-        config = {**self.config, "codex": {"clientId": self.config["subscriptionId"]}}
-        with mock.patch.object(lifecycle, "load_configuration", return_value=config), \
-             mock.patch.object(lifecycle, "local_preflight") as local, \
-             mock.patch.object(lifecycle, "azure_preflight") as azure, \
-             mock.patch.object(lifecycle, "ArmTransport") as transport, \
-             contextlib.redirect_stderr(io.StringIO()) as errors:
-            self.assertEqual(lifecycle.main(["preup", "--config", str(self.paths.params)]), 1)
-        self.assertIn("azd provision", errors.getvalue())
-        local.assert_not_called()
-        azure.assert_not_called()
-        transport.assert_not_called()
-
-    def test_explicit_false_stops_up_before_local_preparation_and_any_azure_access(self):
-        config = {**self.config, "publishApis": False}
-        with mock.patch.object(lifecycle, "load_configuration", return_value=config), \
-             mock.patch.object(lifecycle, "local_preflight") as local, \
-             mock.patch.object(lifecycle, "azure_preflight") as azure, \
-             mock.patch.object(lifecycle, "run") as cli, \
-             mock.patch.object(lifecycle, "ArmTransport") as arm, \
-             contextlib.redirect_stderr(io.StringIO()) as messages:
-            self.assertEqual(lifecycle.main(["preup", "--config", str(self.paths.params)]), 1)
-        local.assert_not_called()
-        azure.assert_not_called()
-        cli.assert_not_called()
-        arm.assert_not_called()
-        self.assertIn("publishApis", messages.getvalue())
-        self.assertFalse(self.paths.parameters.exists())
-
-    def test_postprovision_stays_foundation_only_then_postup_uses_its_saved_state_and_selected_params(self):
+    def test_core_completion_saves_state_for_individual_deployments(self):
         selected = self.paths.root / "company inputs" / "selected.local.json"
         lifecycle.private_parent(selected, self.root)
         selected.write_text("{}", encoding="utf-8")
         outputs = self.outputs()
         outputs["endpoints"] = {"public": "https://gateway.example.invalid"}
-        children = []
 
         def foundation_cli(arguments, **kwargs):
             if arguments[:3] == ["azd", "env", "get-values"]:
@@ -108,34 +77,18 @@ class UpWorkflowTests(LifecycleFixture, unittest.TestCase):
         with mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
              mock.patch.object(lifecycle, "run", side_effect=foundation_cli), \
              mock.patch.object(lifecycle, "ArmTransport"), \
+             mock.patch("deployment.helpers.portal_auth_certificate.collect_initial_certificate") as certificate, \
              mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": False}), \
              mock.patch.object(lifecycle, "configure_public_dns", return_value={"status": "not-required"}), \
-             mock.patch.object(applications.subprocess, "run", side_effect=AssertionError("Application processes must wait for postup")), \
-             contextlib.redirect_stdout(io.StringIO()):
+             contextlib.redirect_stdout(io.StringIO()) as result:
             args = hook_arguments("postprovision", "lifecycle.py")
             self.assertEqual(lifecycle.main([*args, "--config", str(selected)]), 0)
+        certificate.assert_called_once()
         saved = json.loads((self.paths.state / "latest.json").read_text())
         self.assertEqual(saved["outputs"], outputs)
         self.assertEqual(saved["resourceStem"], self.config["resourceStem"])
 
-        def application_cli(command, **kwargs):
-            self.assertEqual(json.loads((self.paths.state / "latest.json").read_text()), saved)
-            self.assertEqual(kwargs["cwd"], self.root)
-            self.assertFalse(kwargs["shell"])
-            self.assertEqual(Path(command[command.index("--config") + 1]), selected.resolve())
-            self.assertEqual(Path(command[command.index("--state-file") + 1]), (self.paths.state / "latest.json").resolve())
-            self.assertIn("--execute", command)
-            children.append(Path(command[1]).name)
-            return mock.Mock(returncode=0)
-
-        with mock.patch.object(applications, "REPOSITORY", self.root), \
-             mock.patch.object(applications, "load_configuration", return_value=self.config), \
-             mock.patch.object(applications.subprocess, "run", side_effect=application_cli), \
-             mock.patch.dict(os.environ, {"WORKFORCE_CONFIG": str(selected)}), \
-             contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(applications.main(hook_arguments("postup", "deploy_applications.py")), 0)
-        self.assertEqual(children, ["deploy_gateway.py"])
-        self.assertEqual(json.loads((self.paths.state / "latest.json").read_text()), saved)
+        self.assertEqual(json.loads(result.getvalue().splitlines()[-1])["apiPublicationStatus"], "managed-separately")
         self.assertEqual(selected.read_text(), "{}")
 
 

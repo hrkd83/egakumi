@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from uuid import uuid4
 import xml.etree.ElementTree as ET
 from unittest import mock
 
@@ -19,6 +20,7 @@ from deployment.helpers.apim_authentication import render_service_policy, valida
 from deployment.helpers.apim_common_authentication import render_common_authentication_fragments
 from deployment.helpers.subscription_profiles import DEFAULTS as PROFILE_DEFAULTS, PREFIX as PROFILE_PREFIX
 import render_apim_policy
+from standard_apis import API_DEFINITION_DIRECTORY, load_api_definitions
 
 
 def ok(body, status=200, headers=None):
@@ -85,6 +87,31 @@ def publication_fixture():
             "certificateIdentity": {"id": identity_id, "clientId": client_id},
             "ingressSecrets": {"enabled": True, "l7IngressEnabled": True, "publicHostName": "fixture.example.com", "realtimeEnabled": True}}}
     return config, state
+
+
+class BackendSecretAccessTests(unittest.TestCase):
+    def test_an_explicit_backend_uses_its_secret_scope_instead_of_vault_wide_access(self):
+        config, state = publication_fixture()
+        vault = state["serviceResourceIds"]["keyVault"]
+        host = ".".join((vault.rsplit("/", 1)[-1], "vault.azure.net"))
+        scope = vault + "/secrets/provider"
+        path = scope + "/providers/Microsoft.Authorization/roleAssignments"
+        principal = str(uuid4())
+        assignment = {"principalId": principal, "scope": scope, "roleDefinitionId":
+            "/subscriptions/" + config["subscriptionId"]
+            + "/providers/Microsoft.Authorization/roleDefinitions/4633458b-17de-408a-b874-0445c86b69e6"}
+        definitions = [{"operations": [], "backendAuthentication": {"mode": "keyVaultHeader",
+            "secretIdentifier": f"https://{host}/secrets/provider"}}]
+        apim = {"identity": {"principalId": principal}}
+        for allowed_scope in (scope, vault):
+            with self.subTest(valid=allowed_scope == scope):
+                transport = Transport({path: ok({"value": [{"properties": {**assignment, "scope": allowed_scope}}]})})
+                if allowed_scope == scope:
+                    publish.verify_backend_secret_access(config, definitions, vault, apim, transport)
+                else:
+                    with self.assertRaisesRegex(ValueError, "at each configured backend secret"):
+                        publish.verify_backend_secret_access(config, definitions, vault, apim, transport)
+                self.assertEqual([call[0] for call in transport.calls], ["GET"])
 
 
 class SubscriptionProductReadbackTests(unittest.TestCase):
@@ -338,10 +365,15 @@ class PublicationTests(unittest.TestCase):
         names=publish.resource_names(config)
         identity_id=publish._scope(config,"id")+"/providers/Microsoft.ManagedIdentity/userAssignedIdentities/"+names["runtimeIdentity"]
         app_id=publish._scope(config,"svc")+"/providers/Microsoft.App/containerApps/"+names["application"]
+        environment_id=app_id.split("/containerApps/",1)[0]+"/managedEnvironments/cae-"+config["resourceStem"]+"-broker"
         broker_principal="88888888-8888-4888-8888-888888888888"
         url="https://"+names["application"]+".internal.fixture.azurecontainerapps.io"
         inventory={identity_id:ok({"id":identity_id,"properties":{"principalId":broker_principal}}),
-          app_id:ok({"id":app_id,"identity":{"userAssignedIdentities":{identity_id:{}}},"properties":{"provisioningState":"Succeeded","latestReadyRevisionName":"ready-001","latestRevisionName":"ready-001","configuration":{"ingress":{"fqdn":url[8:]}},"template":{"containers":[{"image":"fixture.azurecr.io/credential-broker@sha256:"+"a"*64,"probes":[{"type":"Readiness","httpGet":{"path":"/health/gateway-caller-v1","port":8000,"scheme":"HTTP"}}]}]}}}),
+          app_id:ok({"id":app_id,"identity":{"userAssignedIdentities":{identity_id:{}}},"properties":{"managedEnvironmentId":environment_id,
+              "provisioningState":"Succeeded","latestReadyRevisionName":"ready-001","latestRevisionName":"ready-001",
+              "configuration":{"ingress":{"fqdn":url[8:],"external":True,"allowInsecure":False}},
+              "template":{"containers":[{"image":"fixture.azurecr.io/credential-broker@sha256:"+"a"*64,
+                  "probes":[{"type":"Readiness","httpGet":{"path":"/health/gateway-caller-v1","port":8000,"scheme":"HTTP"}}]}]}}}),
           plan["apimId"]+"/backends/credential-broker":ok({"properties":{"url":url}}),
           plan["apimId"]+"/namedValues/core-credential-broker-url":ok({"properties":{"displayName":"core-credential-broker-url","secret":False,"value":url}}),
           plan["apimId"]+"/namedValues/core-credential-broker-secret":ok({"properties":{"secret":True,"keyVault":{"secretIdentifier":"https://kv-"+config["resourceStem"]+".vault.azure.net/secrets/core-credential-broker-key"}}})}
@@ -372,6 +404,24 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual([method for method, _, _, _ in transport.calls], ["GET"]*10)
             self.assertEqual([path.split("?")[0] for _, path, _, _ in transport.calls][-4:],
                              [plan["apimId"]+"/authorizationProviders/graph-delegated-a",assignment_path,plan["apimId"]+"/authorizationProviders/graph-delegated-b",assignment_path.replace("graph-delegated-a/","graph-delegated-b/")])
+
+    def test_graph_publication_enables_obo_with_dedicated_core_registrations(self):
+        config, state = publication_fixture()
+        graph = next(api for api in load_api_definitions(API_DEFINITION_DIRECTORY) if api["name"] == "graph-profile-v1")
+        config["apiDefinitions"] = [dict(graph, apiType="http")]
+        tenant = config["azureTenantId"]
+        auth = config["gateway"]["authentication"]
+        auth["entra"] = {"audience": str(uuid4()), "requiredScope": "Gateway.Invoke",
+                         "userLimits": dict.fromkeys(("requestRate", "tokensPerMinute", "tokenQuota"))}
+        auth["credentialLogin"] = {"identity": {"clientId": str(uuid4()), "tenantId": tenant},
+                                   "providerNames": ["graph-delegated"]}
+        config["credentialProviders"] = [{"name": "graph-delegated", "displayName": "Graph delegated",
+            "clientId": str(uuid4()), "oauthTenantId": tenant,
+            "identityEndpoint": "https://graph.microsoft.com/v1.0/me", "identityIdProperty": "id"}]
+
+        self.assertEqual(publish.prepare_plan(config, state)["parameters"]["graphOboEnabled"], {"value": True})
+        del auth["credentialLogin"]["identity"]
+        self.assertNotIn("graphOboEnabled", publish.prepare_plan(config, state)["parameters"])
 
     def test_graph_obo_publication_validates_the_exact_ready_broker_certificate_binding(self):
         from deployment.helpers.gateway_obo_certificate import runtime_environment

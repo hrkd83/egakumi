@@ -51,7 +51,7 @@ class ConnectionPolicyTests(unittest.TestCase):
         self.assertEqual(response.find('set-status').attrib,{'code':'500','reason':'Gateway processing failed'})
         self.assertIsNone(response.find('set-body'))
         self.assertEqual(response.find("set-header[@name='Cache-Control']/value").text,'no-store')
-        gateway=ET.parse(POLICIES/'api-templates/gateway.xml').getroot()
+        gateway=ET.parse(POLICIES/'api-templates/rest/rest.xml').getroot()
         connection=gateway.find(".//include-fragment[@fragment-id='core-credential-connection']")
         self.assertIn('__CREDENTIAL_CALLER_ERROR_XML__',connection.tail)
         parent=next(node for node in gateway.iter() if connection in list(node))

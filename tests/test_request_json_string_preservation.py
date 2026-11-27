@@ -82,7 +82,7 @@ class RequestJsonStringPreservationTests(unittest.TestCase):
         if not PWSH:
             raise unittest.SkipTest("PowerShell with bundled Newtonsoft.Json is required")
         rendered = ET.fromstring(render_audit_policy(
-            (POLICIES / "api-templates/gateway.xml").read_text(encoding="utf-8")))
+            (POLICIES / "api-templates/rest/rest.xml").read_text(encoding="utf-8")))
         chat = ET.fromstring(render_chat_store_fragment())
         expressions = {
             "__ALIAS_BODY__": rendered.find("./inbound/choose[@id='core-model-alias']/when/set-body").text,

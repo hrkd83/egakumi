@@ -145,7 +145,8 @@ class SsmlWafTests(unittest.TestCase):
     def test_required_portal_has_its_own_host_backend_and_health_probe(self):
         gateway = next(item for item in self.resources if item["type"] == "Microsoft.Network/applicationGateways")
         enabled = self.value(gateway["properties"], self.parameters(portalHostName="portal.example.com",
-            portalBackendIp="10.40.2.200", portalBackendHost="portal.fixture.azurecontainerapps.io"))
+            portalBackendIp="10.40.2.200", portalBackendHost="portal.fixture.azurecontainerapps.io",
+            firewallRootCaData="synthetic-root-ca"))
         listener = next(item for item in enabled["httpListeners"] if item["name"] == "portal-https")
         self.assertEqual(listener["properties"]["hostName"], "portal.example.com")
         self.assertEqual(listener["properties"]["protocol"], "Https")
@@ -156,7 +157,7 @@ class SsmlWafTests(unittest.TestCase):
         self.assertEqual(backend["properties"]["protocol"], "Https")
         self.assertEqual(backend['properties']['port'], 443)
         trusted, = enabled['trustedRootCertificates']
-        self.assertEqual(trusted['properties']['data'], 'synthetic-public-der')
+        self.assertEqual(trusted['properties']['data'], 'synthetic-root-ca')
         for item in enabled['backendHttpSettingsCollection']:
             reference, = item['properties']['trustedRootCertificates']
             self.assertTrue(reference['id'].endswith('/trustedRootCertificates/firewall-inspection-root'))

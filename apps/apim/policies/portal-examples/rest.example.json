@@ -1,0 +1,19 @@
+{
+  "apiId": "manual-example-rest",
+  "keyProductId": "manual-tool-users",
+  "backendId": "manual-example-rest-backend",
+  "backendService": "external",
+  "backendAuthentication": {"mode": "none"},
+  "responseTransport": "rest",
+  "keyFallbackRate": {"calls": 60, "renewalPeriodSeconds": 60},
+  "operations": [
+    {
+      "operationId": "status",
+      "method": "GET",
+      "backendPath": "/v1/status",
+      "copyUnmatchedParams": true,
+      "bodyFormat": "none",
+      "maxRequestBytes": null
+    }
+  ]
+}

@@ -11,27 +11,10 @@ validateはローカル検査、capacityはAzure読取、構築hookは
 Azure変更を伴う。作成後の資源には料金が発生し得る。Graph操作や試験専用の
 自動撤去タイマーは実装せず、撤去は明示的なazd downで行う。
 
-preup引数（python3 scripts/deployment/lifecycle.py preup）の目的と実行内容:
-利用者が用意した設定ファイルと対話入力に、既存のAzure設定を合わせ、
-構築に渡す.local/<environment>/generated/main.parameters.jsonを組み立てるための事前準備を行う。
-  1. パラメータファイルと、そこから参照される構成設定を読み込む。
-  2. 必要なツールと環境設定を確認し、DNSプロバイダーの選択、秘密情報の
-     入力・再利用、管理VM用SSH鍵の準備を行う。
-  3. Azureのログイン先が設定したテナント・サブスクリプションと一致するか
-     確認し、必要なリソースプロバイダーとEncryptionAtHost機能を登録する。
-     EncryptionAtHostの登録は、構成で利用する場合に限る。
-  4. サブスクリプション・Azureテナント・リージョンをazdの環境設定に保存する。
-  5. 既存のNSG、ルート、APIMのカスタムドメイン、PortalのCAの実在を確認する。
-  6. 入力と取得結果をまとめ、秘密情報を含む一時ファイルとしてアクセスを
-     制限した.local/<environment>/generated/main.parameters.jsonを生成する。
-この段階ではVMやVNetの本体構築は行わないが、上記のAzure側の事前登録は行う。
-生成したファイルは、次のpreprovisionでも監視基盤の準備後に再生成し、
-通常のazd provisionによる本体構築へ渡す。
-
 preprovision引数（python3 scripts/deployment/lifecycle.py preprovision）の目的と実行内容:
-本体構築の前提条件を確認し、監視・監査の保存先を先に構築してから、
-.local/<environment>/generated/main.parameters.jsonを本体構築用に再生成する。
-azd provision単独でも実行されるため、preupと共通する前提確認も行う。
+azd upとazd provisionは同じ構築フローを使う。本体構築の前提条件を確認し、
+監視・監査の保存先を先に構築してから、
+.local/<environment>/generated/main.parameters.jsonを生成する。
   1. 設定を読み込み、必要なツール・環境設定・秘密情報・管理VM用SSH鍵を
      確認・準備する。準備済みの入力や鍵は再利用する。
   2. Azureのログイン先を照合し、必要なリソースプロバイダーと、構成で利用する
@@ -73,8 +56,8 @@ main.bicepのcoreフェーズによる本体配備が成功した後、実際の
      失敗しても生成した秘密入り入力は回収し、元の保護ファイルは保持する。
 正常終了すると、公開URLと基盤工程の完了を表示する。
 PortalのCAはcoreフェーズで初期イメージを使って作成する。
-azd upでは続くpostupがGatewayとPortalの専用コマンドを順に呼び、
-API定義・バックエンド・Productとアプリ本体を配備する。azd provisionは基盤工程で終了する。
+azd upとazd provisionは基盤工程で終了する。認証用の公開証明書をEntraへ登録してから
+GatewayとPortalを順に個別配備する。
 入口設定の反映確認と、通常API・Realtimeなどの実際の疎通試験も別の確認として扱う。
 """
 from __future__ import annotations
@@ -118,6 +101,7 @@ if __package__ in (None, ""):
 from .helpers.paths import REPOSITORY, configuration_path, local_paths, private_parent
 from .helpers.aca_egress import validate_aca_route_snapshot
 from .helpers.azd_parameters import ARM_PARAMETERS_ENV, arm_parameters_reference, complete_arm_parameters
+from .helpers.audit_evidence import evidence_container_id, evidence_policy_id
 from .helpers.configuration import ConfigurationError, build_bicep_configuration, entra_tenant_id, load_configuration, load_firewall_tls_inspection, load_secret_inputs
 from .helpers.diagnostics import DiagnosticPreservationError, canonical_settings, prepare_settings
 from .helpers.prepare_secrets import SecretPreparationError, prepare_secrets
@@ -274,7 +258,7 @@ def require_certificate_registry_ready(config, transport):
 
 
 def prepare_core_network_upgrade(config: dict, transport, *, execute=True) -> dict:
-    """既存VMのPHC同期準備とPortal移行を確認してから、全NSGの旧子規則を安全に移す。"""
+    """VMのPHC同期とApp GatewayのHTTPS構成を確認してからNSGを更新する。"""
     try:
         require_management_host_time_core_ready(config, transport)
     except ManagementHostTimeError as error:
@@ -288,7 +272,7 @@ def prepare_core_network_upgrade(config: dict, transport, *, execute=True) -> di
 
 
 def complete_core_network_upgrade(config: dict, transport) -> dict:
-    """Bicepから作成された全75条件を読み戻し、照合済み旧子規則だけを回収する。"""
+    """Bicepで設定したNSGを読み戻し、照合済み旧子規則だけを回収する。"""
     record = upgrade_journal(config, "fixed-nsg-complete")
     try:
         return complete_fixed_nsg_rules(config, transport, execute=True, record=record)
@@ -794,7 +778,7 @@ def require_success(response: dict, operation: str, allowed=(200, 201, 204)) -> 
 
 
 def discover_existing_network_security_groups(config: dict, transport: ArmTransport) -> list[str]:
-    """今回の5個のNSGだけを読み、同じ環境の既存資源を名前で返す。
+    """今回の所有NSGだけを読み、同じ環境の既存資源を名前で返す。
 
     再upでNSG本体を空のpropertiesで更新すると、AppGWが必要とする既存規則を
     Azureが認識できず拒否する場合がある。本体の新規作成が必要かを先に確認し、
@@ -806,7 +790,9 @@ def discover_existing_network_security_groups(config: dict, transport: ArmTransp
     expected_tags = {"product": config["productName"], "environment": config["environmentName"],
                      "azd-env-name": config["environmentName"]}
     existing = []
-    suffixes = ("agw", "apim", "pep", "vm", "aca", "certificate")
+    suffixes = ("agw", "apim", "pep", "vm", "aca", "certificate", "broker")
+    if config.get("auditEvidence", {}).get("enabled") is True:
+        suffixes += ("audit",)
     for suffix in suffixes:
         name = f"nsg-{config['resourceStem']}-{suffix}"
         resource_id = prefix + name
@@ -841,7 +827,9 @@ def discover_existing_route_table_routes(config: dict, transport: ArmTransport) 
                      "azd-env-name": config["environmentName"]}
     route_properties = {"addressPrefix", "nextHopType", "nextHopIpAddress", "hasBgpOverride"}
     existing = {}
-    suffixes = ("agw", "apim", "vm", "aca", "certificate")
+    suffixes = ("agw", "apim", "vm", "aca", "certificate", "broker")
+    if config.get("auditEvidence", {}).get("enabled") is True:
+        suffixes += ("audit",)
     for suffix in suffixes:
         name = f"rt-{config['resourceStem']}-{suffix}"
         resource_id = prefix + name
@@ -887,7 +875,7 @@ def discover_existing_route_table_routes(config: dict, transport: ArmTransport) 
             # id/type/etag/進行状態は読取用。既存の全書込可能値だけを複写する。
             sanitized.append({"name": route_name, "properties": {
                 key: copy.deepcopy(value) for key, value in fields.items() if key in route_properties}})
-        if suffix in ("aca", "certificate"):
+        if suffix in ("aca", "certificate", "broker", "audit"):
             if properties.get("disableBgpRoutePropagation") is not True:
                 raise DeploymentError("ACA public HTTPS requires BGP propagation to be disabled")
             if suffix == "certificate" and any(route["name"] != "default-egress" for route in sanitized):
@@ -1096,6 +1084,7 @@ def local_preflight(config: dict, *, check_power_shell: bool = True, configurati
         check_waf_contract_manifest(check=True)
     except (ValueError, OSError, KeyError, TypeError) as error:
         raise DeploymentError("Regenerate and review the WAF input-contract manifest before deployment") from error
+    load_firewall_tls_inspection(config)
     # 選択先の食い違いはプロセス起動より先に検出する。誤った環境での
     # Azure要求だけでなく、不要なpackage buildも開始させない。
     environment_name = os.environ.get("AZURE_ENV_NAME")
@@ -1137,7 +1126,7 @@ def local_preflight(config: dict, *, check_power_shell: bool = True, configurati
         # 入力値を含み得る例外の本文は、構築ログへ持ち出さないよう抑制します。
         raise DeploymentError("Secret preparation did not complete. Review the preparation instructions above; no Azure resources were changed.") from None
 
-    # preupとpreprovisionが共通して通る、Azureへの要求より前の準備です。
+    # Azureへの要求より前に行う構築の準備です。
     # validate/renderは鍵を作らず、既存の公開鍵は従来どおりそのまま使います。
     # 秘密鍵はこの端末のsecrets内だけに保ち、後段は公開鍵だけを読み込みます。
     try:
@@ -1279,7 +1268,7 @@ def register_providers(config: dict) -> None:
     企業の別サブスクでも前提を取りこぼさないよう、手作業だけに依存しない。
     待機期限はこの操作の上限であり、環境の自動撤去期限ではない。
     """
-    required = PROVIDERS
+    required = (*PROVIDERS, 'Microsoft.EventHub') if config.get('auditEvidence', {}).get('enabled') else PROVIDERS
     pending = []
     for namespace in required:
         response = _registration_run(["az", "provider", "show", "--namespace", namespace,
@@ -1511,6 +1500,8 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
                 protected_json(reapply[0], {**reapply[1], 'status': 'reapply-succeeded'})
             outputs = {key: item["value"] for key, item in deployment["properties"]["outputs"].items()}
             if phase == "core":
+                if _body_audit_storage(config)["immutabilityMode"] == "Locked":
+                    lock_body_audit_policy(config, outputs, transport)
                 if outputs.get("certificateBootstrap"):
                     outputs, _ = finish_certificate_core(
                         config, outputs, transport, serial_password,
@@ -1556,14 +1547,16 @@ def _assert_current_apim_instance(config: dict) -> None:
 
 def state_from_outputs(config: dict, outputs: dict) -> dict:
     """実際のBicep出力から、再実行と撤去に使う所有RG・サービスIDの記録を作る。"""
+    service_ids = outputs.get("cleanup", {}).get("serviceResourceIds", {})
+    service_locations = {"keyVault": config["location"], "foundry": config["foundryLocation"], "apim": config["location"]}
     state = {
         "subscriptionId": config["subscriptionId"], "azureTenantId": config["azureTenantId"],
         "entraTenantId": entra_tenant_id(config),
         "resourceStem": config["resourceStem"], "resourceGroupNames": config["resourceGroupNames"],
         "apimInstanceId": apim_instance_id(config),
         "storage": outputs.get("auditStorage", {}), "monitoring": outputs.get("monitoring", {}),
-        "serviceResourceIds": outputs.get("cleanup", {}).get("serviceResourceIds", {}),
-        "serviceLocations": {"keyVault": config["location"], "foundry": config["foundryLocation"], "apim": config["location"]},
+        "serviceResourceIds": service_ids,
+        "serviceLocations": service_locations,
         "outputs": outputs,
     }
     if "certificateVault" in state["serviceResourceIds"]:
@@ -1575,8 +1568,8 @@ def state_from_outputs(config: dict, outputs: dict) -> dict:
     return state
 
 
-def _read_application_infrastructure_checkpoint(config: dict) -> list[dict] | None:
-    """同じ環境の撤去記録だけを引き継ぎ、再構築で旧CAEの管理RGを見失わない。"""
+def _read_core_checkpoint(config: dict) -> dict | None:
+    """選択中のCoreに対応する状態を読み、Azure環境とAPIM識別子を照合する。"""
     try:
         previous = json.loads((local_paths(config, ROOT).state / "latest.json").read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -1593,7 +1586,13 @@ def _read_application_infrastructure_checkpoint(config: dict) -> list[dict] | No
         verify_apim_state(config, previous)
     except ValueError as error:
         raise DeploymentError(str(error)) from None
-    if "applicationInfrastructure" not in previous:
+    return previous
+
+
+def _read_application_infrastructure_checkpoint(config: dict) -> list[dict] | None:
+    """同じ環境の撤去記録だけを引き継ぎ、再構築で旧CAEの管理RGを見失わない。"""
+    previous = _read_core_checkpoint(config)
+    if previous is None or "applicationInfrastructure" not in previous:
         return None
     from .helpers.cleanup import CleanupError, _application_infrastructure
     try:
@@ -1612,6 +1611,16 @@ def _save_deployment_state(config: dict, outputs: dict) -> dict:
     return state
 
 
+def _validate_parameter_registrations(config: dict, source: Path, command: str) -> None:
+    """配備前に入力と、監査中継が使用できる認証テナントを確認します。"""
+    if (config.get("auditEvidence", {}).get("enabled") is True
+            and config["entraTenantId"] != config["azureTenantId"]):
+        raise DeploymentError("Audit evidence requires entraTenantId to match azureTenantId before Core deployment")
+    workspace = local_paths(config, ROOT)
+    workspace.checked(source)
+    workspace.check_selection(config)
+
+
 def prepare_immutability(storage: dict, transport: ArmTransport) -> list[str]:
     """既存 Locked を個別に保持し、追加・未ロックの保存先だけを管理できるようにする。
 
@@ -1628,7 +1637,8 @@ def prepare_immutability(storage: dict, transport: ArmTransport) -> list[str]:
     for path, response in zip(policies, states):
         if response["statusCode"] == 404:
             continue
-        properties = (response.get("body") or {}).get("properties", {})
+        policy = (response.get("body") or {})
+        properties = policy.get("properties", {})
         period = properties.get("immutabilityPeriodSinceCreationInDays")
         # 未設定・削除済みポリシーでもHTTP 200のメタデータが返る。
         # 撤去時と同様、Deletedかつ整数の保持期間0だけを保護対象なしと扱う。
@@ -1636,12 +1646,29 @@ def prepare_immutability(storage: dict, transport: ArmTransport) -> list[str]:
             continue
         if properties.get("state") not in ("Locked", "Unlocked"):
             raise DeploymentError("Audit policy state could not be confirmed")
+        _verify_audit_policy_id(storage, path, policy)
+        if storage.get("allowProtectedAppendWrites") is False and storage["immutabilityMode"] == "Disabled":
+            raise DeploymentError("Existing body evidence has a WORM policy; configuration cannot disable it")
         if properties["state"] == "Locked":
-            if (type(period) is not int or period < storage["retentionInDays"]
-                    or properties.get("allowProtectedAppendWrites") is not True):
+            if not _audit_policy_matches(storage, properties):
                 raise DeploymentError("Locked audit policy retention/append configuration does not match the requested settings")
             retained.append(path)
     return retained
+
+
+def _verify_audit_policy_id(storage: dict, path: str, policy: dict) -> None:
+    if storage.get("allowProtectedAppendWrites") is False and str(policy.get("id", "")).casefold() != path.casefold():
+        raise DeploymentError("Body evidence policy readback does not match the configured container")
+
+
+def _audit_policy_matches(storage: dict, properties: dict) -> bool:
+    period = properties.get("immutabilityPeriodSinceCreationInDays")
+    if type(period) is not int or period < storage["retentionInDays"]:
+        return False
+    if storage.get("allowProtectedAppendWrites", True):
+        return properties.get("allowProtectedAppendWrites") is True
+    return (properties.get("allowProtectedAppendWrites", False) is False
+            and properties.get("allowProtectedAppendWritesAll", False) is False)
 
 
 def lock_and_verify_policies(storage: dict, transport: ArmTransport) -> None:
@@ -1654,8 +1681,9 @@ def lock_and_verify_policies(storage: dict, transport: ArmTransport) -> None:
     for path in storage["immutabilityPolicyIds"]:
         response = transport.request("GET", path + "?api-version=2023-05-01")
         policy = require_success(response, "Read audit immutability policy")
-        props = policy["properties"]
-        if props.get("immutabilityPeriodSinceCreationInDays", 0) < storage["retentionInDays"] or not props.get("allowProtectedAppendWrites"):
+        _verify_audit_policy_id(storage, path, policy)
+        props = policy.get("properties", {})
+        if props.get("state") not in ("Locked", "Unlocked") or not _audit_policy_matches(storage, props):
             raise DeploymentError("Audit policy retention/append configuration does not match the requested settings")
         if storage["immutabilityMode"] == "Locked" and props.get("state") != "Locked":
             etag = next((value for key, value in response["headers"].items() if key.lower() == "etag"), None) or policy.get("etag")
@@ -1663,9 +1691,57 @@ def lock_and_verify_policies(storage: dict, transport: ArmTransport) -> None:
                 raise DeploymentError("Audit policy ETag is missing; lock was not attempted")
             require_success(transport.request("POST", path + "/lock?api-version=2023-05-01", headers={"If-Match": etag}), "Lock audit policy")
             policy = require_success(transport.request("GET", path + "?api-version=2023-05-01"), "Read back locked audit policy")
-            props = policy["properties"]
-            if props.get("state") != "Locked" or props.get("immutabilityPeriodSinceCreationInDays", 0) < storage["retentionInDays"] or not props.get("allowProtectedAppendWrites"):
+            _verify_audit_policy_id(storage, path, policy)
+            props = policy.get("properties", {})
+            if props.get("state") != "Locked" or not _audit_policy_matches(storage, props):
                 raise DeploymentError("Audit policy lock could not be confirmed")
+
+
+def _body_audit_storage(config: dict) -> dict:
+    settings = config.get("auditEvidence", {})
+    return {"immutabilityMode": settings.get("payloadImmutabilityMode", "Disabled") if settings.get("enabled") else "Disabled",
+            "retentionInDays": settings.get("payloadRetentionDays", 30),
+            "immutabilityPolicyIds": [evidence_policy_id(config)], "allowProtectedAppendWrites": False}
+
+
+def prepare_body_audit_immutability(config: dict, transport: ArmTransport, *, previously_deployed: bool = False) -> list[str]:
+    """本文Blobの既存ロックを再利用し、30日削除とWORMの同時設定を検出します。"""
+    if not config.get("auditEvidence", {}).get("enabled") and not previously_deployed:
+        return []
+    storage = _body_audit_storage(config)
+    retained = prepare_immutability(storage, transport)
+    if storage["immutabilityMode"] != "Locked":
+        return retained
+    account_id = evidence_container_id(config).removesuffix("/blobServices/default/containers/payload")
+    path = account_id + "/managementPolicies/default"
+    response = transport.request("GET", path + "?api-version=2023-05-01")
+    existing = require_success(response, "Read body evidence lifecycle policy", allowed=(200, 404))
+    if response["statusCode"] == 200:
+        props = existing.get("properties", {}).get("policy", {})
+        rules = props.get("rules")
+        if str(existing.get("id", "")).casefold() != path.casefold() or not isinstance(rules, list):
+            raise DeploymentError("Body evidence lifecycle policy could not be confirmed")
+        for rule in rules:
+            if rule.get("enabled", True) and any("delete" in action for action in rule.get("definition", {}).get("actions", {}).values()):
+                raise DeploymentError("Review the existing body evidence delete rule before enabling WORM")
+    return retained
+
+
+def lock_body_audit_policy(config: dict, outputs: dict, transport: ArmTransport) -> None:
+    """成功したCoreが用意した本文コンテナーだけにWORMを確定します。"""
+    if not config.get("auditEvidence", {}).get("enabled") or config["auditEvidence"].get("payloadImmutabilityMode") != "Locked":
+        return
+    storage = _body_audit_storage(config)
+    evidence = outputs.get("auditEvidence") or {}
+    container_id = evidence_container_id(config)
+    path = storage["immutabilityPolicyIds"][0]
+    recorded = evidence.get("payloadImmutability") or {}
+    if (str(evidence.get("evidenceContainerId", "")).casefold() != container_id.casefold()
+            or str(recorded.get("policyId", "")).casefold() != path.casefold()
+            or recorded.get("mode") != storage["immutabilityMode"]
+            or recorded.get("retentionInDays") != storage["retentionInDays"]):
+        raise DeploymentError("Core output does not match the configured body evidence container and retention")
+    lock_and_verify_policies(storage, transport)
 
 
 def configure_app_insights_cap(config: dict, outputs: dict) -> None:
@@ -1826,10 +1902,13 @@ def _preprovision(config: dict) -> None:
     preserve_collection = previous_outputs.get("monitoring", {}).get("value", {}).get("auditCollectionEnabled", False)
     # 前段の監視配備だけでは直近の収集状態を表せない場合がある。前回コアの成功出力も
     # 調べ、再upによって有効なログ収集を弱めない。
+    previous_body = False
     if (local_paths(config, ROOT).state / "latest.json").exists():
         state = json.loads((local_paths(config, ROOT).state / "latest.json").read_text())
         if all(state.get(key) == config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem")):
             preserve_collection = preserve_collection or state.get("monitoring", {}).get("auditCollectionEnabled", False)
+            previous_body = bool(state.get("outputs", {}).get("auditEvidence"))
+    body_retained = prepare_body_audit_immutability(config, transport, previously_deployed=previous_body)
     if previous_outputs.get("monitoring", {}).get("value", {}).get("workspaceId"):
         workspace_id = previous_outputs["monitoring"]["value"]["workspaceId"]
         actual_diag = transport.request("GET", workspace_id + f"/providers/Microsoft.Insights/diagnosticSettings/diag-{config['resourceStem']}-law?api-version=2021-05-01-preview")
@@ -1876,8 +1955,13 @@ def _preprovision(config: dict) -> None:
 
     _confirm_management_serial_target(config, transport, serial_password)
     _record_management_serial_creation(config, serial_password, native=True)
+    body_worm = _body_audit_storage(config)["immutabilityMode"] == "Locked"
+    monitoring_worm = config["monitoring"]["auditImmutabilityMode"] == "Locked"
+    # 本文ポリシーはCore配備で作成する。監視段階ですでにロックしたポリシーはPUTから外す。
+    core_retained = [*body_retained, *(outputs["auditStorage"]["immutabilityPolicyIds"] if monitoring_worm and body_worm else [])]
     write_arm_parameters(config, parameters(config, "core", secrets=secrets,
-        manage_policies=config["monitoring"]["auditImmutabilityMode"] != "Locked",
+        manage_policies=body_worm or not monitoring_worm,
+        retained_policy_ids=core_retained,
         existing_nsg_names=existing_nsg_names,
         existing_route_table_routes=existing_routes,
         existing_apim_hostname_configurations=existing_apim_hostnames,
@@ -2085,6 +2169,10 @@ def postprovision(config: dict) -> None:
         if outputs.get("resourceGroups") != config["resourceGroupNames"]:
             raise DeploymentError("The deployment group list differs from the configured five groups")
         transport = ArmTransport(config)
+        if _body_audit_storage(config)["immutabilityMode"] == "Locked":
+            if response["properties"].get("provisioningState") != "Succeeded":
+                raise DeploymentError("Confirm Core deployment succeeded before locking body evidence")
+            lock_body_audit_policy(config, outputs, transport)
         if outputs.get("certificateBootstrap"):
             if response["properties"].get("provisioningState") != "Succeeded":
                 raise DeploymentError("The Core foundation deployment did not succeed")
@@ -2123,13 +2211,16 @@ def postprovision(config: dict) -> None:
 def main(argv=None) -> int:
     """CLI/hookを振り分ける。validate・読取確認・構築・撤去でAzure変更の有無が異なる。"""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("validate", "capacity", "clear-inputs", "preup", "preprovision", "postprovision", "predown", "postdown"))
+    parser.add_argument("command", choices=("validate", "capacity", "clear-inputs", "preprovision", "postprovision", "predown", "postdown"))
     parser.add_argument("--config", type=Path, default=None)
     args = parser.parse_args(argv)
     try:
         selected = args.config or configuration_path(ROOT)
         source = selected if selected.is_absolute() else ROOT / selected
-        config = load_configuration(source)
+        validate_parameters = None
+        if args.command in ("validate", "preprovision"):
+            validate_parameters = lambda config: _validate_parameter_registrations(config, source, args.command)
+        config = load_configuration(source, validate_parameters=validate_parameters)
         workspace = local_paths(config, ROOT)
         workspace.checked(source)
         workspace.check_selection(config)
@@ -2148,45 +2239,6 @@ def main(argv=None) -> int:
             previous = require_success(transport.request("GET", path), "Read prior monitoring deployment", allowed=(200, 404))
             report = capacity_preflight(config, transport, previous.get("properties", {}).get("outputs", {}))
             print(json.dumps(report))
-        elif args.command == "preup":
-            if config.get("codex"):
-                raise DeploymentError("The five-app setup starts with azd provision. Register both public certificates in Entra, then deploy Gateway and Portal separately.")
-            if config["publishApis"] is not True:
-                raise DeploymentError("azd up requires publishApis=true to deploy Gateway and Portal. Use azd provision for foundation-only deployment.")
-            _assert_current_apim_instance(config)
-            _read_application_infrastructure_checkpoint(config)
-            local_preflight(config, configuration_source=source)
-            secret_inputs = load_secret_inputs(config)
-            # この段階でも既存NSGを読むため、環境変数を書き換える前に認証先を照合する。
-            azure_preflight(config)
-            # 初回サブスクでは既存資源のGET自体が未登録RPで拒否され得るため、
-            # 認証先を確認した後、ARM読取とazd環境設定の前に登録完了を待つ。
-            # preprovisionにも同じ確認を残し、azd provision単独でも前提を満たす。
-            register_providers(config)
-            transport = ArmTransport(config)
-            require_core_appgw_ready(config, transport)
-            for key, value in (("AZURE_SUBSCRIPTION_ID", config["subscriptionId"]), ("AZURE_TENANT_ID", config["azureTenantId"]), ("AZURE_LOCATION", config["location"])):
-                run(["azd", "env", "set", key, value, "--environment", config["environmentName"]])
-            # azdがpreup後に読む入力枠を用意する。秘密入りの実入力は監視基盤の準備後に作る。
-            existing_nsg_names = discover_existing_network_security_groups(config, transport)
-            existing_routes = discover_existing_route_table_routes(config, transport)
-            existing_apim_custom_properties = {}
-            existing_apim_hostnames = discover_existing_apim_hostnames(config, transport, custom_properties_out=existing_apim_custom_properties)
-            existing_portal_app = discover_existing_portal_app(config, transport)
-            core_diagnostics = prepare_diagnostic_settings(config, transport, "core")
-            serial_password = _prepare_management_serial_password(config, transport)
-            _confirm_management_serial_target(config, transport, serial_password)
-            _record_management_serial_creation(config, serial_password, native=True)
-
-            write_arm_parameters(config, parameters(config, "core", secrets={
-                **secret_inputs, **prepare_grpc_secret(config, ROOT, protected_json),
-                "managementInitialSerialGeneration": _management_serial_generation(config, serial_password)},
-                existing_nsg_names=existing_nsg_names,
-                existing_route_table_routes=existing_routes,
-                existing_apim_hostname_configurations=existing_apim_hostnames,
-                existing_apim_custom_properties=existing_apim_custom_properties,
-                existing_portal_app=existing_portal_app,
-                diagnostic_setting_properties=core_diagnostics))
         elif args.command == "preprovision":
             preprovision(config)
         elif args.command == "postprovision":
@@ -2229,11 +2281,6 @@ def main(argv=None) -> int:
                           "Microsoftサポートへ確認してください。", file=sys.stderr)
         return 0
     except (ValueError, OSError, KeyError, DeploymentError, LogPrivacyError) as error:
-        if args.command == "preup" and "workspace" in locals():
-            try:
-                workspace.parameters.unlink(missing_ok=True)
-            except OSError:
-                pass
         # 任意の辞書や外部コマンドのstderrを、そのまま利用者向け出力へ混ぜない。
         message = str(error) if isinstance(error, (DeploymentError, ValueError)) else type(error).__name__
         print("Core operation failed: " + message, file=sys.stderr)

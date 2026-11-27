@@ -26,22 +26,17 @@ class ApiFoundationProjectionTests(unittest.TestCase):
         expected = standard_apis._definitions()
         self.assertEqual([api['path'] for api in built['infrastructureApiDefinitions']], [api['path'] for api in expected])
         self.assertEqual(config, before)
-        deployment_parameters = {}
         for api in built['infrastructureApiDefinitions']:
-            self.assertEqual(set(api) - {'mcp'}, {'name', 'apiType', 'path', 'operations', 'authorization'})
+            self.assertEqual(set(api) - {'mcp', 'websocket'}, {'name', 'apiType', 'path', 'operations', 'authorization'})
             if 'mcp' in api:
                 self.assertEqual(set(api['mcp']), {'name', 'path'})
             for operation in api['operations']:
                 self.assertEqual(set(operation), {'name', 'method', 'urlTemplate'})
-            for operation_id, constraint in api['authorization']['operationConstraints'].items():
-                self.assertTrue(set(constraint) <= {'kind', 'bodyFormat', 'contentTypes', 'parameter',
-                                                    'allowedModels', 'maxRequestBytes'})
-                if 'parameter' in constraint:
-                    deployment_parameters[api['name'], operation_id] = constraint['parameter']
-        self.assertEqual(deployment_parameters, {
-            ('openai-images-v1', 'image-edit'): 'deployment',
-            ('openai-audio-v1', 'audio-transcriptions'): 'deployment',
-        })
+            for constraint in api['authorization']['operationConstraints'].values():
+                self.assertTrue(set(constraint) <= {'kind', 'bodyFormat', 'contentTypes', 'parameter', 'allowedModels', 'maxRequestBytes'})
+        observers = [api for api in built['infrastructureApiDefinitions'] if 'websocket' in api]
+        self.assertEqual([(api['name'], api['websocket']) for api in observers],
+                         [('openai-realtime-observer-v1', {'realtimeObserver': {}})])
         self.assertNotIn('__OPENAI_RESOURCE_BASE_URL__', json.dumps(built['infrastructureApiDefinitions']))
 
     def test_projection_keeps_explicit_contract_metadata_without_aliasing_inputs(self):
@@ -120,11 +115,11 @@ class ApiFoundationBicepTests(unittest.TestCase):
         self.assertEqual(self.paths('documentUploadPaths', config), ['/tools/documents/v1/analyze'])
         published = self.paths('publishedApiPaths', config)
         for path in ('/models/openai/v1/chat/completions', '/models/openai/v1/responses',
-                     '/tools/pii/v1/redact', '/tools/pii-v1-mcp/mcp'):
+                     '/tools/pii/v1/redact', '/tools/pii-v1-mcp/mcp', '/models/openai-realtime/v1/observer/'):
             self.assertIn(path, published)
         self.assertTrue(all('{' not in path for path in published))
-        # Signed owner tickets and declared model deployments use AppGW
-        # wildcards. APIM still matches the declared operation.
+        # Signed owner tickets and approved model deployment prefixes use AppGW
+        # wildcard paths while APIM still matches each declared operation.
         self.assertEqual({path for path in published if '*' in path}, {
             '/tools/documents/v1/operations/*', '/models/openai-realtime/v1/calls/*',
             '/models/openai-images/v1/deployments/*', '/models/openai-audio/v1/deployments/*'})

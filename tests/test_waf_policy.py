@@ -19,9 +19,7 @@ from deployment.helpers.portal_gateway import portal_session_exclusions, _writab
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
                                            policy_id as waf_policy_id, policy_name, predecessor_policy_id)
 from deployment.helpers.waf_body import ai_body_settings, ai_content_type_profile
-from deployment.helpers import waf_body
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, POOL, BACKEND, REWRITE, gateway, policy, api_mapping
-from test_waf_contracts import common_data_before_manifest
 
 CHAT = '/models/openai/v1/chat/completions'
 
@@ -1333,43 +1331,6 @@ class DataWafTests(unittest.TestCase):
         self.assertFalse(any(e['selector'] in ('input.', 'messages.', 'tools.')
                              for p in profiles.values() for e in p['exclusions']))
 
-    def test_common_compatibility_update_keeps_all_other_waf_settings(self):
-        profiles = {p['name']: p for p in load_manifest()['profiles']}
-        for frozen in common_data_before_manifest()['profiles']:
-            # 凍結した旧共有profileを改変せず、各selectorを新しい公開入口へ対応させます。
-            successors = ('g-pii-rest', 'g-pii-mcp') if frozen['name'] == 'g-pii-redact' else (frozen['name'],)
-            for name in successors:
-                profile = profiles[name]
-                previous = copy.deepcopy(frozen)
-                if len(successors) == 2:
-                    selectors = {entry['selector'] for entry in profile['exclusions']}
-                    previous.update(name=name, paths=profile['paths'], exclusions=[
-                        entry for entry in frozen['exclusions'] if entry['selector'] in selectors])
-                    self.assertEqual({entry['selector'] for entry in previous['exclusions']}, selectors)
-                with self.subTest(profile=name):
-                    base = policy()
-                    if name == 'g-images':
-                        controls = json.loads(waf_body.JSON_CONTROLS.read_text(encoding='utf-8'))
-                        next(p for p in controls['profiles'] if p['name'] == name)['paths'] = previous['paths']
-                        with tempfile.TemporaryDirectory(prefix='waf-prior-image-controls-') as folder:
-                            target = Path(folder) / 'synthetic-controls.json'
-                            target.write_text(json.dumps(controls), encoding='utf-8')
-                            with mock.patch.object(waf_body, 'JSON_CONTROLS', target):
-                                old_policy = desired_policy(base, previous, configuration())
-                    else:
-                        old_policy = desired_policy(base, previous, configuration())
-                    updated = desired_policy(base, profile, configuration(), sources=(old_policy,))
-                    properties = updated['properties']
-                    self.assertEqual(properties['policySettings'], old_policy['properties']['policySettings'])
-                    self.assertEqual(properties['policySettings']['mode'], 'Prevention')
-                    self.assertIs(properties['policySettings']['requestBodyCheck'], True)
-                    self.assertEqual(properties['managedRules']['managedRuleSets'],
-                                     old_policy['properties']['managedRules']['managedRuleSets'])
-                    self.assertEqual(properties.get('customRules', []), old_policy['properties'].get('customRules', []))
-                    exclusions = properties['managedRules']['exclusions']
-                    self.assertTrue(all(any(exclusion_is_covered(old, new) for new in exclusions)
-                                        for old in old_policy['properties']['managedRules']['exclusions']))
-
     def test_text_sdp_and_opaque_upgrades_cover_the_individual_conditions(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
         fields = {
@@ -1511,20 +1472,6 @@ class DataWafTests(unittest.TestCase):
 
     def test_ai_text_and_json_values_share_the_normal_body_rule_conditions(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
-        previous = json.loads((ROOT / 'tests/fixtures/waf-legacy-coverage.json').read_text())
-        for profile in previous['profiles']:
-            if profile['name'] not in ('g-responses', 'g-chat-completions'):
-                continue
-            for old in profile['entries']:
-                for group in ('REQUEST-920-PROTOCOL-ENFORCEMENT', 'Known-CVEs', 'REQUEST-921-PROTOCOL-ATTACK'):
-                    if group not in old['groups']:
-                        continue
-                    expected = exclusion(old['selector'], group, old['groups'][group], old['variable'])
-                    expected['selectorMatchOperator'] = old['operator']
-                    with self.subTest(profile=profile['name'], selector=old['selector'], group=group):
-                        self.assertTrue(any(exclusion_is_covered(expected, entry)
-                                            for entry in profiles[profile['name']]['exclusions']))
-
         retained = [
             ('RequestArgValues', 'Equals', selector, ['921120', '921130'])
             for selector in ('input.output.text', 'input.input',

@@ -20,9 +20,13 @@
 // BEGIN bearer-request-validation
 
     // 目的：キー不要Productの経路とAuthorizationの形式を確認します。トークン本体の検証はXMLの標準ポリシーが担当します。
-    // この分岐はキーを提示していない要求用です。購読が混ざる場合や、社員用Product以外の経路は拒否します。
-    if (context.Subscription != null || context.Product == null
-        || context.Product.Id != "__ENTRA_OPEN_PRODUCT_ID__") { return "Invalid bearer context"; }
+    // 手動追加APIは、専用Productに明示的に所属させたmanual-のAPI IDだけを受け付けます。
+    if (context.Subscription != null || context.Product == null) { return "Invalid bearer context"; }
+    var product = context.Product.Id;
+    if (product != "__ENTRA_OPEN_PRODUCT_ID__"
+        && (product != "manual-entra-users" || !(context.Api?.Id ?? "").StartsWith("manual-", StringComparison.Ordinal))) {
+        return "Invalid bearer context";
+    }
     if (context.Request.Url.Query.ContainsKey("subscription-key") || context.Request.Url.Query.ContainsKey("api-key")) { return "Credentials must use the configured headers"; }
     // Authorizationは1値のBearer形式を要求します。欠落・複数値・空トークンでは標準検証へ進めません。
     if (!context.Request.Headers.ContainsKey("Authorization")) { return "Bearer token required"; }

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import copy
 
+from .configuration import entra_app_separation_enabled
+
 
 def apply_initial_configuration(configuration: dict, *, fail) -> dict:
     """公開入力を検査・合成した後、既存の内部設定契約へ固定値を補う。"""
@@ -26,10 +28,9 @@ def apply_initial_configuration(configuration: dict, *, fail) -> dict:
     if not isinstance(spaces, list) or any(not isinstance(space, str) for space in spaces):
         fail("network.addressSpaces", "must be an array of strings")
     firewall["snatPrivateRanges"] = list(dict.fromkeys(["IANAPrivateRanges", *spaces]))
-    if firewall.get("sku", "Premium") == "Premium":
-        firewall["idpsPrivateRanges"] = list(dict.fromkeys([
-            "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", *spaces,
-        ]))
+    firewall["idpsPrivateRanges"] = list(dict.fromkeys([
+        "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", *spaces,
+    ]))
     firewall["bypassTrafficSettings"] = []
     gateway = section(result, "gateway", "gateway")
     gateway["existingWafPolicyId"] = ""
@@ -39,7 +40,7 @@ def apply_initial_configuration(configuration: dict, *, fail) -> dict:
         authentication["entra"]["requiredScope"] = "Gateway.Invoke"
     login = section(authentication, "credentialLogin", "gateway.authentication.credentialLogin") if "credentialLogin" in authentication else {}
     identity = login.get("identity")
-    if isinstance(identity, dict):
+    if isinstance(identity, dict) and not entra_app_separation_enabled(result):
         identity["tenantId"] = result.get("entraTenantId")
     for kind in ("subscriptionKey", "application"):
         limits = section(gateway, "rateLimits", "gateway.rateLimits")

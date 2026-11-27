@@ -142,7 +142,7 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
   async function reauthenticateGraph(claims: string) {
     setReauthenticating(true);
     setReauthenticationFailed(false);
-    try { await startPortalApiAuthorization(window.location.pathname, claims); }
+    try { await startPortalApiAuthorization(window.location.pathname, "gateway", claims); }
     catch { setReauthenticationFailed(true); }
     finally { setReauthenticating(false); }
   }

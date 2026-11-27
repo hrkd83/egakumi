@@ -1,0 +1,448 @@
+{
+  "version": 1,
+  "groups": {
+    "audit": {
+      "suffix": "audit",
+      "rules": {
+        "allow-apim-https-ingress": {
+          "designRecordId": "N-EVID-IN-01",
+          "direction": "Inbound",
+          "priority": 110,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "subnet:audit"
+          ],
+          "destinationPorts": [
+            "443",
+            "31443"
+          ]
+        },
+        "allow-azure-load-balancer-ingress": {
+          "designRecordId": "N-EVID-IN-02",
+          "direction": "Inbound",
+          "priority": 120,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "literal:AzureLoadBalancer"
+          ],
+          "destination": [
+            "subnet:audit"
+          ],
+          "destinationPorts": [
+            "30000-32767"
+          ]
+        },
+        "allow-audit-internal-ingress": {
+          "designRecordId": "N-EVID-IN-03",
+          "direction": "Inbound",
+          "priority": 130,
+          "access": "Allow",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "subnet:audit"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "deny-any-ingress": {
+          "designRecordId": "N-EVID-IN-99",
+          "direction": "Inbound",
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "allow-audit-internal-egress": {
+          "designRecordId": "N-EVID-OUT-01",
+          "direction": "Outbound",
+          "priority": 110,
+          "access": "Allow",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "subnet:audit"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "allow-azure-resource-manager-egress": {
+          "designRecordId": "N-EVID-OUT-02",
+          "direction": "Outbound",
+          "priority": 120,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "literal:AzureResourceManager"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-entra-egress": {
+          "designRecordId": "N-EVID-OUT-03",
+          "direction": "Outbound",
+          "priority": 130,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "literal:AzureActiveDirectory"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-monitor-egress": {
+          "designRecordId": "N-EVID-OUT-04",
+          "direction": "Outbound",
+          "priority": 140,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "literal:AzureMonitor"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-mcr-egress": {
+          "designRecordId": "N-EVID-OUT-05",
+          "direction": "Outbound",
+          "priority": 150,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "literal:MicrosoftContainerRegistry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-afd-first-party-egress": {
+          "designRecordId": "N-EVID-OUT-06",
+          "direction": "Outbound",
+          "priority": 160,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "literal:AzureFrontDoor.FirstParty"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-foundry-https-egress": {
+          "designRecordId": "N-EVID-OUT-07",
+          "direction": "Outbound",
+          "priority": 170,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "ips:foundry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-acr-https-egress": {
+          "designRecordId": "N-EVID-OUT-08",
+          "direction": "Outbound",
+          "priority": 180,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "ips:registry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-event-hubs-https-egress": {
+          "designRecordId": "N-EVID-OUT-09",
+          "direction": "Outbound",
+          "priority": 190,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "ips:evidenceEventHubs"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-payload-blob-https-egress": {
+          "designRecordId": "N-EVID-OUT-10",
+          "direction": "Outbound",
+          "priority": 200,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "ips:evidenceBlob"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-checkpoint-blob-https-egress": {
+          "designRecordId": "N-EVID-OUT-11",
+          "direction": "Outbound",
+          "priority": 210,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "ips:evidenceCheckpoint"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "deny-any-egress": {
+          "designRecordId": "N-EVID-OUT-99",
+          "direction": "Outbound",
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "allow-firewall-routed-public-https-egress": {
+          "designRecordId": "N-EVID-OUT-12",
+          "direction": "Outbound",
+          "priority": 165,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "literal:Internet"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        }
+      }
+    },
+    "apim": {
+      "rules": {
+        "allow-audit-relay-https-egress": {
+          "designRecordId": "N-APIM-OUT-EVID",
+          "direction": "Outbound",
+          "priority": 390,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "ip:audit"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        }
+      }
+    },
+    "pep": {
+      "rules": {
+        "allow-audit-foundry-https-ingress": {
+          "designRecordId": "N-PEP-IN-EVID-01",
+          "direction": "Inbound",
+          "priority": 370,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "ips:foundry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-audit-acr-https-ingress": {
+          "designRecordId": "N-PEP-IN-EVID-02",
+          "direction": "Inbound",
+          "priority": 371,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "ips:registry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-audit-event-hubs-https-ingress": {
+          "designRecordId": "N-PEP-IN-EVID-03",
+          "direction": "Inbound",
+          "priority": 372,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "ips:evidenceEventHubs"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-audit-payload-blob-https-ingress": {
+          "designRecordId": "N-PEP-IN-EVID-04",
+          "direction": "Inbound",
+          "priority": 373,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "ips:evidenceBlob"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-audit-checkpoint-blob-https-ingress": {
+          "designRecordId": "N-PEP-IN-EVID-05",
+          "direction": "Inbound",
+          "priority": 374,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:audit"
+          ],
+          "destination": [
+            "ips:evidenceCheckpoint"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-mgmt-vm-audit-evidence-https-ingress": {
+          "designRecordId": "N-PEP-IN-EVID-06",
+          "direction": "Inbound",
+          "priority": 375,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:evidenceBlob"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        }
+      }
+    },
+    "management": {
+      "rules": {
+        "allow-audit-evidence-https-egress": {
+          "designRecordId": "N-MGMT-OUT-EVID",
+          "direction": "Outbound",
+          "priority": 390,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:evidenceBlob"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        }
+      }
+    }
+  }
+}

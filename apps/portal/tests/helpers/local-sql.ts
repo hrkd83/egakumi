@@ -5,7 +5,7 @@ import { Kysely, sql } from "kysely";
 import { createAuthDatabase } from "../../lib/auth-database.ts";
 import { getSqlEnvironment } from "../../lib/auth-environment.ts";
 import { migrateAuth } from "../../scripts/auth-migrations.ts";
-import { grantRuntimeProcedureAccess, portalRuntimePermissions } from "../../scripts/auth-runtime-grants.ts";
+import { grantLocalDevelopmentAccess } from "../../scripts/auth-runtime-grants.ts";
 
 /** 明示的に有効にしたローカルSQLだけで統合テストを実行します。 */
 export const localSqlTest = { skip: process.env.PORTAL_SQL_INTEGRATION_TESTS !== "1" };
@@ -43,10 +43,7 @@ export async function createLocalSqlTestDatabase(context: TestContext, withRunti
     assert.ok(user && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(user), "ローカルSQL実行用ログイン名が必要です");
     assert.ok(password, "ローカルSQL実行用パスワードが必要です");
     await sql.raw(`CREATE USER [${user}] FOR LOGIN [${user}]`).execute(admin);
-    for (const [table, permissions] of Object.entries(portalRuntimePermissions)) {
-      await sql.raw(`GRANT ${permissions} ON OBJECT::dbo.[${table}] TO [${user}]`).execute(admin);
-    }
-    await grantRuntimeProcedureAccess(admin, user);
+    await grantLocalDevelopmentAccess(admin, user);
     runtime = new Kysely<Record<string, unknown>>(createAuthDatabase({ ...settings, database: name, user, password }));
   }
   return { admin, runtime: runtime ?? admin, name };

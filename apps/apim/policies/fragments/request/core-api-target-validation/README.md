@@ -6,7 +6,7 @@ HTTP APIで、準備済みの操作設定に従い、モデルと操作固有の
 
 ## 呼び出しと入出力
 
-[HTTP APIテンプレート](../../../api-templates/gateway.xml)が、操作設定の準備・認証結果の引き渡し・本文サイズ確認と、対象のSpeech SSML確認を通った後に呼びます。モデル別の下流URI選択・本文書き換え・利用枠の処理より前です。
+[HTTP APIテンプレート](../../../api-templates/rest/rest.xml)が、操作設定の準備・認証結果の引き渡し・本文サイズ確認と、対象のSpeech SSML確認を通った後に呼びます。`bodyModel`・`textEmbeddings`・`rerank`は提供元がモデルと入力を判断するため、この部品の呼び出しを省きます。その他の種類はモデル別の下流URI選択・本文書き換え・利用枠の処理より前に確認します。
 
 | 入力・出力 | 内容 |
 | --- | --- |
@@ -18,14 +18,14 @@ HTTP APIで、準備済みの操作設定に従い、モデルと操作固有の
 
 準備済みの`gatewayOperationConstraint`を直接JSONとして読みます。先行処理は設定を準備できなければ500で停止し、この部品までに同変数の上書きはありません。API設定全体のBase64復元、変数の存在確認による取得元の分岐と、JSON取得成功後のnull確認を撤去しました。
 
-`protocol.xml`・`mcp.xml`には別の設定取得処理があるため、共通のBase64生成は維持します。HTTPから移したこの部品だけを対象にした整理です。
+`shared/stream.xml`と`mcp/generated.xml`には別の設定取得処理があり、共通のBase64生成を使います。
 
 ## この段階で維持する条件
 
 | 操作の種類 | 現在の確認 |
 | --- | --- |
 | パス指定のモデル | 空欄・空白だけ・「.」「..」を拒否し、モデルの利用可否は提供元へ任せる |
-| 本文のモデル、Embedding、Rerank | この部品では本文を読まず、モデルの入力仕様と利用可否は提供元へ任せる |
+| 本文のモデル、Embedding、Rerank | 共有HTTPテンプレートからこの部品を呼び出さず、入力とモデルの利用可否を提供元へ委ねる |
 | Responses | JSONオブジェクトを読めない場合は400。input配列直下のtype=code_interpreter_callとtools・tool_choiceの既存条件は403。受け付けたprevious_response_id・prompt・conversation_idとinputのID・type・ファイル参照を原値で転送し、inputの必須・型とincludeの一覧・型は提供元へ任せる。後続はstore=falseを強制し、指定時のbackground=false・conversation=nullだけを書き換える。model型とメソッド・操作パスは再確認しない |
 | Agent Responses（hostedAgentPost） | JSONオブジェクトを読めない場合は400。inputの必須・型・role／content／part・一般IDは提供元へ任せ、配列直下の明示code_interpreter_callだけ403。本文4項目の制限は撤去し、登録済み指示・toolsと固定Agentを使うためinstructions・tools・agent_reference・promptの既存403、状態選択previous_response_id・agent_session_idの既存403を明示して維持。その他の本文項目は原値。後段は全対象にstore:falseを強制し、指定時だけconversation:null／background:falseへ揃える。親要求ID注入はtargetAgent非空時だけ。本文modelは原値で、Agentモデルとの優先順位は実受入へ残す |
 | A2A | JSONオブジェクトの読取り例外・nullは400。読めた本文のJSON-RPCの版・ID・methodと許可method一覧の条件403は維持 |
@@ -127,7 +127,7 @@ Code Interpreter呼出しItemの拒否を追加する前の関連113件では、
 
 続く工程1の判断で、利用者別に隔離できない保存資源は基本的に蓄積させない方針を採用しました。`store=false`は応答履歴の指定で、内蔵Code Interpreterのコンテナ・入力ファイル・生成ファイルの保存や再利用を止める指定ではありません。[Microsoft公式手順](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/responses)は、コンテナが同じproject内で利用者別に隔離されず、input内の`code_interpreter_call`でも既存コンテナを参照できると説明しています。toolsのfunction限定を維持し、内蔵ツールを一律開放する変更は進めません。
 
-カスタムツールは、アプリがfunction呼出しを受けて個人接続付きのMCPへ実行要求を送り、その結果をFoundryへ返す構成で扱えます。追加APIの外部MCPプロキシには既存CM連携を組み込めますが、MCP用のOAuth接続先・scope・固定の本人確認先と、MCP側の本人認証・資源隔離が必要です。購読キーだけでは個人を確定できず、本人専用の接続セッションまたは検証済みの利用者情報を使います。[本人接続の契約](../../../../../../docs/setup/credential-manager-login.md)を参照してください。
+カスタムツールは、アプリがfunction呼出しを受けて個人接続付きのMCPへ実行要求を送り、その結果をFoundryへ返す構成で扱えます。追加APIの外部MCPプロキシには既存CM連携を組み込めますが、MCP用のOAuth接続先・scope・固定の本人確認先と、MCP側の本人認証・資源隔離が必要です。購読キーだけでは個人を確定できず、本人専用の接続セッションまたは検証済みの利用者情報を使います。[本人接続の契約](../../../../../../docs/reference/credential-manager-login.md)を参照してください。
 
 Foundryのremote MCPから同じCM個人接続を自動で使う経路は未実装です。また、function限定はinputからの既存コンテナ参照まで無効にする保証ではありません。この方針整理の時点では新しい拒否条件・本文加工・MCP資源を追加せず、続く判断で下記の明示的なCode Interpreter呼出しItemだけを拒否しました。他の既存資源の参照・所有者確認は継続棚卸の対象です。Azure設定は変更していません。
 
@@ -167,7 +167,7 @@ APIMで登録モデル一覧を利用可否の条件にしない方針を採用�
 
 同じ固定接続先・同じAPI形式のモデルは、提供元へ配備した後、APIMのモデル登録を増やさずに指定できます。先行する操作設定の準備は、モデル別の差分がなければ操作の基本設定を使います。共通認証、利用回数制限、本文サイズ枠と本文保持を維持します。aliasの解決とFLUX等の固定転送先選択は、接続パスが異なるモデルに必要な処理として残します。提供元自身がモデルを利用可能にしていることは別途必要です。
 
-`protocol.xml`の動的WebSocketモデル選択も登録一覧を照合せず、指定値または既存の`defaultModel`を使います。固定接続先用query契約、queryの単一値確認と認証は維持します。Portalの候補・能力表示と配備前の設定検査に必要な一覧データは残します。共通監査もモデル名を登録一覧と照合せず、既存の文字種・長さ条件を満たす新モデル名を記録します。
+`ws/ws.cs`の動的WebSocketモデル選択は、指定値または既存の`defaultModel`を使います。固定接続先用query契約、queryの単一値確認と認証は維持します。Portalの候補・能力表示と配備前の設定検査には一覧データを使います。共通監査は文字種・長さ条件を満たすモデル名を記録します。
 
 ## 本文model型の再確認と専用読取りの撤去
 

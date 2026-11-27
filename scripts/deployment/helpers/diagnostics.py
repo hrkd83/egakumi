@@ -229,6 +229,12 @@ def canonical_settings(config, phase, preserve_collection=False):
         add("agw-access", gateway, "Microsoft.Network/applicationGateways", "2025-01-01", f"diag-{stem}-agw-access", logs=["ApplicationGatewayAccessLog"], dedicated=True)
     add("agw-metrics", gateway, "Microsoft.Network/applicationGateways", "2025-01-01", f"diag-{stem}-agw-metrics", metrics=["AllMetrics"])
     add("portal", resource("svc", "Microsoft.App/managedEnvironments", "cae-" + stem), "Microsoft.App/managedEnvironments", "2025-01-01", "portal-logs", logs=["ContainerAppConsoleLogs", "ContainerAppSystemLogs"])
+    add("broker", resource("svc", "Microsoft.App/managedEnvironments", "cae-" + stem + "-broker"),
+        "Microsoft.App/managedEnvironments", "2025-07-01", "broker-logs", logs=["ContainerAppConsoleLogs", "ContainerAppSystemLogs"])
+    if config.get("auditEvidence", {}).get("enabled") is True:
+        add("auditEvidence", resource("svc", "Microsoft.App/managedEnvironments", "cae-" + stem + "-audit"),
+            "Microsoft.App/managedEnvironments", "2025-07-01", "audit-evidence-runtime",
+            logs=["ContainerAppConsoleLogs", "ContainerAppSystemLogs"])
     add("activity", base, "Microsoft.Resources/subscriptions", "2022-12-01", f"diag-{stem}-activity", logs=["Administrative", "ServiceHealth", "ResourceHealth", "Alert", "Autoscale", "Security", "Recommendation", "Policy"], storage=japan)
     return settings
 

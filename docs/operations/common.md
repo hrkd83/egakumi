@@ -2,7 +2,7 @@
 
 [運用手順](README.md) · [運用テスト](../testing/operations-tests.md)
 
-Portal、APIM、Foundryを変更する担当者向けの共通手順。初期構築は[構築手順](../setup/06-deploy.md)、環境全体の撤去は[更新・撤去手順](../operations.md#撤去する)を使う。
+Portal、APIM、Foundryを変更する担当者向けの共通手順。初期構築は[構築手順](../setup/08-provision-core.md)、環境全体の撤去は[更新・撤去手順](../operations.md#撤去する)を使う。
 
 ## 同じ環境の入力と現物を確認する
 

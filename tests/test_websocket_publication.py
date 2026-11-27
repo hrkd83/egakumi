@@ -114,7 +114,7 @@ class WebSocketPublicationTests(unittest.TestCase):
         unsupported = {"mock-response", "cache-lookup", "cache-store", "cross-domain", "cors", "jsonp",
                        "set-method", "set-body", "xml-to-json", "json-to-xml", "xsl-transform",
                        "validate-content", "validate-parameters", "validate-headers", "validate-status-code"}
-        for filename in ("protocol.xml", "service.xml", "core-api-settings.xml", "core-api-request-preparation.xml", "core-gateway-telemetry.xml", "realtime-observer.xml", "rate-limit.xml", "rate-limit-error.xml"):
+        for filename in ("stream.xml", "service.xml", "core-api-settings.xml", "core-api-request-preparation.xml", "core-gateway-telemetry.xml", "realtime-observer.xml", "rate-limit.xml", "rate-limit-error.xml"):
             from deployment.helpers.apim_audit import render_audit_policy
             path = SERVICE_POLICY if filename == "service.xml" else policy_fixture_path(POLICIES, filename)
             root = ET.fromstring(render_audit_policy(path.read_text(encoding="utf-8")))
@@ -122,7 +122,7 @@ class WebSocketPublicationTests(unittest.TestCase):
                 self.assertFalse({node.tag for node in root.iter()} & unsupported)
                 self.assertFalse(any(node.get("name", "").lower() == "host"
                                      for node in root.iter("set-header")))
-        protocol = ET.parse(POLICIES / "api-templates" / "protocol.xml")
+        protocol = ET.parse(POLICIES / "api-templates" / "shared/stream.xml")
         self.assertIsNotNone(protocol.find("./inbound/base"))
         self.assertIsNone(protocol.find('.//validate-azure-ad-token'))
         self.assertIsNone(ET.parse(SERVICE_POLICY).find('.//validate-azure-ad-token'))

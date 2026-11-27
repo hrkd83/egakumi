@@ -1,6 +1,6 @@
 # Portal証明書認証の構築・受入試験
 
-状態：工程3の下記ローカル確認を実施済み。実環境の試験は予定項目であり、成功記録ではありません。工程4のAPI用OAuthとTry接続は別設計・別受入です。[実施計画](../reference/portal-stages-3-4-plan.md)と[手動Entra登録](../setup/entra-portal.md)を参照します。
+この文書は、工程3のローカル試験の記録と、現在の専用ACA Job方式の受入項目を扱います。現行資材でのAzure・Entra受入は未実施です。工程4のAPI用OAuthとTry接続は[工程4の詳細設計](../reference/portal-stage4-design.md)に沿って受け入れます。 [実施計画](../reference/portal-stages-3-4-plan.md) · [手動Entra登録](../setup/09-egakumi-portal.md)
 
 SQLはProxy維持、Redirect変更とPortal driver試作は取りやめと決定しました。既存Tedious/Kysely・SQL用MI認証を維持し、証明書認証の受入を独立して進めます。Networkの取消コミット`5f72d83`をローカルへ取り込み、SQL/NSGと証明書資材の保持を確認しました。以下の172試験は旧Redirect案のローカル統合時の履歴であり、取消後の資材を確認した結果ではありません。
 
@@ -15,11 +15,19 @@ SQLはProxy維持、Redirect変更とPortal driver試作は取りやめと決定
 | 配備・初期構築hook・ローカル準備 | 関連Python回帰を実施し、失敗項目の個別再実行で解消。Windowsの権限不足・対応外の試験は未実施扱い |
 | 公開データ検査の回帰 | 65テスト実行、61成功、Windowsでリンク作成権限がない4件は未実施 |
 | 型検査・lint・build | 型検査成功、lintのエラーなし（既存警告あり）。buildはNext.jsの更新推奨で初回停止し、案内に従った再実行で成功 |
-| 依存監査 | Next.js由来のmoderate検出3件が残る。監査時は修正版なし。build再実行は脆弱性の修正を意味しない |
+| 依存監査（当時） | Next.js由来のmoderate検出3件。更新後の結果は下記の再監査を参照 |
 | 公開境界・文書 | ローカル作業ツリー混入検査成功。参照先を照合し、既存の構築試験と変更対象外の総合計画・総合試験書を保持 |
 | 旧Redirect案とのローカル統合（履歴） | Core・PortalのBicep生成を含む関連172試験を実行し、168成功、Windowsリンク権限が必要な4件は未実施。混入検査のexact pathも両コミットの集合を照合して保持。APIM資材の統合とAzure反映は未実施 |
 
-これらは合成データ・ローカルコンパイルの結果です。Azureでの鍵発行、Entra登録、ログイン、更新・復旧の実受入、および既知のNext.js脆弱性への対応は残ります。
+これらは合成データ・ローカルコンパイルの結果です。Azureでの鍵発行、Entra登録、ログイン、更新・復旧の受入は未実施です。
+
+### 本番依存の再監査
+
+2026-11-26の `npm audit --omit=dev` では、Next.js 16.4.3に7件の公表済みアドバイザリが該当し、npm集計はmoderateの依存パッケージ1件でした。該当アドバイザリは16.4.5で修正されています。 [Next.js 16.4.5セキュリティリリース](https://github.com/vercel/next.js/releases/tag/v16.4.5)
+
+2026-11-27にPortalのNext.jsと `eslint-config-next` を16.4.6へ更新しました。更新後のロックファイルに対する `npm audit --omit=dev` は検出0件でした。開発依存を含む `npm audit` では、`minimatch` と `typescript-eslint` 系の推移依存にmoderateのパッケージが7件あります。 [Next.js 16.4.6](https://github.com/vercel/next.js/releases/tag/v16.4.6)
+
+更新後のPortalテストは789件中771件成功、SQL統合の18件は未実施、失敗0件でした。型検査と `npm run build -- --webpack` は成功しました。既定の `npm run build` も、公開資材の一時コピーで同梱カタログを使うTurbopackビルドを実行し、成功しました。管理VMで構築用カタログを使うコンテナーイメージのビルドと、Azureでの受入は未実施です。
 
 ### Proxy取消後のローカル確認
 
@@ -36,12 +44,12 @@ Proxy取消の統合時点で、`infra/`、`scripts/`、`apps/`の実装は証�
 
 ### 限定追加入口と全体構築の確認
 
-承認済みの3部品限定追加方式を、証明書運用CLIの`initialize`へ実装しました。新規構築の標準Core・hookも維持し、`tests/test_portal_certificate_initialization.py`の21試験を含む7スイート133試験をWSLの通常一時領域で実行しました。132成功、macOSの一時領域alias専用の1件は対象外でスキップ、未解決の失敗・エラーはありません。初回の新設試験では、保存済みmetadataを時刻付きfixtureの再生成値と比較した1件が失敗したため、保存前のmetadataとの比較へ修正して回帰を実行しました。
+以下は、従来のVM方式で証明書の3部品限定追加を実装した時点の記録です。当時のCore・hookと`initialize`を対象に、`tests/test_portal_certificate_initialization.py`の21試験を含む7スイート133試験を実行しました。132成功、macOSの一時領域alias専用の1件は対象外でスキップでした。初回の新設試験で失敗したmetadataの比較は、保存前のmetadataとの比較へ修正して回帰を実行しました。現在の新規構築の確認対象は[実環境の構築試験](#実環境の構築試験)を参照します。
 
 | 対象 | 確認内容 |
 | --- | --- |
-| 新規全体構築のBicep | Coreが限定追加と同じ3テンプレート・計4資源を条件付きで呼び出す。専用Entra入力なしで証明書名・有効期間を渡し、TLS/runtime・KV通信/RBAC・監査の準備へ依存する。初期Run CommandのIDを出力 |
-| 正式`postprovision`と実collector | collectorを置換せず合成ARM応答で公開`.cer`と初期stateを保存。再実行はcurrentを保持。初期発行失敗は成功扱いせず停止し、Core記録保持・生成秘密入力回収を確認。違うcurrentへの上書きを拒否 |
+| 当時の新規全体構築のBicep | Coreが限定追加と同じ3テンプレート・計4資源を条件付きで呼び出す。専用Entra入力なしで証明書名・有効期間を渡し、TLS/runtime・KV通信/RBAC・監査の準備へ依存する。初期Run CommandのIDを出力 |
+| 当時の`postprovision`と実collector | collectorを置換せず合成ARM応答で公開`.cer`と初期stateを保存。再実行はcurrentを保持。初期発行失敗時の停止、Core記録保持・生成秘密入力回収を確認。違うcurrentへの上書きを拒否 |
 | 限定追加と再開 | 既定計画でPUTなし、実行で3配備のみ。what-ifの追加書込み・Modify/Delete・広い鍵権限・誤principal・別worker・欠落/重複/診断を拒否。不明な受理済みPUTを再送せず、公開証明書の保存失敗から再収集。Failedを自動再実行しない |
 | 保護runtimeとcheckpoint | 明示した別runtimeの正式params/Core stateを読み込み、azd選択・リンク・権限・排他を照合。入力/source/VM principal変更と不正receiptを拒否。初期発行に無関係な更新用受入フラグを拒否 |
 | 既存回帰 | `test_portal_auth_certificate`、`test_portal_authentication_infra`、`test_operations_common`、`test_local_paths`、`test_lifecycle`、`test_deploy_applications`。公開データ検査も成功 |
@@ -64,15 +72,16 @@ RGで宣言したロール定義と割当先のロールIDがSubscription直下�
 
 [詳細設計案](../reference/portal-stage4-design.md)の根拠として、既存Better Auth `1.7.14`の公開`better-auth/oauth2`を直接読み、合成データで9ケースを確認しました。公開export、S256 PKCE・form_post・state/nonce、`private_key_jwt`の非同期assertionによるコード要求と更新要求、保護パラメーター、client secret併用の拒否、既存JOSEによるID tokenの署名・本人・nonce・別署名の検査は全件成功しました。
 
-これは配布APIの呼出しとメモリー内の署名検証だけです。実KV・Entra・SQLへ通信せず、秘密鍵をファイルへ保存していません。PortalのAPI用OAuth handler、保存・更新競合、Cookie、全Try、実環境の成功には数えません。工程4の本体・依存・SQL・配備設定は変更していません。
+当時の試験範囲は、配布APIの呼出しとメモリー内の署名検証です。実KV・Entra・SQLへの通信や実際のOAuth・Cookie・全Tryの受入は別の確認として扱います。
 
 | 試験 | 確認する内容 |
 | --- | --- |
 | `tests/portal-auth-certificate-offline.ps1` | 合成RSA鍵・公開証明書をメモリー内で用意。Self・非exportable・新鍵生成方針・公開鍵対応を照合し、他鍵、disabled、private JWK、version未固定、現行版廃止を拒否。保存intentから不明POSTを再送せず再開 |
-| `tests/test_portal_auth_certificate.py` | 初期構築はClient ID不要、手動登録後の2項目入力、公開DERとthumbprint・期限・KV参照、単一worker出力、登録前切替拒否、不明VM PUTの再送抑止、手動受入と旧Entra削除の必要性 |
+| `tests/test_certificate_jobs.py` | 専用Jobの配備と初回実行順序、非公開イメージ、対象実行と結果の照合、開始応答不明からの再開 |
+| `tests/test_portal_auth_certificate.py` | 初期構築はClient ID不要、手動登録後の2項目入力、公開DERとthumbprint・期限・KV参照、単一worker出力、登録前切替拒否、旧VM入口での不明PUTの再送抑止、手動受入と旧Entra削除の必要性 |
 | `tests/test_portal_authentication_infra.py` | Bicepコンパイル、CoreとPortal本体の資源責任、専用ID、鍵scope権限、secretと証明書の設定、ジョブ・DB・Gateway既存設定 |
-| `tests/test_portal_certificate_initialization.py` | 限定追加の4資源照合・応答不明PUTの再送抑止・保護runtime、標準Coreと同じ3部品、正式postprovisionからの初期証明書取得と失敗時停止 |
-| `tests/test_deploy_applications.py` | 初期構築のGateway-only入口がPortal本体を呼ばない。個別配備・失敗・state選択 |
+| `tests/test_portal_certificate_initialization.py` | 旧VM方式の限定追加での4資源照合・応答不明PUTの再送抑止・保護runtime |
+| `tests/test_deploy_applications.py` | アプリ配備補助入口のGateway-only指定と、両アプリの配備順、失敗時の停止、state選択 |
 | Portalの認証・Graphテスト | client assertionの固定宛先・thumbprint・短命性・digest署名・秘密非露出、ログインのtid/oid、Graph管理契約、既存セッション・実行用SQL権限 |
 
 ローカル試験ではAzure/KV/Entraへ通信せず、実値をfixtureへコピーしません。型検査・lint・build・依存auditと混入検査も確認します。試験に使った合成秘密鍵をファイルへ保存しません。
@@ -81,15 +90,15 @@ RGで宣言したロール定義と割当先のロールIDがSubscription直下�
 
 | 順序 | 操作・観測 | 合格条件 |
 | --- | --- | --- |
-| 1 | Portalの`authentication`未入力で新規`azd up` | 共有資源・Gateway・Portal ACA初期サンプルが準備される。Portal本体の登録不足で初期構築を止めない |
-| 2 | 管理VM Run CommandとKV現物 | KV/PE/DNS/RBAC/runtime準備後に専用workerが実行され、終了成功と生成完了を確認。Self/RSA3072/非exportable/reuse_key=false |
+| 1 | Portalの`authentication`を省略して`azd up`（`azd provision`でも同じCore工程） | CoreとPortalの初期Container Appが作成され、初回の公開証明書2枚を取得できる。Portalバックエンドのヘルスは本体の配備後に判定する |
+| 2 | ACA証明書Jobの結果とKey Vault | 非公開ACRの承認済みイメージから専用Jobが実行され、Portal署名証明書の生成と終了成功を確認。Self/RSA3072/非exportable/reuse_key=false |
 | 3 | 公開証明書と保護state | `.cer`の取得、version固定keyId、thumbprint・期限と現物一致。VM/ACA/ローカルへ秘密鍵/PFXが渡らない |
 | 4 | 同じ初期構築を再実行 | 証明書のcurrentと鍵版が維持される。本体配備済みの場合は初期サンプルへ戻らない |
 | 5 | 発行エラー・pending・応答不明 | 成功扱いせず停止。保存intentの照合で再開し、不明POST/PUTを重ねない |
 | 6 | 手動Entra登録 | 専用アプリ作成・公開証明書・固定callback・権限・同意を一度の依頼にまとめて照合。新Portal secretを作らない |
-| 7 | Portal本体の個別配備 | stateと登録結果を使用し、イメージ・DB初期化・権限・ジョブを準備。基盤を作り直さない |
+| 7 | Gateway、Portalの順に個別配備 | stateと登録結果を使用し、Gateway成功後にPortalのイメージ・DB初期化・権限・ジョブを準備する。本体の公開ヘルスを確認する |
 
-既存NSG/FWのKV PE向けHTTPS443、Entra HTTPS443、管理VMツール配布先を実効経路とともに確認します。EntraからKVへの通信はありません。自己署名の発行に外部CA通信はありません。SQLはProxyを維持し、取消後のpolicy・SQL向けNSGのTCP1433と証明書工程の整合性を確認します。Redirectへの変更とdriver試作の受入は実施対象から外します。
+証明書専用ACA JobからのKV PEへのHTTPS、Portal本体とGraph定期ジョブからのKV PEとEntraへのHTTPSを実効経路とともに確認します。認証用証明書はKVが自己署名します。公開TLS向けのACME通信は公開TLS Jobの受入で確認します。SQLはProxyとSQL向けNSGのTCP1433を照合します。
 
 ## 認証・更新・復旧試験
 
@@ -99,7 +108,7 @@ RGで宣言したロール定義と割当先のロールIDがSubscription直下�
 | Graph管理 | 専用アプリのApplication tokenでグループ・ユーザー基本情報を照会。APIキー管理と所有者判定が維持される |
 | 定期ジョブ | 本体と同じkeyId/thumbprintと専用署名UAMIで、実際のスケジュール実行が完了 |
 | 署名権限 | 対象鍵scopeのみread/sign。誤ったID・鍵版・disabled鍵・KV不通で署名失敗を秘匿し、他方式へfallbackしない |
-| 更新準備 | 運用入口から管理VMを実行し、現行と異なる公開鍵・新しい鍵版を生成。公開`.cer`だけを出力し、現行参照を維持 |
+| 更新準備 | 運用入口からPortal署名用のACA Jobを実行し、現行と異なる公開鍵・新しい鍵版を生成。公開`.cer`だけを出力し、現行参照を維持 |
 | 手動登録前 | candidateの切替を拒否。旧公開証明書・旧鍵を維持 |
 | 更新切替 | 本体とジョブの固定参照・イメージを読戻し、実ログイン・Graph管理・定期実行を確認して受入 |
 | 復旧 | 旧版有効期間中、保存した旧固定参照と同じイメージへ戻し、認証・Graph・ジョブを再確認 |

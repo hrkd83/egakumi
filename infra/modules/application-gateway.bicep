@@ -54,7 +54,7 @@ param publicHostName string
 #disable-next-line secure-secrets-in-params // Reference URI only; no certificate bytes, password, or SAS token.
 param keyVaultCertificateSecretId string
 
-@description('Firewall検査用中間CAを発行したルートの公開DER証明書（Base64）。')
+@description('FirewallのTLS検査用中間CAを発行したルートCAの公開DER証明書（Base64）。')
 @minLength(1)
 param firewallRootCaData string
 @minLength(1)
@@ -392,7 +392,7 @@ var dataPortalPathRules = map(filter(dataProfiles, profile => profile.scope == '
   }
 })
 
-// HTTPS終端と通常HTTPの入口証明を常設し、内部APIM/PortalへHTTPで転送します。
+// HTTPSを終端してWAFで検査し、入口証明を付けて内部APIM/PortalへHTTPSで再暗号化します。
 resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
   name: gatewayName
   location: location

@@ -1,5 +1,5 @@
 // GatewayのAPI設定・Credential Manager・SQL接続台帳・Brokerを配備する入口です。
-// 共有APIM本体・SQLサーバー・ネットワーク・ACR・CAEはCoreの出力から参照します。
+// 共有APIM本体・SQLサーバー・ネットワーク・ACRとBroker専用CAEはCoreで準備します。
 targetScope = 'resourceGroup'
 param configuration object
 param foundation object
@@ -9,11 +9,11 @@ param credentialProviderSecrets object = {}
 @secure()
 @description('独立したOIDC本人確認アプリのsecret。CM providerのsecretとは別の入力です。')
 param credentialIdentitySecret string = ''
-@description('Graph OBO用のEntraアプリとKey Vault署名鍵。')
-param graphObo object = {}
 @secure()
 @description('初回だけ生成する内部通信の共有鍵。空の場合は既存の鍵を保持します。')
 param brokerKey string = ''
+@description('Graph OBO用のEntraアプリとKey Vault署名鍵。')
+param graphObo object = {}
 param imageDigest string = ''
 @description('SQL初期化成功後の2回目の配備でBroker本体・定期照合・APIM設定を反映します。')
 param deployApplication bool = false
@@ -24,7 +24,7 @@ var tags = union(configuration.tags, { product: configuration.productName, envir
 var profiles = configuration.credentialProfiles
 var login = configuration.gateway.authentication.?credentialLogin ?? { providerNames: [] }
 var session = configuration.credentialBrokerSession
-var brokerUrl = 'https://ca-${stem}-credentials.${foundation.environmentDomain}'
+var brokerUrl = 'https://${broker.outputs.applicationName}.${broker.outputs.environmentDomain}'
 var identityConfigured = contains(login, 'identity')
 var legacyOidcSecrets = [for name in objectKeys(profiles): { env: profiles[name].clientSecretEnv, uri: 'https://${foundation.vaultName}${environment().suffixes.keyvaultDns}/secrets/core-credential-${name}', name: 'oidc-${name}' }]
 var oidcSecrets = identityConfigured
@@ -47,6 +47,8 @@ module access '../../credential-broker/deploy/broker-access.bicep' = {
     registryName: foundation.registryName
     runtimeIdentity: runtime.outputs.identity
     schemaIdentity: foundation.schemaIdentity
+    apimPrincipalId: foundation.apimPrincipalId
+    legacyProviderNames: identityConfigured ? [] : objectKeys(profiles)
     brokerKey: brokerKey
     credentialIdentitySecret: credentialIdentitySecret
     identityConfigured: identityConfigured
@@ -92,7 +94,6 @@ module broker '../../credential-broker/deploy/broker.bicep' = {
   params: {
     stem: stem
     location: location
-    environmentName: foundation.environmentName
     registryName: foundation.registryName
     imageDigest: imageDigest
     runtimeIdentity: runtime.outputs.identity
@@ -148,7 +149,8 @@ output credentialBroker object = {
   apimPrincipalId: foundation.apimPrincipalId
   resourceGroup: resourceGroup().name
   url: brokerUrl
-  environmentName: foundation.environmentName
+  environmentName: broker.outputs.environmentName
+  environmentId: broker.outputs.environmentId
   registryName: foundation.registryName
   sqlServer: foundation.sqlServer
   database: database.outputs.database

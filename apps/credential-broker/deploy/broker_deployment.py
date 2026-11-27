@@ -8,6 +8,7 @@ import subprocess
 import time
 
 from deployment.helpers.credential_image import checked, source_bundle
+from deployment.helpers.credential_broker_lifecycle import broker_environment_id, broker_https_ingress, uses_broker_environment
 from deployment.helpers.credential_pools import broker_session_settings, logical_profiles, resource_names
 from deployment.helpers.paths import REPOSITORY, local_paths
 
@@ -56,14 +57,13 @@ def prepare_broker_only_update(config, state, transport):
             or props.get('latestReadyRevisionName') != props.get('latestRevisionName')
             or len(containers) != 1
             or {key.lower() for key in app.get('identity', {}).get('userAssignedIdentities', {})} != {runtime_id.lower()}
-            or props.get('managedEnvironmentId', '').lower() != (scope + '/providers/Microsoft.App/managedEnvironments/'
-                + foundation['environmentName']).lower()):
+            or not uses_broker_environment(props, foundation['brokerEnvironmentId'])):
         raise ValueError('The existing Broker must be ready with its verified runtime identity')
     environment = props.get('configuration', {})
     if environment.get('activeRevisionsMode') != 'Single':
         raise ValueError('Broker-only update preserves the single-revision release contract')
-    expected_host = names['application'] + '.' + foundation['environmentDomain']
-    if environment.get('ingress', {}).get('fqdn') != expected_host:
+    expected_host = names['application'] + '.' + foundation['brokerEnvironmentDomain']
+    if broker_https_ingress(props, foundation['brokerEnvironmentId']).get('fqdn') != expected_host:
         raise ValueError('Broker-only update cannot change the existing application endpoint')
     env_rows = containers[0].get('env', [])
     env = {item['name']: item for item in env_rows}
@@ -132,8 +132,7 @@ def prepare_broker_only_update(config, state, transport):
             raise ValueError('Existing Broker job differs from the selected resource')
         identity = foundation['schemaIdentity'] if name == names['schemaJob'] else runtime
         if ({key.lower() for key in job.get('identity', {}).get('userAssignedIdentities', {})} != {identity['id'].lower()}
-                or job.get('properties', {}).get('environmentId', '').lower()
-                   != (scope + '/providers/Microsoft.App/managedEnvironments/' + foundation['environmentName']).lower()):
+                or not uses_broker_environment(job.get('properties', {}), foundation['brokerEnvironmentId'])):
             raise ValueError('Existing Broker job identity or environment differs from the selected resource')
     revisions = checked(reader, 'GET', app_id + '/revisions?api-version=' + APP_API, label='Read existing Broker revision backups')
     if revisions.get('nextLink') or not isinstance(revisions.get('value'), list):
@@ -146,13 +145,15 @@ def prepare_broker_only_update(config, state, transport):
     scale = props.get('template', {}).get('scale', {})
     if any(type(scale.get(key)) is not int for key in ('minReplicas', 'maxReplicas')):
         raise ValueError('Existing Broker replica settings must be explicit')
-    values = {'stem': config['resourceStem'], 'location': config['location'], 'environmentName': foundation['environmentName'],
+    values = {'stem': config['resourceStem'], 'location': config['location'],
         'registryName': foundation['registryName'], 'runtimeIdentity': runtime, 'schemaIdentity': foundation['schemaIdentity'],
         'sqlServer': foundation['sqlServer'], 'database': names['database'], 'profiles': profiles,
         'publicOrigin': expected['BROKER_PUBLIC_ORIGIN'], 'apimPrincipalId': foundation['apimPrincipalId'],
         'apimName': foundation['apimName'], 'brokerKeySecretUri': broker_uri, 'oidcSecrets': list(oidc.values()),
         'minReplicas': scale['minReplicas'], 'maxReplicas': scale['maxReplicas'], 'imageDigest': '',
         'deployApplication': False, 'schemaAction': 'observe-schema', **{key: session[key] for key in timing}}
+    if graph_obo:
+        values['graphObo'] = graph_obo
     _, source_hash = source_bundle()
     if graph_obo:
         values['graphObo'] = graph_obo
@@ -324,11 +325,14 @@ def group_scope(config):
 
 def wait_for_application(config, transport, *, sleep=time.sleep, monotonic=time.monotonic, timeout=900, progress=print):
     target = group_scope(config) + '/providers/Microsoft.App/containerApps/' + resource_names(config)['application']
+    environment_id = broker_environment_id(config)
     deadline = monotonic() + timeout
     notice = monotonic() + 60
     while monotonic() < deadline:
         body = checked(transport, 'GET', target + '?api-version=' + APP_API, label='Read broker readiness')
         properties = body.get('properties', {})
+        if not uses_broker_environment(properties, environment_id):
+            raise ValueError('Credential Broker readiness requires its dedicated environment')
         revision = properties.get('latestRevisionName')
         if revision and properties.get('latestReadyRevisionName') == revision:
             ready = checked(transport, 'GET', target + '/revisions/' + revision + '?api-version=' + APP_API,

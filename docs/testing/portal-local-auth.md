@@ -1,12 +1,14 @@
 # Portalのローカル認証テスト
 
-証明書方式の新構成では、専用の開発用Entraアプリと登録済み公開証明書、対応する保護certificate stateを先に準備します。ローカル署名だけAzureCliCredentialを使い、Azure側KV tenantを指定します。KV Private Endpointへ到達できる端末・DNS/RBACが必要です。認証Entra tenantとAzure tenantを混同しません。以下の共用secret手順は切替前の旧構成用です。[新構成の登録](../setup/entra-portal.md)と[認証試験](portal-authentication-tests.md)を参照してください。
+証明書方式の新構成では、専用の開発用Entraアプリと登録済み公開証明書、対応する保護certificate stateを先に準備します。ローカル署名だけAzureCliCredentialを使い、Azure側KV tenantを指定します。KV Private Endpointへ到達できる端末・DNS/RBACが必要です。認証Entra tenantとAzure tenantを混同しません。以下の共用secret手順は切替前の旧構成用です。[新構成の登録](../setup/09-egakumi-portal.md)と[認証試験](portal-authentication-tests.md)を参照してください。
 
-Microsoft Entra IDへのログイン、ローカルSQL Serverへの本人・セッション保存、Tool GatewayのGraph本人接続を確認します。正式な[Entra事前準備](../setup/02-entra.md)には公開URLだけを記載し、以下のlocalhost設定は開発用だけに追加します。
+Microsoft Entra IDへのログイン、ローカルSQL Serverへの本人・セッション保存、Tool GatewayのGraph本人接続を確認します。正式な[PortalのEntra登録](../setup/09-egakumi-portal.md)には公開URLだけを記載し、以下のlocalhost設定は開発用だけに追加します。
+
+Azure配備の前にDBの動作だけ確認する場合は、[SQL統合試験だけを実行する](#sql統合試験だけを実行する)を使います。
 
 ## 1. 開発用Entraの戻り先
 
-使用するparamsの`portalAuthentication.credentialProviderName`が参照するEntraアプリの「認証」→「Web」で、既存の公開用戻り先を残したまま追加します。[公開用の戻り先](../setup/02-entra.md)とローカル開発用の戻り先を区別します。
+使用するparamsの`portalAuthentication.credentialProviderName`が参照するEntraアプリの「認証」→「Web」で、既存の公開用戻り先を残したまま追加します。[公開用の戻り先](../setup/03-entra-tools.md#cmのweb戻り先を確認する)とローカル開発用の戻り先を区別します。
 
 ```text
 http://localhost:3000/api/auth/callback/microsoft
@@ -16,7 +18,7 @@ http://localhost:3000/api/auth/callback/microsoft
 
 ## 2. ローカル設定の準備
 
-リポジトリ直下で、[第1章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)の`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を設定して、まず変更予定を確認します。計画だけではファイル作成、秘密の読み取り、Azureへの操作は行いません。
+リポジトリ直下で、[第01章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)の`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を設定して、まず変更予定を確認します。計画だけではファイル作成、秘密の読み取り、Azureへの操作は行いません。
 
 ```sh
 python3 scripts/prepare_portal_local_auth.py --config "$DEPLOY_PARAMS_FILE"
@@ -40,6 +42,8 @@ Windowsでは`python3`の代わりに利用中のPythonを指定できます。�
 
 Docker EngineとComposeを利用できる開発環境で実行します。WindowsでWSL内のDockerを使う場合は、リポジトリと開発用設定を参照できる同じ環境から実行します。SQLは`127.0.0.1:14330`だけで待ち受け、専用の永続ボリュームと2GBのメモリ上限を使います。
 
+SQL Server 2022のLinuxコンテナーを使う統合試験は、Intel／AMDのx86-64 Linux環境で実行します。Apple Siliconなどでのx86エミュレーションはMicrosoftのサポート対象外です。 [SQL Serverコンテナーの対応環境](https://learn.microsoft.com/en-us/sql/linux/sql-server-linux-docker-container-deployment?view=sql-server-ver16)
+
 ```sh
 PORTAL_LOCAL_SQL_ENV_FILE="$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admin.env" \
   docker compose --env-file "$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admin.env" \
@@ -55,6 +59,55 @@ python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" -- npm run de
 `db:bootstrap-local`は、ローカルに`egakumi_portal`データベースと未適用のテーブル定義を用意し、`portal_app`へ用途別の実行権限を付与します。Graphの保存表は`010_connection_sessions.sql`で追加し、実行用ユーザーにはSELECT・INSERT・UPDATEだけを付与します。DDL権限は与えません。再実行しても既存データは削除しません。Azure SQLは対象外です。Node.js 24を使い、`node_modules`は実行するOS側で`npm ci`してください。
 
 ブラウザーで`http://localhost:3000/ja/models`を開きます。未ログインならログイン画面へ移動します。「Microsoftでサインイン」から認証するとカタログへ戻り、右上に本人の名前が表示されます。英語は`/en/models`です。
+
+### SQL統合試験だけを実行する
+
+Intel／AMDのWindows端末では、DockerとNode.js 24を使えるWSLで `uname -m` が `x86_64` であることを確認します。SQL Serverをループバックの14330番に起動できる状態で、WSLのLinuxファイルシステム上にあるチェックアウトのルートから実行します。試験用の資格情報を使うため、Entra登録・Azure接続は不要です。
+
+SQL Server Developerのライセンスを確認し、同意した場合に実行します。環境ファイルの生成は初回だけ行い、再試験では生成済みの試験専用ファイルを使います。
+
+```sh
+PYTHONPATH=scripts python3 -B - <<'PY'
+from secrets import token_urlsafe
+from deployment.helpers.paths import LocalPaths, REPOSITORY
+from prepare_portal_local_auth import admin_settings, write_new_pair
+
+workspace = LocalPaths(REPOSITORY, "portal-sql")
+target = workspace.checked(workspace.secrets / "portal-local-sql-admin.env")
+runtime = {
+    "PORTAL_SQL_SERVER": "127.0.0.1",
+    "PORTAL_SQL_HOST": "127.0.0.1",
+    "PORTAL_SQL_PORT": "14330",
+    "PORTAL_SQL_DATABASE": "egakumi_portal",
+    "PORTAL_SQL_USER": "portal_app",
+    "PORTAL_SQL_PASSWORD": "aA9_" + token_urlsafe(36),
+}
+write_new_pair({target: admin_settings(runtime, "aA9_" + token_urlsafe(36))}, REPOSITORY)
+PY
+```
+
+```sh
+(
+  set -e
+  sql_test_root="$PWD"
+  export PORTAL_LOCAL_SQL_ENV_FILE="$sql_test_root/.local/portal-sql/secrets/portal-local-sql-admin.env"
+  sql_test_compose() {
+    docker compose --project-name egakumi-portal-sql-test --env-file "$PORTAL_LOCAL_SQL_ENV_FILE" \
+      -f "$sql_test_root/apps/portal/compose.local.yml" "$@"
+  }
+  sql_test_compose up -d --wait
+  trap 'sql_test_compose stop' EXIT
+  npm --prefix apps/portal ci
+  cd apps/portal
+  NODE_ENV=development node --env-file="$PORTAL_LOCAL_SQL_ENV_FILE" --conditions=react-server --experimental-strip-types \
+    scripts/bootstrap-local-sql.ts
+  NODE_ENV=development PORTAL_SQL_INTEGRATION_TESTS=1 node --env-file="$PORTAL_LOCAL_SQL_ENV_FILE" \
+    --conditions=react-server --experimental-strip-types --test \
+    tests/*.sql.test.ts tests/auth-runtime-grants.test.ts
+)
+```
+
+認証取引の一回消費・切断後の失効、セッション期限、実行用SQLユーザーの権限などを確認します。合否はこのローカルSQL試験の結果として記録し、Azure配備後の受入は[Portalの認証試験](portal-authentication-tests.md#実環境の構築試験)で行います。
 
 ## 4. 確認する動き
 
@@ -77,7 +130,7 @@ npm --prefix apps/portal audit
 
 Gatewayには本人接続v2とGraph APIを配備しておきます。実APIの選択項目は`apps/apim/apis/graph-profile-v1.json`の固定`$select`で、氏名・所属・連絡先・アカウント状態など本人の12属性です。変更を反映したGateway→Portalの順に配備します。ローカル画面の確認だけならAzure側のPortal配備は不要です。
 
-同じ環境の`portal/runtime.env`にサーバー専用の`PORTAL_GATEWAY_URL=https://<GATEWAY_HOST>`を設定します。購読の参照にはAPIキー管理と同じAPIM接続・Entraアプリ権限を使用します。必要な所属グループ・製品承認・既存購読のローカル台帳登録は[Portal配備手順](../setup/portal.md#ローカルsqlへの既存購読登録)に従います。ローカルとAzureのSQLは同期しません。
+同じ環境の`portal/runtime.env`にサーバー専用の`PORTAL_GATEWAY_URL=https://<GATEWAY_HOST>`を設定します。購読の参照にはAPIキー管理と同じAPIM接続・Entraアプリ権限を使用します。必要な所属グループ・製品承認・既存購読のローカル台帳登録は[Portal配備手順](../setup/12-deploy-portal.md#ローカルsqlへの既存購読登録)に従います。ローカルとAzureのSQLは同期しません。
 
 1. 上のlauncherから`--admin -- npm run db:bootstrap-local`で未適用の010と実行権限を準備し、管理者設定なしの`-- npm run dev`を起動する。
 2. `/ja/tools`のRESTタブでMicrosoft Graph /meカードを開く。自分のグループ所有で、Graph APIを含む有効な購読を選ぶ。
@@ -104,4 +157,4 @@ PORTAL_LOCAL_SQL_ENV_FILE="$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admi
 
 ローカル開発を終了して戻り先が不要になったら、開発用Entraアプリから追加したlocalhostの戻り先だけを削除します。既存の公開用戻り先や有効なシークレットは残します。データを破棄する操作は自動では行いません。
 
-Azure用の`sqldb-<環境>-<製品>-portal`は、[Portal配備コマンド](../setup/portal.md)が共通SQLサーバー上に作成します。同じ配備処理が手動SQL初期化ジョブを起動し、テーブルと実行用IDの権限を準備してからアプリを更新します。構築済みのコア基盤に対し、Portal配備のための`azd up`再実行は不要です。ローカルのDB・`portal/runtime.env`・管理者資格情報をAzureへコピーしません。
+Azure用の`sqldb-<環境>-<製品>-portal`は、[Portal配備コマンド](../setup/12-deploy-portal.md)が共通SQLサーバー上に作成します。同じ配備処理が手動SQL初期化ジョブを起動し、テーブルと実行用IDの権限を準備してからアプリを更新します。この配備は構築済みのCoreを再利用します。ローカルのDB・`portal/runtime.env`・管理者資格情報をAzureへコピーしません。

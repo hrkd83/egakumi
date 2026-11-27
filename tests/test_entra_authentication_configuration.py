@@ -487,19 +487,25 @@ class EntraPublicationBoundaryTests(unittest.TestCase):
             with self.subTest(field=field, value=value), self.assertRaisesRegex(configuration.ConfigurationError, "unsupported field"):
                 configuration.normalize_configuration(raw, base_directory=CORE / "config")
 
-    def test_internal_legacy_settings_reach_merge_and_readback_validation_without_subscription_changes(self):
+    def test_key_only_common_authentication_verifies_installed_policy_without_writes(self):
         fixture_test = publication_tests.PublicationTests()
         fixture_test.setUp()
         add_common_authentication_inventory(fixture_test)
         plan = publish.prepare_plan(fixture_test.config, fixture_test.state)
         transport = publication_tests.Transport(fixture_test.inventory)
-        with mock.patch.object(publish, "merge_common_authentication_policy", wraps=publish.merge_common_authentication_policy) as merge:
-            prepared = publish.verify_common_authentication(plan, transport)
-        self.assertEqual(merge.call_args.kwargs["entra"], plan["entraAuthentication"])
+        prepared = publish.verify_common_authentication(plan, transport)
+        self.assertEqual(prepared["entraAuthentication"], {"enabled": False})
         self.assertFalse(prepared["changed"])
-        with mock.patch.object(publish, "validate_common_authentication_policy", wraps=publish.validate_common_authentication_policy) as validate:
+        preflight_calls = len(transport.calls)
+        publish.install_common_authentication(prepared, transport, sleep=lambda _: None, deadline=time.monotonic() + 2)
+        policy = plan["apimId"] + "/policies/policy"
+        for calls in (transport.calls[:preflight_calls], transport.calls[preflight_calls:]):
+            self.assertTrue(any(path.split("?", 1)[0] == policy for _, path, _, _ in calls))
+        readback = transport.inventory[policy]["body"]["properties"]
+        readback["value"] = readback["value"].replace(
+            "</outbound>", '<set-header name="X-Example-Drift" exists-action="delete" /></outbound>', 1)
+        with self.assertRaisesRegex(ValueError, "Global policy readback differs"):
             publish.install_common_authentication(prepared, transport, sleep=lambda _: None, deadline=time.monotonic() + 2)
-        self.assertEqual(validate.call_args.kwargs["entra"], plan["entraAuthentication"])
         self.assertTrue(all(method == "GET" for method, _, _, _ in transport.calls))
 
 

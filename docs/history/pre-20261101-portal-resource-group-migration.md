@@ -1,6 +1,6 @@
 # Portalの旧リソースグループ移行資料
 
-> 履歴資料：2026-11-01の整理開始前の文書を保存しています。旧リソース配置・CI変数・確認APIに基づく手順であり、現行Coreの構築・更新には使用しません。現行の配置と配備手順は [Portalの配備](../setup/portal.md)、更新・撤去は [運用手順](../operations.md)を参照してください。
+> 履歴資料：2026-11-01の整理開始前の文書を保存しています。旧リソース配置・CI変数・確認APIに基づく手順であり、現行Coreの構築・更新には使用しません。現行の配置と配備手順は [Portalの配備](../setup/12-deploy-portal.md)、更新・撤去は [運用手順](../operations.md)を参照してください。
 
 以下は旧文書の本文です。相対リンクは保存先に合わせて調整しています。
 
@@ -146,7 +146,7 @@ GitHub Environment `portal`の次の設定と、Actions用IDのAzure RBACを更�
 | Actions用IDのイメージ配布権限 | 移行後のACRスコープのAcrPush |
 | Actions用IDのID割り当て権限 | ID用RGのpull IDスコープのManaged Identity Operator |
 
-更新後にActionsを実行し、イメージ取得とアプリの更新を確認します。初期画面またはPortal本体の公開URL、App Gatewayのbackend health、CAのReady、ACRのprivate DNS解決、Firewall経由の送信を確認します。Portal本体配備後は`/api/health`・`/api/egress`も[通常の受入手順](../setup/portal.md#受入確認)で確認します。
+更新後にActionsを実行し、イメージ取得とアプリの更新を確認します。初期画面またはPortal本体の公開URL、App Gatewayのbackend health、CAのReady、ACRのprivate DNS解決、Firewall経由の送信を確認します。Portal本体配備後は`/api/health`・`/api/egress`も[通常の受入手順](../setup/12-deploy-portal.md#受入確認)で確認します。
 
 ## 参考
 

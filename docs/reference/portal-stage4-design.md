@@ -1,6 +1,6 @@
 # Portal工程4：API認証・保存・全Tryの設計
 
-状態：実装方針は合意済み。工程4の正式実装・Azure適用・実受入は未実施のWIP。設計の合意を実装・受入の完了として扱わない。工程3の対象環境の状況は保護記録で管理する。ドメイン・IDは例示または用途付きプレースホルダーであり、実環境から転記しない。
+状態はWIPです。工程4のOAuth、保存用資材、試用機能を新規構築に組み込みました。Azure適用、Entraの実コード交換、SQLと全試用機能の実環境受入は未実施です。ドメイン・IDは独立した例示か用途付きプレースホルダーです。
 
 ## 合意済みの実装方針
 
@@ -14,7 +14,7 @@ Portalへログインする仕組みは工程3のBetter Authを維持し、API�
 4. 各Tryの要求をAPIキー／Bearerの型に分け、開始・結果取得・接続終了まで本人と認証方式を維持する。
 5. logout／API接続解除を複数instanceへ反映する。進行中のWebRTC停止に必要な場合だけ、停止専用のアクセストークンを最大60秒、暗号化して保持する。通常APIや更新には使わない。
 
-合意の対象は工程4の実装方針である。初回のEntra登録内容を[手動登録手順](../setup/entra-portal.md)へ確定し、一度の手動作成・設定で工程3を受入する。初回構築の手順は[配備手順](../setup/06-deploy.md)に従う。Azure・Entraでの工程3、工程4の認証は順に受け入れる。
+合意の対象は工程4の実装方針である。初回のEntra登録内容を[手動登録手順](../setup/09-egakumi-portal.md)へ確定し、一度の手動作成・設定で工程3を受入する。初回構築の手順は[配備手順](../setup/08-provision-core.md)に従う。Azure・Entraでの工程3、工程4の認証は順に受け入れる。
 
 ## アプリとトークンの役割
 
@@ -42,12 +42,12 @@ PortalとGatewayの利用者認証は同じ認証tenantを前提とし、署名�
 
 ## 新規構築の順序
 
-[5アプリの登録計画](../setup/02-entra.md)と合わせて次の順に構築する。
+[基盤用アプリの登録手順](../../README.md#新規クローンから構築する)に沿って、API・Tools・Credentialを先に登録し、次の順に構築する。
 
 | 順序 | 作業 | 担当 |
 | --- | --- | --- |
-| 1 | 共通基盤・Portal ACA初期サンプルを配備し、専用ACA JobでPortal認証用の鍵と公開証明書を準備 | 構築資材 |
-| 2 | 新しいPortal用Entraアプリを作成し、公開`.cer`、2つのWeb戻り先、必要な権限、管理者同意を同じ依頼で設定 | Entra管理チームの手動操作 |
+| 1 | `azd up`で共通基盤とPortal ACA初期サンプルを配備し、専用ACA JobでPortal認証用とGateway OBO用の鍵・公開証明書を準備 | 構築資材 |
+| 2 | APIアプリにGateway OBO用の公開証明書を登録。Portal用Entraアプリを作成し、公開`.cer`、2つのWeb戻り先、必要な権限、管理者同意を同じ依頼で設定 | Entra管理チームの手動操作 |
 | 3 | 登録結果を保護paramsへ設定し、Gatewayの成功後にPortalを配備。Portal配備時にAPI保存暗号鍵とSQLを準備し、ログインとAPI試用を受入 | Portal配備資材と受入担当 |
 
 Azureポータルの画面操作は「新規登録→証明書・権限等の設定」になるが、途中に資材構築やPortal配備を挟まない。Portalアプリの作成だけを先に依頼し、工程4のために別の編集依頼を後から追加する手順にはしない。
@@ -67,13 +67,13 @@ Azureポータルの画面操作は「新規登録→証明書・権限等の設
 | 証明書 | 共有資材で取得したPortal認証用の公開`.cer`。新Portalのclient secretを作らない |
 | Graph Application権限 | `GroupMember.Read.All`、`User.ReadBasic.All`。Portal管理・定期照合 |
 | GraphのOIDC Delegated権限 | `openid`、`profile`、`email`、`offline_access`。ログイン・ID token・API用更新トークンの要求に対応する同意を同じ作業で確認 |
-| API Delegated権限 | 既存APIアプリの`Gateway.Invoke`をPortalアプリへ追加。完全な要求scopeは`api://<API_APP_CLIENT_ID>/Gateway.Invoke` |
+| API Delegated権限 | API試用には既存APIアプリの`Gateway.Invoke`、購読管理には`Subscription.Manage`をPortalアプリへ追加。完全な要求scopeはそれぞれ`api://<API_APP_CLIENT_ID>/Gateway.Invoke`と`api://<API_APP_CLIENT_ID>/Subscription.Manage` |
 | 管理者同意 | 上記権限をこのPortalクライアントへ付与。API側でscopeをAdmins onlyにしたことだけでは同意済みにならない |
 | その他 | Implicit grantとPublic client flowsは無効。利用者割当・条件付きアクセス・受入利用者も同じ依頼で確認 |
 
 API用アプリのClient IDはAPI tokenのaudience、新しいPortalアプリのClient IDはID tokenのaudienceとOAuthクライアントの識別子である。Gatewayの現契約は`azp`を監査情報として扱い、クライアント許可リストには使わない。今回のためにAPI用アプリへPortalの戻り先・証明書を登録しない。
 
-実際のAzureポータル操作と引継ぎは[手動登録手順](../setup/entra-portal.md)へ集約する。公開`.cer`と確定した手順を使って依頼する。申請票・依頼メール・manifestは生成しない。
+実際のAzureポータル操作と引継ぎは[手動登録手順](../setup/09-egakumi-portal.md)へ集約する。公開`.cer`と確定した手順を使って依頼する。申請票・依頼メール・manifestは生成しない。
 
 ## API用認証の流れ
 
@@ -127,7 +127,7 @@ SQLは既存Portal DBとTedious/KyselyのProxy接続を維持する。専用テ�
 | 提案テーブル | 保存するもの・寿命 |
 | --- | --- |
 | `portalApiAuthContext` | Portal SQL session、検証済みtid/oid、Portal Client ID、API resource/scope、Gateway origin、設定版、失効世代、token revision、lease、有効なtoken暗号文、初回ID tokenに束縛したnonce hash。現在は全Tryで一つのAPI audienceを共有する |
-| `portalApiAuthorizationTransaction` | 開始時のsession・context世代・認証試行ID、state hash、相関Cookie hash、暗号化したverifier/nonce/state、callbackの一回消費状態。最大10分。受け取ったcodeは最大60秒 |
+| `portalApiAuthorizationTransaction` | 開始時のsession・context世代・認証試行ID、state hash、相関Cookie hash、暗号化したverifier/nonce、callbackの一回消費状態。最大10分。受け取ったcodeは暗号化して最大60秒 |
 | `portalApiActiveOperation` | 長い接続・非同期結果の本人session、認証方式、context世代、登録済みAPI/model、暗号化したticket・call情報、終了状態 |
 | `portalApiCallCleanup` | logout／disconnect後の固定hangupに必要な場合だけ、停止専用のaccess token snapshot・ticket・call参照を暗号化して最大60秒保持。refresh tokenは置かない |
 
@@ -202,11 +202,18 @@ shadcn/uiの認証選択、Zustandの状態、Zodの入力検査、日英の案�
 
 新規モジュールは`lib/api-auth/`と`app/api/api-auth/`を中心とし、認証取引・token要求・本人検査・SQL・暗号・実行credential・接続監視を役割で分ける。callback POSTと内部complete GETは専用境界で許可し、既存PortalログインのOrigin検査を広く解除しない。callbackのcode/stateをURLへ載せず、body・Cookie・token類をアプリ/WAF診断へ残さない。WAFはAPI callbackの必要なフォーム項目だけを対象に確認する。
 
-Core/hook、既存環境の限定準備、Portal Bicep、API保存用ID・secret参照、SQL migration・runtime grants、readiness、ローカル起動、暗号鍵更新/回収、正式手順を同じ実装範囲に含める。Entra Client ID未確定で共有資源と鍵準備を行え、Portal本体配備では登録結果と必要metadataがなければ停止する。
+Core/hook、Portal Bicep、API保存用ID・secret参照、SQL migration・runtime grants、readiness、ローカル起動、暗号鍵更新/回収、正式手順を新規構築の順に確認する。Entra Client ID未確定で共有資源と鍵準備を行え、Portal本体配備では登録結果と必要metadataがなければ停止する。
 
 SQLはProxy/TCP1433、KV PE・EntraへのHTTPS443を使う。外部CAの通信を追加しない。通信の定義上の許可はDNS・実効経路・実通信の成功とは区別する。
 
-工程4のrollbackはAPI featureを無効化し、API接続を失効・回収してから工程3のイメージ・構成へ戻す。追加SQLはまず互換的な追加とし、初回のrollbackで破壊的削除をしない。登録済みEntraアプリはそのまま使え、rollbackのためにEntraへ別の編集依頼を出さない。工程3の旧Portal secret参照の撤去は工程3の実受入条件で扱い、恒久互換にしない。
+工程4を戻すときは、保護paramsの`portal.apiAuthentication.enabled=false`で再配備する。再有効化の前に残るAPI接続の期限・失効状態を確認する。SQL migrationは互換的な追加として扱い、登録済みEntraアプリと工程3の通常ログインを引き続き使う。
+
+## ローカル実装と実受入の区切り
+
+- Portalは新しい専用アプリの証明書で、API用の認可コード交換と更新を行う。SQL取引には`state`と相関Cookieの照合ハッシュを保存し、`verifier`と`nonce`、および一度受け取った`code`は別用途の暗号文で保持する。
+- キーとBearerは同じ登録済みAPIへそれぞれのヘッダーだけを送る。テキストSSEとRealtimeの中継はBearerの期限、SQLセッションと失効世代を監視する。Bearerで開始した文書の状態照会とWebRTCの停止参照は、SQLに保存した開始時セッション・方式・世代に照合する。Realtimeの社員BearerはAPIMのv4所有チケットを使う。
+- OpenAI Realtimeの停止では、先に制御接続を閉じる。稼働中の処理が専用SQL行で送信を一度だけ確保し、同じ通話の固定hangupを呼ぶ。暗号化した停止専用snapshotは、アクセストークンと通話チケットの有効期限内かつ最大60秒だけ送信に利用できる。結果確定後に暗号文を消去し、期限切れの行は後続の準備確認・認証状態照会で回収する。処理が途中で失われ、記録済みの送信結果が不明なら`unconfirmed`で扱う。各系列で提供元の音声・媒体と課金が終了する条件は実受入で確認する。
+- SQL実行権限・一回消費・更新リース・解除後の旧世代拒否・停止の重複防止は、`apps/portal/tests/api-authentication.sql.test.ts`で確認する。この試験はローカル専用SQL Serverとテスト用実行ログインに接続する。`PORTAL_SQL_INTEGRATION_TESTS=1`を明示し、[開発用SQLの手順](../testing/portal-local-auth.md)に従って準備する。通常のNode試験ではこの試験をスキップする。
 
 ## 実装順と受入条件
 

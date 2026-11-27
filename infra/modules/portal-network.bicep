@@ -11,6 +11,8 @@ param managementNsgName string
 param managementPrivateIp string
 param acaNsgName string
 param acaPrefix string
+param brokerPrefix string
+param brokerNsgName string
 param firewallPolicyName string
 param pepNsgName string
 // 環境の認証URLからホスト部分を取り出して、Firewallの宛先に使います。
@@ -79,10 +81,11 @@ var registryPrivateIps = union([], flatten(registryAddresses.outputs.privateIpsB
 resource pepNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: pepNsgName }
 resource managementNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: managementNsgName }
 resource acaNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: acaNsgName }
+resource brokerNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: brokerNsgName }
 resource acaRegistryIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
   name: 'allow-aca-acr-https-ingress'
-  properties: allowRule('allow-aca-acr-https-ingress', nsgPriorities.groups.pep.rules['allow-aca-acr-https-ingress'].priority, 'Inbound', 'Tcp', [acaPrefix], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
+  properties: allowRule('allow-aca-acr-https-ingress', nsgPriorities.groups.pep.rules['allow-aca-acr-https-ingress'].priority, 'Inbound', 'Tcp', [acaPrefix, brokerPrefix], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
 }
 resource managementRegistryIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
@@ -100,6 +103,12 @@ resource acaRegistryOut 'Microsoft.Network/networkSecurityGroups/securityRules@2
   name: 'allow-acr-https-egress'
   properties: allowRule('allow-acr-https-egress', nsgPriorities.groups.aca.rules['allow-acr-https-egress'].priority, 'Outbound', 'Tcp', [acaPrefix], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
 }
+resource brokerRegistryOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: brokerNsg
+  name: 'allow-acr-https-egress'
+  properties: allowRule('allow-acr-https-egress', nsgPriorities.groups.broker.rules['allow-acr-https-egress'].priority, 'Outbound', 'Tcp', [brokerPrefix], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
+}
+
 resource policy 'Microsoft.Network/firewallPolicies@2025-01-01' existing = { name: firewallPolicyName }
 // Coreの通信規則が揃った後、Portal用の独立した規則グループを設定します。
 resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-01' = {
@@ -117,7 +126,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
           {
             name: 'allow-aca-monitor'
             ruleType: 'NetworkRule'
-            sourceAddresses: [acaPrefix]
+            sourceAddresses: [acaPrefix, brokerPrefix]
             destinationAddresses: ['AzureMonitor']
             destinationPorts: ['443']
             ipProtocols: ['TCP']
@@ -125,7 +134,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
           {
             name: 'allow-aca-entra'
             ruleType: 'NetworkRule'
-            sourceAddresses: [acaPrefix]
+            sourceAddresses: [acaPrefix, brokerPrefix]
             destinationAddresses: ['AzureActiveDirectory']
             destinationPorts: ['443']
             ipProtocols: ['TCP']
@@ -166,7 +175,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
           {
             name: 'allow-aca-mcr'
             ruleType: 'ApplicationRule'
-            sourceAddresses: [acaPrefix]
+            sourceAddresses: [acaPrefix, brokerPrefix]
             protocols: [{ protocolType: 'Https', port: 443 }]
             targetFqdns: ['mcr.microsoft.com', '*.data.mcr.microsoft.com']
             terminateTLS: false
@@ -174,7 +183,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
           {
             name: 'allow-aca-platform-packages'
             ruleType: 'ApplicationRule'
-            sourceAddresses: [acaPrefix]
+            sourceAddresses: [acaPrefix, brokerPrefix]
             protocols: [{ protocolType: 'Https', port: 443 }]
             targetFqdns: ['packages.aks.azure.com', 'acs-mirror.azureedge.net']
             terminateTLS: false
@@ -182,7 +191,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
           {
             name: 'allow-aca-managed-identity'
             ruleType: 'ApplicationRule'
-            sourceAddresses: [acaPrefix]
+            sourceAddresses: [acaPrefix, brokerPrefix]
             protocols: [{ protocolType: 'Https', port: 443 }]
             targetFqdns: [
               '*.identity.azure.net'

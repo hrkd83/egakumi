@@ -14,15 +14,22 @@ from deployment import lifecycle
 from management_fixtures import client_core_outputs
 
 
-def fixture():
+def fixture(*, broker_separated=False):
     config = {'subscriptionId': '11111111-1111-4111-8111-111111111111',
               'azureTenantId': '22222222-2222-4222-8222-222222222222', 'resourceStem': 'test-fixture',
               'productName': 'fixture', 'environmentName': 'test', 'location': 'japaneast', 'tags': {},
               'resourceGroupNames': {kind: 'rg-test-fixture-' + kind for kind in ('svc', 'monitor', 'maint')}}
     state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
     state['outputs'] = client_core_outputs(config)
-    expected = assets._expected_targets(config)['portal']
+    targets = assets._expected_targets(config, broker_separated=broker_separated)
+    if broker_separated:
+        broker, = targets['gateway']['environmentIds']
+        state['outputs']['brokerPlatform'] = {'environmentId': broker, 'environmentName': broker.rsplit('/', 1)[-1]}
+        state['outputs']['managementClientInventory']['environments'].append(broker)
+    expected = targets['portal']
     outputs = {'managementMaintenance': copy.deepcopy(expected)}
+    outputs.update({key: {'id': identity, 'name': identity.rsplit('/', 1)[-1], 'fqdn': 'service.example.com'}
+                    for key, identity in zip(('subscriptionAdmin', 'subscriptionProfileReader'), expected['applicationIds'][1:])})
     template = {'parameters': {'inventory': {'type': 'secureObject'}}, 'resources': [
         {'type': 'Microsoft.Compute/virtualMachines/runCommands', 'name': 'prepare-maintenance-client'}]}
     return config, state, outputs, template
@@ -32,6 +39,8 @@ class AssetTransport:
     def __init__(self, config, state, *, failed=False, active=False):
         self.config, self.inventory, self.calls = config, state['outputs']['managementClientInventory'], []
         self.failed, self.active, self.submitted = failed, active, False
+        self.environments = assets.expected_maintenance_environments(config, state)
+        self.targets = assets._expected_targets(config, broker_separated=self.environments['gateway'] != self.environments['portal'])
 
     def request(self, method, path, body=None):
         self.calls.append((method, path, body))
@@ -57,7 +66,12 @@ class AssetTransport:
         if '/Microsoft.Sql/servers/' in target:
             return {'statusCode': 200, 'body': {'id': target, 'type': 'Microsoft.Sql/servers/databases', 'tags': tags,
                 'properties': {'status': 'Online'}}}
-        return {'statusCode': 200, 'body': {'id': target, 'type': resource_type, 'tags': tags, 'properties': {'provisioningState': 'Succeeded'}}}
+        properties = {'provisioningState': 'Succeeded'}
+        for component, targets in self.targets.items():
+            if target in [*targets['applicationIds'], *targets['jobIds']]:
+                properties['managedEnvironmentId'] = self.environments[component]
+                break
+        return {'statusCode': 200, 'body': {'id': target, 'type': resource_type, 'tags': tags, 'properties': properties}}
 
 
 class ManagementClientAssetTests(unittest.TestCase):
@@ -104,15 +118,50 @@ class ManagementClientAssetTests(unittest.TestCase):
             assets.management_client_inventory(config, swapped)
 
     def test_core_gateway_portal_inventory_merge_is_additive_and_idempotent(self):
-        config, state, outputs, _ = fixture()
+        config, state, outputs, _ = fixture(broker_separated=True)
         original = copy.deepcopy(state['outputs']['managementClientInventory'])
         combined = copy.deepcopy(original)
         for component in ('gateway', 'portal', 'gateway', 'portal'):
             combined, _ = assets._merge_outputs(config, combined,
-                {'managementMaintenance': assets._expected_targets(config)[component]}, component)
+                {'managementMaintenance': assets._expected_targets(config, broker_separated=True)[component]}, component)
+        self.assertEqual(combined['environments'], original['environments'])
         self.assertEqual(len(combined['sqlDatabases']), 2)
         self.assertEqual({item['alias'] for item in combined['sqlDatabases']}, {'credentials', 'portal'})
         self.assertEqual(state['outputs']['managementClientInventory'], original)
+
+    def test_split_environment_requires_both_core_ids_and_exact_gateway_scope(self):
+        config, state, _, template = fixture(broker_separated=True)
+        invalid = copy.deepcopy(state)
+        invalid['outputs']['managementClientInventory']['environments'].pop()
+        with self.assertRaisesRegex(ValueError, 'both required'):
+            assets.management_client_inventory(config, invalid)
+        invalid = copy.deepcopy(state)
+        invalid['outputs']['brokerPlatform']['environmentId'] = state['outputs']['managementClientInventory']['environments'][0]
+        with self.assertRaisesRegex(ValueError, 'Broker maintenance environment'):
+            assets.management_client_inventory(config, invalid)
+        outputs = {'managementMaintenance': assets._expected_targets(config, broker_separated=True)['gateway']}
+        transport = AssetTransport(config, state)
+        with tempfile.TemporaryDirectory() as root, mock.patch.object(lifecycle, 'protected_json'):
+            self.assertEqual(assets.update_management_client_assets(config, state, outputs, transport,
+                component='gateway', template=template, repository=Path(root))['clientPrepared'], True)
+        _, path, payload = next(call for call in transport.calls if call[0] == 'PUT')
+        self.assertIn('/resourceGroups/rg-test-fixture-maint/', path)
+        self.assertEqual(payload['properties']['parameters']['inventory']['value']['environments'],
+                         state['outputs']['managementClientInventory']['environments'])
+        transport = AssetTransport(config, state)
+        original = transport.request
+
+        def wrong_parent(method, path, body=None):
+            result = original(method, path, body)
+            if '/jobs/' in path and '-schema?' in path:
+                result['body']['properties']['environmentId'] = transport.environments['portal']
+            return result
+
+        transport.request = wrong_parent
+        with tempfile.TemporaryDirectory() as root, self.assertRaisesRegex(ValueError, 'outside the constructed ACA'):
+            assets.update_management_client_assets(config, state, outputs, transport,
+                component='gateway', template=template, repository=Path(root))
+        self.assertFalse(any(method == 'PUT' for method, path, body in transport.calls))
 
     def test_sql_redirect_policy_is_rejected_before_client_asset_changes(self):
         config, state, outputs, template = fixture()
@@ -128,6 +177,35 @@ class ManagementClientAssetTests(unittest.TestCase):
             assets.update_management_client_assets(config, state, outputs, transport,
                 component='portal', template=template, repository=Path(root))
         self.assertFalse(any(method == 'PUT' for method, path, body in transport.calls))
+
+    def test_a_subscription_service_outside_the_expected_aca_stops_client_preparation(self):
+        config, state, outputs, template = fixture()
+        transport = AssetTransport(config, state)
+        original_request = transport.request
+
+        def request(method, path, body=None):
+            result = original_request(method, path, body)
+            if '/containerApps/' in path and '-sub-profile?' in path:
+                result['body']['properties']['environmentId'] = '/synthetic/another-environment'
+            return result
+
+        transport.request = request
+        with tempfile.TemporaryDirectory() as root, self.assertRaisesRegex(ValueError, 'outside the constructed ACA'):
+            assets.update_management_client_assets(config, state, outputs, transport,
+                component='portal', template=template, repository=Path(root))
+        self.assertFalse(any(method == 'PUT' for method, path, body in transport.calls))
+
+    def test_sql_initialization_includes_known_service_ids_without_registering_uncreated_apps(self):
+        config, state, outputs, _ = fixture()
+        outputs['managementMaintenance']['applicationIds'] = []
+        outputs['subscriptionAdmin']['fqdn'] = ''
+        outputs['subscriptionProfileReader']['fqdn'] = ''
+        merged, additions = assets._merge_outputs(config, state['outputs']['managementClientInventory'], outputs, 'portal')
+        self.assertEqual(merged['applications'], state['outputs']['managementClientInventory']['applications'])
+        self.assertNotIn(outputs['subscriptionAdmin']['id'], additions)
+        outputs['subscriptionAdmin']['fqdn'] = 'service.example.com'
+        with self.assertRaisesRegex(ValueError, 'output is incomplete'):
+            assets._merge_outputs(config, state['outputs']['managementClientInventory'], outputs, 'portal')
 
     def test_unrelated_storage_in_the_same_monitor_group_and_unknown_container_are_rejected(self):
         for change in ('other-storage', 'other-container', 'other-workspace-id', 'other-vm-principal'):
@@ -164,7 +242,7 @@ class ManagementClientAssetTests(unittest.TestCase):
         self.assertIn('/resourceGroups/rg-test-fixture-maint/providers/Microsoft.Resources/deployments/', path)
         self.assertEqual(payload['properties']['mode'], 'Incremental')
         self.assertEqual(payload['properties']['template'], template)
-        self.assertEqual(payload['properties']['parameters']['inventory']['value']['applications'], original['outputs']['managementClientInventory']['applications'])
+        self.assertEqual(payload['properties']['parameters']['inventory']['value']['applications'], outputs['managementMaintenance']['applicationIds'])
         self.assertEqual(state, original)
         self.assertTrue(transport.calls[-1][1].endswith('&$expand=instanceView'))
 

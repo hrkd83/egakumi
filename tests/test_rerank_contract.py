@@ -98,30 +98,45 @@ class RerankTargetExpressionTests(unittest.TestCase):
         base = CSHARP.split("public static class ExpandedPolicyFixture")[0]
         source = base + r'''
 public static class RerankTargetFixture {
+ public static string OperationKind(Context context) { __KIND__ }
+ public static bool TargetCheckRequired(Context context) { __REQUIRED__ }
  public static string TargetDecision(Context context) { __TARGET__ }
- public static bool Target(Context context) { return (bool)JObject.Parse(TargetDecision(context))["allowed"]; }
  public static string Run(string input) {
   var result = new JObject();
   foreach (JObject item in JArray.Parse(input)) {
    var c = new Context();
-   c.Request.Body = new Body { Data=item["body"].ToString(Formatting.None) };
-   // Targetは、HTTP入口で準備された操作設定だけを読みます。
-   c.Variables["gatewayOperationConstraint"] = new JObject(new JProperty("kind", item["kind"]),
-     new JProperty("allowedModels", new JArray("synthetic-ranker"))).ToString(Formatting.None);
+   c.Request.Body = new Body { Data=(string)item["body"], Unavailable=true };
+   var constraint = new JObject();
+   if (item.Property("kind") != null) constraint["kind"] = item["kind"];
+   c.Variables["gatewayOperationConstraint"] = constraint.ToString(Formatting.None);
+   c.Variables["gatewayOperationKind"] = OperationKind(c);
    var before = c.Request.Body.Data;
-   var allowed = Target(c);
-   result[(string)item["id"]] = new JObject(new JProperty("allowed", allowed),
-      new JProperty("unchanged", before == c.Request.Body.Data));
+   var invoked = TargetCheckRequired(c);
+   var allowed = !invoked || (bool)JObject.Parse(TargetDecision(c))["allowed"];
+   result[(string)item["id"]] = new JObject(new JProperty("invoked", invoked), new JProperty("allowed", allowed),
+      new JProperty("unchanged", before == c.Request.Body.Data), new JProperty("bodyReads", c.Request.Body.Reads));
   }
   return result.ToString(Formatting.None);
  }
 }'''
-        source = source.replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetDecision"))
+        policy = ET.parse(CORE / "apps/apim/policies/api-templates/rest/rest.xml")
+        required = policy.find("./inbound/choose[@id='core-api-target-validation-selection']/when").get('condition')
+        source = (source.replace("__TARGET__", actual_expression("rest.xml", "gatewayTargetDecision"))
+                  .replace("__KIND__", actual_expression("rest.xml", "gatewayOperationKind"))
+                  .replace("__REQUIRED__", required[2:-1]))
+        bodies = {
+            "model": json.dumps({"model": "provider-selected-model"}),
+            "missing": "{}",
+            "non-string": json.dumps({"model": ["synthetic-ranker"]}),
+            "non-json": "opaque provider input",
+        }
         cases = [{"id": kind + "-" + name, "kind": kind, "body": body}
-                 for kind in ("rerank", "bodyModel")
-                 for name, body in (("approved", {"model": "synthetic-ranker"}),
-                                    ("unapproved", {"model": "other-ranker"}), ("missing", {}),
-                                    ("number", {"model": 1}), ("array", {"model": ["synthetic-ranker"]}))]
+                 for kind in ("rerank", "bodyModel", "textEmbeddings") for name, body in bodies.items()]
+        cls.forwarded = [case["id"] for case in cases]
+        for name, kind in (("registered", "registeredOperation"), ("wrong-case", "Rerank"),
+                           ("unknown", "newOperation"), ("null", None), ("number", 7), ("array", ["rerank"])):
+            cases.append({"id": name, "kind": kind, "body": bodies["model"]})
+        cases.append({"id": "missing-kind", "body": bodies["model"]})
         with tempfile.TemporaryDirectory(prefix="rerank-policy-") as directory:
             path = Path(directory)
             (path / "policy.cs").write_text(source)
@@ -138,12 +153,16 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 raise AssertionError(completed.stderr)
             cls.results = json.loads(completed.stdout)
 
-    def test_rerank_and_existing_body_model_keep_the_same_allowlist_without_rewriting(self):
-        for kind in ("rerank", "bodyModel"):
-            for name in ("approved", "unapproved", "missing", "number", "array"):
-                with self.subTest(kind=kind, model=name):
-                    self.assertEqual(self.results[kind + "-" + name],
-                                     {"allowed": name == "approved", "unchanged": True})
+    def test_transparent_operations_skip_target_validation_and_preserve_provider_input(self):
+        for case in self.forwarded:
+            with self.subTest(case=case):
+                self.assertEqual(self.results[case], {"invoked": False, "allowed": True, "unchanged": True, "bodyReads": 0})
+
+    def test_other_and_invalid_kinds_still_reach_the_target_policy(self):
+        for case in ("registered", "wrong-case", "unknown", "null", "number", "array", "missing-kind"):
+            with self.subTest(case=case):
+                self.assertEqual(self.results[case], {"invoked": True, "allowed": case == "registered",
+                                                       "unchanged": True, "bodyReads": 0})
 
 
 class RerankPublicationTests(unittest.TestCase):
@@ -152,7 +171,9 @@ class RerankPublicationTests(unittest.TestCase):
         api = configuration.normalize_configuration(rerank_fixture(), base_directory=CORE / "config")["apiDefinitions"][0]
         # The deployment stage resolves Foundry's owned endpoint before Bicep.
         api["backendUrl"] = "https://provider.example.com"
-        parameters = {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"}}
+        parameters = {name: definition["defaultValue"] for name, definition in template["parameters"].items()
+                      if "defaultValue" in definition}
+        parameters.update(apiDefinitions=[api], publicHostName="gateway.example.com", names={"apim": "apim-fixture"})
 
         def evaluate(value):
             return PolicyExpression(value, template["variables"], functions=template["functions"]).evaluate(parameters)
@@ -165,8 +186,11 @@ class RerankPublicationTests(unittest.TestCase):
         root = ET.fromstring(compiled_policy_value(template, parameters))
         inbound = list(root.find("inbound"))
         limit = root.find('./inbound/include-fragment[@fragment-id="core-model-limits"]')
-        target = root.find('./inbound/include-fragment[@fragment-id="core-api-target-validation"]')
+        target = root.find("./inbound/choose[@id='core-api-target-validation-selection']")
         backend = root.find('./inbound/set-backend-service')
+        self.assertIsNotNone(target.find("when/include-fragment[@fragment-id='core-api-target-validation']"))
+        header = root.find('./inbound/include-fragment[@fragment-id="core-api-input-validation"]')
+        self.assertLess(inbound.index(header), inbound.index(limit))
         self.assertLess(inbound.index(limit), inbound.index(target))
         self.assertLess(inbound.index(target), inbound.index(backend))
         operation = ET.fromstring(evaluate(template["resources"]["operationPolicies"]["properties"]["value"]))

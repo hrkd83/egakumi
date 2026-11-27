@@ -104,10 +104,13 @@ class FragmentSourceOwnershipTests(unittest.TestCase):
                 self.assertEqual(references, [xml])
                 self.assertEqual(xml.read_text(encoding="utf-8").count(marker), 1)
 
-    def test_each_sectioned_policy_has_fixed_markers_and_its_same_named_owner(self):
+    def test_each_sectioned_policy_has_fixed_markers_and_one_xml_consumer(self):
         for filename, markers in SECTION_EXPRESSION_FILES.items():
             cs = POLICIES / filename
-            xml = cs.with_suffix(".xml")
+            # WebSocket expressions occupy slots at fixed positions in the
+            # shared stream flow. The ws overlay selects the transport pieces.
+            xml = (POLICIES / "api-templates/shared/stream.xml"
+                   if filename == "api-templates/ws/ws.cs" else cs.with_suffix(".xml"))
             self.assertTrue(cs.is_file())
             self.assertTrue(xml.is_file())
             self.assertEqual(tuple(extract_policy_source_sections(cs.read_text(encoding="utf-8"), tuple(markers))), tuple(markers))

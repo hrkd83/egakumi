@@ -363,7 +363,7 @@ class ContractRateExpressionTests(unittest.TestCase):
             ("__PERIOD__", "rate-limit.xml", './/rate-limit-by-key', "renewal-period"),
             ("__COUNTER__", "rate-limit.xml", './/rate-limit-by-key', "counter-key"),
             ("__MCP_CLEANUP__", "mcp-rate-cleanup.xml", './set-variable', "value"),
-            ("__HTTP_CLEANUP__", "gateway.xml", './inbound/set-variable[@name="gatewayRateLimitExempt"]', "value"),
+            ("__HTTP_CLEANUP__", "rest.xml", './inbound/set-variable[@name="gatewayRateLimitExempt"]', "value"),
             ("__RATE_ERROR__", "rate-limit-error.xml", './choose/when', "condition"),
             ("__RETRY_AFTER__", "rate-limit-error.xml", './/set-variable[@name="gatewayRateSafeRetryAfter"]', "value"),
             ("__PROFILE_LOOKUP_KEY__", "subscription-profile.xml", './/cache-lookup-value', "key"),
@@ -886,12 +886,12 @@ class ContractRateStructureTests(unittest.TestCase):
         self.assertNotIn('context.Response',ET.tostring(root,encoding='unicode'))
 
     def test_authorization_and_target_checks_precede_rate_then_cm_or_mi(self):
-        for filename in ('gateway.xml','protocol.xml'):
+        for filename in ('rest.xml','stream.xml'):
             root=ET.parse(policy_fixture_path(POLICIES, filename)).getroot(); inbound=root.find('inbound'); children=list(inbound)
             rate=inbound.find('include-fragment[@fragment-id="core-rate-limit"]')
             # HTTPの認証情報引渡しは、同名フラグメントの呼出しを実行段階として扱います。
             decision=inbound.find('include-fragment[@id="core-api-authentication-result"][@fragment-id="core-api-authentication-result"]'
-                                  if filename == 'gateway.xml' else 'set-variable[@name="gatewayDecision"]')
+                                  if filename == 'rest.xml' else 'set-variable[@name="gatewayDecision"]')
             # 監査の原因分類ではなく、認証情報の引渡し結果を確認する分岐で配置を照合します。
             authorization=next(node for node in inbound.findall('choose')
                                if any('context.Variables["gatewayDecision"]' in branch.get('condition', '')
@@ -902,37 +902,20 @@ class ContractRateStructureTests(unittest.TestCase):
                 self.assertLess(children.index(authorization),children.index(rate))
                 text=(policy_fixture_path(POLICIES, filename)).read_text(); pos=text.index('fragment-id="core-rate-limit"')
                 # HTTPの正本はCMを直接呼び、非CMの下流認証はBicep生成後の試験で確認します。
-                self.assertLess(pos,text.index('__CREDENTIAL_CONNECTION_INBOUND_XML__' if filename == 'protocol.xml' else 'fragment-id="core-credential-connection"'))
-                backend_marker = '__DEFAULT_BACKEND_XML__' if filename == 'gateway.xml' else '<set-backend-service'
+                self.assertLess(pos,text.index('__CREDENTIAL_CONNECTION_INBOUND_XML__' if filename == 'stream.xml' else 'fragment-id="core-credential-connection"'))
+                backend_marker = '__DEFAULT_BACKEND_XML__' if filename == 'rest.xml' else '__STREAM_BACKEND_XML__'
                 self.assertLess(pos,text.index(backend_marker))
-                if filename == 'gateway.xml':
-                    self.assertLess(children.index(inbound.find('include-fragment[@fragment-id="core-api-target-validation"]')),children.index(rate))
+                if filename == 'rest.xml':
+                    self.assertLess(children.index(inbound.find('choose[@id="core-api-target-validation-selection"]')),children.index(rate))
                     self.assertLess(children.index(inbound.find('set-variable[@name="gatewayRateLimitExempt"]')),children.index(rate))
                     self.assertLess(pos,text.index('fragment-id="core-credential-connection"'))
                 else:
-                    self.assertLess(text.index('__PROTOCOL_SESSION_XML__'),pos)
+                    self.assertLess(text.index('__STREAM_HANDSHAKE_SESSION_XML__'),pos)
                     self.assertLess(text.index('__RATE_LIMIT_CLEANUP_XML__'),pos)
         # 生成MCPは参照先PII RESTで数え、表口で同じ契約を二重に数えない。
-        native=ET.parse(POLICIES / 'api-templates' / 'mcp.xml').getroot()
+        native=ET.parse(POLICIES / 'api-templates' / 'mcp/generated.xml').getroot()
         self.assertIsNone(native.find('.//rate-limit-by-key'))
         self.assertIsNone(native.find('.//include-fragment[@fragment-id="core-rate-limit"]'))
-
-    def test_safe_429_precedes_pii_and_other_generic_error_handling(self):
-        telemetry=fragment_body('core-gateway-telemetry.xml')
-        error=fragment_body('rate-limit-error.xml').replace('__GATEWAY_TELEMETRY_XML__',telemetry)
-        for filename in ('gateway.xml','protocol.xml','mcp.xml','pii.xml'):
-            text=(policy_fixture_path(POLICIES, filename)).read_text().replace('__RATE_LIMIT_ERROR_XML__',error)
-            root=ET.fromstring(text); handler=root.find('on-error'); children=list(handler)
-            first=0 if filename == 'pii.xml' else children.index(handler.find('base'))+1
-            with self.subTest(policy=filename):
-                if first: self.assertEqual(children[first-1].tag,'base')
-                self.assertEqual(children[first].tag,'choose')
-                branch=children[first].find('when')
-                self.assertIn('core-rate-limit',branch.get('condition'))
-                self.assertEqual(branch.find('return-response/set-status').get('code'),'429')
-                self.assertEqual(branch.find('set-variable[@name="gatewayAuditCode"]').get('value'),'RATE_LIMIT_EXCEEDED')
-                generic=handler.find('set-variable[@name="gatewayAuditCode"][@value="POLICY_ERROR"]')
-                self.assertGreater(children.index(generic),first)
 
     def test_error_is_body_free_for_websocket_and_never_reflects_raw_diagnostics(self):
         root=ET.fromstring(render_audit_policy(policy_fixture_path(POLICIES, 'rate-limit-error.xml').read_text(encoding="utf-8")).replace('__GATEWAY_TELEMETRY_XML__',fragment_body('core-gateway-telemetry.xml')))

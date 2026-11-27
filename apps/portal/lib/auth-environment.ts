@@ -98,3 +98,13 @@ export function getSqlEnvironment(): SqlEnvironment {
   }
   return settings;
 }
+
+/** 書き込みを許すAzure SQLの実行方式・ホスト・データベースを配備値と照合します。 */
+export function isCanonicalManagedSqlConfiguration(settings: SqlEnvironment,
+  environment: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  const server = environment.PORTAL_CANONICAL_SQL_SERVER?.toLowerCase();
+  const database = environment.PORTAL_CANONICAL_SQL_DATABASE?.toLowerCase();
+  return !!server && !!database && settings.mode === "managed-identity"
+    && settings.server.toLowerCase() === server && settings.host.toLowerCase() === server
+    && settings.database.toLowerCase() === database && settings.port === 1433;
+}

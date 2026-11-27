@@ -202,16 +202,19 @@ public static class CommonAuthenticationFixture {
 
 
 class CommonAuthenticationPolicyTests(unittest.TestCase):
+    request_policy_names = ("rest", "stream", "generated")
+
     @classmethod
     def setUpClass(cls):
         if not PWSH: raise unittest.SkipTest("PowerShell with Roslyn is required; Azure was not tested")
         methods,inbound=compile_inbound(ET.fromstring(render_service_policy()))
         guards=[]
-        for filename in ("gateway.xml","protocol.xml","mcp.xml"):
+        for name in cls.request_policy_names:
+            filename = name + ".xml"
             policy=ET.fromstring(expand_api_request_preparation_fragment(
                 (policy_fixture_path(CORE / "apps/apim/policies", filename)).read_text(encoding="utf-8")))
             condition=next(node.get("condition") for node in policy.findall("./inbound/choose/when") if "gatewayCommonAuthenticationValidated" in node.get("condition",""))
-            guards.append('if (name == '+json.dumps(filename.split(".")[0])+') { '+csharp_expression(condition)+' }')
+            guards.append('if (name == '+json.dumps(name)+') { '+csharp_expression(condition)+' }')
         methods+='\nstatic bool Guard(Context context,string name) { '+''.join(guards)+' throw new Exception("Unknown policy"); }'
         good={"X-Core-L7-Ingress":"fixture-ingress"}
         key={**good,"X-Gateway-Key":"SYNTHETIC_KEY"}
@@ -238,7 +241,7 @@ class CommonAuthenticationPolicyTests(unittest.TestCase):
           {"id":"unregistered-metadata","api":"unregistered-metadata-api","operation":"metadata-gateway","method":"GET","path":"/unregistered/metadata","headers":good},
           {"id":"unregistered-login","api":"unregistered-login-api","operation":"login","method":"GET","path":"/unregistered/login","headers":good},
         ]
-        for policy in ("gateway","protocol","mcp"):
+        for policy in cls.request_policy_names:
             for marker in (None,False,True):
                 case={"id":f"guard-{policy}-{marker}","guard":policy}
                 if marker is not None: case["marker"]=marker
@@ -285,7 +288,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 self.assertEqual(self.results[name]["requestContext"],expected)
 
     def test_api_guard_requires_the_common_authentication_marker(self):
-        for policy in ("gateway","protocol","mcp"):
+        for policy in self.request_policy_names:
             for marker in (None,False,True):
                 self.assertEqual(self.results[f"guard-{policy}-{marker}"]["status"],200 if marker is True else 503)
 
@@ -419,10 +422,10 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
         global_root=ET.parse(SERVICE_POLICY).getroot()
         self.assertEqual(global_root.findall(".//validate-azure-ad-token"),[])
         self.assertEqual(global_root.findall(".//validate-jwt"),[])
-        for filename in ("gateway.xml","protocol.xml","mcp.xml"):
+        for filename in ("rest.xml","stream.xml","generated.xml"):
             policy=ET.parse(policy_fixture_path(CORE / "apps/apim/policies", filename)).getroot()
             with self.subTest(policy=filename):
-                if filename == "gateway.xml":
+                if filename == "rest.xml":
                     # HTTPの認証情報引渡しは同名フラグメントのC#正本にあります。
                     fragment=policy.find("./inbound/include-fragment[@id='core-api-authentication-result']")
                     self.assertIsNotNone(fragment)
@@ -437,11 +440,11 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
                 self.assertEqual(policy.findall(".//validate-jwt"),[])
 
     def test_api_decisions_follow_the_inherited_common_key_authorization(self):
-        for filename in ("gateway.xml", "protocol.xml", "mcp.xml"):
+        for filename in ("rest.xml", "stream.xml", "generated.xml"):
             inbound=ET.parse(policy_fixture_path(CORE / "apps/apim/policies", filename)).getroot().find("inbound")
             with self.subTest(policy=filename):
                 decision=inbound.find("include-fragment[@id='core-api-authentication-result'][@fragment-id='core-api-authentication-result']"
-                                      if filename == "gateway.xml" else "set-variable[@name='gatewayDecision']")
+                                      if filename == "rest.xml" else "set-variable[@name='gatewayDecision']")
                 self.assertIsNotNone(decision)
                 self.assertLess(list(inbound).index(inbound.find("base")),
                                 list(inbound).index(decision))

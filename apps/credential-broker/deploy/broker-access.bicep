@@ -4,6 +4,8 @@ param vaultName string
 param registryName string
 param runtimeIdentity object
 param schemaIdentity object
+param apimPrincipalId string
+param legacyProviderNames array = []
 @secure()
 @description('初回に生成した内部認証鍵。空の場合は既存値を更新しません。')
 param brokerKey string = ''
@@ -24,13 +26,36 @@ resource identityKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (identi
   name: 'core-oidc-identity'
   properties: { value: credentialIdentitySecret, attributes: { enabled: true } }
 }
+resource brokerSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' existing = { parent: vault, name: 'core-credential-broker-key' }
+resource identitySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' existing = { parent: vault, name: 'core-oidc-identity' }
+resource legacyProviderSecrets 'Microsoft.KeyVault/vaults/secrets@2023-07-01' existing = [for name in legacyProviderNames: {
+  parent: vault
+  name: 'core-credential-${name}'
+}]
 var kvSecretUser = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
 var acrPull = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
-// 既存配備の割り当て名を維持し、同じ権限を重複作成しません。
-resource vaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: vault
-  name: guid(vault.id, runtimeIdentity.principalId, kvSecretUser)
+resource legacyProviderAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for (name, index) in legacyProviderNames: {
+  scope: legacyProviderSecrets[index]
+  name: guid(legacyProviderSecrets[index].id, runtimeIdentity.principalId, kvSecretUser)
   properties: { roleDefinitionId: kvSecretUser, principalId: runtimeIdentity.principalId, principalType: 'ServicePrincipal' }
+}]
+resource brokerSecretAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: brokerSecret
+  name: guid(brokerSecret.id, runtimeIdentity.principalId, kvSecretUser)
+  properties: { roleDefinitionId: kvSecretUser, principalId: runtimeIdentity.principalId, principalType: 'ServicePrincipal' }
+  dependsOn: [key]
+}
+resource apimBrokerSecretAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: brokerSecret
+  name: guid(brokerSecret.id, apimPrincipalId, kvSecretUser)
+  properties: { roleDefinitionId: kvSecretUser, principalId: apimPrincipalId, principalType: 'ServicePrincipal' }
+  dependsOn: [key]
+}
+resource identitySecretAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (identityConfigured) {
+  scope: identitySecret
+  name: guid(identitySecret.id, runtimeIdentity.principalId, kvSecretUser)
+  properties: { roleDefinitionId: kvSecretUser, principalId: runtimeIdentity.principalId, principalType: 'ServicePrincipal' }
+  dependsOn: [identityKey]
 }
 resource registryAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for identity in [runtimeIdentity, schemaIdentity]: {
   scope: registry

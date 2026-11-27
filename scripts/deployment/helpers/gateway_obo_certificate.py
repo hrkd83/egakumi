@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 
+from .configuration import entra_app_separation_enabled
 from .portal_auth_certificate import application_vault_origin, certificate_record, save_public_certificate
 from .private_permissions import check_private_permissions
 
@@ -34,7 +35,7 @@ def deployment_settings(config, workspace):
     """この環境・API用アプリに属するKey Vault鍵版を配備へ渡す。"""
     entra = config['gateway']['authentication'].get('entra', {})
     override = entra.get('obo')
-    if not override and not config.get('codex'):
+    if not override and not entra_app_separation_enabled(config):
         return {}
     if override:
         key_url = override['keyId']

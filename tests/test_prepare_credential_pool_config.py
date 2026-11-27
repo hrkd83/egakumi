@@ -13,6 +13,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 
 from api_definition_helpers import configured_base
+from configuration_fixtures import bind_credential_fixture_id
 from deployment.helpers.paths import private_parent
 import prepare_credential_pool_config as pool
 
@@ -22,6 +23,7 @@ class CredentialPoolLocalStorageTests(unittest.TestCase):
         """公開正本を一時フォルダーへ展開し、実値から独立した登録入力を用意する。"""
         repository = Path(__file__).resolve().parents[1]
         parameters = json.loads((repository / 'params/test.example.json').read_text(encoding='utf-8'))
+        bind_credential_fixture_id(parameters)
         options = json.loads((repository / 'config/test.json').read_text(encoding='utf-8'))
         parameters['configFile'] = '../../config/test.json'
         parameters['services']['apimInstanceId'] = 'abc123'

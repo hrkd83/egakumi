@@ -172,7 +172,7 @@ class SessionSqlTests(unittest.TestCase):
         import sys
         from credential_broker.service import BrokerService
         from _broker_support import settings
-        with patch.object(sys, 'path', [str(Path(__file__).resolve().parents[3] / 'scripts'), *sys.path]):
+        with patch.object(sys, 'path', [str(Path(__file__).resolve().parents[4] / 'scripts'), *sys.path]):
             from credential_client import CredentialClient
             from credential_session_store import MemorySessionStore
         service = BrokerService(settings(), self.store, None, None)

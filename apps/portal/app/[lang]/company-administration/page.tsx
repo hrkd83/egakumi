@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { PortalShell } from "@/components/portal-shell";
+import { SubscriptionManagementConnection } from "@/components/subscription-management-connection";
+import { subscriptionManagementConfigured } from "@/lib/api-auth/settings";
 import { CompanyAdministrationDashboard } from "@/components/company-administration/dashboard";
 import { requireApiKeyAdministrator } from "@/lib/api-key-administration/page-access";
 import { hasLocale } from "@/lib/i18n/config";
@@ -19,7 +21,8 @@ async function CompanyAdministrationContent({ params }: { params: Promise<{ lang
   if (!hasLocale(lang)) notFound();
   const account = await requireApiKeyAdministrator(lang, `/${lang}/company-administration`);
   const dictionary = await getDictionary(lang);
+  const dashboard = <CompanyAdministrationDashboard locale={lang} text={getCompanyAdministrationText(lang)} />;
   return <PortalShell locale={lang} dictionary={dictionary} section="company-administration" account={account} canAdministerApiKeys>
-    <CompanyAdministrationDashboard locale={lang} text={getCompanyAdministrationText(lang)} />
+    {subscriptionManagementConfigured() ? <SubscriptionManagementConnection locale={lang}>{dashboard}</SubscriptionManagementConnection> : dashboard}
   </PortalShell>;
 }

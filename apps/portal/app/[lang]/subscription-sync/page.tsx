@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { PortalShell } from "@/components/portal-shell";
+import { SubscriptionManagementConnection } from "@/components/subscription-management-connection";
+import { subscriptionManagementConfigured } from "@/lib/api-auth/settings";
 import { SubscriptionSyncDashboard } from "@/components/subscription-sync/dashboard";
 import { requireApiKeyAdministrator } from "@/lib/api-key-administration/page-access";
 import { hasLocale } from "@/lib/i18n/config";
@@ -17,7 +19,8 @@ async function SubscriptionSyncContent({ params }: { params: Promise<{ lang: str
   const { lang } = await params;
   if (!hasLocale(lang)) notFound();
   const account = await requireApiKeyAdministrator(lang, `/${lang}/subscription-sync`);
+  const dashboard = <SubscriptionSyncDashboard text={getSubscriptionSyncText(lang)} />;
   return <PortalShell locale={lang} dictionary={await getDictionary(lang)} section="subscription-sync" account={account} canAdministerApiKeys>
-    <SubscriptionSyncDashboard text={getSubscriptionSyncText(lang)} />
+    {subscriptionManagementConfigured() ? <SubscriptionManagementConnection locale={lang}>{dashboard}</SubscriptionManagementConnection> : dashboard}
   </PortalShell>;
 }

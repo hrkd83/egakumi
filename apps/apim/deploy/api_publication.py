@@ -21,7 +21,8 @@ import time
 import uuid
 from urllib.parse import urlsplit, parse_qs
 
-from deployment.helpers.configuration import API_NAME, entra_tenant_id
+from deployment.helpers.audit_evidence import evidence_container_id, evidence_policy_id
+from deployment.helpers.configuration import API_NAME, entra_app_separation_enabled, entra_tenant_id
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.apim_egress import APIM_EGRESS_RULE_NAME, APIM_EGRESS_RULE_NAMES, validate_apim_egress_rule
 from deployment.helpers.firewall_destinations import generated_apim_service_fqdns
@@ -38,6 +39,8 @@ from catalog_publication import finalize_descriptions
 from deployment.helpers import grpc_lifecycle
 from deployment.helpers import credential_login
 from deployment.helpers.credential_pools import physical_providers, resource_names
+from deployment.helpers.credential_broker_lifecycle import broker_environment_id, broker_https_ingress
+from deployment.helpers.credential_broker_lifecycle import uses_broker_environment as uses_aca_environment
 from deployment.helpers.apim_samples import cleanup_candidates, cleanup_default_samples
 from deployment.helpers.released_apis import RELEASED_PRODUCT_ID, selected_api_names, reconcile_unreleased_apis
 from deployment.lifecycle import DeploymentError, PROJECT_NAME, ROOT, require_success, state_from_outputs
@@ -48,6 +51,10 @@ from publication_templates import (
 )
 
 APIM_API = "2024-05-01"
+AUDIT_ENVIRONMENT_API = "2025-07-01"
+AUDIT_APPLICATION_API = "2025-01-01"
+AUDIT_STORAGE_API = "2023-05-01"
+AUDITED_API = "openai-inference-v1"
 NETWORK_API = "2025-01-01"
 DEPLOYMENT_API = "2022-09-01"
 MONITOR_API = "2021-05-01-preview"
@@ -80,6 +87,48 @@ def _published_ids(apis, apim_id):
     names = [api["name"] for api in apis]
     names += [api["mcp"]["name"] for api in apis if "mcp" in api]
     return [apim_id + "/apis/" + name for name in names]
+
+
+def _foundry_openai_origin(foundry_name):
+    return "https://" + foundry_name + ".openai.azure.com"
+
+
+def _audit_relay_parameters(config, state, entra):
+    """同じEntraテナントのAPIM IDが専用内部アプリを呼ぶ、固定の配備入力を返します。"""
+    if config.get("auditEvidence", {}).get("enabled") is not True:
+        return {}
+    if not entra.get("enabled") or not _same(entra.get("tenantId"), config["azureTenantId"]):
+        raise ValueError("The audit relay requires Gateway Entra authentication in the APIM identity tenant")
+    audience = str(uuid.UUID(entra["audience"]))
+    evidence = state.get("outputs", {}).get("auditEvidence") or {}
+    domain = evidence.get("environmentDomain")
+    host = evidence.get("relayFqdn")
+    match = r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\.azurecontainerapps\.io"
+    if (not isinstance(domain, str) or not re.fullmatch(match, domain)
+            or host != "ca-" + config["resourceStem"] + "-audit-relay." + domain
+            or len(host) > 253):
+        raise ValueError("Prepare the audit relay in the owned internal audit environment before publishing")
+    return {"url": "https://" + host, "audience": "api://" + audience}
+
+
+def _verify_audited_api_contract(api):
+    expected = {"chat-completions": ("/chat/completions", "bodyModel"),
+                "responses-create": ("/responses", "statelessResponses")}
+    operations = api["operations"]
+    constraints = api["authorization"]["operationConstraints"]
+    if (api["apiType"] != "http" or api["path"] != "models/openai/v1"
+            or api["backendService"] != "foundryOpenAi" or api.get("backendPath")
+            or api["backendAuthentication"]["mode"] != "managedIdentity"
+            or api.get("backendHeaders") or "credentialConnection" in api or "mcp" in api
+            or len(operations) != len(expected) or set(constraints) != set(expected)
+            or {operation["name"] for operation in operations} != set(expected)
+            or any(operation["method"] != "POST"
+                   or (operation["urlTemplate"], constraints[operation["name"]]["kind"]) != expected[operation["name"]]
+                   or set(operation) & {"backendOverride", "backendUrlTemplate", "staticResponse"}
+                   for operation in operations)
+            or any(setting.get("backendUrlTemplate") for constraint in constraints.values()
+                   for setting in constraint.get("modelSettings", {}).values())):
+        raise ValueError("Strict audit requires the canonical Foundry Chat and Responses operations and fixed routes")
 
 
 def prepare_plan(config: dict, state: dict) -> dict:
@@ -143,7 +192,7 @@ def prepare_plan(config: dict, state: dict) -> dict:
             raise ValueError("API key headers must match the foundation gateway.authentication settings")
     # 初期CoreとAPI再公開が同じ業務設定・同じTLS/FQDN検査から宛先を生成します。
     resolved, external_hosts = [], generated_apim_service_fqdns(config)
-    bases = {"foundryOpenAi": "https://" + names["foundry"] + ".openai.azure.com/openai/v1",
+    bases = {"foundryOpenAi": _foundry_openai_origin(names["foundry"]) + "/openai/v1",
              "foundryCognitive": "https://" + names["foundry"] + ".cognitiveservices.azure.com",
              "foundryServices": "https://" + foundry_host}
     def resolve_backend(api):
@@ -171,11 +220,15 @@ def prepare_plan(config: dict, state: dict) -> dict:
         "realtimeTicketSecretIdentifier": vault_base + grpc_lifecycle.TICKET_NAME if ticket_on else ""}
     if entra["enabled"]:
         params["entraAuthentication"] = entra
-        obo_configured = config.get("codex") or config.get("gateway", {}).get("authentication", {}).get("entra", {}).get("obo")
+        obo_configured = entra_app_separation_enabled(config) or config.get("gateway", {}).get("authentication", {}).get("entra", {}).get("obo")
         if obo_configured and any(api["name"] == "graph-profile-v1" for api in resolved):
             if "graph-delegated" not in params["credentialLogin"].get("providerNames", ()):
                 raise ValueError("Graph OBO also requires the personal Graph Credential Manager route for API keys")
             params["graphOboEnabled"] = True
+    audited_api = next((api for api in resolved if api["name"] == AUDITED_API), None)
+    if audited_api and config.get("auditEvidence", {}).get("enabled") is True:
+        _verify_audited_api_contract(audited_api)
+        params["auditRelay"] = _audit_relay_parameters(config, state, entra)
     policy_id = _scope(config, "nw") + "/providers/Microsoft.Network/firewallPolicies/afwp-" + stem
     result = {"schemaVersion": 1, "subscriptionId": config["subscriptionId"], "azureTenantId": config["azureTenantId"],
         "entraTenantId": entra_tenant_id(config),
@@ -993,6 +1046,47 @@ def verify_subscription_products(plan, transport):
                 raise ValueError("Remove the reviewed API association with subscription-free Products before key authorization publication; no changes were attempted")
 
 
+def verify_backend_secret_access(config, definitions, vault_id, apim, transport):
+    """構築済み資格情報Vaultを参照する明示バックエンドの個別読取権限を確認する。"""
+    core_host = vault_id.rsplit("/", 1)[-1].lower() + ".vault.azure.net"
+    core_names = set()
+    for api in definitions:
+        backends = [api, *(operation["backendOverride"] for operation in api.get("operations", []) if "backendOverride" in operation)]
+        for backend in backends:
+            authentication = backend.get("backendAuthentication", {})
+            if authentication.get("mode") == "keyVaultHeader":
+                identifier = authentication.get("secretIdentifier")
+                if not isinstance(identifier, str):
+                    raise ValueError("A Key Vault backend requires a registered secret reference")
+                uri = urlsplit(identifier)
+                object_path = re.fullmatch(r"/secrets/([A-Za-z0-9-]+)(?:/[A-Za-z0-9]+)?", uri.path)
+                if uri.scheme != "https" or not uri.hostname or object_path is None:
+                    raise ValueError("A Key Vault backend requires a registered secret reference")
+                if uri.hostname == core_host:
+                    core_names.add(object_path.group(1).lower())
+    if not core_names:
+        return
+    principal = apim.get("identity", {}).get("principalId")
+    try:
+        uuid.UUID(principal)
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError("Core API Management system identity is not prepared") from None
+    role_id = ("/subscriptions/" + config["subscriptionId"]
+               + "/providers/Microsoft.Authorization/roleDefinitions/4633458b-17de-408a-b874-0445c86b69e6")
+    for name in sorted(core_names):
+        scope = vault_id + "/secrets/" + name
+        assignments = require_success(transport.request("GET", scope
+            + "/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01&$filter=atScope()"),
+            "Read scoped APIM backend secret access")
+        if (assignments.get("nextLink") or not isinstance(assignments.get("value"), list)
+                or not any(_same(properties.get("principalId"), principal)
+                           and _same(properties.get("scope"), scope)
+                           and _same(properties.get("roleDefinitionId"), role_id)
+                           for item in assignments["value"] if isinstance(item, dict)
+                           for properties in (item.get("properties") or {},) if isinstance(properties, dict))):
+            raise ValueError("Grant the APIM system identity Key Vault Secrets User at each configured backend secret before API publication")
+
+
 def verify_common_authentication(plan, transport):
     """基盤の名前付きの値を照合し、共通ポリシーの変更計画を読み取りだけで作る。"""
     path = plan["apimId"] + "/policies/policy?api-version=" + APIM_API
@@ -1071,6 +1165,181 @@ def _has_gateway_caller_probe(containers):
             and http.get("scheme") == "HTTP")
 
 
+def _audit_container(properties, image_prefix):
+    containers = properties.get("template", {}).get("containers", [])
+    if (not isinstance(containers, list) or len(containers) != 1
+            or not isinstance(containers[0], dict)):
+        raise ValueError("The audit application must have one reviewed container")
+    container = containers[0]
+    readiness = [probe.get("httpGet", {}) for probe in container.get("probes", [])
+                 if probe.get("type") == "Readiness"]
+    if (not re.fullmatch(re.escape(image_prefix) + r"[a-f0-9]{64}", container.get("image") or "")
+            or len(readiness) != 1 or readiness[0].get("path") != "/ready"
+            or readiness[0].get("port") != 8000 or readiness[0].get("scheme", "HTTP") != "HTTP"):
+        raise ValueError("The audit application image digest or readiness probe differs from its deployment contract")
+    return container
+
+
+class AuditRelayNotReady(ValueError):
+    """本文監査の最新リビジョンが準備中で、待って再確認できる状態。"""
+
+
+def verify_audit_payload_retention(config, state, transport):
+    """本番の本文監査を公開する前に専用コンテナーの Locked WORM を読み戻します。"""
+    desired = config.get("auditEvidence", {})
+    if desired.get("enabled") is not True or desired.get("payloadImmutabilityMode") != "Locked":
+        return
+    days = desired.get("payloadRetentionDays")
+    evidence = state.get("outputs", {}).get("auditEvidence")
+    output = evidence.get("payloadImmutability") if isinstance(evidence, dict) else None
+    container_id = evidence_container_id(config)
+    policy_id = evidence_policy_id(config)
+    storage_id = container_id.removesuffix("/blobServices/default/containers/payload")
+    if (type(days) is not int or days < 1 or not isinstance(output, dict)
+            or output.get("mode") != "Locked" or type(output.get("retentionInDays")) is not int
+            or output["retentionInDays"] != days or not _same(output.get("policyId"), policy_id)
+            or not _same(evidence.get("evidenceContainerId"), container_id)
+            or not _same(evidence.get("evidenceStorageId"), storage_id)):
+        raise ValueError("Core audit evidence outputs must match the configured Locked payload retention and dedicated container")
+    policy = require_success(transport.request("GET", policy_id + "?api-version=" + AUDIT_STORAGE_API),
+                             "Read audit payload immutability policy", allowed=(200,))
+    _assert_same(policy.get("id"), policy_id, "Audit payload immutability policy")
+    properties = policy.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError("The audit payload immutability policy readback is incomplete")
+    period = properties.get("immutabilityPeriodSinceCreationInDays")
+    if (properties.get("state") != "Locked" or type(period) is not int or period < days
+            or properties.get("allowProtectedAppendWrites", False) is not False
+            or properties.get("allowProtectedAppendWritesAll", False) is not False):
+        raise ValueError("Audit payload storage must have Locked retention for at least the configured days without append exceptions")
+
+
+def verify_audit_relay(config, state, transport, *, apim=None):
+    """公開前に、専用内部CAEと監査の新しいRelay／Worker両リビジョンを読み合わせます。"""
+    entra = entra_authentication_settings(config)
+    relay = _audit_relay_parameters(config, state, entra)
+    if not relay:
+        return
+    verify_audit_payload_retention(config, state, transport)
+    evidence = state["outputs"]["auditEvidence"]
+    stem = config["resourceStem"]
+    app_provider = _scope(config, "svc") + "/providers/Microsoft.App/"
+    environment_id = app_provider + "managedEnvironments/cae-" + stem + "-audit"
+    environment = require_success(transport.request("GET", environment_id + "?api-version=" + AUDIT_ENVIRONMENT_API),
+                                  "Read owned audit environment")
+    _owned(environment, environment_id, config, "Audit environment")
+    environment_properties = environment.get("properties", {})
+    if (environment_properties.get("provisioningState") != "Succeeded"
+            or environment_properties.get("publicNetworkAccess") != "Disabled"
+            or environment_properties.get("vnetConfiguration", {}).get("internal") is not True
+            or environment_properties.get("defaultDomain") != evidence["environmentDomain"]):
+        raise ValueError("The audit environment must be ready with private-only ingress and the reviewed DNS domain")
+
+    apim_id = _scope(config, "svc") + "/providers/Microsoft.ApiManagement/service/" + apim_name(config)
+    if apim is None:
+        apim = require_success(transport.request("GET", apim_id + "?api-version=" + APIM_API), "Read audit caller identity")
+    _assert_same(apim.get("id"), apim_id, "Audit caller")
+    principal_id = apim.get("identity", {}).get("principalId")
+    if (not isinstance(principal_id, str) or not _same(principal_id, evidence.get("apimPrincipalId"))
+            or not _same(apim.get("identity", {}).get("tenantId"), entra["tenantId"])):
+        raise ValueError("The audit relay caller identity must match the current APIM system identity")
+
+    image = None
+    image_prefix = "acr" + stem.replace("-", "") + ".azurecr.io/audit-relay@sha256:"
+    for role in ("relay", "worker"):
+        suffix = "relay" if role == "relay" else "store"
+        app_id = app_provider + "containerApps/ca-" + stem + "-audit-" + suffix
+        app = require_success(transport.request("GET", app_id + "?api-version=" + AUDIT_APPLICATION_API), "Read owned audit " + role)
+        _owned(app, app_id, config, "Audit " + role)
+        properties = app.get("properties", {})
+        configuration = properties.get("configuration", {})
+        ingress = configuration.get("ingress")
+        revision_name = properties.get("latestRevisionName")
+        assigned = app.get("identity", {}).get("userAssignedIdentities", {})
+        identity_id = _scope(config, "id") + "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-" + stem + "-audit-" + role
+        if (not uses_aca_environment(properties, environment_id)
+                or properties.get("provisioningState") != "Succeeded"
+                or configuration.get("activeRevisionsMode") != "Single"
+                or not isinstance(assigned, dict) or len(assigned) != 1
+                or not _same(next(iter(assigned)), identity_id)
+                or app.get("identity", {}).get("type") != "UserAssigned"):
+            raise ValueError("The audit application must use its dedicated environment, runtime identity, and latest ready revision")
+        if (not isinstance(revision_name, str) or not re.fullmatch(r"[A-Za-z0-9-]+", revision_name)
+                or properties.get("latestReadyRevisionName") != revision_name):
+            raise AuditRelayNotReady("Wait for both audit application revisions to become healthy before publishing")
+        if role == "relay":
+            if (not isinstance(ingress, dict) or ingress.get("external") is not True
+                    or ingress.get("allowInsecure") is not False or ingress.get("targetPort") != 8000
+                    or ingress.get("fqdn") != evidence["relayFqdn"]
+                    or [{key: rule.get(key) for key in ("name", "action", "ipAddressRange")}
+                        for rule in ingress.get("ipSecurityRestrictions", [])] != [{
+                            "name": "allow-apim-subnet", "action": "Allow",
+                            "ipAddressRange": config["network"]["subnetPrefixes"]["apim"]}]):
+                raise ValueError("The audit relay must expose HTTPS only on its owned private hostname")
+        elif ingress is not None:
+            raise ValueError("The audit worker must have no ingress")
+
+        container = _audit_container(properties, image_prefix)
+        if image is not None and container["image"] != image:
+            raise ValueError("The audit relay and worker must use the same reviewed image digest")
+        image = container["image"]
+        client_id = next(iter(assigned.values())).get("clientId")
+        expected = {"AZURE_CLIENT_ID": client_id}
+        if role == "relay":
+            expected.update(AUDIT_TENANT_ID=entra["tenantId"], AUDIT_APIM_PRINCIPAL_ID=principal_id,
+                            AUDIT_TOKEN_AUDIENCE=relay["audience"].removeprefix("api://"),
+                            AUDIT_FOUNDRY_OPENAI_ENDPOINT=_foundry_openai_origin("aif-" + stem))
+
+        revision_id = app_id + "/revisions/" + revision_name
+        revision = require_success(transport.request("GET", revision_id + "?api-version=" + AUDIT_APPLICATION_API),
+                                   "Read latest audit " + role + " revision")
+        _assert_same(revision.get("id"), revision_id, "Audit application revision")
+        ready = revision.get("properties", {})
+        ready_container = _audit_container(ready, image_prefix)
+        if (ready.get("active") is not True or ready.get("healthState") != "Healthy"
+                or ready.get("provisioningState") != "Provisioned" or ready.get("runningState") not in ("Running", "RunningAtMaxScale")):
+            raise AuditRelayNotReady("Wait for both audit application revisions to become healthy before publishing")
+        if ready_container["image"] != image:
+            raise ValueError("The latest audit revision does not use the reviewed application image")
+        for environment in (container.get("env", []), ready_container.get("env", [])):
+            for name, value in expected.items():
+                entries = [entry for entry in environment if entry.get("name") == name]
+                if len(entries) != 1 or not _same(entries[0].get("value"), value) or entries[0].get("secretRef"):
+                    raise ValueError("The audit applications must bind the reviewed identities and fixed provider endpoint")
+
+
+def _verify_published_audit_route(plan, source, transport):
+    relay = plan["parameters"].get("auditRelay", {}).get("value")
+    if not relay:
+        return
+    api_suffix = "/apis/" + AUDITED_API
+    policy_suffixes = {api_suffix + "/policies/policy"} | {
+        api_suffix + "/operations/" + operation + "/policies/policy"
+        for operation in ("chat-completions", "responses-create")}
+    if not isinstance(source, dict) or not isinstance(source.get("policies"), list):
+        raise ValueError("The strict audit API publication source is missing")
+    policies = [entry for entry in source["policies"] if entry.get("suffix") in policy_suffixes]
+    if (len(policies) != len(policy_suffixes)
+            or {entry["suffix"] for entry in policies} != policy_suffixes):
+        raise ValueError("The strict audit API publication source must represent both restricted routes")
+    expected_resources = {
+        "/backends/core-audit-relay": {"title": "Model audit relay", "protocol": "http", "url": relay["url"],
+                                       "tls": {"validateCertificateChain": True, "validateCertificateName": True}},
+        "/namedValues/core-audit-relay-audience": {"displayName": "core-audit-relay-audience", "secret": False,
+                                                  "value": relay["audience"]},
+    }
+    for suffix, expected in expected_resources.items():
+        resource_id = plan["apimId"] + suffix
+        observed = entra_publication._read(transport, resource_id, {})
+        properties = observed.get("properties", {})
+        if (not entra_publication._resource_properties_match(resource_id, properties, expected)
+                or properties.get("credentials") or properties.get("keyVault")):
+            raise ValueError("The strict audit APIM backend or audience differs from the reviewed private route")
+    for entry in policies:
+        observed = entra_publication._read(transport, plan["apimId"] + entry["suffix"], {}, raw=True)
+        entra_publication._same_xml(observed.get("properties", {}).get("value"), entry["value"], inherited=True)
+
+
 def verify_credential_login(config, plan, apim, transport):
     """本人接続brokerと全CMプールを読み合わせ、準備不足のままAPIを公開しない。"""
     login = plan.get("credentialLogin")
@@ -1086,11 +1355,11 @@ def verify_credential_login(config, plan, apim, transport):
     app_id = _scope(config, "svc") + "/providers/Microsoft.App/containerApps/" + names["application"]
     app = require_success(transport.request("GET", app_id + "?api-version=2025-01-01"), "Read credential broker application")
     _assert_same(app.get("id"), app_id, "Credential broker application")
-    host = app.get("properties", {}).get("configuration", {}).get("ingress", {}).get("fqdn")
+    app_properties = app.get("properties", {})
+    host = broker_https_ingress(app_properties, broker_environment_id(config)).get("fqdn")
     if (not isinstance(host, str) or not re.fullmatch(r"[a-z0-9.-]+\.azurecontainerapps\.io", host)
             or not host.startswith(names["application"] + ".")):
         raise ValueError("Credential broker internal application address is invalid")
-    app_properties = app.get("properties", {})
     containers = app_properties.get("template", {}).get("containers", [])
     revision_name = app_properties.get("latestRevisionName")
     if (app_properties.get("provisioningState") != "Succeeded"
@@ -1339,6 +1608,8 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
     _owned(apim, plan["apimId"], config, "API Management")
     if apim.get("properties", {}).get("virtualNetworkType") != "Internal":
         raise ValueError("The existing internal API Management deployment is required")
+    if plan["parameters"].get("auditRelay"):
+        verify_audit_relay(config, state, transport, apim=apim)
     verify_subscription_products(plan, transport)
     authentication_policy = verify_common_authentication(plan, transport)
     verify_credential_login(config, plan, apim, transport)
@@ -1406,6 +1677,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         prior = require_success(prior_response, "Read prior API publication")
         _prior_published_ids(prior, config, plan)
     parameters = {name: item["value"] for name, item in plan["parameters"].items()}
+    verify_backend_secret_access(config, parameters["apiDefinitions"], state["serviceResourceIds"]["keyVault"], apim, transport)
     for prefix in ("l7Ingress", "realtimeTicket"):
         secret_id = parameters[prefix + "SecretIdentifier"]
         if not secret_id:
@@ -1622,6 +1894,8 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
             raise DeploymentError("API publication deadline expired before API write")
         if failed_stage_binding is not None:
             confirm_failed_closed_stage_attempt(failed_stage_binding, config, plan, transport)
+        if plan["parameters"].get("auditRelay"):
+            verify_audit_payload_retention(config, state, stage_transport)
         response = stage_transport.request("PUT", plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API, deployment)
         require_success(response, "Start API-only publication", allowed=(200, 201, 202))
         observed = _wait_resource(stage_transport, plan["deploymentId"], DEPLOYMENT_API, sleep=sleep, deadline=deadline)
@@ -1635,6 +1909,8 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
             binding = outputs.get(SOURCE_GENERATION_OUTPUT) if isinstance(outputs, dict) else None
             if not isinstance(binding, dict) or binding.get("value") != generation_id:
                 raise ValueError("API publication did not confirm the reviewed source generation binding")
+        source = generated_source if generation_id is not None else outputs.get("entraPublicationSource", {}).get("value")
+        _verify_published_audit_route(plan, source, stage_transport)
         browser_source = generated_browser if generation_id is not None else outputs.get("credentialBrowserPublicationSource", {}).get("value")
         browser_snapshot = entra_publication.verify_browser_publication_source(plan, browser_source, stage_transport)
         stage_result.update(browserSource=browser_source or {}, browserSnapshot=browser_snapshot)
@@ -1654,7 +1930,6 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
             sample_cleanup = cleanup_default_samples(plan["apimId"], parameters["apiDefinitions"], stage_transport, sleep=sleep)
         except (ValueError, DeploymentError) as error:
             raise DeploymentError("APIs were published, but default APIM sample cleanup did not finish: " + str(error)) from error
-        source = generated_source if generation_id is not None else outputs.get("entraPublicationSource", {}).get("value")
         stage_result.update(published=published, released_product=released_product, websocket_diagnostics=websocket_diagnostics,
                             catalog_descriptions=catalog_descriptions, sample_cleanup=sample_cleanup, source=source)
         if transition_needed:
@@ -1677,6 +1952,8 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         return None
 
     def record_source():
+        if AUDITED_API in new_names:
+            verify_audit_payload_retention(config, state, transport)
         if stage_result.get("browserSnapshot"):
             entra_publication.verify_snapshot(stage_result["browserSnapshot"], transport)
         if checkpoint is not None and stage_result.get("source") is not None:

@@ -334,6 +334,8 @@ class AppgwEgressNsgTests(unittest.TestCase):
 class LifecycleAppgwEgressTests(LifecycleFixture, unittest.TestCase):
     def test_core_order_and_monitoring_skip(self):
         events = []
+        self.host_time_gate.side_effect = lambda *args: events.append("host-time")
+        self.appgw_tls_gate.side_effect = lambda *args, **kwargs: events.append("backend-tls")
         self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("fixed-stage") or {"azureWrites": 0}
         outputs = self.outputs()
         for phase in ("core", "monitoring"):
@@ -353,10 +355,12 @@ class LifecycleAppgwEgressTests(LifecycleFixture, unittest.TestCase):
                     mock.patch.object(lifecycle, "cleanup_appgw_egress_nsg_rules") as legacy_cleanup:
                 lifecycle.deploy_phase(self.config, phase, secrets={})
             legacy_cleanup.assert_not_called()
-        self.assertEqual(events, ["fixed-stage", "discover"])
+        self.assertEqual(events, ["host-time", "backend-tls", "fixed-stage", "discover"])
+        self.host_time_gate.assert_called_once()
+        self.appgw_tls_gate.assert_called_once()
         self.prepare_nsg.assert_called_once()
 
-    def test_failed_cleanup_stops_core_before_operator_or_any_deploy(self):
+    def test_unverified_nsg_stops_core_before_deployment(self):
         self.prepare_nsg.side_effect = lifecycle.FixedNsgError("AppGW egress rule is unverified")
         transport = ScriptedTransport([{"statusCode": 404}])
         with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
@@ -386,6 +390,7 @@ class LifecycleAppgwEgressTests(LifecycleFixture, unittest.TestCase):
             lifecycle.preprovision(self.config)
         self.assertEqual(self.prepare_nsg.call_args.args, (self.config, transport))
         self.complete_nsg.assert_not_called()
+        self.assertFalse(transport.mutations())
         self.assertFalse(self.paths.parameters.exists())
 
 

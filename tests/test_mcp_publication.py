@@ -3,7 +3,7 @@
 公開Swaggerの配列例は実サービスで拒否されたため、Microsoft公式APIM拡張の
 SSE辞書とFoundryサンプルのmcp辞書に合わせる。これはAzure受入試験の代替ではない。
 """
-from arm_helpers import PolicyExpression
+from arm_helpers import PolicyExpression, compiled_policy_value
 from bicep_helpers import compile_bicep
 
 import json
@@ -20,7 +20,7 @@ class McpPublicationTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        template = compile_bicep('apps/apim/api-publication.bicep')
+        template = cls.template = compile_bicep('apps/apim/api-publication.bicep')
         cls.resource = template["resources"]["apis"]
         cls.generated_description = PolicyExpression(template["resources"]["mcpServers"]["properties"]["description"],
                                                      template["variables"], functions=template["functions"])
@@ -79,6 +79,11 @@ class McpPublicationTests(unittest.TestCase):
         observed = {}
         for api in proxies:
             xml = self.routing.evaluate({"apiDefinitions": [api]}, 0)
+            definition = {**api, "backendUrl": "https://backend.example.com", "backendHeaders": {}}
+            policy = compiled_policy_value(self.template, {"apiDefinitions": [definition]})
+            backend = ET.fromstring(policy).find("./inbound/set-backend-service")
+            self.assertEqual(backend.get("backend-id"), api["name"] + "-backend")
+            self.assertLess(policy.index("<set-backend-service"), policy.index(xml))
             root = ET.fromstring("<routing>" + xml + "</routing>")
             rewrites = root.findall(".//rewrite-uri")
             self.assertTrue(all(item.get("copy-unmatched-params") == "true" for item in rewrites))
@@ -97,12 +102,6 @@ class McpPublicationTests(unittest.TestCase):
                 self.assertEqual(root.find("./choose/otherwise/return-response/set-status").get("code"), "404")
         self.assertEqual(observed, {"sample-mcp-v1": "/mcp"})
         self.assertEqual(self.routing.evaluate({"apiDefinitions": [{"apiType": "http"}]}, 0), "")
-        # native MCP型と入口ポリシーを保ち、rewriteのためのHTTP APIへ置き換えない。
-        policy = ET.parse(CORE / "apps/apim/policies/api-templates/protocol.xml")
-        backend = policy.find("./inbound/set-backend-service")
-        self.assertIsNotNone(backend)
-        source = (CORE / "apps/apim/policies/api-templates/protocol.xml").read_text()
-        self.assertLess(source.index("<set-backend-service"), source.index("__MCP_PROXY_ROUTE_XML__"))
 
     def test_other_protocols_keep_their_existing_wire_contracts(self):
         """MCPの変換をHTTP・WebSocketへ適用しない。"""

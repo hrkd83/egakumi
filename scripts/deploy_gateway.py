@@ -11,6 +11,7 @@ if __name__ == "__main__":
     os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 import argparse
+import base64
 import copy
 import json
 from pathlib import Path
@@ -27,7 +28,7 @@ from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.credential_image import (
     build_image, checked, read_build_receipt, reusable_image, source_bundle,
 )
-from deployment.helpers.credential_broker_lifecycle import prepare_secret
+from deployment.helpers.credential_broker_lifecycle import broker_environment_id, prepare_secret, uses_broker_environment
 from deployment.helpers.credential_pools import credential_login_enabled, resource_names, verify_existing_provider_registrations
 from deployment.helpers.management_client_assets import management_client_inventory, update_management_client_assets
 from deployment.helpers.grpc_lifecycle import configure_named_values, require_shared_ingress
@@ -35,9 +36,8 @@ from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, 
 from standard_apis import resolve_publication_configuration
 from waf_policy import reconcile as configure_data_waf, selected_profiles as data_waf_profiles
 
-# ハイフンを含むアプリフォルダーの配備実装は、この入口からだけ読み込みます。
-sys.path.insert(0, str(REPOSITORY / 'apps/apim/deploy'))
-sys.path.insert(0, str(REPOSITORY / 'apps/credential-broker/deploy'))
+# 統合配備はAPIMとCredential Brokerの内部実装を読み込みます。
+sys.path[:0] = [str(REPOSITORY / 'apps/apim/deploy'), str(REPOSITORY / 'apps/credential-broker/deploy')]
 import api_publication
 from broker_deployment import wait_for_application, wait_for_schema
 from gateway_ingress import (
@@ -48,6 +48,7 @@ from gateway_ingress import (
 APP_API = '2025-01-01'
 ARM_API = '2022-09-01'
 MODULE = REPOSITORY / 'apps/apim/deploy/main.bicep'
+AUDIT_MODULE = REPOSITORY / 'apps/audit-relay/deploy/application.bicep'
 
 
 def group_scope(config):
@@ -70,12 +71,19 @@ def foundation_inputs(config, state):
         'resourceGroup': config['resourceGroupNames']['svc'],
         'identityResourceGroup': config['resourceGroupNames']['id'],
         'apimName': apim_name(config), 'vaultName': f'kv-{stem}',
-        'environmentName': f'cae-{stem}', 'registryName': 'acr' + stem.replace('-', ''),
+        'brokerEnvironmentName': f'cae-{stem}-broker', 'registryName': 'acr' + stem.replace('-', ''),
         'sqlServer': f'sql-{stem}.database.windows.net',
     }
     for name, value in expected.items():
         if foundation.get(name) != value:
             raise ValueError('Core foundation differs from this environment: ' + name)
+    subnet_id = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['nw']}"
+                 f"/providers/Microsoft.Network/virtualNetworks/vnet-{stem}/subnets/snet-{stem}-broker")
+    for name, value in (('brokerEnvironmentId', broker_environment_id(config)), ('brokerSubnetId', subnet_id)):
+        if str(foundation.get(name, '')).casefold() != value.casefold():
+            raise ValueError('Core foundation differs from this environment: ' + name)
+    if not re.fullmatch(r'[a-z0-9-]+(?:\.[a-z0-9-]+)+\.azurecontainerapps\.io', str(foundation.get('brokerEnvironmentDomain', ''))):
+        raise ValueError('Core foundation must record the private Broker environment domain')
     identity = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['id']}"
                 f'/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-{stem}-credential-schema')
     schema = foundation.get('schemaIdentity')
@@ -115,12 +123,34 @@ def verify_foundation(config, foundation, transport):
     if (server.get('properties', {}).get('fullyQualifiedDomainName') != foundation['sqlServer']
             or server.get('properties', {}).get('publicNetworkAccess') != 'Disabled'):
         raise ValueError('The shared SQL server must use its existing private connection')
-    environment = checked(transport, 'GET', service + 'Microsoft.App/managedEnvironments/' + foundation['environmentName']
-                          + '?api-version=' + APP_API, label='Read shared Container Apps environment')
+    environment = checked(transport, 'GET', foundation['brokerEnvironmentId'] + '?api-version=' + APP_API,
+                          label='Read Broker Container Apps environment')
     properties = environment.get('properties', {})
-    if properties.get('provisioningState') != 'Succeeded' or not properties.get('defaultDomain'):
-        raise ValueError('The shared Container Apps environment is not ready')
-    foundation['environmentDomain'] = properties['defaultDomain']
+    vnet = properties.get('vnetConfiguration') or {}
+    if (str(environment.get('id', '')).casefold() != foundation['brokerEnvironmentId'].casefold()
+            or properties.get('provisioningState') != 'Succeeded'
+            or properties.get('defaultDomain') != foundation['brokerEnvironmentDomain']
+            or properties.get('publicNetworkAccess') not in (None, 'Disabled')
+            or vnet.get('internal') is not True
+            or str(vnet.get('infrastructureSubnetId', '')).casefold() != foundation['brokerSubnetId'].casefold()):
+        raise ValueError('The dedicated private Broker environment or its subnet differs from Core state')
+    verify_broker_workload_bindings(config, foundation['brokerEnvironmentId'], transport)
+
+
+def verify_broker_workload_bindings(config, environment_id, transport):
+    """同名の既存アプリとジョブの所属環境を、配備による変更の前に確認します。"""
+    names = resource_names(config)
+    scope = group_scope(config) + '/providers/Microsoft.App/'
+    for kind, name in (('containerApps', names['application']), ('jobs', names['schemaJob']), ('jobs', names['reconcileJob'])):
+        target = scope + kind + '/' + name
+        response = transport.request('GET', target + '?api-version=' + APP_API)
+        if response.get('statusCode') == 404:
+            continue
+        body = response.get('body') or {}
+        if response.get('statusCode') != 200 or str(body.get('id', '')).casefold() != target.casefold():
+            raise ValueError('Existing Credential Broker workload could not be verified')
+        if not uses_broker_environment(body.get('properties') or {}, environment_id):
+            raise ValueError('An existing Credential Broker workload belongs to a different environment; plan its migration before deployment')
 
 
 def broker_secret(config, foundation, transport):
@@ -143,25 +173,75 @@ def run_json(arguments):
     return json.loads(result.stdout) if result.stdout.strip() else {}
 
 
-def deploy_resources(config, values, template, transport, *, timeout=1800, sleep=time.sleep, monotonic=time.monotonic, progress=print):
+def deploy_resources(config, values, template, transport, *, component='gateway', timeout=1800, sleep=time.sleep, monotonic=time.monotonic, progress=print):
     """差分をIncrementalで反映し、成功した配備の公開出力を返す。"""
-    target = group_scope(config) + '/providers/Microsoft.Resources/deployments/' + config['resourceStem'] + '-gateway'
+    target = group_scope(config) + '/providers/Microsoft.Resources/deployments/' + config['resourceStem'] + '-' + component
     path = target + '?api-version=' + ARM_API
     checked(transport, 'PUT', path, {'properties': {'mode': 'Incremental', 'template': template,
-        'parameters': {key: {'value': value} for key, value in values.items()}}}, label='Deploy Gateway resources')
+        'parameters': {key: {'value': value} for key, value in values.items()}}}, label='Deploy application resources')
     deadline, notice = monotonic() + timeout, monotonic() + 45
     while monotonic() < deadline:
-        body = checked(transport, 'GET', path, label='Read Gateway deployment')
+        body = checked(transport, 'GET', path, label='Read application deployment')
         properties = body.get('properties', {})
         if properties.get('provisioningState') == 'Succeeded':
             return {key: value['value'] for key, value in properties.get('outputs', {}).items()}
         if properties.get('provisioningState') in ('Failed', 'Canceled'):
-            raise ValueError('Gateway resource deployment failed; inspect ' + target)
+            raise ValueError(f'{component} resource deployment failed; inspect the selected deployment.')
         if monotonic() >= notice:
-            progress('Gateway: Azureリソースへの反映を待っています。', flush=True)
+            progress(f'{component}: Azureリソースへの反映を待っています。', flush=True)
             notice = monotonic() + 45
         sleep(10)
-    raise ValueError('Gateway deployment is still pending; inspect ' + target)
+    raise ValueError(f'{component} deployment is still pending; inspect the selected deployment.')
+
+
+def audit_foundation(config, state):
+    """選択環境の監査基盤と既存のv2 Gateway audienceを照合します。"""
+    if config.get('auditEvidence', {}).get('enabled') is not True:
+        return None
+    foundation = state['outputs'].get('auditEvidence')
+    stem = config['resourceStem']
+    expected_environment = group_scope(config) + '/providers/Microsoft.App/managedEnvironments/cae-' + stem + '-audit'
+    if (not isinstance(foundation, dict)
+            or str(foundation.get('environmentId', '')).casefold() != expected_environment.casefold()
+            or foundation.get('registryName') != 'acr' + stem.replace('-', '')):
+        raise ValueError('Provision Core audit evidence infrastructure before deploying Gateway')
+    audience = config.get('gateway', {}).get('authentication', {}).get('entra', {}).get('audience')
+    azure_tenant = config['azureTenantId']
+    if (not re.fullmatch(r'[0-9a-fA-F-]{36}', str(audience or ''))
+            or (config.get('entraTenantId') or azure_tenant).casefold() != azure_tenant.casefold()):
+        raise ValueError('Audit Relay requires the existing v2 Gateway API registration in the deployment tenant')
+    return foundation
+
+
+def deploy_audit_pipeline(config, state, foundation, apim_principal, template, transport, workspace):
+    """共有イメージを非公開ACRで解決し、本文の経路を開く前に両アプリを配備します。"""
+    api_publication.verify_audit_payload_retention(config, state, transport)
+    receipt = workspace.checked(workspace.state / 'audit-relay-build.json')
+    data, source_hash = source_bundle(audit=True)
+    digest = reusable_image(config, state, source_hash, receipt, transport=transport, audit=True)
+    if digest is None:
+        digest = build_image(config, state, transport, data=data, source_hash=source_hash,
+                             record=lambda value: protected_json(receipt, value),
+                             prior_receipt=read_build_receipt(receipt), audit=True)
+    registry = foundation['registryName'] + '.azurecr.io'
+    relay_environment = {
+        'AUDIT_TENANT_ID': config['azureTenantId'],
+        'AUDIT_APIM_PRINCIPAL_ID': apim_principal,
+        'AUDIT_TOKEN_AUDIENCE': config['gateway']['authentication']['entra']['audience'],
+    }
+    values = {'foundation': foundation, 'registryServer': registry,
+              'image': registry + '/audit-relay@' + digest,
+              'relayEnvironment': [{'name': name, 'value': value} for name, value in relay_environment.items()]}
+    print('本文監査: 中継と保存ワーカーを配備します。', flush=True)
+    deploy_resources(config, values, template, transport, component='audit-evidence')
+    for attempt in range(24):
+        try:
+            api_publication.verify_audit_relay(config, state, transport)
+            break
+        except api_publication.AuditRelayNotReady:
+            if attempt == 23:
+                raise
+            time.sleep(5)
 
 
 def deploy_release(config, state, values, templates, transport, *, deploy=deploy_resources,
@@ -252,6 +332,7 @@ def main(argv=None):
     if args.execute and config.get('publishApis') is not True:
         raise ValueError('Set publishApis=true to deploy the Gateway APIs')
     foundation = foundation_inputs(config, state)
+    evidence = audit_foundation(config, state)
     if args.image_digest is not None and not re.fullmatch(r'sha256:[0-9a-f]{64}', args.image_digest):
         raise ValueError('Use an immutable sha256 image digest')
     publication_plan = api_publication.prepare_plan(config, state)
@@ -269,11 +350,13 @@ def main(argv=None):
     summary = {'status': 'planned', 'azureWrites': 0, 'azdUpRequired': False,
         'apiSelection': 'specified' if source.get('apiDefinitions') else 'standard',
         'apiCount': len(config['apiDefinitions']), 'credentialBrokerEnabled': True,
+        'auditEvidenceEnabled': evidence is not None,
         'application': resource_names(config)['application'],
         'database': resource_names(config)['database'],
         'imageBuild': not digest,
         'imageReuseVerificationPending': not args.execute and not args.image_digest,
-        'steps': ['build-or-reuse-image', 'prepare-database-and-credential-manager', 'initialize-sql',
+        'steps': (['build-and-deploy-audit-workloads'] if evidence is not None else [])
+                 + ['build-or-reuse-image', 'prepare-database-and-credential-manager', 'initialize-sql',
                   'update-broker-and-apim-settings', 'publish-apis-products-subscriptions', 'reconcile-released-api-membership', 'remove-default-apim-samples']
                  + (['configure-gateway-identity-callback-waf'] if login_enabled else [])
                  + (['configure-gateway-speech-waf'] if speech_content_type_paths(config) else [])
@@ -287,6 +370,8 @@ def main(argv=None):
     # コンパイルと秘密入力の読取に失敗した場合、Azureの変更はまだ始めません。
     templates = {'gateway': run_json(['az', 'bicep', 'build', '--file', str(MODULE), '--stdout']),
                  'apis': run_json(['az', 'bicep', 'build', '--file', str(api_publication.MODULE), '--stdout'])}
+    if evidence is not None:
+        templates['audit'] = run_json(['az', 'bicep', 'build', '--file', str(AUDIT_MODULE), '--stdout'])
     values['credentialProviderSecrets'] = load_credential_provider_secrets(config)
     if config.get('gateway', {}).get('authentication', {}).get('credentialLogin', {}).get('identity'):
         values['credentialIdentitySecret'] = load_credential_identity_secret(config)
@@ -297,8 +382,11 @@ def main(argv=None):
     if not digest:
         values['imageDigest'] = build_image(config, image_state, transport, data=data, source_hash=source_hash,
             record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))
+    if evidence is not None:
+        deploy_audit_pipeline(config, state, evidence, foundation['apimPrincipalId'], templates['audit'], transport, workspace)
     result = deploy_release(config, state, values, templates, transport,
                             publication_checkpoint=lambda value: protected_json(publication_record, value))
+    result['auditEvidenceEnabled'] = evidence is not None
     protected_json(workspace.state / 'gateway-deployment.json', result)
     summary = copy.deepcopy(result)
     # Actual source XML is protected output, never CLI stdout or public evidence.

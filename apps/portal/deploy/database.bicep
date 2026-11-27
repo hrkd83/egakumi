@@ -7,12 +7,16 @@ param sqlServer string
 param settings object
 param vaultName string
 param runtimeIdentity object
+param profileIdentity object
+param managementIdentity object
 param credentialProviderName string
 param certificateAuthentication bool = false
 @secure()
 param signingSecret string = ''
 @secure()
 param profileSecret string = ''
+@secure()
+param subscriptionSyncSecret string = ''
 
 resource server 'Microsoft.Sql/servers@2023-08-01' existing = { name: first(split(sqlServer, '.')) }
 var databaseSku = union({
@@ -60,6 +64,15 @@ resource profileKeyReference 'Microsoft.KeyVault/vaults/secrets@2023-07-01' exis
   parent: vault
   name: 'core-subscription-profile-key'
 }
+resource syncKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(subscriptionSyncSecret)) {
+  parent: vault
+  name: 'core-subscription-sync-key'
+  properties: { value: subscriptionSyncSecret, attributes: { enabled: true } }
+}
+resource syncKeyReference 'Microsoft.KeyVault/vaults/secrets@2023-07-01' existing = {
+  parent: vault
+  name: 'core-subscription-sync-key'
+}
 resource credentialSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' existing = {
   parent: vault
   name: 'core-credential-${credentialProviderName}'
@@ -77,10 +90,16 @@ resource credentialSecretAccess 'Microsoft.Authorization/roleAssignments@2022-04
   properties: { roleDefinitionId: keyVaultSecretUser, principalId: runtimeIdentity.principalId, principalType: 'ServicePrincipal' }
 }
 resource profileKeyAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(profileKeyReference.id, runtimeIdentity.principalId, keyVaultSecretUser)
+  name: guid(profileKeyReference.id, profileIdentity.principalId, keyVaultSecretUser)
   scope: profileKeyReference
-  properties: { roleDefinitionId: keyVaultSecretUser, principalId: runtimeIdentity.principalId, principalType: 'ServicePrincipal' }
+  properties: { roleDefinitionId: keyVaultSecretUser, principalId: profileIdentity.principalId, principalType: 'ServicePrincipal' }
   dependsOn: [profileKey]
+}
+resource syncKeyAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(syncKeyReference.id, managementIdentity.principalId, keyVaultSecretUser)
+  scope: syncKeyReference
+  properties: { roleDefinitionId: keyVaultSecretUser, principalId: managementIdentity.principalId, principalType: 'ServicePrincipal' }
+  dependsOn: [syncKey]
 }
 output sqlServerId string = server.id
 output database string = database.name
@@ -88,3 +107,4 @@ output databaseId string = database.id
 output signingSecretUri string = '${vault.properties.vaultUri}secrets/core-portal-auth-secret'
 output clientSecretUri string = certificateAuthentication ? '' : '${vault.properties.vaultUri}secrets/${credentialSecret.name}'
 output profileSecretUri string = '${vault.properties.vaultUri}secrets/core-subscription-profile-key'
+output subscriptionSyncSecretUri string = '${vault.properties.vaultUri}secrets/core-subscription-sync-key'

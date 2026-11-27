@@ -9,7 +9,7 @@ from bicep_helpers import compile_bicep
 from test_parameter_ip_ownership import NetworkArmExpression
 
 ROOT = Path(__file__).resolve().parents[1]
-GROUPS = ('agw', 'apim', 'pep', 'management', 'aca')
+GROUPS = ('agw', 'apim', 'pep', 'management', 'aca', 'broker')
 MODULES = ('network', 'network-bindings', 'portal-network', 'portal-network-bindings', 'credential-broker-network')
 
 
@@ -55,12 +55,13 @@ class NsgRulePriorityTests(unittest.TestCase):
 
     def parameters(self, multiple=True, prefix='10.70'):
         subnets = {'agw': prefix+'.0.0/24', 'pep': prefix+'.1.0/24', 'firewall': prefix+'.2.0/26',
-                   'apim': prefix+'.2.64/26', 'management': prefix+'.2.128/26', 'aca': prefix+'.2.192/26'}
+                   'apim': prefix+'.2.64/26', 'management': prefix+'.2.128/26', 'aca': prefix+'.2.192/26',
+                   'broker': prefix+'.3.0/26'}
         sets = {k: [prefix+'.1.'+str(i), prefix+'.1.'+str(i+1)] for k, i in
                 (('foundry', 4), ('keyVault', 6), ('registry', 8), ('sql', 10),
                  ('auditStorageJapan', 12), ('auditStorageFoundry', 14))}
         if not multiple: sets = {k: v[:1] for k, v in sets.items()}
-        ips = {'apim': prefix+'.2.68', 'aca': prefix+'.2.196', 'management': prefix+'.2.132',
+        ips = {'apim': prefix+'.2.68', 'aca': prefix+'.2.196', 'management': prefix+'.2.132', 'broker': prefix+'.3.4',
                'firewallPublic': '192.0.2.10', 'appGatewayPublic': '198.51.100.10'}
         return {'config': {'subnetPrefixes': subnets}, 'resourcePrefix': 'test-fixture', 'subnetPrefixes': subnets,
                 'foundryPrivateIps': sets['foundry'], 'keyVaultPrivateIps': sets['keyVault'],
@@ -69,9 +70,11 @@ class NsgRulePriorityTests(unittest.TestCase):
                 'managementPrivateIp': ips['management'], 'firewallPublicIpAddress': ips['firewallPublic'],
                 'appGatewayPublicIpAddress': ips['appGatewayPublic'], 'apimPrivateIp': ips['apim'],
                 'staticIp': ips['aca'], 'acaPrivateIp': ips['aca'], 'acaPrefix': subnets['aca'],
+                'brokerPrivateIp': ips['broker'], 'brokerPrefix': subnets['broker'],
                 'apimPrefix': subnets['apim'], 'agwPrefix': subnets['agw'], 'managementPrefix': subnets['management'],
                 'entraLoginHost': 'login.microsoftonline.com',
-                'existingNetworkSecurityGroupNames': [],
+                'firewallTlsInspection': {'intermediateCaSecretId': 'synthetic-ca-reference'},
+                'existingNetworkSecurityGroupNames': [], 'auditEvidenceEnabled': False,
                 '__ips': ips, '__sets': sets}
 
     def resolve(self, module, value, parameters):
@@ -80,8 +83,26 @@ class NsgRulePriorityTests(unittest.TestCase):
             p['referencePrivateIps'] = p['__sets']['registry' if module == 'portal-network' else 'sql']
         return FixedExpression('[true()]', self.templates[module]).resolve(value, p)
 
-    def test_aca_firewall_monitor_split_preserves_the_previous_allow_scope(self):
-        """監視/Entraの用途分割で旧2タグ宛TCP443の許可和集合を変えない。"""
+    def test_firewall_ingress_inspects_only_the_app_gateway_backend_hosts(self):
+        parameters = self.parameters()
+        hosts = {
+            'allow-appgw-apim-https': 'gateway-backend.example.com',
+            'allow-appgw-portal-https': 'portal-backend.example.com',
+        }
+        parameters.update(apimGatewayFqdn=hosts['allow-appgw-apim-https'],
+                          portalBackendHost=hosts['allow-appgw-portal-https'])
+        group = self.templates['portal-network-bindings']['resources']['ingressRules']
+        collection, = group['properties']['ruleCollections']
+        rules = self.resolve('portal-network-bindings', collection['rules'], parameters)
+        self.assertEqual({rule['name']: rule['targetFqdns'] for rule in rules},
+                         {name: [host] for name, host in hosts.items()})
+        for rule in rules:
+            self.assertEqual(rule['ruleType'], 'ApplicationRule')
+            self.assertTrue(rule['terminateTLS'])
+            self.assertEqual(rule['protocols'], [{'protocolType': 'Https', 'port': 443}])
+            self.assertEqual(rule['sourceAddresses'], [parameters['agwPrefix']])
+
+    def test_aca_firewall_monitor_and_entra_cover_both_aca_subnets(self):
         resource = self.templates['portal-network']['resources']['rules']
         collection, = [c for c in resource['properties']['ruleCollections']
                        if c['name'] == 'portal-azure-monitor']
@@ -105,9 +126,9 @@ class NsgRulePriorityTests(unittest.TestCase):
                                     for destination in rule['destinationAddresses']
                                     for protocol in rule['ipProtocols']
                                     for port in rule['destinationPorts'])
-                previous = {(parameters['acaPrefix'], tag, 'TCP', '443')
+                expected = {(source, tag, 'TCP', '443') for source in (parameters['acaPrefix'], parameters['brokerPrefix'])
                             for tag in ('AzureMonitor', 'AzureActiveDirectory')}
-                self.assertEqual(observed, previous)
+                self.assertEqual(observed, expected)
 
     def test_management_aca_dev_firewall_allow_is_constant_and_region_scoped(self):
         resource = self.templates['network']['resources']['egressRules']
@@ -133,14 +154,14 @@ class NsgRulePriorityTests(unittest.TestCase):
                         'protocols': [{'protocolType': 'Https', 'port': 443}],
                         'targetFqdns': [host], 'terminateTLS': False})
 
-    def _application_rule_tuples(self, rules, purposes, source):
+    def _application_rule_tuples(self, rules, purposes, sources):
         self.assertEqual(len(rules), len(purposes))
         self.assertEqual({r['name'] for r in rules}, set(purposes))
         observed = set()
         for rule in rules:
             self.assertNotIn('condition', rule)
             self.assertEqual(rule['ruleType'], 'ApplicationRule')
-            self.assertEqual(rule['sourceAddresses'], [source])
+            self.assertEqual(rule['sourceAddresses'], sources[rule['name']])
             self.assertEqual(rule['protocols'], [{'protocolType': 'Https', 'port': 443}])
             self.assertIs(rule['terminateTLS'], False)
             self.assertEqual(rule['targetFqdns'], purposes[rule['name']])
@@ -151,8 +172,7 @@ class NsgRulePriorityTests(unittest.TestCase):
                             for protocol in rule['protocols'])
         return observed
 
-    def test_aca_firewall_platform_rules_remove_only_the_ipify_allowance(self):
-        """旧10宛先からipify1だけ初期削除し、MCR2/基盤2/管理ID5を維持する。"""
+    def test_aca_firewall_platform_rules_cover_only_required_hosts_in_both_subnets(self):
         resource = self.templates['portal-network']['resources']['rules']
         self.assertNotIn('condition', resource)
         self.assertEqual(resource['properties']['priority'], 350)
@@ -173,21 +193,10 @@ class NsgRulePriorityTests(unittest.TestCase):
                         '*.identity.azure.net', login_host, '*.' + login_host,
                         '*.login.microsoft.com', 'login.microsoft.com'],
                 }
-                observed = self._application_rule_tuples(actual['rules'], purposes, parameters['acaPrefix'])
-                previous_destinations = (
-                    'mcr.microsoft.com', '*.data.mcr.microsoft.com',
-                    'packages.aks.azure.com', 'acs-mirror.azureedge.net',
-                    '*.identity.azure.net', 'login.microsoftonline.com', '*.login.microsoftonline.com',
-                    '*.login.microsoft.com', 'login.microsoft.com', 'api.ipify.org',
-                )
-                previous = {(parameters['acaPrefix'], destination, 'Https', 443, False)
-                            for destination in previous_destinations}
-                removed = {(parameters['acaPrefix'], 'api.ipify.org', 'Https', 443, False)}
-                self.assertEqual(observed, previous - removed)
-                self.assertEqual(previous - observed, removed)
+                sources = {name: [parameters['acaPrefix'], parameters['brokerPrefix']] for name in purposes}
+                self._application_rule_tuples(actual['rules'], purposes, sources)
 
-    def test_aca_firewall_login_and_arm_split_preserves_the_previous_allow_scope(self):
-        """BrokerのEntra login/ARMを分けても旧2宛先の許可和集合を維持する。"""
+    def test_aca_firewall_arm_allows_portal_and_broker(self):
         resource = self.templates['credential-broker-network']['resources']['rules']
         self.assertNotIn('condition', resource)
         self.assertEqual(resource['properties']['priority'], 360)
@@ -208,10 +217,10 @@ class NsgRulePriorityTests(unittest.TestCase):
                 self.assertEqual({r['name'] for r in actual['rules']},
                                  set(purposes) | {'allow-mgmt-vm-python-build'})
                 owned_rules = [r for r in actual['rules'] if r['name'] in purposes]
-                observed = self._application_rule_tuples(owned_rules, purposes, parameters['acaPrefix'])
-                previous = {(parameters['acaPrefix'], destination, 'Https', 443, False)
-                            for destination in ('login.microsoftonline.com', 'management.azure.com')}
-                self.assertEqual(observed, previous)
+                self._application_rule_tuples(owned_rules, purposes, {
+                    'allow-aca-entra-login': [parameters['acaPrefix'], parameters['brokerPrefix']],
+                    'allow-aca-arm': [parameters['acaPrefix'], parameters['brokerPrefix']],
+                })
 
     def compiled_rules(self, parameters):
         result = {g: {} for g in GROUPS}
@@ -225,15 +234,20 @@ class NsgRulePriorityTests(unittest.TestCase):
             ('portal-network', 'managementRegistryIn', 'pep', 'allow-mgmt-vm-acr-https-ingress'),
             ('portal-network', 'runnerRegistryAccess', 'management', 'allow-acr-https-egress'),
             ('portal-network', 'acaRegistryOut', 'aca', 'allow-acr-https-egress'),
+            ('portal-network', 'brokerRegistryOut', 'broker', 'allow-acr-https-egress'),
             ('portal-network-bindings', 'appgwPortalOut', 'agw', 'allow-aca-https-egress'),
             ('portal-network-bindings', 'managementPortalHttpsOut', 'management', 'allow-aca-https-egress'),
             ('credential-broker-network', 'sqlIn', 'pep', 'allow-aca-sql-1433-ingress'),
             ('credential-broker-network', 'managementSqlIn', 'pep', 'allow-mgmt-vm-sql-1433-ingress'),
-            ('credential-broker-network', 'brokerOut', 'apim', 'allow-aca-https-egress'),
+            ('credential-broker-network', 'portalOut', 'apim', 'allow-aca-https-egress'),
+            ('credential-broker-network', 'brokerOut', 'apim', 'allow-broker-https-egress'),
             ('credential-broker-network', 'acaSqlOut', 'aca', 'allow-sql-1433-egress'),
+            ('credential-broker-network', 'brokerSqlOut', 'broker', 'allow-sql-1433-egress'),
             ('credential-broker-network', 'managementSqlOut', 'management', 'allow-sql-1433-egress'),
             ('credential-broker-network', 'acaIngressDeny', 'aca', 'deny-any-ingress'),
-            ('credential-broker-network', 'acaEgressDeny', 'aca', 'deny-any-egress'))
+            ('credential-broker-network', 'acaEgressDeny', 'aca', 'deny-any-egress'),
+            ('credential-broker-network', 'brokerIngressDeny', 'broker', 'deny-any-ingress'),
+            ('credential-broker-network', 'brokerEgressDeny', 'broker', 'deny-any-egress'))
         for m, symbol, g, name in additional:
             item = self.templates[m]['resources'][symbol]
             self.assertNotIn('condition', item, (m, symbol)); self.assertNotIn(name, result[g])
@@ -251,28 +265,27 @@ class NsgRulePriorityTests(unittest.TestCase):
             else: self.fail('Unknown fixed token: '+token)
         return result
 
-    def test_complete_contract_has_unique_contiguous_bands_and_no_grpc_rules(self):
-        self.assertEqual(self.contract['version'], 5)
+    def test_contract_has_unique_priorities_and_expected_terminal_denials(self):
         self.assertEqual(set(self.contract['groups']), set(GROUPS))
-        expected_counts = {'agw': 9, 'apim': 22, 'aca': 18, 'pep': 13, 'management': 15}
-        record_ids = set(); terminal = 0
-        for g, group in self.contract['groups'].items():
-            self.assertEqual(len(group['rules']), expected_counts[g]); identities = set(); bands = {}
-            for name, rule in group['rules'].items():
-                self.assertNotIn(rule['designRecordId'], record_ids); record_ids.add(rule['designRecordId'])
+        design_ids = set()
+        for group, definition in self.contract['groups'].items():
+            priorities = set()
+            terminal_directions = set()
+            for name, rule in definition['rules'].items():
+                self.assertNotIn(rule['designRecordId'], design_ids)
+                design_ids.add(rule['designRecordId'])
                 identity = rule['direction'], rule['priority']
-                self.assertNotIn(identity, identities); identities.add(identity); self.assertNotIn('grpc', name)
+                self.assertNotIn(identity, priorities)
+                priorities.add(identity)
                 if rule['access'] == 'Deny':
-                    terminal += 1; self.assertEqual(rule['priority'], 4096)
-                    self.assertEqual(name, 'deny-any-ingress' if rule['direction']=='Inbound' else 'deny-any-egress')
+                    terminal_directions.add(rule['direction'])
+                    self.assertEqual(rule['priority'], 4096)
+                    suffix = 'ingress' if rule['direction'] == 'Inbound' else 'egress'
+                    self.assertEqual(name, 'deny-any-' + suffix)
                 else:
-                    start = rule['priority']//100*100+20; self.assertIn(start, (120, 220, 320))
-                    bands.setdefault((rule['direction'], start), []).append(rule['priority'])
-            for (direction, start), priorities in bands.items():
-                retired_http = {('management', 'Outbound'): {225}, ('aca', 'Inbound'): {221}}.get((g, direction), set())
-                expected = [priority for priority in range(start, max(priorities) + 1) if priority not in retired_http]
-                self.assertEqual(sorted(priorities), expected)
-        self.assertEqual((len(record_ids), terminal), (77, 8))
+                    self.assertLess(rule['priority'], 4096)
+            expected = {'Inbound'} if group in ('agw', 'pep') else {'Inbound', 'Outbound'}
+            self.assertEqual(terminal_directions, expected, group)
 
     def test_compiled_tuples_match_fixed_manifest_with_single_and_multiple_ips(self):
         for multiple, prefix in ((False, '10.70'), (True, '10.80')):
@@ -285,6 +298,26 @@ class NsgRulePriorityTests(unittest.TestCase):
                                 'source': self.bind(r['source'], p), 'destination': self.bind(r['destination'], p)}
                     with self.subTest(group=g, rule=name, multiple=multiple):
                         self.assertEqual(canonical(properties), expected)
+
+    def test_broker_listener_and_vnet_accept_only_apim_and_aca_platform_paths(self):
+        parameters = self.parameters()
+        rules = self.compiled_rules(parameters)
+        subnet = parameters['subnetPrefixes']
+        broker = [canonical(rule) for rule in rules['broker'].values()]
+        inbound = {(tuple(rule['source']), tuple(rule['destinationPorts'])) for rule in broker
+                   if rule['direction'] == 'Inbound' and rule['access'] == 'Allow'}
+        self.assertEqual(inbound, {
+            ((subnet['apim'],), ('443', '31443')),
+            (('AzureLoadBalancer',), ('30000-32767',)),
+            ((subnet['broker'],), ('*',)),
+        })
+        private_routes = {name: canonical(rules['apim'][name])['destination']
+                          for name in ('allow-aca-https-egress', 'allow-broker-https-egress')}
+        self.assertEqual(private_routes, {
+            'allow-aca-https-egress': [parameters['__ips']['aca'] + '/32'],
+            'allow-broker-https-egress': [parameters['__ips']['broker'] + '/32'],
+        })
+        self.assertTrue(all(subnet['aca'] not in rule['destination'] for rule in broker if rule['direction'] == 'Outbound'))
 
     def test_retired_flags_and_external_address_overrides_cannot_change_initial_rules(self):
         p = self.parameters(); expected = self.compiled_rules(p)

@@ -14,6 +14,7 @@ from deployment import lifecycle
 from deployment.helpers import cleanup
 from deployment.helpers import prepare_secrets as secret_preparation
 from deployment.helpers import private_permissions
+from deployment.helpers.audit_evidence import evidence_container_id, evidence_policy_id
 from deployment.helpers.configuration import normalize_configuration
 from deployment.helpers.paths import local_paths
 from configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
@@ -21,14 +22,19 @@ from configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
 
 class ScriptedTransport:
     """事前に並べたARM応答を順番に返す。想定外の要求は検証失敗として扱う。"""
-    def __init__(self, responses):
+    def __init__(self, responses, *, expected_get_paths=None):
         self.responses = copy.deepcopy(responses)
         self.calls = []
+        self.expected_get_paths = expected_get_paths
 
     def request(self, method, path, body=None, headers=None):
         self.calls.append({"method": method, "path": path, "body": body, "headers": headers})
         if not self.responses:
             raise AssertionError("Unexpected mock ARM request")
+        if self.expected_get_paths is not None:
+            expected = self.expected_get_paths[len(self.calls) - 1]
+            if method != "GET" or path != expected:
+                raise AssertionError(f"Expected mock GET {expected}, got {method} {path}")
         return self.responses.pop(0)
 
     def mutations(self):
@@ -148,7 +154,7 @@ class LifecycleFixture:
         # Tuple/ETag/所有境界は専用のfixed_nsg/Portal移行試験で検査します。
         # hook試験では実wrapperを通し、ゲート→stage→Core→completeの順を検査します。
         host_time = mock.patch.object(lifecycle, "require_management_host_time_core_ready", return_value={})
-        host_time.start()
+        self.host_time_gate = host_time.start()
         self.addCleanup(host_time.stop)
         ca_loader = mock.patch.object(lifecycle, "load_firewall_tls_inspection", return_value={})
         ca_loader.start()
@@ -156,6 +162,7 @@ class LifecycleFixture:
         portal_gate = mock.patch.object(lifecycle, "require_appgw_backend_tls_ready",
                                        return_value={"newGateway": True, "httpMigrationRequired": False})
         self.backend_tls_gate = portal_gate.start()
+        self.appgw_tls_gate = self.backend_tls_gate
         self.addCleanup(portal_gate.stop)
         prepare_nsg = mock.patch.object(lifecycle, "prepare_fixed_nsg_rules",
                                         return_value={"status": "staged", "azureWrites": 0})
@@ -186,6 +193,51 @@ class LifecycleFixture:
         env.start()
         self.addCleanup(env.stop)
 
+    def preprovision_transport(self, *, body_policy=None, firewall_snapshots=()):
+        """初回の所有資源探索をARMの実際の読取先ごとに再現する。"""
+        config = self.config
+        stem = config["resourceStem"]
+        subscription = f"/subscriptions/{config['subscriptionId']}"
+        groups = config["resourceGroupNames"]
+        services = f"{subscription}/resourceGroups/{groups['svc']}/providers"
+        network = f"{subscription}/resourceGroups/{groups['nw']}/providers/Microsoft.Network"
+        missing = {"statusCode": 404, "headers": {}, "body": None}
+        requests = [
+            (f"{services}/Microsoft.ContainerRegistry/registries/acr{stem.replace('-', '')}?api-version=2025-11-01", missing),
+            (f"{services}/Microsoft.KeyVault/vaults/kv-{stem}/secrets/core-l7-ingress-secret?api-version=2024-11-01", missing),
+        ]
+        if config["gateway"].get("realtimeControlEnabled") is True:
+            requests.append(
+                (f"{services}/Microsoft.KeyVault/vaults/kv-{stem}/secrets/core-realtime-ticket-key?api-version=2024-11-01", missing))
+        requests.append((f"{subscription}/providers/Microsoft.Resources/deployments/{stem}-monitoring?api-version=2022-09-01", missing))
+
+        nsg_suffixes = ["agw", "apim", "pep", "vm", "aca", "certificate", "broker"]
+        route_suffixes = ["agw", "apim", "vm", "aca", "certificate", "broker"]
+        evidence = config.get("auditEvidence", {})
+        if evidence.get("enabled") is True:
+            nsg_suffixes.append("audit")
+            route_suffixes.append("audit")
+            requests.append((evidence_policy_id(config) + "?api-version=2023-05-01", body_policy or missing))
+            if evidence["payloadImmutabilityMode"] == "Locked":
+                account = evidence_container_id(config).removesuffix("/blobServices/default/containers/payload")
+                requests.append((account + "/managementPolicies/default?api-version=2023-05-01", missing))
+
+        requests.extend((f"{network}/networkSecurityGroups/nsg-{stem}-{suffix}?api-version=2025-01-01", missing)
+                        for suffix in nsg_suffixes)
+        requests.extend((f"{network}/routeTables/rt-{stem}-{suffix}?api-version=2025-01-01", missing)
+                        for suffix in route_suffixes)
+        requests.extend([
+            (f"{services}/Microsoft.ApiManagement/service?api-version=2024-05-01", missing),
+            (f"{services}/Microsoft.App/containerApps/ca-{stem}-portal?api-version=2025-01-01", missing),
+        ])
+        if firewall_snapshots:
+            requests.extend((snapshot["body"]["id"] + "?api-version=2025-01-01", snapshot)
+                            for snapshot in firewall_snapshots)
+        else:
+            requests.append((f"{network}/firewallPolicies/afwp-{stem}?api-version=2025-01-01", missing))
+        paths, responses = zip(*requests)
+        return ScriptedTransport(list(responses), expected_get_paths=paths)
+
     def outputs(self):
         sub = self.config["subscriptionId"]
         svc = self.config["resourceGroupNames"]["svc"]
@@ -200,6 +252,7 @@ class LifecycleFixture:
             "cleanup": {
                 "serviceResourceIds": {
                     "keyVault": prefix + "Microsoft.KeyVault/vaults/kv-test-egakumi",
+                    "certificateVault": prefix + "Microsoft.KeyVault/vaults/kvtls-test-egakumi",
                     "foundry": prefix + "Microsoft.CognitiveServices/accounts/aif-test-egakumi",
                     "apim": prefix + "Microsoft.ApiManagement/service/apim-test-egakumi-abc123",
                 },

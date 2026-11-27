@@ -16,6 +16,7 @@ import deploy_gateway as gateway
 from deployment.helpers.paths import local_paths
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers import credential_broker_lifecycle
+from deployment.helpers.gateway_obo_certificate import deployment_settings as gateway_obo_settings
 from test_credential_broker_initial_deployment import fixture as broker_fixture, DIGEST, ok
 from management_fixtures import client_core_outputs
 
@@ -23,6 +24,9 @@ from management_fixtures import client_core_outputs
 def fixture():
     """現行infraのgatewayFoundationと、配備済みbrokerの独立した合成出力。"""
     config, state = broker_fixture()
+    # このfixtureはCLIの正規化をmockするため、現行の固定Firewall入力を使う。
+    for field in ('snatPrivateRanges', 'idpsPrivateRanges'):
+        config['network']['firewall'].pop(field, None)
     state['apimInstanceId'] = apim_instance_id(config)
     stem, groups = config['resourceStem'], config['resourceGroupNames']
     state['outputs']['gatewayFoundation'] = {
@@ -32,6 +36,11 @@ def fixture():
         'sqlServer': 'sql-' + stem + '.database.windows.net',
         'sqlPrivateEndpointId': '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + groups['svc'] + '/providers/Microsoft.Network/privateEndpoints/pep-' + stem + '-sql',
         'environmentName': 'cae-' + stem, 'environmentDomain': 'environment.example.com',
+        'brokerEnvironmentName': 'cae-' + stem + '-broker',
+        'brokerEnvironmentId': credential_broker_lifecycle.broker_environment_id(config),
+        'brokerEnvironmentDomain': 'synthetic-broker.fixture.' + 'azurecontainerapps.io',
+        'brokerSubnetId': '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + groups['nw']
+                          + '/providers/Microsoft.Network/virtualNetworks/vnet-' + stem + '/subnets/snet-' + stem + '-broker',
         'registryName': 'acr' + stem.replace('-', ''),
     }
     host = config['gateway']['publicHostName']
@@ -62,6 +71,31 @@ class GatewayDeploymentTests(unittest.TestCase):
             acl = mock.patch('deployment.helpers.private_permissions._windows_owner_acl')
             acl.start()
             self.addCleanup(acl.stop)
+
+    def test_graph_obo_uses_api_identity_and_requires_target_vault_and_key_version(self):
+        config, state = fixture()
+        foundation = state['outputs']['gatewayFoundation']
+        config['entraTenantId'] = '88888888-8888-8888-8888-888888888888'
+        auth = config['gateway'].setdefault('authentication', {})
+        auth['credentialLogin'] = {'identity': {'clientId': config['subscriptionId']},
+                                   'providerNames': ['graph-delegated']}
+        entra = auth.setdefault('entra', {})
+        entra['audience'] = '77777777-7777-4777-8777-777777777777'
+        entra['requiredScope'] = 'Gateway.Invoke'
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = local_paths(config, Path(directory).resolve())
+            with self.assertRaisesRegex(ValueError, 'register|Register'):
+                gateway_obo_settings(config, workspace)
+            key_url = f"https://{foundation['vaultName']}.vault.azure.net/keys/gateway-obo/" + 'a' * 32
+            entra['obo'] = {'keyId': key_url, 'certificateThumbprint': '00' * 32}
+            self.assertEqual(gateway_obo_settings(config, workspace), {
+                'tenantId': config['entraTenantId'], 'clientId': entra['audience'],
+                'keyUrl': key_url, 'certificateThumbprint': 'A' * 43,
+            })
+            for wrong_url in (key_url.rsplit('/', 1)[0], key_url.replace('gateway-obo', 'portal-auth'), key_url + '?other=value'):
+                with self.subTest(wrong_url=wrong_url), self.assertRaisesRegex(ValueError, 'selected Core vault'):
+                    entra['obo']['keyId'] = wrong_url
+                    gateway_obo_settings(config, workspace)
 
     @contextmanager
     def isolated_cli(self, config, state):
@@ -218,7 +252,7 @@ class GatewayDeploymentTests(unittest.TestCase):
         transport = mock.Mock()
         transport.request.return_value = ok({
             'id': prefix + 'containerApps/' + state['outputs']['credentialBroker']['applicationName'],
-            'properties': {'managedEnvironmentId': prefix + 'managedEnvironments/cae-' + config['resourceStem'],
+            'properties': {'managedEnvironmentId': state['outputs']['gatewayFoundation']['brokerEnvironmentId'],
                            'provisioningState': 'Succeeded'},
         })
         self.assertTrue(credential_broker_lifecycle.discover_existing_application(config, transport))

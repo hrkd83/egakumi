@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { notifySubscriptionManagementRequired } from "../../lib/api-auth/browser.ts";
 import { apiKeyIdSchema, apiKeyClientTypeSchema, apimSubscriptionIdSchema, createApiKeySchema, transferApiKeyOwnershipSchema } from "../../lib/api-keys/contracts.ts";
 import type { ApiKeyOverview, ApiKeyRecord, ApiKeySecrets, CreateApiKeyInput } from "@/lib/api-keys/contracts";
 
@@ -38,7 +39,12 @@ export type ApiKeyCompany = z.infer<typeof companySchema>;
 /** 上流本文や秘密値を持たず、画面の翻訳キーだけに変換できるエラーです。 */
 export class ApiKeyClientError extends Error {
   readonly code: string;
-  constructor(code: string) { super(code); this.name = "ApiKeyClientError"; this.code = code; }
+  constructor(code: string) {
+    super(code);
+    this.name = "ApiKeyClientError";
+    this.code = code;
+    notifySubscriptionManagementRequired(code);
+  }
 }
 
 /**

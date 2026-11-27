@@ -1,0 +1,213 @@
+<policies>
+  <!-- RESTおよびSSEのAPIスコープ。render_apim_portal_policy.pyで操作・転送設定を展開します。 -->
+  <inbound>
+    <set-variable name="gatewayApiSettingsSource" value="aHR0cAp7InNlcnZpY2VDbGFzcyI6InBsYXRmb3JtIiwiYmFja2VuZFNlcnZpY2UiOiJmb3VuZHJ5IiwiYmFja2VuZEF1dGhlbnRpY2F0aW9uIjoibWFuYWdlZElkZW50aXR5IiwibWVhc3VyZW1lbnRSb2xlIjoiZXhlY3V0aW9uIiwibGxtT3BlcmF0aW9uSWRzIjpbXX0KeyJvcGVyYXRpb25JZCI6IiIsIm9wZXJhdGlvbkNvbnN0cmFpbnRzIjp7Im1lc3NhZ2VzIjp7ImtpbmQiOiJyZWdpc3RlcmVkT3BlcmF0aW9uIiwiYm9keUZvcm1hdCI6Impzb24iLCJtYXhSZXF1ZXN0Qnl0ZXMiOjIwNDgwMDB9fX0=" />
+    <include-fragment id="core-api-settings" fragment-id="core-api-settings" />
+    <base />
+    <include-fragment fragment-id="core-api-request-preparation" />
+    <include-fragment fragment-id="core-api-operation-settings" />
+    <include-fragment fragment-id="core-api-authentication-result" />
+    <choose>
+      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;allowed&quot;])">
+        <set-variable name="gatewayAuditPhase" value="policy-error" />
+        <set-variable name="gatewayAuditCode" value="AUTHENTICATION_PROCESSING_ERROR" />
+        <set-variable name="gatewayAuditStatus" value="@(500)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="500" reason="Gateway processing failed" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
+      </when>
+    </choose>
+    <!-- このポリシーの貼り付け先、許可Product、登録した操作を照合します。 -->
+    <set-variable name="gatewayManualAuthMethod" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;method&quot;])" />
+    <set-variable name="gatewayManualRouteAllowed" value="@(false)" />
+    <choose>
+      <when condition="@(context.Api.Id == &quot;manual-claude-messages&quot; &amp;&amp; context.Product != null &amp;&amp; (((string)context.Variables[&quot;gatewayManualAuthMethod&quot;] == &quot;subscriptionKey&quot; &amp;&amp; context.Product.Id == &quot;manual-model-users&quot;) || ((string)context.Variables[&quot;gatewayManualAuthMethod&quot;] == &quot;user&quot; &amp;&amp; context.Product.Id == &quot;manual-entra-users&quot;)))">
+        <choose>
+          <when condition="@(context.Operation.Id == &quot;messages&quot; &amp;&amp; context.Request.Method == &quot;POST&quot;)">
+            <rewrite-uri template="/anthropic/v1/messages" copy-unmatched-params="true" />
+            <set-variable name="gatewayManualRouteAllowed" value="@(true)" />
+          </when>
+        </choose>
+      </when>
+    </choose>
+    <choose>
+      <when condition="@(!(bool)context.Variables[&quot;gatewayManualRouteAllowed&quot;])">
+        <set-variable name="gatewayDecision" value="@{ var decision = JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]); decision[&quot;allowed&quot;] = false; return decision.ToString(Newtonsoft.Json.Formatting.None); }" />
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="AUTHORIZATION_DENIED" />
+        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="403" reason="API target is not authorized" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
+      </when>
+    </choose>
+    <!-- 文書化した上限の受信バイト数だけを確認します。提供元のJSON契約は提供元が検証します。 -->
+    <set-variable name="gatewayOperationConstraint" value="@(JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;constraint&quot;].ToString(Newtonsoft.Json.Formatting.None))" />
+    <include-fragment fragment-id="core-model-limits" />
+    <choose>
+      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;allowed&quot;])">
+        <set-variable name="gatewayAuditCode" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;code&quot;])" />
+        <set-variable name="gatewayAuditStatus" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;status&quot;])" />
+        <set-variable name="gatewayAuditPhase" value="@((int)context.Variables[&quot;gatewayAuditStatus&quot;] == 500 ? &quot;policy-error&quot; : &quot;rejected&quot;)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="@((int)context.Variables[&quot;gatewayAuditStatus&quot;] == 413 ? &quot;Request too large&quot; : &quot;Gateway processing failed&quot;)" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
+      </when>
+    </choose>
+    <set-variable name="gatewayRateLimitExempt" value="@(false)" />
+      <!-- core-subscription-profile-v1: 購読設定はSQLから読み、APIポリシーへ展開するsnippetです。 -->
+      <!-- cacheはXMLに保持し、取得応答の検査式だけを同名C#から展開します。Azure登録fragmentは追加しません。 -->
+      <set-variable name="gatewaySubscriptionProfile" value="{&quot;requestRate&quot;:null,&quot;tokensPerMinute&quot;:null,&quot;tokenQuota&quot;:null}" />
+      <choose>
+        <when condition="@((string)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;method&quot;] == &quot;user&quot;)">
+          <!-- 社員枠はserver設定だけから取得。購読profile API・SQL・cacheは使用しません。 -->
+          <include-fragment fragment-id="core-entra-user-profile" />
+        </when>
+        <when condition="@(&quot;{{core-subscription-profile-enabled}}&quot; == &quot;true&quot; &amp;&amp; !(bool)context.Variables[&quot;gatewayRateLimitExempt&quot;])">
+          <!-- 主キー・副キーは検証済み購読IDへ集約。設定の版をカウンターキーに含めません。 -->
+          <set-variable name="gatewayProfileCacheKey" value="@(&quot;core-profile-v1:&quot; + context.Deployment.ServiceName + &quot;:&quot; + context.Subscription.Id)" />
+          <cache-lookup-value key="@((string)context.Variables[&quot;gatewayProfileCacheKey&quot;])" variable-name="gatewayCachedProfile" caching-type="internal" />
+          <choose>
+            <when condition="@(!context.Variables.ContainsKey(&quot;gatewayCachedProfile&quot;))">
+              <send-request mode="new" response-variable-name="gatewayProfileResponse" timeout="5" ignore-error="true">
+                <set-url>{{core-subscription-profile-url}}</set-url>
+                <set-method>GET</set-method>
+                <set-header name="X-Core-Profile-Key" exists-action="override"><value>{{core-subscription-profile-secret}}</value></set-header>
+                <set-header name="X-Core-Profile-Subscription" exists-action="override"><value>@(context.Subscription.Id)</value></set-header>
+              </send-request>
+              <set-variable name="gatewayFetchedProfile" value="@{
+                /* 目的：SQL利用枠の取得応答を検査し、有効な購読profileだけを後段へ渡します。 */
+                /* 同名XMLのgatewayFetchedProfile式全体へ展開します。APIへinline展開し、Azure登録fragmentは追加しません。 */
+                /* 失敗時は空文字を返し、XML側が既存監査へpolicy-errorを記録して503で停止します。 */
+                /* 取得応答本文・例外詳細は監査へ渡しません。cache・社員分岐・503応答はXMLに保持します。 */
+
+                /* 接続失敗や200以外の応答は、利用枠なしとして通さず取得不備にします。 */
+                var response = context.Variables.GetValueOrDefault&lt;IResponse&gt;(&quot;gatewayProfileResponse&quot;, null);
+                if (response == null || response.StatusCode != 200) { return &quot;&quot;; }
+                try {
+                  var value = response.Body.As&lt;JObject&gt;();
+                  /* 形式の版と検証済み購読IDを照合します。別購読の枠を使いません。 */
+                  if (value[&quot;schemaVersion&quot;] == null || value[&quot;schemaVersion&quot;].Type != JTokenType.Integer || (int?)value[&quot;schemaVersion&quot;] != 1 || (string)value[&quot;subscriptionId&quot;] != context.Subscription.Id) { return &quot;&quot;; }
+                  var rate = value[&quot;requestRate&quot;];
+                  var tpm = value[&quot;tokensPerMinute&quot;];
+                  var quota = value[&quot;tokenQuota&quot;];
+                  /* 3項目の欠落と明示nullを区別します。明示nullは従来どおり制限なしです。 */
+                  if (rate == null || tpm == null || quota == null) { return &quot;&quot;; }
+                  /* 外部から取得する枠の型・範囲・期間を、従来と同じ条件で検査します。 */
+                  if (rate.Type != JTokenType.Null &amp;&amp; (rate.Type != JTokenType.Object || rate[&quot;calls&quot;] == null || rate[&quot;calls&quot;].Type != JTokenType.Integer || (int?)rate[&quot;calls&quot;] &lt; 1 || (int?)rate[&quot;calls&quot;] &gt; 1000000 || rate[&quot;renewalPeriodSeconds&quot;] == null || rate[&quot;renewalPeriodSeconds&quot;].Type != JTokenType.Integer || (int?)rate[&quot;renewalPeriodSeconds&quot;] &lt; 1 || (int?)rate[&quot;renewalPeriodSeconds&quot;] &gt; 300)) { return &quot;&quot;; }
+                  if (tpm.Type != JTokenType.Null &amp;&amp; (tpm.Type != JTokenType.Integer || (int)tpm &lt; 1)) { return &quot;&quot;; }
+                  if (quota.Type != JTokenType.Null &amp;&amp; (quota.Type != JTokenType.Object || quota[&quot;tokens&quot;] == null || quota[&quot;tokens&quot;].Type != JTokenType.Integer || (int?)quota[&quot;tokens&quot;] &lt; 1 || !new [] { &quot;Hourly&quot;, &quot;Daily&quot;, &quot;Weekly&quot;, &quot;Monthly&quot;, &quot;Yearly&quot; }.Contains((string)quota[&quot;period&quot;]))) { return &quot;&quot;; }
+                  /* 検査した既存profile JSONを返します。取得式の例外は既存の取得不備503へ揃えます。 */
+                  return value.ToString(Newtonsoft.Json.Formatting.None);
+                } catch { return &quot;&quot;; }
+              }" />
+              <choose><when condition="@(String.IsNullOrEmpty((string)context.Variables[&quot;gatewayFetchedProfile&quot;]))">
+                <!-- 取得障害を無制限と読み替えず、下流を呼ぶ前に停止します。 -->
+                <!-- 内部の取得不備を既存監査へ記録します。取得応答や例外詳細は記録しません。 -->
+                <set-variable name="gatewayAuditPhase" value="policy-error" />
+                <set-variable name="gatewayAuditCode" value="LIMIT_PROFILE_UNAVAILABLE" />
+                <set-variable name="gatewayAuditStatus" value="@(503)" />
+                <include-fragment fragment-id="core-gateway-telemetry" />
+                <return-response><set-status code="503" reason="Service Unavailable" />
+                  <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+                  <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+                  <set-header name="Retry-After" exists-action="override"><value>5</value></set-header>
+                  <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+                  <set-header name="X-Core-Error" exists-action="override"><value>LimitProfileUnavailable</value></set-header>
+                </return-response>
+              </when></choose>
+              <set-variable name="gatewayCachedProfile" value="@((string)context.Variables[&quot;gatewayFetchedProfile&quot;])" />
+              <cache-store-value key="@((string)context.Variables[&quot;gatewayProfileCacheKey&quot;])" value="@((string)context.Variables[&quot;gatewayFetchedProfile&quot;])" duration="30" caching-type="internal" />
+            </when>
+          </choose>
+          <set-variable name="gatewaySubscriptionProfile" value="@((string)context.Variables[&quot;gatewayCachedProfile&quot;])" />
+        </when>
+      </choose>
+    <include-fragment fragment-id="core-rate-limit" />
+    <!-- SQL未管理の購読に共通の回数枠がなければ、手動APIの枠を操作共通で使います。 -->
+    <choose>
+      <when condition="@((string)context.Variables[&quot;gatewayManualAuthMethod&quot;] == &quot;subscriptionKey&quot; &amp;&amp; !(bool)JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;])[&quot;enabled&quot;])">
+        <set-variable name="gatewayRateDecision" value="@{ var rate = JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;]); rate[&quot;renewalPeriodSeconds&quot;] = 60; return rate.ToString(Newtonsoft.Json.Formatting.None); }" />
+        <rate-limit-by-key id="manual-key-rate-limit" calls="60" renewal-period="60"
+          counter-key="@(&quot;manual-api-rate-v1:&quot; + context.Api.Id + &quot;:&quot; + context.Subscription.Id)" retry-after-variable-name="gatewayRateRetryAfter" />
+      </when>
+    </choose>
+    <!-- 入口の資格情報を外してから、固定接続先の認証を付けます。 -->
+    <set-header name="Authorization" exists-action="delete" />
+    <set-header name="{{core-subscription-key-header}}" exists-action="delete" />
+    <set-header name="api-key" exists-action="delete" />
+    <set-header name="x-api-key" exists-action="delete" />
+    <set-header name="Ocp-Apim-Subscription-Key" exists-action="delete" />
+    <set-header name="Cookie" exists-action="delete" />
+    <set-header name="X-Core-L7-Ingress" exists-action="delete" />
+    <set-header name="X-Core-Connection-Session" exists-action="delete" />
+    <set-header name="X-Core-Connection-Poll" exists-action="delete" />
+    <set-header name="X-Core-Connection-Transaction" exists-action="delete" />
+    <set-header name="X-Core-Profile-Key" exists-action="delete" />
+    <set-header name="X-Core-Profile-Subscription" exists-action="delete" />
+    <set-header name="X-Core-Agent-Parent-Id" exists-action="delete" />
+    <set-header name="X-Egakumi-Profile" exists-action="delete" />
+    <set-query-parameter name="api-key" exists-action="delete" />
+    <set-query-parameter name="subscription-key" exists-action="delete" />
+    <set-query-parameter name="x-api-key" exists-action="delete" />
+    <set-backend-service backend-id="manual-claude-foundry" />
+    <authentication-managed-identity resource="https://ai.azure.com" ignore-error="false" />
+    <set-variable name="gatewayAuditPhase" value="accepted" />
+    <set-variable name="gatewayAuditCode" value="GATEWAY_ALLOWED" />
+    <set-variable name="gatewayAuditStatus" value="@(0)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </inbound>
+  <backend>
+    <forward-request timeout="240" buffer-response="false" />
+  </backend>
+  <outbound>
+    <include-fragment fragment-id="core-backend-audit" />
+    <base />
+    <set-variable name="gatewayAuditPhase" value="backend-response" />
+    <set-variable name="gatewayAuditCode" value="BACKEND_RESPONSE" />
+    <set-variable name="gatewayAuditStatus" value="@(context.Response.StatusCode)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </outbound>
+  <on-error>
+    <base />
+      <!-- この固定policy IDの上限超過だけを扱います。下流の429や認証エラーを同じ原因にしません。
+           PIIのoperationにも埋め込み、親の上限超過がPII用502へ変わることを防ぎます。 -->
+      <choose>
+        <when condition="@((context.LastError.PolicyId == &quot;core-rate-limit&quot; || context.LastError.PolicyId == &quot;manual-key-rate-limit&quot;) &amp;&amp; context.LastError.Reason == &quot;RateLimitExceeded&quot;)">
+          <set-variable name="gatewayRateSafeRetryAfter" value="@{
+            /* 目的：上限超過応答のRetry-Afterへ、標準ポリシーの値または既存の代替値を渡します。 */
+            /* 回数枠を読める場合は既存の期間を使い、変数がない場合だけ60秒にします。 */
+            var fallback = context.Variables.ContainsKey(&quot;gatewayRateDecision&quot;) ? (int)JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;])[&quot;renewalPeriodSeconds&quot;] : 60;
+            var seconds = 0;
+            if (context.Variables.ContainsKey(&quot;gatewayRateRetryAfter&quot;) &amp;&amp; Int32.TryParse(Convert.ToString(context.Variables[&quot;gatewayRateRetryAfter&quot;]), out seconds) &amp;&amp; seconds &gt;= 1 &amp;&amp; seconds &lt;= 300) { return seconds.ToString(); }
+            return fallback.ToString();
+          }" />
+          <set-variable name="gatewayAuditPhase" value="rejected" />
+          <set-variable name="gatewayAuditCode" value="RATE_LIMIT_EXCEEDED" />
+          <set-variable name="gatewayAuditStatus" value="@(429)" />
+          <include-fragment fragment-id="core-gateway-telemetry" />
+          <!-- 本文なしの固定応答はWebSocketのonHandshakeにも適用できます。生のエラーは返しません。 -->
+          <return-response>
+            <set-status code="429" reason="Caller request rate exceeded" />
+            <set-header name="Retry-After" exists-action="override"><value>@((string)context.Variables[&quot;gatewayRateSafeRetryAfter&quot;])</value></set-header>
+            <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+            <set-header name="X-Core-Error-Code" exists-action="override"><value>RATE_LIMIT_EXCEEDED</value></set-header>
+            <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+          </return-response>
+        </when>
+      </choose>
+    <set-variable name="gatewayAuditPhase" value="policy-error" />
+    <set-variable name="gatewayAuditCode" value="POLICY_ERROR" />
+    <set-variable name="gatewayAuditStatus" value="@(context.Response != null &amp;&amp; context.Response.StatusCode &gt;= 400 ? context.Response.StatusCode : 0)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </on-error>
+</policies>

@@ -13,9 +13,11 @@ GENERATION = 'egakumi-portal-api-auth-generation'
 API_VERSION = '2024-11-01'
 
 
-def deployment_settings(config, portal, identity_scope):
+def deployment_settings(config, portal, identity_scope, *, management=False):
     """API試用のscopeと用途専用の読取IDを照合する。"""
-    if not config['portal'].get('apiAuthentication', {}).get('enabled'):
+    settings = config['portal'].get('apiAuthentication', {})
+    trial_enabled = settings.get('enabled') is True
+    if not (trial_enabled or management):
         return {}
     authentication = config['portal']['authentication']
     gateway = config['gateway']['authentication']['entra']
@@ -25,7 +27,8 @@ def deployment_settings(config, portal, identity_scope):
             or gateway['requiredScope'] != 'Gateway.Invoke'
             or not isinstance(identity, dict) or str(identity.get('id', '')).casefold() != expected.casefold()):
         raise ValueError('Portal API authentication requires the dedicated identity and the Gateway API registration')
-    return {'identity': identity, 'scope': 'api://' + gateway['audience'] + '/Gateway.Invoke'}
+    return {'identity': identity, 'scope': 'api://' + gateway['audience'] + '/Gateway.Invoke' if trial_enabled else '',
+            'previousKeyVersions': settings.get('previousKeyVersions', [])}
 
 
 def _key_metadata(config, resource, body):
@@ -52,6 +55,8 @@ def ensure_initial_key(config, workspace, transport, save_json):
     url = scope + '?api-version=' + API_VERSION
     path = workspace.checked(workspace.state / 'portal-api-auth-key.json')
     binding = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
+    settings = config.get('portal', {}).get('apiAuthentication', {})
+    pinned_version = settings.get('keyVersion')
     record = {}
     if path.exists():
         check_private_permissions(path)
@@ -62,6 +67,8 @@ def ensure_initial_key(config, workspace, transport, save_json):
             raise ValueError('Portal API storage key state belongs to another environment or is invalid')
     response = transport.request('GET', url)
     if response['statusCode'] == 404:
+        if pinned_version:
+            raise ValueError('The configured Portal API storage key version is missing')
         if record:
             raise ValueError('Portal API storage key creation is pending or the recorded version is missing; inspect the existing request')
         generation = secrets.token_hex(16)
@@ -78,6 +85,9 @@ def ensure_initial_key(config, workspace, transport, save_json):
     if response['statusCode'] != 200:
         raise ValueError('Portal API storage key is not yet readable; retain its protected state')
     uri, generation = _key_metadata(config, scope, response.get('body'))
+    version = uri.rsplit('/', 1)[-1]
+    if (pinned_version and pinned_version != version) or version in settings.get('previousKeyVersions', []):
+        raise ValueError('Configured Portal API storage key versions differ from the verified deployment')
     if record and (record['generation'] != generation or record.get('keyUrl', uri) != uri):
         raise ValueError('Portal API storage key changed outside the recorded deployment; existing credentials were preserved')
     if not record:

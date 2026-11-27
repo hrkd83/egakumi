@@ -19,6 +19,7 @@ from uuid import UUID
 from deployment.helpers.configuration import entra_tenant_id
 from deployment.helpers.paths import REPOSITORY, LocalPaths, private_output, private_parent
 from deployment.helpers.private_permissions import check_private_permissions, protect_new_path
+from operations.common import OperationError, lock_environment
 
 
 PROVIDER = "aigateway"
@@ -78,6 +79,7 @@ def check_catalog_metadata(catalog: dict) -> None:
 def render_files(
     params: dict,
     *,
+    client_id: str,
     mode: str,
     model: str,
     redirect_port: int,
@@ -91,7 +93,7 @@ def render_files(
         raise ValueError("Expected a DNS name without scheme, port or path")
     tenant = guid(entra_tenant_id(params))
     api = guid(gateway["authentication"]["entra"]["audience"])
-    client = guid(params["codex"]["clientId"])
+    client = guid(client_id)
     if len({tenant, api, client}) != 3:
         raise ValueError("Expected separate tenant, API and Codex client identifiers")
     if not 1 <= redirect_port <= 65535 or (enforce_provider and mode != "dedicated"):
@@ -180,22 +182,29 @@ def main() -> int:
             raise ValueError("Expected an existing absolute checkout")
         private_output(repository / ".local" / ".codex-endpoint-boundary", REPOSITORY)
         runtime = LocalPaths(repository, args.environment)
-        params = read_protected_json(runtime, runtime.params)
-        if params.get("environmentName") != runtime.environment:
-            raise ValueError("Parameters must match the selected environment")
-        catalog = None
-        catalog_install_path = None
-        if args.windows_catalog:
-            catalog = read_protected_json(runtime, runtime.secrets / "codex-models.json")
-            settings = read_protected_json(runtime, runtime.secrets / "codex-endpoint.json")
-            catalog_install_path = settings["catalogInstallPath"]
-            if not isinstance(catalog_install_path, str) or not catalog_install_path:
-                raise ValueError("Expected catalogInstallPath")
-        files = render_files(
-            params, mode=args.mode, model=args.model, redirect_port=args.redirect_port,
-            enforce_provider=args.enforce_provider, catalog=catalog, catalog_install_path=catalog_install_path,
-        )
-        write_bundle(runtime, args.revision, files)
+        with lock_environment(runtime):
+            params = read_protected_json(runtime, runtime.params)
+            if params.get("environmentName") != runtime.environment:
+                raise ValueError("Parameters must match the selected environment")
+            settings_path = runtime.checked(runtime.secrets / "codex-endpoint.json")
+            settings = read_protected_json(runtime, settings_path) if settings_path.exists() else {}
+            # Keep accepting existing endpoint bundles that took the client ID from the deployment parameters.
+            client_id = settings["clientId"] if "clientId" in settings else params.get("codex", {}).get("clientId")
+            catalog = None
+            catalog_install_path = None
+            if args.windows_catalog:
+                catalog = read_protected_json(runtime, runtime.secrets / "codex-models.json")
+                catalog_install_path = settings["catalogInstallPath"]
+                if not isinstance(catalog_install_path, str) or not catalog_install_path:
+                    raise ValueError("Expected catalogInstallPath")
+            files = render_files(
+                params, client_id=client_id, mode=args.mode, model=args.model, redirect_port=args.redirect_port,
+                enforce_provider=args.enforce_provider, catalog=catalog, catalog_install_path=catalog_install_path,
+            )
+            write_bundle(runtime, args.revision, files)
+    except OperationError as error:
+        print(f"CODEX_BUNDLE_FAILED. {error}", file=sys.stderr)
+        return 1
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         print("CODEX_BUNDLE_FAILED. Check the protected input, endpoint options and unused revision.", file=sys.stderr)
         return 1

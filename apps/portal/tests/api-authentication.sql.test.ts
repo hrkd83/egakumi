@@ -52,3 +52,29 @@ test("API認証取引は一回消費し、解除後は同じ世代と期限切�
   await store.finishCallStop(cleanup, true);
   assert.equal((await store.claimCallStop(cleanup, ciphertext, validUntil, validUntil)).confirmed, true);
 });
+
+test("Gatewayと購読管理の認証取引は、同じ本人でもそれぞれの解除や状態に影響しない", localSqlTest, async (context) => {
+  const { admin, runtime } = await createLocalSqlTestDatabase(context);
+  const tenantId = randomUUID(), objectId = randomUUID(), userId = randomUUID(), sessionId = randomUUID();
+  const hash = () => randomBytes(32).toString("hex");
+  const gatewayBinding = { tenantId, objectId, sessionId, hash: hash() };
+  const managementBinding = { ...gatewayBinding, hash: hash() };
+  await sql`INSERT dbo.portalUser(id,name,email,createdAt,updatedAt,entraTenantId,entraObjectId)
+    VALUES(${userId},'Example User','user@example.invalid',SYSUTCDATETIME(),SYSUTCDATETIME(),${tenantId},${objectId})`.execute(admin);
+  await sql`INSERT dbo.portalSession(id,expiresAt,token,createdAt,updatedAt,userId)
+    VALUES(${sessionId},DATEADD(hour,1,SYSUTCDATETIME()),${hash()},SYSUTCDATETIME(),SYSUTCDATETIME(),${userId})`.execute(admin);
+  const gateway = new ApiAuthStore(runtime);
+  const management = new ApiAuthStore(runtime, "subscription-management");
+  await management.assertReady();
+  const gatewayAttempt = randomUUID(), managementAttempt = randomUUID(), gatewayState = hash(), managementState = hash();
+  const correlation = hash(), ciphertext = randomBytes(75);
+  assert.equal(await gateway.begin(gatewayBinding, gatewayAttempt), 0);
+  await gateway.putTransaction(gatewayBinding, gatewayAttempt, 0, gatewayState, correlation, ciphertext);
+  assert.equal(await management.begin(managementBinding, managementAttempt), 0);
+  await management.putTransaction(managementBinding, managementAttempt, 0, managementState, correlation, ciphertext);
+  assert.equal(await management.pendingTransaction(gatewayState, correlation), undefined);
+  assert.equal(await gateway.pendingTransaction(managementState, correlation), undefined);
+  assert.equal((await management.pendingTransaction(managementState, correlation))?.attemptId.toLowerCase(), managementAttempt);
+  await gateway.disconnect(gatewayBinding);
+  assert.equal((await management.pendingTransaction(managementState, correlation))?.attemptId.toLowerCase(), managementAttempt);
+});

@@ -2,6 +2,7 @@ import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 
 import { ApiKeyError, type ApiKeyActor, type ApiKeyOverview } from "./api-keys/contracts.ts";
+import { subscriptionManagementRequiredCode, subscriptionManagementRequiredHeader } from "./api-auth/purpose.ts";
 import { modelKeyChoicesSchema } from "./model-key-choices.ts";
 import { getExecutableModelTargets } from "./model-catalog.ts";
 import { getExecutableToolTargets } from "./tool-execution-targets.ts";
@@ -36,6 +37,11 @@ export async function handleModelKeyChoices(request: Request, dependencies: Mode
     // 台帳や上流が持つ他のフィールドは公開しません。返す形も送信前に検証します。
     return Response.json(modelKeyChoicesSchema.parse({ keys }), { headers: responseHeaders });
   } catch (error) {
+    if (error instanceof ApiKeyError && error.status === 401 && error.code === subscriptionManagementRequiredCode) {
+      return Response.json({ error: { code: subscriptionManagementRequiredCode } }, {
+        status: 401, headers: { ...responseHeaders, [subscriptionManagementRequiredHeader]: "required" },
+      });
+    }
     const denied = error instanceof ApiKeyError && error.status < 500;
     return Response.json({ error: { code: denied ? "ApiKeyUnavailable" : "ApiKeyAccessUnavailable" } }, { status: denied ? 403 : 503, headers: responseHeaders });
   }

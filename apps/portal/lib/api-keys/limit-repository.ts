@@ -19,6 +19,7 @@ type LimitRow = {
   tokenQuotaPeriod: "Hourly" | "Daily" | "Weekly" | "Monthly" | "Yearly" | null;
   updatedAt: string;
 };
+type ProfileRow = { ready: boolean; version: null } | (LimitRow & { ready: boolean });
 type KeyScope = Pick<ApiKeyRecord, "groupId" | "productId" | "state"> & { groupName: string; securityEnabled: boolean | null };
 
 /** 制限設定だけを永続化します。使用量カウンターやAPIMキーは保存しません。 */
@@ -142,20 +143,11 @@ export class SqlApiKeyLimitRepository implements ApiKeyLimitRepository {
   async getGatewayProfile(tenant: string, subscriptionId: string): Promise<ApiKeyLimitProfile | null> {
     const tenantId = guid.parse(tenant), id = gatewaySubscriptionIdSchema.parse(subscriptionId);
     return safe(async () => {
-      const row = (await sql<LimitRow & { state: ApiKeyRecord["state"]; keyId: string; enabledGroup: boolean; enabledProduct: boolean;
-        directoryStatus: string }>`
-        SELECT k.id AS keyId, k.state, g.enabled AS enabledGroup, p.enabled AS enabledProduct,
-          g.directoryStatus,
-          l.version, l.requestCalls, l.requestRenewalSeconds, l.tokensPerMinute, l.tokenQuota, l.tokenQuotaPeriod,
-          CASE WHEN l.updatedAt IS NULL THEN NULL ELSE CONVERT(varchar(23), l.updatedAt, 126) + 'Z' END AS updatedAt
-        FROM dbo.portalApiKey k
-        JOIN dbo.portalApiKeyGroup g ON g.tenantId=k.tenantId AND g.groupId=k.groupId
-        JOIN dbo.portalApiKeyProduct p ON p.tenantId=k.tenantId AND p.groupId=k.groupId AND p.productId=k.productId
-        LEFT JOIN dbo.portalApiKeyLimit l ON l.tenantId=k.tenantId AND l.apiKeyId=k.id
-        WHERE k.tenantId=${dbGuid(tenantId)} AND k.apimSubscriptionId=${dbSubscriptionId(id)}`.execute(this.database)).rows[0];
+      const row = (await sql<ProfileRow>`EXEC dbo.portalReadSubscriptionProfile
+        @tenantId=${tenantId}, @apimSubscriptionId=${id}`.execute(this.database)).rows[0];
       if (!row) return null;
       // 発行カタログの変更で既存キーの制限を失効させず、明示的な承認停止は維持します。
-      if (row.state !== "active" || !row.enabledGroup || !row.enabledProduct) throw new ApiKeyError("SubscriptionNotReady", 403);
+      if (row.ready !== true) throw new ApiKeyError("SubscriptionNotReady", 403);
       return row.version === null ? unlimitedApiKeyLimits() : profile(row);
     });
   }

@@ -29,6 +29,7 @@ import ssl
 import stat
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, unquote, urlparse
@@ -54,8 +55,8 @@ class DnsProviderMismatchError(ConfigurationError):
 
 
 RG_KINDS = ("id", "nw", "monitor", "svc", "maint")
+SUBNET_KINDS = ("agw", "firewall", "apim", "pep", "management", "aca", "broker")
 RFC1918_CIDRS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
-SUBNET_KINDS = ("agw", "firewall", "apim", "pep", "management", "aca")
 # 観測対象の操作・受付へ付けるラベルです。サービスやモデルの種類を列挙しません。
 QUERY_OBSERVATION_ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 TOP_KEYS = {
@@ -63,7 +64,7 @@ TOP_KEYS = {
     "schemaVersion", "productName", "environmentName", "subscriptionId",
     "azureTenantId", "entraTenantId", "location", "foundryLocation", "apiCenterLocation", "tags", "network",
     "services", "gateway", "management", "monitoring", "certificate", "firewallTlsInspection", "authorization",
-    "apiDefinitions", "publishApis", "credentialProviders", "portal", "codex", "credentialBroker", "portalAuthentication", "portalApiKeys",
+    "apiDefinitions", "publishApis", "credentialProviders", "portal", "credentialBroker", "portalAuthentication", "portalApiKeys", "codex", "auditEvidence",
 }
 NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 API_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
@@ -379,10 +380,10 @@ def _principals(value: Any, path: str) -> list[dict]:
     return result
 
 
-def _network(raw: Any) -> dict:
+def _network(raw: Any, *, audit_evidence_enabled: bool = False) -> dict:
     """VNet・サブネット・NSG・ルート・FW設定を検査し、省略可能な標準値を補う。
 
-    アドレス範囲の包含と重なり、ゾーン、DNS、Standard/Premiumの機能差など、
+    アドレス範囲の包含と重なり、ゾーン、DNS、Premiumの検査設定など、
     個々の値だけでは分からない組合せもここで確認する。
     """
     n = _object(copy.deepcopy(raw), "network", {
@@ -390,38 +391,46 @@ def _network(raw: Any) -> dict:
         "appGatewayZones", "dnsTtl",
     })
     spaces = _cidrs(n.get("addressSpaces"), "network.addressSpaces", minimum=1)
-    prefixes = _object(n.get("subnetPrefixes"), "network.subnetPrefixes", {*SUBNET_KINDS, "certificate"})
-    if not set(SUBNET_KINDS) <= set(prefixes):
-        _fail("network.subnetPrefixes", "must define exactly agw, firewall, apim, pep, management and aca")
+    subnet_kinds = (*SUBNET_KINDS, "certificate", "audit")
+    prefixes = _object(n.get("subnetPrefixes"), "network.subnetPrefixes", set(subnet_kinds))
+    if not set(SUBNET_KINDS[:-1]) <= prefixes.keys():
+        _fail("network.subnetPrefixes", "must define agw, firewall, apim, pep, management and aca")
+    if audit_evidence_enabled and "audit" not in prefixes:
+        _fail("network.subnetPrefixes.audit", "must specify a dedicated /27 or larger for audit evidence")
     # まずVNet内の住所の区切りを検査する。各サブネットが個別に正しいCIDRでも、
     # 互いに重なっていたりVNet外だったりすれば、後続リソースを配置できない。
     networks = [ipaddress.ip_network(item) for item in spaces]
     if any(left.overlaps(right) for i, left in enumerate(networks) for right in networks[i + 1:]):
         _fail("network.addressSpaces", "address spaces overlap")
     subnet_networks = []
-    for key in (*SUBNET_KINDS, "certificate") if "certificate" in prefixes else SUBNET_KINDS:
+    for key in (kind for kind in subnet_kinds if kind in prefixes):
         item = _cidrs([prefixes[key]], "network.subnetPrefixes." + key, minimum=1)[0]
         subnet = ipaddress.ip_network(item)
-        maximum_prefix = {"agw": 24, "pep": 24, "aca": 27, "certificate": 27}.get(key, 26)
+        maximum_prefix = {"agw": 24, "pep": 24, "aca": 27, "broker": 27, "certificate": 27, "audit": 27}.get(key, 26)
         if subnet.prefixlen > maximum_prefix or not any(subnet.subnet_of(parent) for parent in networks):
             _fail("network.subnetPrefixes." + key, "must fit the address space and meet the designed subnet size")
         subnet_networks.append(subnet)
     if any(left.overlaps(right) for i, left in enumerate(subnet_networks) for right in subnet_networks[i + 1:]):
         _fail("network.subnetPrefixes", "subnets overlap")
-    if "certificate" not in prefixes:
-        # Existing config can adopt a stable /27 from unused space; never
-        # choose another range by probing live or private inputs.
-        available = []
-        for space in networks:
-            blocks = [space]
-            for allocated in (subnet for subnet in subnet_networks if subnet.subnet_of(space)):
-                blocks = [remainder for block in blocks for remainder in
-                          (block.address_exclude(allocated) if allocated.subnet_of(block) else (block,))]
-            available.extend(block for block in blocks if block.prefixlen <= 27)
+    for key in ("certificate", "broker"):
+        if key in prefixes:
+            continue
+        free = networks
+        for used in subnet_networks:
+            free = [part for candidate in free for part in
+                    (candidate.address_exclude(used) if used.subnet_of(candidate) else [candidate])]
+        available = sorted(part for part in free if part.prefixlen <= 27)
         if not available:
-            _fail("network.subnetPrefixes.certificate", "requires an unused /27 or larger subnet; extend the declared VNet space")
-        first_block = min(available, key=lambda network: network.network_address)
-        prefixes["certificate"] = str(next(first_block.subnets(new_prefix=27)))
+            _fail("network.subnetPrefixes." + key, "requires a dedicated /27 or larger inside the VNet address space")
+        if key == "broker":
+            block = next((item for item in available if item.prefixlen <= 26), available[0])
+            prefix_len = max(26, block.prefixlen)
+        else:
+            block = available[0]
+            prefix_len = 27
+        selected = next(block.subnets(new_prefix=prefix_len))
+        subnet_networks.append(selected)
+        prefixes[key] = str(selected)
     # 公開設定ではtrue=伝播、false=非伝播と読む。ARMのdisable指定への反転は
     # Bicep側で行い、利用者が否定の否定を読み解く必要をなくす。
     routes = _object(n.get("bgpRoutePropagation", {}), "network.bgpRoutePropagation", {"agw", "apim", "management"})
@@ -1005,6 +1014,15 @@ def entra_tenant_id(configuration: dict) -> str:
     return configuration.get("entraTenantId", configuration.get("azureTenantId"))
 
 
+def entra_app_separation_enabled(configuration: dict) -> bool:
+    """API、Graph用Tools、本人確認用Credentialを分けた基盤を判定する。"""
+    authentication = configuration.get("gateway", {}).get("authentication", {})
+    login = authentication.get("credentialLogin") or {}
+    providers = login.get("providerNames")
+    return bool(authentication.get("entra") and login.get("identity")
+                and isinstance(providers, list) and "graph-delegated" in providers)
+
+
 def _portal_authentication(value: Any) -> dict:
     """ポータル専用DBの設定を補い、SQLのSKUに矛盾する組合せを拒否する。
 
@@ -1107,6 +1125,8 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     """
     c = copy.deepcopy(_object(raw, "configuration", TOP_KEYS))
     _no_secrets(c)
+    # 旧paramsのCodex設定はクライアント専用CLIだけが読む。基盤設定には含めない。
+    c.pop("codex", None)
     if "firewallTlsInspection" in c:
         c["firewallTlsInspection"] = _firewall_tls_inspection(c["firewallTlsInspection"], Path(base_directory))
     c["portalAuthentication"] = _portal_authentication(c.get("portalAuthentication", {}))
@@ -1145,7 +1165,17 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     if any(not isinstance(key, str) or not isinstance(value, str) for key, value in tags.items()):
         _fail("tags", "keys and values must be strings")
     c["tags"] = {**tags, "product": c["productName"], "environment": c["environmentName"]}
-    c["network"] = _network(c.get("network"))
+    audit_evidence = _object(c.setdefault("auditEvidence", {}), "auditEvidence", {
+        "enabled", "eventHubsSku", "payloadImmutabilityMode", "payloadRetentionDays",
+    })
+    enabled = _bool(audit_evidence.setdefault("enabled", False), "auditEvidence.enabled")
+    _choice(audit_evidence.setdefault("eventHubsSku", "Standard"), "auditEvidence.eventHubsSku", ("Standard", "Premium"))
+    immutability = _choice(audit_evidence.setdefault("payloadImmutabilityMode", "Disabled"),
+                           "auditEvidence.payloadImmutabilityMode", ("Disabled", "Locked"))
+    retention_default, retention_maximum = (2557, 146000) if immutability == "Locked" else (30, 365)
+    _integer(audit_evidence.setdefault("payloadRetentionDays", retention_default),
+             "auditEvidence.payloadRetentionDays", 1, retention_maximum)
+    c["network"] = _network(c.get("network"), audit_evidence_enabled=enabled)
     s = _object(c.get("services"), "services", {"publisherName", "publisherEmail", "apimInstanceId", "apimSkuName", "apimCapacity", "apiCenterSkuName", "vaultSkuName", "vaultRetentionDays", "vaultPurgeProtection", "modelDeployments", "projectDisplayName", "projectDescription", "enableApiCenterIntegration", "catalogEnvironmentKind", "catalogLifecycleStage", "grantApimSecretAccess", "speechEnabled", "grantApimFoundryModelsAccess"})
     try:
         apim_instance_id(c)
@@ -1228,6 +1258,8 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         if "identity" in login:
             identity_path = q + ".identity"
             identity = _object(login["identity"], identity_path, {"tenantId", "clientId", "clientSecretFile"})
+            if entra_app_separation_enabled(c):
+                identity.setdefault("tenantId", c["entraTenantId"])
             for field in ("tenantId", "clientId"):
                 identity[field] = _guid(identity.get(field), identity_path + "." + field)
             identity["clientSecretFile"] = _secret_path(identity.get("clientSecretFile"), identity_path + ".clientSecretFile", Path(base_directory).resolve())
@@ -1362,6 +1394,8 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     if "authentication" in portal:
         auth_path = "portal.authentication"
         auth = _object(portal["authentication"], auth_path, {"tenantId", "clientId", "keyId", "certificateThumbprint"})
+        if entra_app_separation_enabled(c):
+            auth.setdefault("tenantId", c["entraTenantId"])
         for field in ("tenantId", "clientId"):
             auth[field] = _guid(auth.get(field), auth_path + "." + field)
         if ("keyId" in auth) != ("certificateThumbprint" in auth):
@@ -1375,6 +1409,16 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
             if not re.fullmatch(r"[a-fA-F0-9]{40}", thumbprint):
                 _fail(auth_path + ".certificateThumbprint", "must be the public certificate SHA-1 thumbprint paired with the key version")
             auth["certificateThumbprint"] = thumbprint.lower()
+    if "apiAuthentication" in portal:
+        path = "portal.apiAuthentication"
+        trial = _object(portal["apiAuthentication"], path, {"enabled", "keyVersion", "previousKeyVersions"})
+        _bool(trial.setdefault("enabled", False), path + ".enabled")
+        previous = _strings(trial.get("previousKeyVersions", []), path + ".previousKeyVersions")
+        versions = previous + ([trial["keyVersion"]] if "keyVersion" in trial else [])
+        if any(not isinstance(version, str) or not re.fullmatch(r"[a-f0-9]{32}", version) for version in versions):
+            _fail(path, "storage key versions must be exact lowercase Key Vault versions")
+        if len(previous) > 4 or len(set(versions)) != len(versions):
+            _fail(path, "storage key versions must be distinct and include at most four previous versions")
     portal_host = _host(portal.get("publicHostName"), "portal.publicHostName")
     cert = c.get("certificate")
     validate_supported_certificate(cert)
@@ -1396,9 +1440,13 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
                               "certificate.certificateName", maximum=80)
     if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", https_cert_name):
         _fail("certificate.certificateName", "must be a Key Vault certificate identifier")
-    # Key Vault treats object identifiers as case-insensitive.
-    if portal_cert_name == https_cert_name.casefold():
+    public_cert_name = https_cert_name.casefold()
+    if portal_cert_name == public_cert_name:
         _fail("portal.certificate.certificateName", "must differ from the HTTPS certificate name")
+    if public_cert_name == "gateway-obo" or public_cert_name.startswith("core-"):
+        _fail("certificate.certificateName", "must not use a reserved Key Vault object name")
+    if portal_cert_name == "gateway-obo" or portal_cert_name.startswith(("core-", public_cert_name + "-acme-")):
+        _fail("portal.certificate.certificateName", "must not use a reserved Key Vault object name")
     _integer(cert.setdefault("renewBeforeDays", 30), "certificate.renewBeforeDays", 1, 60)
     _integer(cert.setdefault("checkEveryHours", 12), "certificate.checkEveryHours", 1, 24)
     _integer(cert.setdefault("dnsSleepSeconds", 60), "certificate.dnsSleepSeconds", 10, 600)
@@ -1513,8 +1561,14 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
                            [api, *(operation["backendOverride"] for operation in api["operations"] if "backendOverride" in operation)]]
     if any(backend["backendAuthentication"]["mode"] == "speechEntra" for backend in registered_backends) and not s["speechEnabled"]:
         _fail("services.speechEnabled", "must be enabled for registered Speech Entra backends; external resource RBAC remains an explicit prerequisite")
-    if any(api["backendAuthentication"]["mode"] == "keyVaultHeader" for api in c["apiDefinitions"]) and not s["grantApimSecretAccess"]:
+    key_vault_backends = [backend["backendAuthentication"] for backend in registered_backends
+                          if backend["backendAuthentication"]["mode"] == "keyVaultHeader"]
+    if key_vault_backends and not s["grantApimSecretAccess"]:
         _fail("services.grantApimSecretAccess", "must be enabled for registered backend Key Vault credentials")
+    tls_vault_host = ".".join((f"kv-{stem}-tls", "vault.azure.net"))
+    if any(urlparse(authentication["secretIdentifier"]).hostname == tls_vault_host
+           for authentication in key_vault_backends):
+        _fail("apiDefinitions.backendAuthentication.secretIdentifier", "must not reference the public TLS certificate vault")
     for api in c["apiDefinitions"]:
         connection = api.get("credentialConnection")
         if connection:
@@ -1529,7 +1583,6 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     # カタログ用の説明も無料の設定検査で作れることを先に確認する。
     # 説明自体はBicep入力時にだけ追加し、利用者の設定ファイルへは混ぜない。
     with_catalog_descriptions(c)
-    portal = _object(c.get("portal"), "portal", PARAMETER_SECTION_KEYS["portal"])
     host = _host(portal.get("publicHostName"), "portal.publicHostName")
     if not host.startswith("portal.") or host == g["publicHostName"]:
         _fail("portal.publicHostName", "must be a distinct portal subdomain")
@@ -1547,7 +1600,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
 
 
 def _validate_separated_entra_apps(config, portal, authentication, providers):
-    """新規5アプリ構成の入力を、Portalの登録前後で段階的に照合します。"""
+    """基盤のアプリ登録をPortalの登録前後で照合する。"""
     api = authentication.get("entra", {})
     obo = api.get("obo")
     if obo:
@@ -1557,32 +1610,29 @@ def _validate_separated_entra_apps(config, portal, authentication, providers):
         prefix = application_vault_origin(config["resourceStem"]) + "/keys/gateway-obo/"
         if not re.fullmatch(re.escape(prefix) + r"[a-f0-9]{32}", obo["keyId"]):
             _fail("gateway.authentication.entra.obo.keyId", "must pin the dedicated key in this foundation")
-    final = "codex" in config
+    separated = entra_app_separation_enabled(config)
     if "apiAuthentication" in portal:
-        trial = _object(portal["apiAuthentication"], "portal.apiAuthentication", {"enabled"})
+        trial = _object(portal["apiAuthentication"], "portal.apiAuthentication", {"enabled", "keyVersion", "previousKeyVersions"})
         _bool(trial.get("enabled"), "portal.apiAuthentication.enabled")
-        if trial["enabled"] and not final:
-            _fail("portal.apiAuthentication", "requires the five-app registration inputs")
-    if not final:
+        if trial["enabled"] and not separated:
+            _fail("portal.apiAuthentication", "requires the dedicated API, Tools and Credential registrations")
+    if not separated:
         return
-    codex = _object(config["codex"], "codex", {"clientId"})
-    codex_id = _guid(codex.get("clientId"), "codex.clientId")
     login = authentication.get("credentialLogin", {})
     credential = login.get("identity", {})
     tools = next((p for p in providers if p["name"] == "graph-delegated"), {})
     portal_app = portal.get("authentication", {})
     if (api.get("requiredScope") != "Gateway.Invoke" or tools.get("identityProvider") != "aad"
-            or "graph-delegated" not in login.get("providerNames", [])
             or tools.get("oauthTenantId") != config["entraTenantId"]
             or credential.get("tenantId") != config["entraTenantId"] or not credential.get("clientId")):
-        _fail("codex", "requires the dedicated API, Tools and Credential registrations in the authentication tenant")
-    clients = [api["audience"], tools["clientId"], credential["clientId"], codex_id]
+        _fail("gateway.authentication", "requires the dedicated API, Tools and Credential registrations in the authentication tenant")
+    clients = [api["audience"], tools["clientId"], credential["clientId"]]
     if portal_app:
         if portal_app["tenantId"] != config["entraTenantId"]:
             _fail("portal.authentication.tenantId", "must match the authentication tenant")
         clients.append(portal_app["clientId"])
     if len(set(value.casefold() for value in clients)) != len(clients):
-        _fail("codex", "requires a distinct client ID for each application")
+        _fail("gateway.authentication", "requires a distinct client ID for each application")
     if tools["clientSecretFile"] == credential["clientSecretFile"]:
         _fail("credentialProviders.graphDelegated.clientSecretFile", "Tools and Credential must use separate protected files")
     if portal["certificate"]["certificateName"] == "gateway-obo":
@@ -1758,7 +1808,10 @@ def load_configuration_source(path: Path | str) -> dict:
     従来の合成済みJSONも読めるが、企業paramsの入力範囲は小さく制限する。
     """
     source = Path(path).expanduser().resolve()
-    raw = _read_configuration_source(source)
+    return _compose_configuration_source(source, _read_configuration_source(source))
+
+
+def _compose_configuration_source(source: Path, raw: dict) -> dict:
     if "configFile" not in raw:
         return _resolve_file_references(raw, source.parent)
     _reject_fixed_initial_inputs(raw, "params")
@@ -1820,9 +1873,14 @@ def load_configuration_source(path: Path | str) -> dict:
     return apply_initial_configuration(combined, fail=_fail)
 
 
-def load_configuration(path: Path | str) -> dict:
+def load_configuration(path: Path | str, *, validate_parameters: Callable[[dict], None] | None = None) -> dict:
     """ファイル読込・params/config合成・全体検査を1つの入口として実行する。"""
-    return normalize_configuration(load_configuration_source(path))
+    source = Path(path).expanduser().resolve()
+    raw = _read_configuration_source(source)
+    config = normalize_configuration(_compose_configuration_source(source, raw))
+    if validate_parameters is not None and "configFile" in raw:
+        validate_parameters(config)
+    return config
 
 
 def _reject_ignored_material_overrides(configuration: dict) -> None:
@@ -1898,7 +1956,8 @@ def build_bicep_configuration(configuration: dict) -> dict:
     # エディター用のschema/commentはローカルに保持し、取得やARMへの送信はしない。
     result.pop("$schema", None)
     result.pop("$comment", None)
-    if result.pop("codex", None):
+    result.pop("codex", None)
+    if entra_app_separation_enabled(configuration):
         result["entraRolloutEnabled"] = True
     result["management"].pop("sshPublicKeyFile", None)
     result.pop("firewallTlsInspection", None)
@@ -2176,7 +2235,7 @@ def load_dns_plugin_arguments(certificate: dict) -> str:
 
 
 def load_credential_provider_secrets(configuration: dict) -> dict:
-    """CMで共有するEntra secretだけを読み、他の基盤資格情報には触れない。"""
+    """CM用OAuthクライアントのsecretだけを読み、本人確認用資格情報には触れない。"""
     result = {}
     for provider in configuration["credentialProviders"]:
         value = _read_protected_file(provider["clientSecretFile"], "credentialProviders.clientSecretFile")
@@ -2210,7 +2269,7 @@ def load_secret_inputs(configuration: dict) -> dict:
     secrets: dict[str, Any] = {"sshPublicKey": public_key,
         "firewallTlsInspection": load_firewall_tls_inspection(configuration),
         "credentialProviderSecrets": load_credential_provider_secrets(configuration)}
-    # Azure DNS authenticates on the VM through its assigned identity.
+    # Azure DNS is authenticated by the dedicated certificate Job identity.
     return secrets
 
 

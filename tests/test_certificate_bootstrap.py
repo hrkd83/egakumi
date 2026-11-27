@@ -205,7 +205,7 @@ function Invoke-Json { Write-Output 'UNEXPECTED_SECRET_ACCESS'; throw 'Controlle
         configuration = {
             "mode": "dnsPlugin", "dnsPlugin": "Azure", "hostname": "gateway.example.invalid",
             "hostnames": ["gateway.example.invalid"], "requiredHostnames": ["gateway.example.invalid"],
-            "keyVaultName": "kv-fixture", "certificateName": "tls-public",
+            "keyVaultName": "kv-fixture-tls", "certificateName": "tls-public",
             "accountEmail": "operator@example.invalid",
             "directoryUrl": "https://acme-v02.api.letsencrypt.org/directory",
         }

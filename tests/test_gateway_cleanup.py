@@ -1,4 +1,4 @@
-"""Gatewayを別配備にしても、共通CAEの前に既存の子アプリを回収できることを確認する。"""
+"""Gateway撤去で、割り当て先を照合したBrokerのアプリとジョブだけを回収します。"""
 import copy
 import unittest
 
@@ -14,24 +14,25 @@ class GatewayCleanupTests(unittest.TestCase):
         self.foundation = {"resourceGroup": "rg-test-fixture-svc", "apimName": "apim-test-fixture-abc123",
                            "environmentName": "cae-test-fixture"}
         self.state = {"outputs": {"gatewayFoundation": self.foundation}}
+        self.environment = self.base + "managedEnvironments/cae-test-fixture"
         self.ids = [self.base + "jobs/caj-test-fixture-recon", self.base + "jobs/caj-test-fixture-schema",
                     self.base + "containerApps/ca-test-fixture-credentials"]
         self.resources = {resource_id: {"id": resource_id, "name": resource_id.rsplit('/', 1)[-1],
                           "type": "Microsoft.App/" + resource_id.split("/")[-2],
                           "location": "Japan East", "tags": {"product": "fixture", "environment": "test"},
                           "properties": {"environmentId" if "/jobs/" in resource_id else "managedEnvironmentId":
-                                         self.base + "managedEnvironments/cae-test-fixture"}}
+                                         self.environment}}
                           for resource_id in self.ids}
 
-    def test_new_core_foundation_discovers_only_known_app_and_job_ids(self):
+    def test_owned_environment_discovers_only_known_app_and_job_ids(self):
         transport = FakeTransport(self.resources)
-        self.assertEqual(cleanup._credential_apps_preflight(self.config, self.state, transport), self.ids)
+        self.assertEqual(cleanup._credential_apps_preflight(self.config, self.state, transport, self.environment), self.ids)
         self.assertEqual([item["id"] for item in transport.calls], self.ids)
         self.assertEqual(transport.mutations(), [])
 
     def test_fresh_core_without_gateway_app_has_no_children(self):
         transport = FakeTransport()
-        self.assertEqual(cleanup._credential_apps_preflight(self.config, self.state, transport), [])
+        self.assertEqual(cleanup._credential_apps_preflight(self.config, self.state, transport, self.environment), [])
         self.assertEqual(len(transport.calls), 3)
         self.assertEqual(transport.mutations(), [])
 
@@ -39,14 +40,14 @@ class GatewayCleanupTests(unittest.TestCase):
         state = {"outputs": {"credentialBroker": {"applicationName": "ca-test-fixture-credentials",
                                                    "resourceGroup": "rg-test-fixture-svc"}}}
         transport = FakeTransport(self.resources)
-        self.assertEqual(cleanup._credential_apps_preflight(self.config, state, transport), self.ids)
+        self.assertEqual(cleanup._credential_apps_preflight(self.config, state, transport, self.environment), self.ids)
         self.assertEqual(transport.mutations(), [])
 
     def test_missing_or_stale_outputs_do_not_skip_current_gateway_resources(self):
         for outputs in ({}, {'credentialBroker': {}}, {'portal': {'unrelated': 'core-output'}}):
             with self.subTest(outputs=outputs):
                 transport = FakeTransport(self.resources)
-                self.assertEqual(cleanup._credential_apps_preflight(self.config, {'outputs': outputs}, transport), self.ids)
+                self.assertEqual(cleanup._credential_apps_preflight(self.config, {'outputs': outputs}, transport, self.environment), self.ids)
                 self.assertEqual(transport.mutations(), [])
 
     def test_current_environment_bindings_must_all_agree(self):
@@ -55,7 +56,7 @@ class GatewayCleanupTests(unittest.TestCase):
             resources = copy.deepcopy(self.resources)
             resources[self.ids[0]]['properties'][key] = value
             with self.subTest(key=key), self.assertRaises(cleanup.CleanupError):
-                cleanup._credential_apps_preflight(self.config, self.state, FakeTransport(resources))
+                cleanup._credential_apps_preflight(self.config, self.state, FakeTransport(resources), self.environment)
 
     def test_healthy_or_actively_creating_children_without_binding_are_not_deleted(self):
         for status in ('Succeeded', 'Creating', 'Updating', ''):
@@ -63,20 +64,20 @@ class GatewayCleanupTests(unittest.TestCase):
             resources[self.ids[0]]['properties'] = {'provisioningState': status}
             transport = FakeTransport(resources)
             with self.subTest(status=status), self.assertRaises(cleanup.CleanupError):
-                cleanup._credential_apps_preflight(self.config, {'outputs': {}}, transport)
+                cleanup._credential_apps_preflight(self.config, {'outputs': {}}, transport, self.environment)
             self.assertFalse(transport.mutations())
 
     def test_failed_child_without_binding_still_requires_exact_identity_and_tags(self):
         resources = copy.deepcopy(self.resources)
         resources[self.ids[0]]['properties'] = {'provisioningState': 'Failed'}
         transport = FakeTransport(resources)
-        self.assertEqual(cleanup._credential_apps_preflight(self.config, {'outputs': {}}, transport), self.ids)
+        self.assertEqual(cleanup._credential_apps_preflight(self.config, {'outputs': {}}, transport, self.environment), self.ids)
         for mutation in ({'name': 'foreign'}, {'tags': None}, {'type': 'Microsoft.App/managedEnvironments'},
                          {'location': 'westus'}, {'properties': None}):
             changed = copy.deepcopy(resources)
             changed[self.ids[0]].update(mutation)
             with self.subTest(mutation=mutation), self.assertRaises(cleanup.CleanupError):
-                cleanup._credential_apps_preflight(self.config, {'outputs': {}}, FakeTransport(changed))
+                cleanup._credential_apps_preflight(self.config, {'outputs': {}}, FakeTransport(changed), self.environment)
 
     def test_foreign_foundation_or_resource_is_rejected_before_mutation(self):
         for field, value in (("resourceGroup", "another-rg"), ("apimName", "apim-another"),
@@ -86,13 +87,13 @@ class GatewayCleanupTests(unittest.TestCase):
                 state["outputs"]["gatewayFoundation"][field] = value
                 transport = FakeTransport(self.resources)
                 with self.assertRaises(cleanup.CleanupError):
-                    cleanup._credential_apps_preflight(self.config, state, transport)
+                    cleanup._credential_apps_preflight(self.config, state, transport, self.environment)
                 self.assertEqual(transport.calls, [])
         resources = copy.deepcopy(self.resources)
         resources[self.ids[0]]["properties"]["environmentId"] = self.base + "managedEnvironments/cae-another"
         transport = FakeTransport(resources)
         with self.assertRaises(cleanup.CleanupError):
-            cleanup._credential_apps_preflight(self.config, self.state, transport)
+            cleanup._credential_apps_preflight(self.config, self.state, transport, self.environment)
         self.assertEqual(transport.mutations(), [])
 
 

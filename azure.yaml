@@ -9,19 +9,12 @@ infra:
   provider: bicep
   path: infra
   module: main
-# 5アプリの初回はprovisionで共通基盤と公開証明書を準備し、Entra登録後に個別配備します。
-# 従来入力のupは共通基盤に続いてGatewayを配備します。
-# 各アプリの専用コマンドは、個別更新・再試行でも独立して使えます。
+# upとprovisionは、どちらも共通基盤と公開証明書を準備します。
+# Entra登録後にGatewayとPortalをそれぞれの専用コマンドで配備します。
 workflows:
   up:
     - azd: provision
 hooks:
-  # upの最初: 端末のツールと入力を確認し、保護した一時ARM入力を用意する。
-  preup:
-    # 秘密入力の案内・準備確認・非表示入力を実行端末へ接続します。
-    interactive: true
-    shell: sh
-    run: python3 scripts/deployment/lifecycle.py preup
   # 課金設備の作成前: 対象Subscription・利用枠・固定名・RPを確認する。
   # 監視先を準備してから、同じazdの本体配備へ進む。Entraアプリは自動作成しない。
   preprovision:
@@ -33,12 +26,6 @@ hooks:
   postprovision:
     shell: sh
     run: python3 scripts/deployment/lifecycle.py postprovision
-  # Portal本体は専用Entraアプリの手動登録後、deploy_portal.pyで独立して配備する。
-  postup:
-    # Gateway配備の対話入力を端末へ接続します。
-    interactive: true
-    shell: sh
-    run: python3 scripts/deploy_applications.py --gateway-only --execute
   # 本体削除前: 保護/保持と対象IDを照合し、モデル・APIM・Gateway/PortalのCA・ジョブ・CAE・管理VMを回収する。
   # 自動管理RGのIDを変更前に保存し、全CA/ジョブ→CAE→ACAサブネットの解放後にRG削除へ進む。
   predown:

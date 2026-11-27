@@ -7,6 +7,8 @@ param environmentName string
 param registryName string
 param imageDigest string
 param runtimeIdentity object
+param managementIdentity object
+param profileIdentity object
 param schemaIdentity object
 param sqlServer string
 param database string
@@ -32,10 +34,16 @@ var variables = {
   PORTAL_SQL_SERVER: sqlServer
   PORTAL_SQL_DATABASE: database
   PORTAL_SQL_AUTH: 'managed-identity'
+  PORTAL_CANONICAL_SQL_SERVER: sqlServer
+  PORTAL_CANONICAL_SQL_DATABASE: database
   AZURE_TENANT_ID: tenant().tenantId
   AZURE_CLIENT_ID: schemaIdentity.clientId
   PORTAL_SQL_RUNTIME_CLIENT_ID: runtimeIdentity.clientId
   PORTAL_SQL_RUNTIME_USER_NAME: runtimeIdentity.name
+  PORTAL_SQL_MANAGEMENT_CLIENT_ID: managementIdentity.clientId
+  PORTAL_SQL_MANAGEMENT_USER_NAME: managementIdentity.name
+  PORTAL_SQL_PROFILE_CLIENT_ID: profileIdentity.clientId
+  PORTAL_SQL_PROFILE_USER_NAME: profileIdentity.name
   // 配列JSONの先頭「[」が入れ子のARM評価で式として再解釈されないようにします。
   // JSON.parseは先頭空白を許容するため、SQL初期化へ渡す配列の内容は変わりません。
   PORTAL_API_KEY_GROUPS: concat(' ', string(apiKeyGroups))
@@ -46,13 +54,13 @@ var variables = {
   PORTAL_API_KEY_VERIFICATION_SUBSCRIPTIONS: concat(' ', string(apiKeyVerificationSubscriptions))
   PORTAL_APIM_RESOURCE_ID: apimResourceId
   PORTAL_APIM_AUTH: 'managed-identity'
-  PORTAL_API_KEY_APIM_CLIENT_ID: runtimeIdentity.clientId
+  PORTAL_API_KEY_APIM_CLIENT_ID: managementIdentity.clientId
 }
 resource migration 'Microsoft.App/jobs@2025-01-01' = {
   name: 'caj-${stem}-psql'
   location: location
   tags: tags
-  identity: { type: 'UserAssigned', userAssignedIdentities: { '${schemaIdentity.id}': {}, '${runtimeIdentity.id}': {} } }
+  identity: { type: 'UserAssigned', userAssignedIdentities: { '${schemaIdentity.id}': {}, '${managementIdentity.id}': {} } }
   properties: {
     environmentId: environment.id
     workloadProfileName: 'Consumption'

@@ -5,7 +5,7 @@
 | ファイル | 役割 | 呼出し元 |
 | --- | --- | --- |
 | [certificate-bootstrap.sh](certificate-bootstrap.sh) | Ubuntuの運用ツールを準備し、固定版PowerShellで証明書workerを起動 | [certificate.bicep](../modules/certificate.bicep) |
-| [certificate.ps1](certificate.ps1) | Azure DNSによるTLS証明書の取得・検査、Key Vaultへの保存・復旧、定期更新の登録 | 初回はbootstrap、以後はVM内のsystemd timer |
+| [certificate.ps1](certificate.ps1) | Azure DNSによる公開TLS証明書の取得・検査、専用Vaultへの保存・復旧、定期更新の登録。初回構築時だけ別の資格情報Vaultへ所定の共有鍵を登録 | 初回はbootstrap、以後はVM内のsystemd timer |
 | [configure-audit.sh](configure-audit.sh) | 時刻同期、認証ログ、SSHの基本設定 | [management-audit.bicep](../modules/management-audit.bicep) |
 | [prepare-management-client.sh](prepare-management-client.sh) | 管理VM用保守client、固定依存、対象inventoryの検証・配置 | [management-maintenance-client.bicep](../modules/management-maintenance-client.bicep) |
 

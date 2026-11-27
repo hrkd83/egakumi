@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { Kysely, sql } from "kysely";
-import { createAuthDatabase } from "../auth-database.ts";
+import { createAuthDatabase, isCanonicalAzureSqlDatabase } from "../auth-database.ts";
 import { getSqlEnvironment } from "../auth-environment.ts";
 import { ApiKeyError, type ApiKeyActor } from "../api-keys/contracts.ts";
 import type { CanonicalSubscription, SyncAudit } from "./contracts.ts";
@@ -46,11 +46,9 @@ export class SqlSubscriptionSyncRepository implements SubscriptionSyncRepository
   }
   /** 接続設定だけでなく、実際の接続先が配備済みAzure SQLのDBであることを照合します。 */
   async assertCanonical(server: string, database: string): Promise<void> {
-    const row = (await sql<{ edition: number; server: string; database: string }>`SELECT
-      CAST(SERVERPROPERTY('EngineEdition') AS int) AS edition,
-      CAST(SERVERPROPERTY('ServerName') AS nvarchar(256)) AS server,DB_NAME() AS [database]`.execute(this.database)).rows[0];
-    if (!row || row.edition !== 5 || row.server.toLowerCase().replace(/\.database\.windows\.net$/, "") !== server.toLowerCase().replace(/\.database\.windows\.net$/, "")
-        || row.database.toLowerCase() !== database.toLowerCase()) throw new ApiKeyError("CanonicalDatabaseRequired", 409);
+    if (!await isCanonicalAzureSqlDatabase(this.database, server, database)) {
+      throw new ApiKeyError("CanonicalDatabaseRequired", 409);
+    }
   }
   async locked<T>(actor: ApiKeyActor, id: string, callback: (context: SyncLockedContext) => Promise<T>): Promise<T> {
     // Sessionロックと自動コミットを併用し、上流の失敗でも開始監査をロールバックしません。

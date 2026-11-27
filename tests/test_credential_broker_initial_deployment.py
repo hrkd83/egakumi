@@ -14,7 +14,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-sys.path.insert(0, str(ROOT / 'apps/apim/deploy'))
 sys.path.insert(0, str(ROOT / 'apps/credential-broker/deploy'))
 import broker_deployment as deploy
 from deployment.helpers import credential_image as image
@@ -38,7 +37,7 @@ def fixture():
         'schemaIdentity': {'id': identity + 'id-' + stem + '-credential-schema',
                            'principalId': '12345678-1234-4234-8234-123456789003',
                            'clientId': '12345678-1234-4234-8234-123456789004'},
-        'environmentName': 'cae-' + stem, 'registryName': 'acr' + stem.replace('-', ''),
+        'environmentName': 'cae-' + stem + '-broker', 'registryName': 'acr' + stem.replace('-', ''),
         'brokerKeySecretUri': 'https://vault.invalid/secrets/key', 'oidcSecrets': [],
         'apimPrincipalId': '12345678-1234-4234-8234-123456789005',
     }
@@ -145,6 +144,7 @@ class InitialDeploymentTests(unittest.TestCase):
     def test_cleanup_targets_the_same_job_names_as_deployment(self):
         config, state = fixture()
         names = deploy.resource_names(config)
+        environment = deploy.broker_environment_id(config)
         prefix = deploy.group_scope(config) + '/providers/Microsoft.App/'
         expected = [prefix + 'jobs/' + names['reconcileJob'], prefix + 'jobs/' + names['schemaJob'],
                     prefix + 'containerApps/' + names['application']]
@@ -157,8 +157,8 @@ class InitialDeploymentTests(unittest.TestCase):
                 return ok({'id': target, 'name': target.rsplit('/', 1)[-1],
                     'type': 'Microsoft.App/' + kind, 'location': config['location'],
                     'tags': {'product': config['productName'], 'environment': config['environmentName']},
-                    'properties': {'environmentId': prefix + 'managedEnvironments/cae-' + config['resourceStem']}})
-        self.assertEqual(cleanup._credential_apps_preflight(config, state, Transport()), expected)
+                    'properties': {'environmentId': environment}})
+        self.assertEqual(cleanup._credential_apps_preflight(config, state, Transport(), environment), expected)
 
     def test_nested_template_error_codes_are_visible_without_printing_response_values(self):
         class Transport:
@@ -256,9 +256,10 @@ class InitialDeploymentTests(unittest.TestCase):
 
     def test_readiness_waits_for_new_healthy_revision(self):
         config, _ = fixture()
+        environment = deploy.broker_environment_id(config)
         responses = iter([
-            ok({'properties': {'latestRevisionName': 'broker--new', 'latestReadyRevisionName': 'broker--old'}}),
-            ok({'properties': {'latestRevisionName': 'broker--new', 'latestReadyRevisionName': 'broker--new'}}),
+            ok({'properties': {'managedEnvironmentId': environment, 'latestRevisionName': 'broker--new', 'latestReadyRevisionName': 'broker--old'}}),
+            ok({'properties': {'managedEnvironmentId': environment, 'latestRevisionName': 'broker--new', 'latestReadyRevisionName': 'broker--new'}}),
             ok({'properties': {'healthState': 'Healthy', 'provisioningState': 'Provisioned', 'runningState': 'Running'}}),
         ])
         class Transport:
@@ -313,9 +314,13 @@ fi
 ''')
                 # Only VM-specific root/OS/lock/tmp paths are substituted. The flock stub checks the lock invocation.
                 # Archive, token pipe, Docker sequence, digest parsing and EXIT cleanup execute unchanged.
+                lock_redirect = 'exec 9>/run/lock/egakumi-credential-broker-image.lock'
+                work_template = '/var/tmp/egakumi-credential-broker-image.XXXXXXXX'
+                self.assertIn(lock_redirect, script)
+                self.assertIn(work_template, script)
                 guest = script.replace('[ "$EUID" = 0 ]', ':').replace('. /etc/os-release', 'ID=ubuntu; VERSION_ID=24.04')
-                guest = guest.replace('exec 9>/run/lock/egakumi-credential-image.lock', 'exec 9>' + shlex.quote(str(root / 'lock')))
-                guest = guest.replace('/var/tmp/egakumi-credential-image.XXXXXXXX', str(root / 'work.XXXXXXXX'))
+                guest = guest.replace(lock_redirect, 'exec 9>' + shlex.quote(str(root / 'lock')))
+                guest = guest.replace(work_template, shlex.quote(str(root / 'work.XXXXXXXX')))
                 environment = {**os.environ, 'PATH': str(bin_dir) + ':' + os.environ['PATH'],
                                'MOCK_BUILD_FAILURE': '1' if failure_stage == 'image-build' else '0',
                                'MOCK_STARTUP_FAILURE': '1' if failure_stage == 'image-startup-check' else '0',

@@ -1,9 +1,11 @@
 """本人・共有キー・app-onlyの独立した回数制限を、合成設定だけで確認する。"""
 import copy
 import json
+from pathlib import Path
+import tempfile
 import unittest
 
-from configuration_fixtures import CORE, api_fixture, configuration, fixture
+from configuration_fixtures import CORE, api_fixture, configuration, fixture, public_fixture
 from schema_helpers import local_schema_validator
 
 
@@ -145,20 +147,17 @@ class ContractRateConfigurationTests(unittest.TestCase):
         standard_default = {kind: {key: value for key, value in settings.items() if key != "overrides"}
                             for kind, settings in DEFAULT.items()}
         for name in ("test", "production"):
-            with self.subTest(sample=name):
-                options = json.loads((CORE / "config" / (name + ".json")).read_text())
+            with self.subTest(sample=name), tempfile.TemporaryDirectory() as directory:
+                params, options = public_fixture(name)
                 self.assertEqual(options["gateway"]["rateLimits"], standard_default)
                 jsonschema.validate(options, schemas["options.schema.json"])
-                manifest = CORE / "params" / (name + ".example.json")
-                params = json.loads(manifest.read_text())
                 for kind, settings in params["gateway"].get("rateLimits", {}).items():
                     self.assertIn(kind, CONTRACT_KINDS)
                     self.assertEqual(set(settings), {"overrides"})
+                manifest = Path(directory) / "params.json"
+                manifest.write_text(json.dumps(params), encoding="utf-8")
+                manifest.with_name("options.json").write_text(json.dumps(options), encoding="utf-8")
                 merged = configuration.load_configuration_source(manifest)
-                for key in ("azureTenantId", "entraTenantId", "subscriptionId"): merged[key] = "11111111-1111-4111-8111-111111111111"
-                dns = fixture()["certificate"]
-                for key in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
-                    merged["certificate"][key] = dns[key]
                 local_schema_validator(schemas["configuration.schema.json"]).validate(merged)
                 self.assertEqual(configuration.normalize_configuration(merged)["gateway"]["rateLimits"], DEFAULT)
 

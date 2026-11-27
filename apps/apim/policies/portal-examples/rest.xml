@@ -1,0 +1,116 @@
+<policies>
+  <!-- RESTおよびSSEのAPIスコープ。render_apim_portal_policy.pyで操作・転送設定を展開します。 -->
+  <inbound>
+    <set-variable name="gatewayApiSettingsSource" value="__API_SETTINGS__" />
+    <include-fragment id="core-api-settings" fragment-id="core-api-settings" />
+    <base />
+    <include-fragment fragment-id="core-api-request-preparation" />
+    <include-fragment fragment-id="core-api-operation-settings" />
+    <include-fragment fragment-id="core-api-authentication-result" />
+    <choose>
+      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;allowed&quot;])">
+        <set-variable name="gatewayAuditPhase" value="policy-error" />
+        <set-variable name="gatewayAuditCode" value="AUTHENTICATION_PROCESSING_ERROR" />
+        <set-variable name="gatewayAuditStatus" value="@(500)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="500" reason="Gateway processing failed" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
+      </when>
+    </choose>
+    <!-- このポリシーの貼り付け先、許可Product、登録した操作を照合します。 -->
+    <set-variable name="gatewayManualAuthMethod" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;method&quot;])" />
+    <set-variable name="gatewayManualRouteAllowed" value="@(false)" />
+    <choose>
+      <when condition="@(context.Api.Id == &quot;__API_ID__&quot; &amp;&amp; context.Product != null &amp;&amp; (((string)context.Variables[&quot;gatewayManualAuthMethod&quot;] == &quot;subscriptionKey&quot; &amp;&amp; context.Product.Id == &quot;__KEY_PRODUCT_ID__&quot;) || ((string)context.Variables[&quot;gatewayManualAuthMethod&quot;] == &quot;user&quot; &amp;&amp; context.Product.Id == &quot;manual-entra-users&quot;)))">
+        __REGISTERED_ROUTES_XML__
+      </when>
+    </choose>
+    <choose>
+      <when condition="@(!(bool)context.Variables[&quot;gatewayManualRouteAllowed&quot;])">
+        <set-variable name="gatewayDecision" value="@{ var decision = JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]); decision[&quot;allowed&quot;] = false; return decision.ToString(Newtonsoft.Json.Formatting.None); }" />
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="AUTHORIZATION_DENIED" />
+        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="403" reason="API target is not authorized" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
+      </when>
+    </choose>
+    <!-- 文書化した上限の受信バイト数だけを確認します。提供元のJSON契約は提供元が検証します。 -->
+    <set-variable name="gatewayOperationConstraint" value="@(JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;constraint&quot;].ToString(Newtonsoft.Json.Formatting.None))" />
+    <include-fragment fragment-id="core-model-limits" />
+    <choose>
+      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;allowed&quot;])">
+        <set-variable name="gatewayAuditCode" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;code&quot;])" />
+        <set-variable name="gatewayAuditStatus" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;status&quot;])" />
+        <set-variable name="gatewayAuditPhase" value="@((int)context.Variables[&quot;gatewayAuditStatus&quot;] == 500 ? &quot;policy-error&quot; : &quot;rejected&quot;)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="@((int)context.Variables[&quot;gatewayAuditStatus&quot;] == 413 ? &quot;Request too large&quot; : &quot;Gateway processing failed&quot;)" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
+      </when>
+    </choose>
+    <set-variable name="gatewayRateLimitExempt" value="@(false)" />
+    __SUBSCRIPTION_PROFILE_XML__
+    <include-fragment fragment-id="core-rate-limit" />
+    <!-- SQL未管理の購読に共通の回数枠がなければ、手動APIの枠を操作共通で使います。 -->
+    <choose>
+      <when condition="@((string)context.Variables[&quot;gatewayManualAuthMethod&quot;] == &quot;subscriptionKey&quot; &amp;&amp; !(bool)JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;])[&quot;enabled&quot;])">
+        <set-variable name="gatewayRateDecision" value="@{ var rate = JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;]); rate[&quot;renewalPeriodSeconds&quot;] = __RATE_INTERVAL__; return rate.ToString(Newtonsoft.Json.Formatting.None); }" />
+        <rate-limit-by-key id="manual-key-rate-limit" calls="__RATE_CALLS__" renewal-period="__RATE_INTERVAL__"
+          counter-key="@(&quot;manual-api-rate-v1:&quot; + context.Api.Id + &quot;:&quot; + context.Subscription.Id)" retry-after-variable-name="gatewayRateRetryAfter" />
+      </when>
+    </choose>
+    <!-- 入口の資格情報を外してから、固定接続先の認証を付けます。 -->
+    <set-header name="Authorization" exists-action="delete" />
+    <set-header name="{{core-subscription-key-header}}" exists-action="delete" />
+    <set-header name="api-key" exists-action="delete" />
+    <set-header name="x-api-key" exists-action="delete" />
+    <set-header name="Ocp-Apim-Subscription-Key" exists-action="delete" />
+    <set-header name="Cookie" exists-action="delete" />
+    <set-header name="X-Core-L7-Ingress" exists-action="delete" />
+    <set-header name="X-Core-Connection-Session" exists-action="delete" />
+    <set-header name="X-Core-Connection-Poll" exists-action="delete" />
+    <set-header name="X-Core-Connection-Transaction" exists-action="delete" />
+    <set-header name="X-Core-Profile-Key" exists-action="delete" />
+    <set-header name="X-Core-Profile-Subscription" exists-action="delete" />
+    <set-header name="X-Core-Agent-Parent-Id" exists-action="delete" />
+    <set-header name="X-Egakumi-Profile" exists-action="delete" />
+    <set-query-parameter name="api-key" exists-action="delete" />
+    <set-query-parameter name="subscription-key" exists-action="delete" />
+    <set-query-parameter name="x-api-key" exists-action="delete" />
+    <set-backend-service backend-id="__BACKEND_ID__" />
+    __BACKEND_AUTH_XML__
+    <set-variable name="gatewayAuditPhase" value="accepted" />
+    <set-variable name="gatewayAuditCode" value="GATEWAY_ALLOWED" />
+    <set-variable name="gatewayAuditStatus" value="@(0)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </inbound>
+  <backend>
+    <forward-request timeout="240" buffer-response="__BUFFER_RESPONSE__" />
+  </backend>
+  <outbound>
+    <include-fragment fragment-id="core-backend-audit" />
+    <base />
+    <set-variable name="gatewayAuditPhase" value="backend-response" />
+    <set-variable name="gatewayAuditCode" value="BACKEND_RESPONSE" />
+    <set-variable name="gatewayAuditStatus" value="@(context.Response.StatusCode)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </outbound>
+  <on-error>
+    <base />
+    __RATE_LIMIT_ERROR_XML__
+    <set-variable name="gatewayAuditPhase" value="policy-error" />
+    <set-variable name="gatewayAuditCode" value="POLICY_ERROR" />
+    <set-variable name="gatewayAuditStatus" value="@(context.Response != null &amp;&amp; context.Response.StatusCode &gt;= 400 ? context.Response.StatusCode : 0)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </on-error>
+</policies>

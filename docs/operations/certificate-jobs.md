@@ -4,11 +4,11 @@
 
 ## 空環境から構築する
 
-1. [通常の初回構築](../setup/06-deploy.md)に従い、公開DNSゾーンの委任と、そのゾーンを検証するDNS用IDを準備します。DNS-01で使うTXTレコードは公開入口より先に作成できます。
-2. 初回の5アプリ構成では `azd provision` を実行します。基盤では管理VM、非公開ACRとPrivate Endpoint、Key Vault、証明書用の専用ACA環境、状態保存用Storageを作ります。初回構築前に、VNet内で証明書専用ACA用の/27を確保します。
+1. [通常の初回構築](../setup/08-provision-core.md)に従い、公開DNSゾーンの委任と、そのゾーンを検証するDNS用IDを準備します。DNS-01で使うTXTレコードは公開入口より先に作成できます。
+2. 初回は`azd up`を実行します。`azd provision`でも同じCore工程を実行できます。基盤では管理VM、非公開ACRとPrivate Endpoint、Key Vault、証明書用の専用ACA環境、状態保存用Storageを作ります。初回構築前に、VNet内で証明書専用ACA用の/27を確保します。
 3. 端末から既存管理VMへRun Commandでイメージ作成を指示します。初回イメージ作成や検証済みソースの変更時は、管理VMが一時的な `AcrPush` でPrivate Endpoint経由で既存ACRへ登録します。ACRの公開アクセス、信頼サービスの例外、管理者アカウントは無効のままです。イメージのdigestを確定してから、ビルド時の一時権限とRun Commandを回収します。初回の標準NSGではSSHは未開放です。運用中に再ビルドする場合は通常のSSH保守と時間を分けます。
 4. `postprovision` が固定digestのJobを開始します。対象の実行が成功し、両公開ホストをカバーする証明書の登録を確認した後、AppGWとWAFを配備します。両ホストに対応する証明書が配信されていることを確認してから公開DNSを設定します。
-5. Portal署名証明書とGateway OBO署名証明書の公開部分は保護された生成出力へ保存します。Gateway OBO用は同じ専用環境の手動Jobで固有の鍵とチェックポイントを使い、GatewayのBrokerに対象鍵の署名だけを付与します。Entra登録は[用途別の登録手順](../setup/02-entra.md)に従います。
+5. Portal署名証明書とGateway OBO署名証明書の公開部分は保護された生成出力へ保存します。Gateway OBO用は同じ専用環境の手動Jobで固有の鍵とチェックポイントを使い、GatewayのBrokerに対象鍵の署名だけを付与します。Entra登録は[APIとPortalの証明書登録手順](../setup/09-egakumi-portal.md)に従います。
 
 Jobの結果と排他用Blobは、公開TLSとPortalで別のコンテナーへ保存します。各実行IDは自分のコンテナーにだけ書き込めます。管理VMが結果を取得する際は、対象コンテナーの読取を一時的に付与し、結果取得後に回収します。
 

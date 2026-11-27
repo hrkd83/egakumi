@@ -53,7 +53,7 @@ class ApiRequestPreparationStructureTests(unittest.TestCase):
         self.assertFalse(current.findall(".//set-variable"))
 
     def test_each_api_template_calls_once_immediately_after_inbound_base(self):
-        for filename in ("gateway.xml", "protocol.xml", "mcp.xml"):
+        for filename in ("rest.xml", "stream.xml", "generated.xml"):
             with self.subTest(policy=filename):
                 value = (policy_fixture_path(POLICIES, filename)).read_text(encoding="utf-8")
                 root = ET.fromstring(value)

@@ -174,7 +174,8 @@ class AuditPublicationTests(unittest.TestCase):
     'inputContracts':{}})
  def test_hosted_store_rewrite_reaches_additional_and_mixed_http_apis(self):
   """合法な追加Hostedの配備と読戻し用sourceへ、同じ本文編集と先行拒否順を渡す。"""
-  source=ET.fromstring((CORE/'apps/apim/policies/api-templates/gateway.xml').read_text(encoding='utf-8'))
+  raw_policy=(CORE/'apps/apim/policies/api-templates/rest/rest.xml').read_text(encoding='utf-8')
+  source=ET.fromstring(render_audit_policy(raw_policy))
   expected=source.find("inbound/choose[@id='core-hosted-response-metadata']")
   self.assertIsNotNone(expected)
   def structure(node):
@@ -222,7 +223,7 @@ class AuditPublicationTests(unittest.TestCase):
      self.assertEqual(structure(rewrite),structure(expected))
      self.assertEqual(len(rewrite.findall('when/set-body')),1)
      limits=published.find("inbound/include-fragment[@fragment-id='core-model-limits']")
-     validation=published.find("inbound/include-fragment[@fragment-id='core-api-target-validation']")
+     validation=published.find("inbound/choose[@id='core-api-target-validation-selection']")
      rate=published.find("inbound/include-fragment[@fragment-id='core-rate-limit']")
      self.assertLess(inbound.index(limits),inbound.index(validation))
      self.assertLess(inbound.index(validation),inbound.index(rewrite))
@@ -864,8 +865,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
     for phase in ('request','response'): self.assertEqual(actual[direction][phase]['body']['bytes'],0)
   for resource in ('globalDiagnostic','mcpDiagnostics'):
    self.assertEqual(self.template['resources'][resource]['properties']['largeLanguageModel'],{'logs':'disabled'})
-  config=configuration.build_bicep_configuration(configuration.normalize_configuration(
-   connection_fixture(),base_directory=CORE/'config'))
+  config=configuration.normalize_configuration(connection_fixture(),base_directory=CORE/'config')
   properties=canonical_settings(config,'core')['apim-logs']['properties']
   self.assertIn({'category':'GatewayLlmLogs','enabled':True},properties['logs'])
   self.assertEqual(properties['logAnalyticsDestinationType'],'Dedicated')
@@ -874,6 +874,40 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
    if item.get('type')=='Microsoft.Insights/diagnosticSettings' and item.get('name')=='core-audit'
     and "names').apim" in item.get('scope',''))
   self.assertEqual(diagnostic['properties'],"[parameters('diagnosticSettingProperties')['apim-logs']]")
+
+ def test_strict_audit_routes_only_selected_http_through_the_private_relay(self):
+  api_index = next(index for index, api in enumerate(self.parameters['apiDefinitions'])
+                   if api['name'] == 'openai-inference-v1')
+  other_index = next(index for index, api in enumerate(self.parameters['apiDefinitions'])
+                     if api['name'] == 'openai-embeddings-v1')
+  direct = ET.fromstring(compiled_policy_value(self.template, self.parameters, api_index))
+  unrelated = compiled_policy_value(self.template, self.parameters, other_index)
+  self.parameters['auditRelay'] = {'url': 'https://relay.example.invalid', 'audience': 'api://example-relay'}
+  live = ET.fromstring(compiled_policy_value(self.template, self.parameters, api_index))
+  self.assertEqual(compiled_policy_value(self.template, self.parameters, other_index), unrelated)
+  inbound = live.find('inbound')
+  relay_routes = inbound.find("choose[@id='core-audit-relay-route']")
+  for route, path, operation in zip(relay_routes.findall('when'), ('/chat/completions', '/responses'),
+                                    ('chat-completions', 'responses-create'), strict=True):
+   self.assertIn('context.Operation.Id == "' + operation + '"', route.get('condition'))
+   self.assertEqual(route.find('rewrite-uri').attrib, {'template': path, 'copy-unmatched-params': 'true'})
+  self.assertEqual(relay_routes.find('otherwise/return-response/set-status').get('code'), '503')
+  self.assertEqual([node.get('backend-id') for node in inbound.iter('set-backend-service')], ['core-audit-relay'])
+  self.assertEqual(inbound.find('authentication-managed-identity').attrib,
+                   {'resource': '{{core-audit-relay-audience}}', 'ignore-error': 'false'})
+  self.assertLess(list(inbound).index(inbound.find("choose[@id='core-chat-store-disabled']")),
+                  list(inbound).index(relay_routes))
+  self.assertLess(list(inbound).index(inbound.find("set-header[@name='Authorization']")),
+                  list(inbound).index(inbound.find('authentication-managed-identity')))
+  forwards = live.findall('.//forward-request')
+  self.assertEqual(len(forwards), 1)
+  self.assertEqual(forwards[0].get('buffer-response'), 'false')
+  self.assertEqual(self.api_settings(live), self.api_settings(direct))
+  relay_backend = self.template['resources']['auditRelayBackend']
+  self.assertTrue(self.evaluate(relay_backend['condition']))
+  properties = self.evaluate(relay_backend['properties'])
+  self.assertEqual(properties['url'], self.parameters['auditRelay']['url'])
+  self.assertEqual(properties['tls'], {'validateCertificateChain': True, 'validateCertificateName': True})
  def test_only_explicit_api_registration_writes_api_contracts(self):
   main=(CORE/'infra/main.bicep').read_text(); publisher=(CORE/'apps/apim/deploy/api_publication.py').read_text()
   self.assertNotIn('api-publication.bicep',main)

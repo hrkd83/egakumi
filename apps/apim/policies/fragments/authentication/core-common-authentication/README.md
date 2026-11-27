@@ -24,7 +24,7 @@ Azureの core-common-authentication
 service.xml の STEP5で監査用の認証済み利用者情報を準備
 ```
 
-キー用ヘッダーがあればキー認証を選ぶ。不正なキーを、一緒に送られたBearerで代わりに認証しない。キーがなければBearerを検証する。キーとBearerのどちらかを有効化する公開パラメーターや、API名・クライアントアプリIDの許可リストは設けない。
+キー用ヘッダーがあればキー認証を選び、キーがなければBearerを検証する。不正なキーの要求は401で終了する。Bearerでは初期構築の`core-entra-model-users`を受け付ける。`manual-`で始まるAPIは、管理者が関連付けた`manual-entra-users`も受け付ける。共通認証後、手動APIのポリシーが専用Productへの所属を照合する。いずれも同じEntraトークン検証と会社設定の確認を通る。[手動追加の設定](../../../portal-examples/README.md)を参照する。
 
 | C#の区画 | XMLで設定する変数 | 処理 |
 | --- | --- | --- |

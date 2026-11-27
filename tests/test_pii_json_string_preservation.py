@@ -131,7 +131,7 @@ def current_expressions():
     pii = ET.fromstring(render_audit_policy(
         (POLICIES / "operation-policies/pii/pii.xml").read_text(encoding="utf-8")))
     mcp = ET.fromstring(render_audit_policy(
-        (POLICIES / "api-templates/mcp.xml").read_text(encoding="utf-8")))
+        (POLICIES / "api-templates/mcp/generated.xml").read_text(encoding="utf-8")))
     return {
         "__INPUT__": expression(pii.find("./inbound/set-variable[@name='piiInputStatus']"), "value"),
         "__REQUEST_SETTINGS__": expression(pii.find("./inbound/set-variable[@name='piiRequestModelVersion']"), "value"),

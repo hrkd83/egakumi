@@ -134,7 +134,7 @@ class SchemaObservationTests(unittest.TestCase):
         def migrate_after_observation(*args, **kwargs):
             self.assertEqual(json.loads(output.getvalue()), observation)
             return {"status": "ready"}
-        with mock.patch.dict(os.environ, environment), mock.patch.object(cli.SqlStore, "from_environment"), \
+        with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(cli.SqlStore, "from_environment"), \
              mock.patch.object(cli, "observe_schema_before_migration", return_value=observation), \
              mock.patch.object(cli, "migrate", side_effect=migrate_after_observation) as migrate_call, \
              contextlib.redirect_stdout(output):
@@ -147,6 +147,16 @@ class SchemaObservationTests(unittest.TestCase):
                 cli.main(["migrate"])
         migrate_call.assert_not_called()
         self.assertEqual(output.getvalue(), "")
+
+    def test_migrate_rejects_missing_or_shared_sql_identities_before_connecting(self):
+        environment = {"SQL_RUNTIME_CLIENT_ID": TENANT, "SQL_RUNTIME_USER_NAME": "id-runtime"}
+        for changes in ({}, {"AZURE_CLIENT_ID": TENANT}, {"AZURE_CLIENT_ID": str(uuid.UUID(int=0))},
+                        {"AZURE_CLIENT_ID": OWNER, "SQL_RUNTIME_CLIENT_ID": str(uuid.UUID(int=0))}):
+            with self.subTest(changes=changes), mock.patch.dict(os.environ, {**environment, **changes}, clear=True), \
+                 mock.patch.object(cli.SqlStore, "from_environment") as connect:
+                with self.assertRaisesRegex(ValueError, "SQL .* identities"):
+                    cli.main(["migrate"])
+            connect.assert_not_called()
 
 
 def grant_replies(members=(0, 0)):

@@ -149,9 +149,14 @@ function metadata(value: unknown): Metadata {
 
 /** 確認済み本人と固定の接続先、サーバー専用の秘密・共有保存先です。 */
 export type ConnectionSessionOptions = {
-  origin: string; apiKey: string; subscriptionId: string; profile: string;
+  origin: string; profile: string;
   principal: VerifiedPrincipal; store: SharedStateStore; fetch?: typeof fetch;
-};
+} & (
+  | { apiKey: string; subscriptionId: string; bearer?: never }
+  | { apiKey?: never; subscriptionId?: never; bearer: {
+    value: string; binding: string; generation: number; signal: AbortSignal; authorize: () => Promise<void>;
+  } }
+);
 
 /** Next.js等のNodeバックエンド専用。ブラウザーバンドルへimportしないでください。 */
 export class ConnectionSessionClient {
@@ -162,25 +167,54 @@ export class ConnectionSessionClient {
   constructor(options: ConnectionSessionOptions) {
     this.options = options;
     const url = new URL(options.origin);
+    const credentialValid = options.bearer
+      ? /^[A-Za-z0-9._~+/-]{16,16384}={0,2}$/.test(options.bearer.value)
+        && HEX.test(options.bearer.binding) && Number.isSafeInteger(options.bearer.generation) && options.bearer.generation >= 0
+      : Boolean(options.apiKey) && !/\s/.test(options.apiKey) && /^[A-Za-z0-9._-]{1,256}$/.test(options.subscriptionId);
     if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash
-      || (url.port && url.port !== "443") || !options.apiKey || /\s/.test(options.apiKey)
-      || !/^[A-Za-z0-9._-]{1,256}$/.test(options.subscriptionId) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(options.profile)
+      || (url.port && url.port !== "443") || !credentialValid || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(options.profile)
       || !UUID.test(options.principal.tenantId) || !UUID.test(options.principal.ownerId)) throw new ConnectionSessionError("InvalidConfiguration");
     this.origin = url.origin;
-    this.binding = createHash("sha256").update(JSON.stringify([this.origin, options.subscriptionId, options.profile,
-      options.principal.tenantId.toLowerCase(), options.principal.ownerId.toLowerCase()])).digest("hex");
+    const owner = [options.principal.tenantId.toLowerCase(), options.principal.ownerId.toLowerCase()];
+    // 既存の購読別索引を保持し、BearerではPortal認証の失効世代ごとにCMの保存状態を分けます。
+    const identity = options.bearer
+      ? [this.origin, "bearer", options.profile, ...owner, options.bearer.binding, options.bearer.generation]
+      : [this.origin, options.subscriptionId, options.profile, ...owner];
+    this.binding = createHash("sha256").update(JSON.stringify(identity)).digest("hex");
   }
 
-  private async send(path: string, current?: string, body?: object, method = body ? "POST" : "GET", signal = controlDeadline()): Promise<Response> {
-    const headers = new Headers({ "api-key": this.options.apiKey, "Accept": "application/json" });
+  private async authorize(): Promise<void> {
+    const bearer = this.options.bearer;
+    if (!bearer) return;
+    await bearer.authorize();
+    if (bearer.signal.aborted) throw new ConnectionSessionError("ApiAuthenticationRequired", 401);
+  }
+
+  private async send(path: string, current?: string, body?: object, method = body ? "POST" : "GET", signal = controlDeadline(), pollSecret?: string): Promise<Response> {
+    const bearer = this.options.bearer;
+    const headers = new Headers({ "Accept": "application/json" });
+    if (bearer) {
+      await this.authorize();
+      headers.set("Authorization", `Bearer ${bearer.value}`);
+      signal = AbortSignal.any([signal, bearer.signal]);
+    } else if (this.options.apiKey) headers.set("api-key", this.options.apiKey);
     if (current) { sessionId(current); headers.set("X-Core-Connection-Session", current); }
+    if (pollSecret) headers.set("X-Core-Connection-Poll", pollSecret);
     if (body) headers.set("Content-Type", "application/json");
+    let response: Response;
     try {
       signal.throwIfAborted();
-      const response = await (this.options.fetch ?? fetch)(this.origin + path, { method, headers,
+      response = await (this.options.fetch ?? fetch)(this.origin + path, { method, headers,
         body: body ? JSON.stringify(body) : undefined, redirect: "error", cache: "no-store", signal });
-      return response;
-    } catch { throw new ConnectionSessionError("GatewayUnavailable"); }
+    } catch {
+      if (bearer?.signal.aborted) throw new ConnectionSessionError("ApiAuthenticationRequired", 401);
+      throw new ConnectionSessionError("GatewayUnavailable");
+    }
+    if (bearer && response.status === 401) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new ConnectionSessionError("ApiAuthenticationRequired", 401);
+    }
+    return response;
   }
 
   private authentication(value: unknown): Authentication {
@@ -306,6 +340,7 @@ export class ConnectionSessionClient {
     if (!/^\/[A-Za-z0-9_./~-]+$/.test(path) || path.includes("//") || path.split("/").some((part) => part === "." || part === "..")
       || path.startsWith("/auth/")) throw new ConnectionSessionError("InvalidApiPath");
     return this.options.store.withExclusive(this.binding, async (tx) => {
+      await this.authorize();
       // HTTPの90秒予算は排他取得後に一度だけ開始し、業務前の更新確定と
       // 409後の再試行でも取り直しません。SQL自身の期限とfencingはstoreが担います。
       const deadline = AbortSignal.timeout(90_000);
@@ -359,6 +394,7 @@ export class ConnectionSessionClient {
   /** 取引情報は共有保存先から取得し、HTTP引数で他利用者の取引を指定させません。 */
   async poll(): Promise<"pending" | "complete"> {
     return this.options.store.withExclusive(this.binding, async (tx) => {
+      await this.authorize();
       const state = await tx.read();
       if (!state || state.status === "signed_out") throw new ConnectionSessionError("NoAuthenticationTransaction");
       if (state.status === "complete") return "complete";
@@ -367,11 +403,8 @@ export class ConnectionSessionClient {
         throw new ConnectionSessionError("AuthenticationTransactionExpired", 409);
       }
       const auth = state.authentication!;
-      const headers = new Headers({ "api-key": this.options.apiKey, "Accept": "application/json", "X-Core-Connection-Poll": auth.pollSecret });
-      let response: Response;
-      try { response = await (this.options.fetch ?? fetch)(`${this.origin}/auth/connections/status?transactionId=${auth.transactionId}`,
-        { headers, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(25000) }); }
-      catch { throw new ConnectionSessionError("GatewayUnavailable"); }
+      const response = await this.send(`/auth/connections/status?transactionId=${auth.transactionId}`,
+        undefined, undefined, "GET", controlDeadline(), auth.pollSecret);
       const value = await readJson(response);
       if (!response.ok) {
         const error = value.error && typeof value.error === "object" && !Array.isArray(value.error)
@@ -402,6 +435,7 @@ export class ConnectionSessionClient {
   /** 有効な本人セッションから対象を決めるため、任意のUPN・本人IDは送信しません。 */
   private async end(operation: "logout" | "logout-all" | "disconnect"): Promise<string> {
     return this.options.store.withExclusive(this.binding, async (tx) => {
+      await this.authorize();
       let state = await tx.read();
       if (!state || state.status !== "complete") {
         if (operation !== "logout") throw new ConnectionSessionError("NoActiveConnectionSession");

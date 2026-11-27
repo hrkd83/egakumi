@@ -258,7 +258,7 @@ class CredentialPolicyTests(unittest.TestCase):
   self.assertIn('selection["ownerId"]',body)
   self.assertIn('context.Api.Id',body);self.assertIn('context.Operation.Id',body)
   self.assertNotIn('context.Request.Headers',body)
-  gateway=ET.fromstring((CORE/'apps/apim/policies/api-templates/gateway.xml').read_text(encoding='utf-8'))
+  gateway=ET.fromstring((CORE/'apps/apim/policies/api-templates/rest/rest.xml').read_text(encoding='utf-8'))
   parent=gateway.find('inbound')
   self.assertEqual([node.get('fragment-id') for node in parent.findall('include-fragment')
                    if node.get('fragment-id').startswith('core-credential-')],
@@ -401,8 +401,8 @@ class CredentialExpressionTests(unittest.TestCase):
     raise AssertionError("Rate error response must expose its actual Retry-After expressions")
    switches.append('case "retry-'+policy+'":c.Variables['+json.dumps(variable)+']='+retry_methods[(policy,"seconds")]+'(c);var retryAction'+policy+'=(string)'+retry_methods[(policy,"action")]+'(c);output[(string)item["id"]]=new JObject(new JProperty("action",retryAction'+policy+'),new JProperty("header",retryAction'+policy+'=="override"?(string)'+retry_methods[(policy,"header")]+'(c):null));break;')
   # HTTP/外部MCPの実引渡し式と直後の実拒否条件を、CMの実caller/selection式へ接続します。
-  cls.handoff_policies={name:ET.parse(CORE/'apps/apim/policies/api-templates'/filename).getroot()
-                        for name,filename in (('http','gateway.xml'),('mcp','protocol.xml'))}
+  cls.handoff_policies={name:ET.fromstring(render_audit_policy(policy_fixture_path(policies, filename).read_text(encoding='utf-8')))
+                        for name,filename in (('http','rest.xml'),('mcp','stream.xml'))}
   http_handoff=(CORE/'apps/apim/policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.cs').read_text(encoding='utf-8')
   for name,root in cls.handoff_policies.items():
    handoff='AuthenticationHandoff'+name

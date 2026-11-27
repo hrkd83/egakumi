@@ -103,7 +103,8 @@ test("更新要求は固定scopeと証明書を使い、invalid_grantを内部�
     error instanceof ApiAuthenticationError && error.code === "ApiAuthorizationDenied" && error.status === 401);
 });
 
-test("試用の追加認証は設定で無効にでき、Gateway.Invoke以外のscopeを拒否する", (testContext) => {
+test("購読管理はTryのBearer設定から独立し、同じ本人・callbackでも用途が異なるトークンを受け付けない", async (testContext) => {
+  const manageScope = scope.replace(/Gateway\.Invoke$/, "Subscription.Manage");
   const azureVault = new URL("https://vault.azure.net");
   azureVault.hostname = `synthetic-${randomUUID().slice(0, 8)}.${azureVault.hostname}`;
   const environment = {
@@ -122,6 +123,8 @@ test("試用の追加認証は設定で無効にでき、Gateway.Invoke以外の
     PORTAL_API_AUTH_KEY_URL: `${azureVault.origin}/secrets/portal/${version}`,
     PORTAL_API_AUTH_KEY_CLIENT_ID: settings.keyIdentity,
     PORTAL_API_AUTH_PREVIOUS_KEY_VERSIONS: "",
+    PORTAL_SUBSCRIPTION_MANAGER_URL: "https://internal.example.invalid",
+    PORTAL_SUBSCRIPTION_MANAGEMENT_SCOPE: manageScope,
   };
   const previous = new Map(Object.keys(environment).map((name) => [name, process.env[name]]));
   testContext.after(() => {
@@ -135,15 +138,23 @@ test("試用の追加認証は設定で無効にでき、Gateway.Invoke以外の
     else process.env[name] = value;
   }
   assert.throws(() => readApiAuthenticationSettings(), { code: "ApiAuthenticationDisabled", status: 404 });
-  process.env.PORTAL_API_AUTH_ENABLED = "true";
-  const enabled = readApiAuthenticationSettings();
-  assert.equal(enabled.scope, scope);
-  assert.equal(enabled.callback, settings.callback);
-  assert.equal(bindApiAuthSession(user, enabled).hash, bindApiAuthSession(user, settings).hash);
-  process.env.PORTAL_API_AUTH_SCOPE = scope.replace(/Gateway\.Invoke$/, "Subscription.Manage");
-  assert.throws(() => readApiAuthenticationSettings(), { code: "ApiAuthenticationUnavailable", status: 503 });
-  process.env.PORTAL_API_AUTH_SCOPE = `api://${clientId}/Gateway.Invoke`;
-  assert.throws(() => readApiAuthenticationSettings(), { code: "ApiAuthenticationUnavailable", status: 503 });
+  const management = readApiAuthenticationSettings("subscription-management");
+  assert.equal(management.scope, manageScope);
+  assert.equal(management.callback, settings.callback);
+  assert.notEqual(bindApiAuthSession(user, management).hash, bindApiAuthSession(user, settings).hash);
+  let returned = "Gateway.Invoke";
+  const oauth = new PortalApiOAuth(management, async (_url, options) => {
+    const fields = options?.body as URLSearchParams;
+    assert.equal(fields.get("scope"), `openid profile offline_access ${manageScope}`);
+    return Response.json({ access_token: access, expires_in: 120, token_type: "Bearer", scope: returned });
+  }, undefined, async () => assertion);
+  const authorization = await oauth.authorizationURL(state, request);
+  assert.equal(authorization.searchParams.get("scope"), `openid profile offline_access ${manageScope}`);
+  await assert.rejects(oauth.refresh(refresh, user, ""), { code: "ApiAuthorizationDenied", status: 401 });
+  returned = "Subscription.Manage";
+  assert.equal((await oauth.refresh(refresh, user, "")).access, access);
+  process.env.PORTAL_SUBSCRIPTION_MANAGEMENT_SCOPE = scope;
+  assert.throws(() => readApiAuthenticationSettings("subscription-management"), { code: "ApiAuthenticationUnavailable", status: 503 });
 });
 
 test("APIキーとBearerを同時に受け付けず、本人のBearerだけを上流ヘッダーに使う", async () => {

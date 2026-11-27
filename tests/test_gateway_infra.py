@@ -1,4 +1,5 @@
 """Gatewayの配備境界、既存名の維持とDB初期化前のアプリ更新防止を確認する。"""
+from arm_helpers import PolicyExpression
 from bicep_helpers import compile_bicep
 
 import json
@@ -77,6 +78,36 @@ class GatewayInfrastructureTests(unittest.TestCase):
         self.assertIn("sqldb-{0}-credentials", db["name"])
         self.assertEqual(db["properties"]["collation"], "Latin1_General_100_BIN2")
 
+    def test_gateway_only_defines_conditional_broker_signing_access_for_the_obo_key(self):
+        gateway = self.templates["gateway"]
+        role, = [item for item in resources(gateway)
+                 if item["type"] == "Microsoft.Authorization/roleDefinitions" and not item.get("existing")]
+        module = self.module("gateway-access")
+        access = module["properties"]["template"]
+        self.assertIn(role, access["resources"])
+        self.assertEqual(gateway["parameters"]["graphObo"]["defaultValue"], {})
+        self.assertEqual(access["parameters"]["oboKeyName"]["defaultValue"], "")
+        key_parameter = PolicyExpression(module["properties"]["parameters"]["oboKeyName"], gateway["variables"])
+        self.assertEqual(key_parameter.evaluate({"graphObo": {}}, 0), {"value": ""})
+        graph_obo = {"keyUrl": "https://vault.example.com/keys/gateway-obo/" + "a" * 32}
+        self.assertEqual(key_parameter.evaluate({"graphObo": graph_obo}, 0), {"value": "gateway-obo"})
+        condition = "[not(empty(parameters('oboKeyName')))]"
+        self.assertEqual(role["condition"], condition)
+        self.assertEqual(role["properties"]["assignableScopes"], ["[resourceGroup().id]"])
+        self.assertEqual(role["properties"]["permissions"], [{
+            "actions": [], "notActions": [],
+            "dataActions": ["Microsoft.KeyVault/vaults/keys/sign/action"], "notDataActions": [],
+        }])
+
+        role_id = "[resourceId('Microsoft.Authorization/roleDefinitions', guid(resourceGroup().id, 'gateway-graph-obo-signer'))]"
+        assignment, = [item for item in resources(gateway) if item["type"] == "Microsoft.Authorization/roleAssignments"
+                       and item["properties"].get("roleDefinitionId") == role_id]
+        self.assertEqual(assignment["condition"], condition)
+        self.assertEqual(assignment["scope"],
+                         "[resourceId('Microsoft.KeyVault/vaults/keys', parameters('vaultName'), parameters('oboKeyName'))]")
+        self.assertEqual(assignment["properties"]["principalId"], "[parameters('runtimeIdentity').principalId]")
+        self.assertEqual(assignment["properties"]["principalType"], "ServicePrincipal")
+
     def test_application_and_apim_settings_require_second_phase(self):
         gateway = self.templates["gateway"]
         self.assertIs(gateway["parameters"]["deployApplication"]["defaultValue"], False)
@@ -91,6 +122,20 @@ class GatewayInfrastructureTests(unittest.TestCase):
         self.assertEqual(manual["name"], "[format('caj-{0}-schema', parameters('stem'))]")
         scheduled, = [item for item in jobs if item["properties"]["configuration"]["triggerType"] == "Schedule"]
         self.assertEqual(scheduled["condition"], "[parameters('deployApplication')]")
+
+    def test_broker_application_jobs_and_apim_address_bind_the_dedicated_environment(self):
+        broker = self.module("gateway-broker")["properties"]["template"]
+        broker_environment = broker["outputs"]["environmentId"]["value"]
+        self.assertIn("cae-{0}-broker", broker_environment)
+        broker_app, = [item for item in broker["resources"] if item["type"] == "Microsoft.App/containerApps"]
+        self.assertEqual(broker_app["properties"]["managedEnvironmentId"], broker_environment)
+        self.assertIs(broker_app["properties"]["configuration"]["ingress"]["external"], True)
+        self.assertIs(broker_app["properties"]["configuration"]["ingress"]["allowInsecure"], False)
+        jobs = [item for item in broker["resources"] if item["type"] == "Microsoft.App/jobs"]
+        self.assertEqual([item["properties"]["environmentId"] for item in jobs], [broker_environment] * 2)
+        apim_url = self.module("gateway-apim-settings")["properties"]["parameters"]["credentialBrokerUrl"]["value"]
+        self.assertIn("outputs.environmentDomain.value", apim_url)
+        self.assertTrue(apim_url.startswith("[format('https://"))
 
     def test_existing_key_and_resource_identity_names_are_preserved(self):
         gateway = self.templates["gateway"]

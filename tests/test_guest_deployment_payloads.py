@@ -141,7 +141,8 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
                     endpoint = "https://" + host + suffix
                     reader = PayloadExpression("[true()]", template.get("variables", {}), endpoint)
                     parameters = {"managementPrefix": "<MANAGEMENT_SUBNET_PREFIX>",
-                                  "acaPrefix": "<ACA_SUBNET_PREFIX>", "agwPrefix": "<APPGW_SUBNET_PREFIX>"}
+                                  "acaPrefix": "<ACA_SUBNET_PREFIX>", "brokerPrefix": "<BROKER_SUBNET_PREFIX>",
+                                  "agwPrefix": "<APPGW_SUBNET_PREFIX>"}
                     properties = reader.resolve(group["properties"], parameters)
                     values = [fqdn for collection in properties["ruleCollections"]
                               for rule in collection["rules"] for fqdn in rule.get("targetFqdns", [])]

@@ -170,7 +170,8 @@ if(context.Variables.TryGetValue("gatewayAuthenticatedSubject",out obsV)) {
           if (serviceClass == "platform" || serviceClass == "sample") { record["serviceClass"] = serviceClass; }
           // 説明：設定された接続先サービス・下流の認証方式・計測上の役割を写します。
           record["backendService"] = (string)settings["backendService"];
-          record["backendAuthentication"] = (string)settings["backendAuthentication"];
+          record["backendAuthentication"] = context.Variables.ContainsKey("gatewayGraphObo") && (bool)context.Variables["gatewayGraphObo"]
+            ? "entraObo" : (string)settings["backendAuthentication"];
           record["measurementRole"] = (string)settings["measurementRole"];
           var target = (string)settings["targetAgent"];
           // 説明：対象エージェント名は、決めた文字で100文字以内の場合だけ記録します。

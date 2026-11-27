@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import { z } from "zod";
+import { SubscriptionManagementConnection } from "@/components/subscription-management-connection";
 import { Button } from "@/components/ui/button";
 import { startPortalApiAuthorization } from "@/lib/api-auth/browser";
 import type { TryCredential } from "@/lib/api-auth/try-credential";
@@ -65,6 +66,7 @@ export function TryAuthenticationPicker({ model, locale, disabled = false, onMod
 }) {
   const { store, selection } = model;
   const labels = messages[locale];
+  const keyConnection = selection.mode === "api-key" ? <SubscriptionManagementConnection locale={locale} disabled={disabled} /> : null;
 
   async function start() {
     store.setState({ submitting: true, error: false });
@@ -91,8 +93,7 @@ export function TryAuthenticationPicker({ model, locale, disabled = false, onMod
   }
 
   const updating = disabled || selection.submitting;
-  if (selection.status === "disabled" || selection.status === "loading") return null;
-  return <fieldset className="mb-3 space-y-2">
+  return <>{selection.status !== "disabled" && selection.status !== "loading" && <fieldset className="mb-3 space-y-2">
     <legend className="text-sm font-medium">{labels.label}</legend>
     <div className="flex flex-wrap items-center gap-2">
       <Button type="button" size="sm" variant={selection.mode === "api-key" ? "default" : "outline"}
@@ -116,5 +117,5 @@ export function TryAuthenticationPicker({ model, locale, disabled = false, onMod
         </Button>}
       {selection.error && <span role="alert" className="text-sm text-destructive">{labels.failed}</span>}
     </div>}
-  </fieldset>;
+  </fieldset>}{keyConnection}</>;
 }

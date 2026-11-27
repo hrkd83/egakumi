@@ -9,6 +9,7 @@ import time
 
 from management_client import validate_inventory
 from .paths import REPOSITORY, local_paths
+from .portal_resources import subscription_app_names
 from .private_permissions import check_private_permissions
 
 
@@ -23,7 +24,35 @@ FAMILIES = {'applicationIds': 'applications', 'jobIds': 'jobs', 'environmentIds'
 SQL_ALIASES = {'gateway': 'credentials', 'portal': 'portal'}
 
 
-def _expected_targets(config):
+def expected_maintenance_environments(config, state):
+    """構築記録にあるBroker環境と、Portal環境の固定IDを対応付ける。"""
+    stem = config['resourceStem']
+    portal = ('/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['svc']
+              + '/providers/Microsoft.App/managedEnvironments/cae-' + stem)
+    outputs = state['outputs']
+    portal_output = outputs.get('portal')
+    if portal_output is not None and (not isinstance(portal_output, dict)
+            or portal_output.get('environmentName') != 'cae-' + stem):
+        raise ValueError('The Portal maintenance environment differs from its constructed scope')
+    if 'brokerPlatform' not in outputs:
+        return {'portal': portal, 'gateway': portal}
+    broker = outputs['brokerPlatform']
+    gateway = portal + '-broker'
+    if (not isinstance(broker, dict) or broker.get('environmentName') != 'cae-' + stem + '-broker'
+            or str(broker.get('environmentId', '')).casefold() != gateway.casefold()):
+        raise ValueError('The Broker maintenance environment differs from its constructed scope')
+    return {'portal': portal, 'gateway': gateway}
+
+
+def matches_maintenance_environment(properties, environment):
+    """App／Jobの親環境の別名フィールドも、全て同じIDであることを確認する。"""
+    if not isinstance(properties, dict):
+        return False
+    references = [properties[key] for key in ('environmentId', 'managedEnvironmentId') if properties.get(key)]
+    return bool(references) and all(str(value).casefold() == environment.casefold() for value in references)
+
+
+def _expected_targets(config, *, broker_separated=False):
     """期待名は取り違え検出だけに使い、出力がないIDを補って配備しない。"""
     stem = config['resourceStem']
     base = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['svc'] + '/providers/Microsoft.App/'
@@ -32,11 +61,12 @@ def _expected_targets(config):
         'gateway': {
             'applicationIds': [base + 'containerApps/ca-' + stem + '-credentials'],
             'jobIds': [base + 'jobs/caj-' + stem + '-schema', base + 'jobs/caj-' + stem + '-recon'],
-            'environmentIds': [base + 'managedEnvironments/cae-' + stem],
+            'environmentIds': [base + 'managedEnvironments/cae-' + stem + ('-broker' if broker_separated else '')],
             'sqlDatabaseIds': [sql + 'credentials'],
         },
         'portal': {
-            'applicationIds': [base + 'containerApps/ca-' + stem + '-portal'],
+            'applicationIds': [base + 'containerApps/' + name
+                               for name in ('ca-' + stem + '-portal', *subscription_app_names(config).values())],
             'jobIds': [base + 'jobs/caj-' + stem + '-psql', base + 'jobs/caj-' + stem + '-psync'],
             'environmentIds': [base + 'managedEnvironments/cae-' + stem],
             'sqlDatabaseIds': [sql + 'portal'],
@@ -61,7 +91,12 @@ def management_client_inventory(config, state):
     if (value['subscriptionId'] != config['subscriptionId'] or value['azureTenantId'] != config['azureTenantId']
             or value['managementVmId'].casefold() != vm.casefold()):
         raise ValueError('The constructed management client identity differs from the selected environment')
-    allowed = _expected_targets(config)
+    environments = expected_maintenance_environments(config, state)
+    broker_separated = environments['portal'] != environments['gateway']
+    if broker_separated and {item.casefold() for item in value['environments']} != {
+            item.casefold() for item in environments.values()}:
+        raise ValueError('The constructed Portal and Broker environments are both required in the maintenance inventory')
+    allowed = _expected_targets(config, broker_separated=broker_separated)
     for output, family in FAMILIES.items():
         expected = {target.casefold() for component in allowed.values() for target in component[output]}
         ids = [item['id'] for item in value[family]] if family == 'sqlDatabases' else value[family]
@@ -108,18 +143,39 @@ def management_client_inventory(config, state):
 
 
 def _merge_outputs(config, inventory, outputs, component):
-    if component not in _expected_targets(config):
+    if component not in SQL_ALIASES:
         raise ValueError('Select the Gateway or Portal management client construction phase')
     metadata = outputs.get('managementMaintenance') if isinstance(outputs, dict) else None
     if not isinstance(metadata, dict) or set(metadata) != set(FAMILIES):
         raise ValueError('Successful app deployment management maintenance outputs are required')
-    expected = _expected_targets(config)[component]
     inventory = deepcopy(validate_inventory(inventory))
+    separated = _expected_targets(config, broker_separated=True)
+    broker_environment, = separated['gateway']['environmentIds']
+    broker_separated = broker_environment.casefold() in {item.casefold() for item in inventory['environments']}
+    expected = (separated if broker_separated else _expected_targets(config))[component]
+    if component == 'portal' and any(key in outputs for key in subscription_app_names(config)):
+        service_ids = dict(zip(subscription_app_names(config), expected['applicationIds'][1:]))
+        endpoint_states = set()
+        for key, target in service_ids.items():
+            service = outputs.get(key)
+            if (not isinstance(service, dict) or str(service.get('id', '')).casefold() != target.casefold()
+                    or str(service.get('name', '')).casefold() != target.rsplit('/', 1)[-1].casefold()
+                    or not isinstance(service.get('fqdn'), str)):
+                raise ValueError('A subscription service output differs from its exact constructed app')
+            endpoint_states.add(bool(service['fqdn']))
+        expected_apps = expected['applicationIds'] if endpoint_states == {True} else []
+        if (len(endpoint_states) != 1 or not isinstance(metadata['applicationIds'], list)
+                or sorted(str(item).casefold() for item in metadata['applicationIds']) != sorted(
+                    target.casefold() for target in expected_apps)):
+            raise ValueError('The subscription service maintenance output is incomplete')
     additions = []
     for output, family in FAMILIES.items():
         ids = metadata[output]
         if not isinstance(ids, list):
             raise ValueError('App maintenance target output must be a constructed-resource array')
+        if output == 'environmentIds' and (len(ids) != 1 or not isinstance(ids[0], str)
+                or ids[0].casefold() != expected[output][0].casefold()):
+            raise ValueError('An app maintenance output must identify its exact constructed ACA environment')
         if output == 'sqlDatabaseIds' and (len(ids) != 1 or not isinstance(ids[0], str)
                 or ids[0].casefold() != expected[output][0].casefold()):
             raise ValueError('The app SQL output must identify its exact constructed user database')
@@ -172,6 +228,7 @@ def update_management_client_assets(config, state, outputs, transport, *, compon
             raise ValueError('The prior protected management client inventory could not be reconciled') from None
     inventory, additions = _merge_outputs(config, inventory, outputs, component)
     tags = {'product': config['productName'], 'environment': config['environmentName'], 'azd-env-name': config['environmentName']}
+    expected_environment = expected_maintenance_environments(config, state)[component]
 
     def owned(body, resource_id, resource_type):
         if (not isinstance(body, dict) or str(body.get('id', '')).casefold() != resource_id.casefold()
@@ -193,8 +250,12 @@ def update_management_client_assets(config, state, outputs, transport, *, compon
             if (str(policy.get('id', '')).casefold() != (server + '/connectionPolicies/default').casefold()
                     or policy.get('properties', {}).get('connectionType') != 'Proxy'):
                 raise ValueError('SQL maintenance requires the constructed TCP1433 Proxy policy')
-        elif body.get('properties', {}).get('provisioningState') != 'Succeeded':
-            raise ValueError('A constructed ACA maintenance target is not ready')
+        else:
+            properties = body.get('properties', {})
+            if properties.get('provisioningState') != 'Succeeded':
+                raise ValueError('A constructed ACA maintenance target is not ready')
+            if '/managedenvironments/' not in target.casefold() and not matches_maintenance_environment(properties, expected_environment):
+                raise ValueError('The app or job is outside the constructed ACA environment')
     vm = inventory['managementVmId']
     body = checked(transport, 'GET', vm + '?api-version=' + COMPUTE_API, label='Verify management client VM identity')
     owned(body, vm, 'Microsoft.Compute/virtualMachines')

@@ -1,6 +1,6 @@
 # API・認証・モデル・証明書の仕様
 
-[README](../../README.md)から導入の第1〜6章と、任意の第7章（ハブ＆スポーク対応）へ進みます。本書はAPI契約・運用機能の参照先です。環境固有の値は`<...>`で示し、導入先の値へ置き換えます。
+[READMEの初回構築手順](../../README.md#新規クローンから構築する)から、事前準備、Core構築、GatewayとPortalの配備へ進みます。本書はAPI契約・運用機能の参照先です。環境固有の値は`<...>`で示し、導入先の値へ置き換えます。
 
 ネットワークの設計は[通信要件](network-communication-requirements.md)を入口に、[NSG全規則・判断](network-security-design.md)、[Firewall全規則・判断](firewall-policy-design.md)、[検証と実証結果の管理](network-security-validation.md)を参照します。通常のNSG規則にしないAzure基盤・同一ホスト内通信は[基盤通信の例外](platform-communications.md)で区別します。
 
@@ -28,7 +28,7 @@ PIIの`maxRequestBytes=1000000`は、`text`・`language`をコンパクトJSON�
 
 APIMのnative REST-backed MCPは、REST側の上流エラーを`content[].text`へ包み、HTTP 200・`isError:false`とする場合があります。クライアントはHTTP状態、JSON-RPCの`error`、`isError`だけで成功を確定せず、`structuredContent`または各`content[].text`のJSONが[PII成功スキーマ](../../apps/apim/schemas/pii.json)に一致することも検証してください。複数の結果が食い違う場合も失敗にします。Portalはこのスキーマ検証を行い、上流エラーをマスキング成功として表示しません。生成されたMCP応答ストリームを書き換える構成は採用していません。
 
-外部MCP proxyで個人の下流認証が必要なら、`credentialConnection.mode=personal`を指定し、CM共通窓口で取得した接続セッションを追加します。MCPのtransport・セッションID・再接続規則と、Gatewayの本人接続セッションは区別します。[CM共通接続手順](../setup/credential-manager-login.md)
+外部MCP proxyで個人の下流認証が必要なら、`credentialConnection.mode=personal`を指定し、CM共通窓口で取得した接続セッションを追加します。MCPのtransport・セッションID・再接続規則と、Gatewayの本人接続セッションは区別します。[CM共通接続手順](credential-manager-login.md)
 
 ## APIと認証の仕様
 
@@ -57,7 +57,7 @@ Coreの汎用中継は`tests/fixtures/external-api-definitions.json`で回帰検
 
 現行資材のCore管理ログは、Application GatewayのアクセスURIからWorkspace取り込み変換でqueryを除去し、変換後のLAWと監査Storageへ保存する構成です。既存環境は配備記録・変換後ログ・exportと診断経路を照合して反映状況を確認します。WAFのlogScrubbingは別に維持します。企業Policy等が別Workspaceへ送るコピーは別の管理境界として記録し、Coreから設定変更・収集除外を行いません。[設定と既存環境の段階更新](../testing/log-privacy.md)を参照してください。
 
-APIMの`core-gateway`は検証済み購読ID、要求ID、API／操作、結果code／status、許可したmodelを記録します。下流の応答IDは固定3ヘッダーの検査済み値だけを退避し、SSE本文を読み取ったり全量bufferしたりしません。親要求IDは相関の候補であり、要求者の本人・利用許可・購読の課金帰属を上書きしません。相関処理の正本は [監査context](../../apps/apim/policies/fragments/audit/core-audit-context/core-audit-context.xml)と [Gateway転送](../../apps/apim/policies/api-templates/gateway.xml)です。
+APIMの`core-gateway`は検証済み購読ID、要求ID、API／操作、結果code／status、許可したmodelを記録します。下流の応答IDは固定3ヘッダーの検査済み値だけを退避し、SSE本文を読み取ったり全量bufferしたりしません。親要求IDは相関の候補であり、要求者の本人・利用許可・購読の課金帰属を上書きしません。相関処理の正本は [監査context](../../apps/apim/policies/fragments/audit/core-audit-context/core-audit-context.xml)と [Gateway転送](../../apps/apim/policies/api-templates/rest/rest.xml)です。
 
 数値usageの初期対象は、`foundryOpenAi`のHTTP Chat Completions操作だけです。既存Developer/classicを含む[AI gatewayの適用tier](https://learn.microsoft.com/en-us/azure/api-management/genai-gateway-capabilities)と、[managed Chat Completionsの標準ログ手順](https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-llm-logs)を採用します。APIM診断を`2025-09-01-preview`へ揃えて`largeLanguageModel.logs`を有効化しますが、任意の`requests/responses`メッセージ設定は指定せず、既存のfrontend/backend本文取得は0 byteを維持します。[診断の公開定義](https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement/2025-09-01-preview/service/apis/diagnostics)
 
@@ -87,7 +87,7 @@ HTTP/SSEは要求、WebSocketは初回握手を数えます。生成MCPは参照
 
 `graph-profile-v1`の`/tools/graph/v1/me`は、購読キーとCMの本人接続セッションでGraphを呼びます。クライアントのサーバーがログイン取引を開始し、利用者がMicrosoftサインインを完了すると、APIMがGraphの`/me`で本人を確認します。接続セッションには購読・provider・本人・接続・期限を結び付けます。
 
-APIの呼出時は、`X-Core-Connection-Session`を購読キーと合わせて送ります。APIMがセッションを照合し、CMの`get-authorization-context`で下流用tokenを取得します。本人接続のtoken取得・更新はCMが管理します。[CM共通接続手順](../setup/credential-manager-login.md)
+APIの呼出時は、`X-Core-Connection-Session`を購読キーと合わせて送ります。APIMがセッションを照合し、CMの`get-authorization-context`で下流用tokenを取得します。本人接続のtoken取得・更新はCMが管理します。[CM共通接続手順](credential-manager-login.md)
 
 ## 初期モデルと公開API
 
@@ -128,7 +128,7 @@ GPT-5.6 Sol／Terra／Lunaは版`2026-07-09`・`GlobalStandard`で配備し、�
 
 `modelSettings`はモデル名別の設定差分です。操作直下の`allowedModels`とモデル能力表は設定・配備時の照合に使います。モデル選択部品では一覧にないことを理由に403にせず、差分がなければ基本設定を返します。後段の一覧・能力表の照合と固定転送先は、続く棚卸の対象です。任意の`settingId`は監査用の内部識別名で、クライアントが指定する値ではありません。モデル別の出力項目やFLUXの固定転送先を保持し、モデル名を使わない業務APIは基本設定だけで扱います。
 
-画像入力のChatとPDF入力のResponsesにも共通の公開URLを使います。同じモデルの`chat`／`vision`や`response`／`pdf`候補を重複登録する構造を廃止し、GPT群のChatは`settingId: chat`、Responsesは`settingId: response`へ揃えます。この構造整理では既存の受付条件を維持し、登録外モデルや本文・ツールに残る制御は続く棚卸で個別に判断します。新しい画像・PDFの実機受入結果を示すものではありません。[全APIと操作・内部設定の定義](api-design-proposal.md)・[設定パラメーター](../setup/04-params.md#操作制約c)を参照してください。
+画像入力のChatとPDF入力のResponsesにも共通の公開URLを使います。同じモデルの`chat`／`vision`や`response`／`pdf`候補を重複登録する構造を廃止し、GPT群のChatは`settingId: chat`、Responsesは`settingId: response`へ揃えます。この構造整理では既存の受付条件を維持し、登録外モデルや本文・ツールに残る制御は続く棚卸で個別に判断します。新しい画像・PDFの実機受入結果を示すものではありません。[全APIと操作・内部設定の定義](api-design-proposal.md)・[設定パラメーター](../setup/07-params.md#操作制約c)を参照してください。
 
 Speech サービスの SSML 読み上げ `/models/azure-speech/v1/synthesize`、
 WAV 文字起こし `/models/azure-speech/v1/recognize`、Voice Live も独立した操作として使用します。
@@ -211,7 +211,7 @@ STTの公開`audio/wav`はAPIMがSpeech向けの固定codec・16kHzヘッダー�
 
 ## 管理ポータルの使い方
 
-[Core内の管理ポータル](../setup/portal.md)は`apps/portal`で管理します。画面ログインとGateway利用を分け、サーバー側で購読キーを付けて公開APIを呼びます。本人接続が必要なAPIでは、認証URLの表示・認証完了の確認・元操作の再実行を確認します。
+[Core内の管理ポータル](../setup/12-deploy-portal.md)は`apps/portal`で管理します。画面ログインとGateway利用を分け、サーバー側で購読キーを付けて公開APIを呼びます。本人接続が必要なAPIでは、認証URLの表示・認証完了の確認・元操作の再実行を確認します。
 
 ## 本人OAuth接続
 
@@ -221,7 +221,7 @@ CMはMicrosoftのaccess/refresh tokenを保管・更新し、BrokerとSQLが確�
 
 共通基盤はSQLサーバー・非公開経路・ACA環境・ACRを準備します。Gateway工程はCM provider、credentials DB、Broker・初期化／定期照合ジョブ、本人接続の共通APIを配備します。Portal工程は認証DB・アプリ・購読管理と、利用者ごとの接続状態を扱う機能を配備します。
 
-本人のCM接続は実際のログイン時に作成または再利用します。任意のUPNや接続名を本人証明にしません。設定とOAuthの前提は [CM接続手順](../setup/credential-manager-login.md)、配備単位は [Gatewayの配備](../setup/credential-sql.md)を参照してください。
+本人のCM接続は実際のログイン時に作成または再利用します。任意のUPNや接続名を本人証明にしません。設定とOAuthの前提は [CM接続手順](credential-manager-login.md)、配備単位は [Gatewayの配備](../setup/11-deploy-gateway.md)を参照してください。
 
 ### 認証と業務再開
 
@@ -246,41 +246,11 @@ CMはMicrosoftのaccess/refresh tokenを保管・更新し、BrokerとSQLが確�
 
 ## 証明書の取得・更新
 
-証明書の取得・更新はAzure Public DNSと事前作成したDNS用UAMIを使用します。
+公開TLSの初回発行・定期更新は、専用の内部ACA環境のJobで行います。DNS側Subscription IDと事前作成したDNS用UAMIのリソースIDは、Coreの初回構築前にparamsへ記入します。`azd up`と`azd provision`は同じCore工程を実行し、このIDを証明書Jobへ割り当てます。管理VMは初回イメージのビルドと非公開ACRへの登録を担当します。 [証明書用Jobの初回構築](../operations/certificate-jobs.md#空環境から構築する)
 
-| `certificate.mode` | 動作と担当 |
-| --- | --- |
-| `dnsPlugin` | 管理VMのPowerShell 7でLet's Encrypt DNS-01を実行しKey Vaultへ格納。systemd timerが既定12時間ごとに確認し期限前更新 |
+公開TLS用の証明書とACMEアカウントは公開TLS用Key Vaultへ保存し、Jobの実行結果と排他状態は用途別のBlobコンテナーへ保存します。DNS-01で新しい検証が必要なときは一時TXTを作成し、検証値だけを回収します。DNS用IDとゾーンの操作権限は、定期更新の運用中も維持します。
 
-以下の`/var/lib/egakumi-certificates/`と`egakumi-certificate-`はworker実装の固定パス／prefixです。導入先の製品名や、管理端末のclone先を指定する値ではありません。
-
-管理VMは署名済みMicrosoft APTからPowerShell 7.6.7、Posh-ACME 4.34.0を導入します。状態は`/var/lib/egakumi-certificates/<KV>-<cert>`（ディレクトリ700・ファイル600）で保護し、DNS用UAMIでAzure Public DNSへ接続します。ACMEアカウント・証明書再利用状態もVaultへ保存し、VM再作成時に復元します。Vaultの完全削除後は再利用できません。
-
-DNS側Subscription IDと事前作成したUAMIのリソースIDは、`azd up`前にparamsへ必須設定します。IaCは証明書取得前にそのIDを管理VMへ追加し、workerは毎回IMDSの`mi_res_id`でIDを指定してARMトークンを取得します。Key Vaultには従来のシステム割り当てMIを使います。DNS側の権限付与・ID作成は事前準備です。
-
-```sh
-CERTIFICATE_VAULT_NAME='<対象Key Vaultの名前>'
-CERTIFICATE_NAME='<対象証明書の名前>'
-CERTIFICATE_UNIT="egakumi-certificate-${CERTIFICATE_VAULT_NAME}-${CERTIFICATE_NAME}"
-CERTIFICATE_WORKER="/var/lib/egakumi-certificates/${CERTIFICATE_VAULT_NAME}-${CERTIFICATE_NAME}"
-systemctl status "${CERTIFICATE_UNIT}.timer"
-journalctl -u "${CERTIFICATE_UNIT}.service"
-```
-
-必要なDNS検証では一時TXTを作り、検証後に**その検証値だけ**を回収します。CA側の有効な認証を再利用した更新では、新しいTXTを作らない場合もあります。恒久的な公開A・Entra所有確認TXT・無関係なTXTは削除しません。運用中はDNS用UAMIの存続・VMへの関連付け・DNS権限を維持します。不要になったIDやロールはDNS担当者が利用先を確認して回収します。
-
-期限前に運用上の理由で証明書を交換するときは、Key Vaultの現在の証明書バージョンのSHA-1 thumbprint（40桁の公開識別値）を確認し、管理VMで次を一度実行します。正常な既存証明書と、そのACMEキャッシュ・同じSANの注文・アカウントが必要です。通常の`azd up`・定期更新の期限判定は変わりません。
-
-```sh
-sudo /usr/bin/pwsh -NoLogo -NoProfile -NonInteractive \
-  -File "${CERTIFICATE_WORKER}/certificate.ps1" \
-  -Action Renew -ConfigFile "${CERTIFICATE_WORKER}/config.json" \
-  -RotateFromThumbprint '<現在の公開証明書の40桁thumbprint>'
-```
-
-指定した旧証明書と一致するときだけ既存注文を更新します。発行後のVault登録で失敗した場合は、同じ指定で再実行すると検査済みの新しいキャッシュ証明書を取り込み、重複発行を避けます。既に別の正常な証明書へ変わっていれば追加発行せず、`current-already-different`と表示します。これは今回の実行で交換したという意味ではありません。要求はtimerや設定に残さず、既存の証明書版・ACME状態を保持します。CAの回数制限で失敗した場合は連続実行せず原因を確認してください。完了後も通常の自動更新を続け、AppGWのGateway／Portalが実際に返す公開証明書をそれぞれ照合します。
-
-AppGWはバージョンなしKey Vault secret URIを参照し、通常約4時間ごとに新証明書を確認します。更新タスクへAppGW管理権限は与えません。APIM保守は標準Gateway名とMicrosoft管理の既定証明書を使用し、公開証明書の更新対象に含めません。Linux AMA/DCRがSyslog・性能・証明書状態を監視します。
+App Gatewayは版を指定しないKey Vault参照で公開証明書を取得します。発行・更新後は、Key Vaultの版に加え、GatewayとPortalの公開ホスト名が実際に返す証明書を照合します。 [TLS証明書の更新と確認](../operations/secrets-and-certificates.md#tls証明書を更新し公開httpsまで確認する)
 
 ### API Centerのカタログ管理
 

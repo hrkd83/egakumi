@@ -31,11 +31,11 @@ param portalPublicHostName string
 param existingNetworkSecurityGroupNames array = []
 @description('azd の読取結果から渡す実ルート表名と既存経路の対応。初回は空、再 up は後続段階で作った経路も保持します。')
 param existingRouteTableRoutes object = {}
+param auditEvidenceEnabled bool = false
 
 // Design authority: infrastructure/{virtual-network,network-security-group,
-// route-table,private-dns-zone,azure-firewall,firewall-policy}. The core owns
-// six subnets, five NSGs and three base route tables. The required
-// core sample portal adds a delegated ACA subnet and its own route table.
+// route-table,private-dns-zone,azure-firewall,firewall-policy}.
+// Portal, Credential Broker and certificate jobs use separate delegated ACA subnets.
 var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
 
 var addressSpaces = config.?addressSpaces ?? ['10.40.0.0/24', '10.40.1.0/24', '10.40.2.0/24', '10.40.3.0/24']
@@ -46,6 +46,7 @@ var subnetPrefixes = config.?subnetPrefixes ?? {
   apim: '10.40.2.64/26'
   management: '10.40.2.128/26'
   aca: '10.40.2.192/26'
+  broker: '10.40.3.128/25'
 }
 // The separated certificate subnet is supplied by the validated Core input.
 var certificateEnabled = contains(subnetPrefixes, 'certificate')
@@ -85,7 +86,7 @@ func allowRule(ruleName string, priority int, direction string, protocol string,
 
 // AppGWはAzure既定送信を保持。ACAの末尾Denyは動的な許可を登録した後で配置します。
 // AzureFirewallSubnetに顧客NSGを作成・関連付けしません。
-var nsgDefinitions = concat([
+var nsgDefinitions = [
   {
     key: 'agw'
     suffix: 'agw'
@@ -154,11 +155,28 @@ var nsgDefinitions = concat([
       allowRule('allow-firewall-routed-public-https-egress', nsgPriorities.groups.aca.rules['allow-firewall-routed-public-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['Internet'], ['443'])
     ]
   }
-], certificateEnabled ? [{ key: 'certificate', suffix: 'certificate', rules: [] }] : [])
+  {
+    key: 'broker'
+    suffix: 'broker'
+    rules: [
+      allowRule('allow-apim-https-ingress', nsgPriorities.groups.broker.rules['allow-apim-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.apim], [subnetPrefixes.broker], ['443', '31443'])
+      allowRule('allow-azure-load-balancer-ingress', nsgPriorities.groups.broker.rules['allow-azure-load-balancer-ingress'].priority, 'Inbound', 'Tcp', ['AzureLoadBalancer'], [subnetPrefixes.broker], ['30000-32767'])
+      allowRule('allow-broker-internal-ingress', nsgPriorities.groups.broker.rules['allow-broker-internal-ingress'].priority, 'Inbound', '*', [subnetPrefixes.broker], [subnetPrefixes.broker], ['*'])
+      allowRule('allow-arm-https-egress', nsgPriorities.groups.broker.rules['allow-arm-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.broker], ['AzureResourceManager'], ['443'])
+      allowRule('allow-broker-internal-egress', nsgPriorities.groups.broker.rules['allow-broker-internal-egress'].priority, 'Outbound', '*', [subnetPrefixes.broker], [subnetPrefixes.broker], ['*'])
+      allowRule('allow-entra-egress', nsgPriorities.groups.broker.rules['allow-entra-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.broker], ['AzureActiveDirectory'], ['443'])
+      allowRule('allow-monitor-egress', nsgPriorities.groups.broker.rules['allow-monitor-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.broker], ['AzureMonitor'], ['443'])
+      allowRule('allow-mcr-egress', nsgPriorities.groups.broker.rules['allow-mcr-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.broker], ['MicrosoftContainerRegistry'], ['443'])
+      allowRule('allow-afd-first-party-egress', nsgPriorities.groups.broker.rules['allow-afd-first-party-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.broker], ['AzureFrontDoor.FirstParty'], ['443'])
+      allowRule('allow-firewall-routed-public-https-egress', nsgPriorities.groups.broker.rules['allow-firewall-routed-public-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.broker], ['Internet'], ['443'])
+    ]
+  }
+]
+var activeNsgDefinitions = concat(nsgDefinitions, auditEvidenceEnabled ? [{ key: 'audit', suffix: 'audit', rules: [] }] : [], certificateEnabled ? [{ key: 'certificate', suffix: 'certificate', rules: [] }] : [])
 
 // 同じNSGを「作成」と「既存参照」の両方へ宣言しないよう、先に名前を分けます。
 // 各ループの宣言名を重複させず、初回・再up・途中再開を同じ仕組みで扱います。
-var nsgResourceNames = map(nsgDefinitions, group => 'nsg-${resourcePrefix}-${group.suffix}')
+var nsgResourceNames = map(activeNsgDefinitions, group => 'nsg-${resourcePrefix}-${group.suffix}')
 var newNsgResourceNames = filter(nsgResourceNames, nsgName => !contains(existingNetworkSecurityGroupNames, nsgName))
 var existingNsgResourceNames = filter(nsgResourceNames, nsgName => contains(existingNetworkSecurityGroupNames, nsgName))
 
@@ -206,14 +224,16 @@ var routeTableDefinitions = [
   { key: 'agw', suffix: 'agw' }
   { key: 'apim', suffix: 'apim' }
   { key: 'management', suffix: 'vm' }
+  { key: 'broker', suffix: 'broker' }
 ]
+var activeRouteTableDefinitions = concat(routeTableDefinitions, auditEvidenceEnabled ? [{ key: 'audit', suffix: 'audit' }] : [])
 
 // 親ルート表の PUT は routes を省略しても既存経路を消すため、azd が読み取った
 // 書込可能な既存経路を明示して保持します。初回だけ空の配列になります。
 // AppGW → APIM の実 VIP /32 等は後続の子リソースで追加・更新します。
 // 本体の更新は省略せず、タグや BGP 伝搬設定の変更も同時に反映します。
 // true=伝搬という利用者設定を ARM の disable... へここだけで反転します。
-resource routeTables 'Microsoft.Network/routeTables@2025-01-01' = [for table in routeTableDefinitions: {
+resource routeTables 'Microsoft.Network/routeTables@2025-01-01' = [for table in activeRouteTableDefinitions: {
   name: 'rt-${resourcePrefix}-${table.suffix}'
   location: location
   tags: tags
@@ -221,7 +241,7 @@ resource routeTables 'Microsoft.Network/routeTables@2025-01-01' = [for table in 
     // User settings are affirmative: true propagates, false suppresses.
     // Azure's native property is negative, so invert only at this boundary.
     // An independent VNet has no gateway routes; propagation defaults to true.
-    disableBgpRoutePropagation: !(config.?bgpRoutePropagation[table.key] ?? true)
+    disableBgpRoutePropagation: contains(['broker', 'audit'], table.key) ? true : !(config.?bgpRoutePropagation[table.key] ?? true)
     routes: existingRouteTableRoutes[?'rt-${resourcePrefix}-${table.suffix}'] ?? []
   }
 }]
@@ -313,16 +333,37 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
         }
       }
 
-    ], [{
-      name: 'snet-${resourcePrefix}-aca'
+    ], [
+      {
+        name: 'snet-${resourcePrefix}-aca'
+        properties: {
+          addressPrefix: subnetPrefixes.aca
+          networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', nsgResourceNames[4]) }
+          routeTable: { id: portalRouteTable.id }
+          delegations: [{ name: 'containerapps', properties: { serviceName: 'Microsoft.App/environments' } }]
+          defaultOutboundAccess: false
+        }
+      }
+      {
+        name: 'snet-${resourcePrefix}-broker'
+        properties: {
+          addressPrefix: subnetPrefixes.broker
+          networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', nsgResourceNames[5]) }
+          routeTable: { id: routeTables[3].id }
+          delegations: [{ name: 'containerapps', properties: { serviceName: 'Microsoft.App/environments' } }]
+          defaultOutboundAccess: false
+        }
+      }
+    ], auditEvidenceEnabled ? [{
+      name: 'snet-${resourcePrefix}-audit'
       properties: {
-        addressPrefix: subnetPrefixes.aca
-        networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', nsgResourceNames[4]) }
-        routeTable: { id: portalRouteTable!.id }
+        addressPrefix: subnetPrefixes.audit
+        networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-${resourcePrefix}-audit') }
+        routeTable: { id: routeTables[4].id }
         delegations: [{ name: 'containerapps', properties: { serviceName: 'Microsoft.App/environments' } }]
         defaultOutboundAccess: false
       }
-    }], certificateEnabled ? [{
+    }] : [], certificateEnabled ? [{
       name: 'snet-${resourcePrefix}-certificate'
       properties: {
         addressPrefix: subnetPrefixes.certificate
@@ -704,11 +745,13 @@ var initialRoutes = [
   { tableIndex: 1, name: 'default-egress', prefix: '0.0.0.0/0', nextHopType: 'VirtualAppliance' }
   { tableIndex: 1, name: 'apim-management-direct', prefix: 'ApiManagement', nextHopType: 'Internet' }
   { tableIndex: 2, name: 'default-egress', prefix: '0.0.0.0/0', nextHopType: 'VirtualAppliance' }
+  { tableIndex: 3, name: 'default-egress', prefix: '0.0.0.0/0', nextHopType: 'VirtualAppliance' }
 ]
+var activeInitialRoutes = concat(initialRoutes, auditEvidenceEnabled ? [{ tableIndex: 4, name: 'default-egress', prefix: '0.0.0.0/0', nextHopType: 'VirtualAppliance' }] : [])
 
 // APIM と VM の外向き通信を Firewall へ送り、APIM の管理通信には必要な直接経路を残します。
 @batchSize(1)
-resource routes 'Microsoft.Network/routeTables/routes@2025-01-01' = [for route in initialRoutes: {
+resource routes 'Microsoft.Network/routeTables/routes@2025-01-01' = [for route in activeInitialRoutes: {
   parent: routeTables[route.tableIndex]
   name: route.name
   properties: union({
@@ -727,12 +770,11 @@ output subnetIds object = union({
   pep: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-pep')
   management: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-vm')
   aca: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-aca')
-}, certificateEnabled ? { certificate: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-certificate') } : {})
+  broker: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-broker')
+}, auditEvidenceEnabled ? { audit: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-audit') } : {}, certificateEnabled ? { certificate: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-certificate') } : {})
 output subnetPrefixes object = subnetPrefixes
-output nsgNames object = union({ agw: nsgResourceNames[0], apim: nsgResourceNames[1], pep: nsgResourceNames[2], management: nsgResourceNames[3], aca: nsgResourceNames[4] },
-  certificateEnabled ? { certificate: 'nsg-${resourcePrefix}-certificate' } : {})
-output routeTableNames object = union({ agw: routeTables[0].name, apim: routeTables[1].name, management: routeTables[2].name },
-  certificateEnabled ? { certificate: certificateRouteTable!.name } : {})
+output nsgNames object = union({ agw: nsgResourceNames[0], apim: nsgResourceNames[1], pep: nsgResourceNames[2], management: nsgResourceNames[3], aca: nsgResourceNames[4], broker: nsgResourceNames[5] }, auditEvidenceEnabled ? { audit: nsgResourceNames[6] } : {}, certificateEnabled ? { certificate: 'nsg-${resourcePrefix}-certificate' } : {})
+output routeTableNames object = union({ agw: routeTables[0].name, apim: routeTables[1].name, management: routeTables[2].name, broker: routeTables[3].name }, auditEvidenceEnabled ? { audit: routeTables[4].name } : {}, certificateEnabled ? { certificate: certificateRouteTable!.name } : {})
 output privateDnsZoneIds object = {
   foundryCognitive: privateDnsZones[0].id
   foundryOpenAi: privateDnsZones[1].id
@@ -742,7 +784,7 @@ output privateDnsZoneIds object = {
 output firewallId string = firewall.id
 output firewallPolicyName string = firewallPolicy.name
 output firewallPolicyId string = firewallPolicy.id
-output monitoredResourceIds array = concat([vnet.id, firewall.id, firewallPolicy.id], map(nsgDefinitions, definition => resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-${resourcePrefix}-${definition.suffix}')), map(routeTableDefinitions, definition => resourceId('Microsoft.Network/routeTables', 'rt-${resourcePrefix}-${definition.suffix}')))
+output monitoredResourceIds array = concat([vnet.id, firewall.id, firewallPolicy.id], map(activeNsgDefinitions, definition => resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-${resourcePrefix}-${definition.suffix}')), map(activeRouteTableDefinitions, definition => resourceId('Microsoft.Network/routeTables', 'rt-${resourcePrefix}-${definition.suffix}')))
 output firewallPrivateIp string = firewall.properties.ipConfigurations[0].properties.privateIPAddress
 output firewallPublicIpId string = firewallPublicIp.id
 output firewallPublicIpAddress string = firewallPublicIp.properties.ipAddress

@@ -14,7 +14,7 @@ import tempfile
 import unittest
 
 from arm_helpers import ArmExpression
-from configuration_fixtures import fixture
+from configuration_fixtures import bind_credential_fixture_id, fixture
 from schema_helpers import local_schema_validator
 
 
@@ -30,8 +30,9 @@ NETWORK_INPUTS = {
     "subnetPrefixes": {"agw": "10.40.0.0/24", "pep": "10.40.1.0/24",
                        "firewall": "10.40.2.0/26", "apim": "10.40.2.64/26",
                        "management": "10.40.2.128/26", "aca": "10.40.2.192/26",
-                       "certificate": "10.40.3.0/27"},
+                       "certificate": "10.40.3.0/27", "broker": "10.40.3.128/25"},
 }
+PUBLIC_AUDIT_CIDR = "10.40.4.0/26"
 FIREWALL_INPUTS = {
     "snatPrivateRanges": ["IANAPrivateRanges"],
     "idpsPrivateRanges": [], "bypassTrafficSettings": [],
@@ -59,6 +60,7 @@ def public_documents(name="test"):
     """公開例だけを読み、実在する組織や秘密ファイルを使わない。"""
     options = json.loads((CORE / f"config/{name}.json").read_text(encoding="utf-8"))
     parameters = json.loads((CORE / f"params/{name}.example.json").read_text(encoding="utf-8"))
+    bind_credential_fixture_id(parameters)
     parameters["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
     parameters["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
     parameters["entraTenantId"] = parameters["azureTenantId"]
@@ -74,6 +76,7 @@ def public_documents(name="test"):
 
 def custom_documents():
     options, parameters = public_documents()
+    options["auditEvidence"]["enabled"] = False
     network = copy.deepcopy(NETWORK_INPUTS)
     network["addressSpaces"] = [item.replace("10.40.", "10.70.") for item in network["addressSpaces"]]
     network["subnetPrefixes"] = {key: value.replace("10.40.", "10.70.")
@@ -98,7 +101,8 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         for name in ("test", "production"):
             options, parameters = public_documents(name)
             with self.subTest(name=name):
-                self.assertEqual({key: parameters["network"][key] for key in NETWORK_INPUTS}, NETWORK_INPUTS)
+                self.assertEqual(parameters["network"]["addressSpaces"], [*NETWORK_INPUTS["addressSpaces"], PUBLIC_AUDIT_CIDR])
+                self.assertEqual(parameters["network"]["subnetPrefixes"], {**NETWORK_INPUTS["subnetPrefixes"], "audit": PUBLIC_AUDIT_CIDR})
                 self.assertNotIn("firewall", parameters["network"])
                 self.assertNotIn("auditAllowedIpAddresses", parameters["monitoring"])
                 self.assertFalse(set(options["network"]) & set(NETWORK_INPUTS))
@@ -154,13 +158,15 @@ class ParameterIpOwnershipTests(unittest.TestCase):
     def test_custom_cidrs_and_fixed_firewall_ranges_reach_bicep_input(self):
         options, parameters = custom_documents()
         normalized = normalize_configuration(load_documents(options, parameters))
-        result = build_bicep_configuration(normalized)
+        result = arm_parameters(normalized, "core")["parameters"]["configuration"]["value"]
         for key in NETWORK_INPUTS:
             self.assertEqual(result["network"][key], parameters["network"][key])
         for key in RETIRED_NETWORK_INPUTS:
             self.assertNotIn(key, result["network"])
         firewall = result["network"]["firewall"]
         self.assertEqual(firewall["snatPrivateRanges"], ["IANAPrivateRanges", *parameters["network"]["addressSpaces"]])
+        self.assertNotIn("idpsPrivateRanges", firewall)
+        self.assertNotIn("generatedIdpsPrivateRanges", normalized["network"])
         self.assertEqual(firewall["bypassTrafficSettings"], [])
         for key in ("sku", "idpsMode", "zones"):
             self.assertEqual(firewall[key], options["network"]["firewall"][key])
@@ -195,7 +201,7 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                 self.assertEqual(actual, list(collapse_addresses(actual)))
                 self.assertEqual(sum(block.num_addresses for block in actual) + app_gateway.num_addresses,
                                  sum(block.num_addresses for block in original))
-                for kind in ("apim", "aca"):
+                for kind in ("apim", "aca", "broker"):
                     subnet = ip_network(network["subnetPrefixes"][kind])
                     self.assertTrue(any(subnet.subnet_of(block) for block in actual), kind)
 
@@ -368,6 +374,11 @@ class NetworkArmExpression(ArmExpression):
         if tree[0] != "call":
             return super().evaluate(parameters, index, tree, bindings)
         _, name, arguments = tree
+        if name == "parameters":
+            key = self.evaluate(parameters, index, arguments[0], bindings)
+            default = self.template.get("parameters", {}).get(key, {})
+            if key not in parameters and "defaultValue" in default:
+                return self.resolve(default["defaultValue"], parameters)
         if name == "variables":
             key = self.evaluate(parameters, index, arguments[0], bindings)
             if key not in self.cache:
@@ -438,10 +449,10 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
             "auditStorageJapanPrivateIps": ["10.70.1.12"], "auditStorageFoundryPrivateIps": ["10.70.1.14"],
             "managementPrivateIp": "10.70.2.132", "firewallPublicIpAddress": "192.0.2.10",
             "apimPrivateIp": "10.70.2.68", "appGatewayPublicIpAddress": "198.51.100.10",
-            "existingNetworkSecurityGroupNames": [],
+            "existingNetworkSecurityGroupNames": [], "auditEvidenceEnabled": False,
             "nsgNames": {key: "nsg-test-fixture-" + suffix
                          for key, suffix in (("agw", "agw"), ("apim", "apim"), ("pep", "pep"),
-                                             ("management", "vm"), ("aca", "aca"))}}
+                                             ("management", "vm"), ("aca", "aca"), ("broker", "broker"))}}
         return NetworkArmExpression("[createObject()]", template), parameters
 
     def test_custom_vnet_address_spaces_and_subnets_are_in_compiled_arm(self):
@@ -452,9 +463,9 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(expression.resolve(properties["dhcpOptions"], parameters), {"dnsServers": []})
         subnets = expression.resolve(properties["subnets"], parameters)
         self.assertEqual([item["properties"]["addressPrefix"] for item in subnets],
-                         [config["network"]["subnetPrefixes"][key] for key in ("agw", "firewall", "apim", "pep", "management", "aca", "certificate")])
-        self.assertEqual(len(subnets), 7)
-        for subnet, suffix in zip(subnets, ("agw", None, "apim", "pep", "vm", "aca", "certificate")):
+                         [config["network"]["subnetPrefixes"][key] for key in ("agw", "firewall", "apim", "pep", "management", "aca", "broker", "certificate")])
+        self.assertEqual(len(subnets), 8)
+        for subnet, suffix in zip(subnets, ("agw", None, "apim", "pep", "vm", "aca", "broker", "certificate")):
             with self.subTest(suffix=suffix):
                 if suffix is None:
                     self.assertEqual(subnet["name"], "AzureFirewallSubnet")
@@ -482,13 +493,12 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
 
     def test_aca_delegation_links_the_subnet_to_the_firewall_egress_route(self):
         config = self.configuration()
-        config["network"]["subnetPrefixes"]["aca"] = "10.70.3.128/27"
         expression, parameters = self.resolver("network", config)
         resources = self.templates["network"]["resources"]
         subnets = expression.resolve(resources["vnet"]["properties"]["subnets"], parameters)
-        self.assertEqual(len(subnets), 7)
+        self.assertEqual(len(subnets), 8)
         aca = next(item["properties"] for item in subnets if item["name"] == "snet-test-fixture-aca")
-        self.assertEqual(aca["addressPrefix"], "10.70.3.128/27")
+        self.assertEqual(aca["addressPrefix"], config["network"]["subnetPrefixes"]["aca"])
         self.assertEqual(aca["delegations"][0]["properties"]["serviceName"], "Microsoft.App/environments")
         self.assertIs(aca["defaultOutboundAccess"], False)
         self.assertEqual(aca["routeTable"]["id"], "/mock/Microsoft.Network/routeTables/rt-test-fixture-aca")

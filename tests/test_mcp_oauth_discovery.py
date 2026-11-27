@@ -7,16 +7,14 @@ Azure / Entra には接続せず、この試験だけでクラウド受入成功
 from arm_helpers import DiscoveryExpression
 from bicep_helpers import compile_bicep
 import base64
-import asyncio
 import copy
 import json
 from pathlib import Path
-import re
 import unittest
 import xml.etree.ElementTree as ET
 
 from test_api_protocols import bound_external_coverage, configuration
-from arm_helpers import PolicyExpression, compiled_policy_value
+from arm_helpers import compiled_policy_value
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -77,10 +75,8 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
                          {"entries": [{"name": "fixture", "flags": [True, False, None, 7]},
                                       ["literal", "prefix-fixture"]]})
 
-    def test_generated_mcp_audit_object_is_evaluated_from_compiled_udf(self):
-        """実 UDF の object 本文を評価し、最終 XML に同じ監査値が届く。"""
-        function = next(group for group in self.template["functions"] if group["namespace"] == "__bicep")["members"]["auditSettings"]
-        self.assertIsInstance(function["output"]["value"], dict)
+    def test_generated_mcp_carries_audit_and_rest_operation_settings(self):
+        """生成MCPの最終XMLは入口の監査区分と、対応するREST操作の設定を持つ。"""
         apis = [api for api in self.definitions if "mcp" in api]
         for api, policy in zip(apis, self.variable("mcpPolicyValues")):
             with self.subTest(api=api["name"]):
@@ -99,7 +95,8 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
                 self.assertEqual(json.loads(lines[2]), {
                     "operationId": api["mcp"]["operationNames"][0],
                     "operationConstraints": api["authorization"]["operationConstraints"],
-                    "tokenLimitOperationIds": [], "speechSsmlOperationIds": [], "queryObservations": {}, "inputContracts": {},
+                    "tokenLimitOperationIds": [], "chatStoreDisabledOperationIds": [], "speechSsmlOperationIds": [],
+                    "queryObservations": {}, "inputContracts": {},
                     "mcpQueryObservations": {method+" /mcp": api["mcp"]["queryObservation"] for method in ("POST","GET","DELETE")} if "queryObservation" in api["mcp"] else {}})
                 inbound = list(root.find("inbound"))
                 calls = root.findall('./inbound/include-fragment[@fragment-id="core-api-settings"]')
@@ -142,13 +139,16 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
                 self.assertEqual(api["authorization"]["mode"], "subscriptionKey")
 
     def test_mcp_key_failures_do_not_advertise_a_global_bearer_login(self):
-        policies = [*self.variable("policyValues"), *self.variable("mcpPolicyValues")]
-        for policy in policies:
+        external = [policy for api, policy in zip(self.definitions, self.variable("policyValues"), strict=True)
+                    if api["apiType"] == "mcp"]
+        generated = self.variable("mcpPolicyValues")
+        self.assertTrue(external)
+        self.assertTrue(generated)
+        for policy in [*external, *generated]:
             root = ET.fromstring(policy)
-            self.assertEqual(root.findall('.//set-header[@name="WWW-Authenticate"]'), [])
-            self.assertNotIn('gatewayMcpChallenge', policy)
-        for policy in self.variable("mcpPolicyValues"):
-            self.assertNotIn('gatewayMcpOAuth', policy)
+            self.assertFalse(any(header.get("name", "").casefold() == "www-authenticate"
+                                 for header in root.iter("set-header")))
+        for policy in generated:
             self.assertIn('subscriptionKey', policy)
             root = ET.fromstring(policy)
             key_branch = next(branch for branch in root.findall('./inbound/choose/when')

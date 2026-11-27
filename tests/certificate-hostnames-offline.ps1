@@ -145,10 +145,10 @@ try {
     $script:FixtureOrder=$null
     Ensure-Certificate
     Check ($script:IssueCalls -eq 1 -and $script:IssuedDomains[0] -eq '*.example.invalid' -and -not $script:Forced) 'First wildcard issuance parameters differ'
-    $script:FixtureOrder=[pscustomobject]@{MainDomain='gateway.example.invalid';SANs=@();status='valid'}
+    $script:FixtureOrder=[pscustomobject]@{MainDomain='gateway.example.invalid';SANs=@();status='valid';CertExpires=$single.NotAfter}
     Ensure-Certificate
     Check ($script:IssueCalls -eq 2 -and $script:Forced) 'MainDomain-only change did not create a new wildcard order'
-    $script:FixtureOrder=[pscustomobject]@{MainDomain='*.example.invalid';SANs=@();status='valid'}
+    $script:FixtureOrder=[pscustomobject]@{MainDomain='*.example.invalid';SANs=@();status='valid';CertExpires=$wildcard.NotAfter}
     Ensure-Certificate
     Check ($script:IssueCalls -eq 2 -and $script:RenewCalls -eq 1 -and $script:SetOrderCalls -eq 1) 'Unchanged wildcard order was unnecessarily replaced'
     $script:Config.hostnames=@('gateway.example.invalid','portal.example.invalid')

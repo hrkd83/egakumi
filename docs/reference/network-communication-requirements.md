@@ -10,8 +10,8 @@
 
 | 判断 | 採用する設計 | 理由と境界 |
 | --- | --- | --- |
-| 初期ネットワーク | 独立VNet、6サブネット、5 NSG、4ルートテーブル | AppGW、APIM、Private Endpoint、管理VM、ACAへNSGを関連付ける。AzureFirewallSubnetに顧客NSGを関連付けない |
-| 固定ルール集合 | NSG catalog v5は77カスタム規則（Allow69、Deny8）、Firewallは35規則（Network14、Application21）。名称・優先度・用途・作成を資材で固定 | ルール作成だけを切り替えるparams/configのフラグ・任意追加配列は設けない。構築した資源のアドレスは動的に設定する |
+| 初期ネットワーク | 独立VNetと用途別のサブネット・NSG・ルートテーブル | AppGW、APIM、Private Endpoint、管理VM、Portal用ACA、Broker用ACAへNSGを関連付ける。AzureFirewallSubnetに顧客NSGを関連付けない |
+| 固定ルール集合 | NSGとFirewallの名称・優先度・用途を資材で固定 | ルール作成の条件は資材にあり、構築した資源のアドレスを設定する |
 | 公開入口 | AppGWのHTTP80とHTTPS443 | HTTPはHTTPSへのリダイレクト用。公開IPv4の初期範囲は`0.0.0.0/0`。企業の許可元IP制限は引渡し後に手動で変更する |
 | AppGWのバックエンド | APIMとPortalのACA入口へHTTPS443 | AppGWで再暗号化し、Firewall PremiumでTLS検査後に再暗号化する。 |
 | APIMからの接続 | Foundry・Key Vault PE、BrokerのACA入口等へHTTPS443 | AppGWのバックエンド設定とは別接続。サービスのHTTPS契約と認証を維持する |
@@ -19,31 +19,36 @@
 | L7入口保護 | AppGWが`X-Core-L7-Ingress`を上書きし、APIMが検査 | 通常HTTP/HTTPS APIの入口保護として常設する。gRPC設定から独立させ、値は公開文書・paramsへ記載しない。業務APIの購読キー・Bearer認可も別に維持する |
 | 標準DNS | VNetとFirewallの上流DNSをAzure提供DNSへ固定。Firewall DNS proxyを保持 | DNS変更入力と初期カスタムDNS用NSG規則を設けない。Azure提供DNSのNSG例外を、他のDNSや全宛先53番へ一般化しない |
 | 標準時刻 | APIMの外部NTP、管理VMのAzureホストPHC同期 | APIMはNSG328でInternet宛UDP123、FirewallでAPIMサブネットからUDP123を許可。管理VMはChronyでPHC／`AZUR`だけを参照し、非IPのVMBus／PHCにNSG／FWのUDP123／319／320許可を作らない |
-| 明示Allowと既定許可 | ACAは受信・送信とも明示Allowの後に終端Deny。AppGWとPEの送信は既定規則も評価 | ACA両方向の例外、AppGW OutboundとPE Outboundの境界は[NSG設計](network-security-design.md#既定規則と拒否範囲)を参照 |
-| ACAの外向き経路 | 公開宛TCP443は固定`0.0.0.0/0` UDRで構築Firewallへ転送し、許可済みの宛先に限定 | ACAサブネットの既定送信アクセスとルート表のBGP伝搬を無効化。CoreとNSG限定配備は既存経路を照合し、迂回可能な設定があれば停止する |
+| 明示Allowと既定許可 | Portal用・Broker用のACA両方向は必要通信を許可して末尾で拒否 | ACAの許可は同一サブネットの基盤通信、Azure製品基盤と用途別の経路に明示する。AppGWとPEのOutboundはAzure既定規則を使う |
 | 共有SQLの接続方式 | Proxy固定、SQL PEへTCP1433で直接接続 | [Proxy採用理由](sql-proxy-decision.md)を参照。PortalのSessionロックと接続層を維持し、Redirectへの移行は見送る |
 | Firewallの記録範囲 | 実際にFirewallを通る通信だけをルールにする | PEへ直接接続するSQL/Key Vault等に、将来の迂回を想定したFW規則を置かない。通信要件は本書で記録する |
 | 引渡し後の企業接続 | ハブ＆スポーク、中央DNS、企業NTP、許可元IPを手動で調整 | 初期構築の固定資材を企業設定の再適用手段としない。再実行は手動変更を戻し得るため、必要になった場合は別途差分と所有範囲を確認する |
 
-設定・経路の実装元は[network.bicep](../../infra/modules/network.bicep)、[network-bindings.bicep](../../infra/modules/network-bindings.bicep)、[Portalの経路binding](../../infra/modules/portal-network-bindings.bicep)である。[ハブ＆スポーク移行手順](../setup/07-hub-spoke.md)は、初期要件と企業側変更の所有範囲を分けて読む。
+設定・経路の実装元は[network.bicep](../../infra/modules/network.bicep)、[network-bindings.bicep](../../infra/modules/network-bindings.bicep)、[Portalの経路binding](../../infra/modules/portal-network-bindings.bicep)である。[ハブ＆スポーク移行手順](../setup/10-hub-spoke.md)は、初期要件と企業側変更の所有範囲を分けて読む。
+
+公開TLS用Key Vaultと業務用Key Vaultには別々のPrivate Endpointを作り、同じ `privatelink.vaultcore.azure.net` ゾーンへ各Vaultのレコードを登録する。 [証明書用Jobの通信](../operations/certificate-jobs.md)
 
 ## 主な業務経路
 
 ```mermaid
 flowchart LR
     Client[利用端末] -->|HTTPS443| GW[AppGW]
-    GW -->|HTTPS443| FW[Azure Firewall]
+    GW -->|HTTPS443| FW[Azure Firewall Premium / TLS inspection]
     FW -->|HTTPS443| APIM[Internal APIM]
-    FW -->|HTTPS443| Portal[Portal / ACA]
+    FW -->|HTTPS443| Portal[公開Portal / Portal用ACA]
     APIM -->|HTTPS443・直接| Foundry[Foundry PE]
-    APIM -->|HTTPS443・直接| Broker[Broker / ACA]
-    Broker -->|TCP1433・直接| SQL[SQL PE]
+    APIM -->|HTTPS443・Broker内部VIP| Broker[Broker / 専用ACA]
+    APIM -->|HTTPS443・Portal内部VIP| Profile[購読プロファイル照会 / Portal用ACA]
+    Portal -->|HTTPS443・同じACA環境| Admin[購読管理 / Portal用ACA]
+    Admin -->|TCP1433・直接| SQL[SQL PE]
+    Profile -->|TCP1433・直接| SQL
+    Broker -->|TCP1433・直接| SQL
     Broker -->|HTTPS443・直接| KV[Key Vault PE]
     Portal -->|HTTPS443・公開Gatewayへ| FW
     FW -->|HTTPS443・送信元変換後| GW
 ```
 
-AppGWは構築APIM VIPとACA VIPの`/32`宛UDRでFirewallを経由する。APIM/ACAからAppGWサブネットへの復路もFirewallへ向ける。AppGWのInternet向けデフォルトルートをFirewallへ変更する構成ではない。
+AppGWは構築APIM VIPとPortal用ACA VIPの`/32`宛UDRでFirewallを経由する。APIMとPortal用ACAからAppGWへの復路もFirewallへ向ける。Brokerの内部VIPにはAPIMが直接接続する。
 
 APIM、管理VM、ACAの外部向け通信は各デフォルトUDRでFirewallを経由する。ただしVNet内・PE宛などの、より具体的なシステム経路が優先される区間と、APIM管理用`ApiManagement → Internet`のUDRは別扱いである。PEサブネットにルートテーブルは関連付けず、`privateEndpointNetworkPolicies: NetworkSecurityGroupEnabled`で対向NSGを評価する。経路とNSGのどちらか一方だけで成立を判定しない。
 
@@ -58,16 +63,21 @@ NSGはstatefulである。許可された接続への応答に逆向きの新規
 | <a id="flow-client-http"></a>`FLOW-CLIENT-HTTP` | 公開クライアント → AppGW | TCP80 / HTTP | HTTPS入口へのリダイレクト | AppGW Inbound NSG。FW非通過 |
 | <a id="flow-client-https"></a>`FLOW-CLIENT-HTTPS` | 公開クライアント → AppGW | TCP443 / HTTPS、WSS | API、SSE、WebSocket、MCP、Portal | AppGW Inbound NSGとWAF。バックエンド接続は次の行で区別 |
 | <a id="flow-firewall-public-appgw"></a>`FLOW-FIREWALL-PUBLIC-APPGW` | 構築Firewallのpublic IP → AppGW | TCP443 / HTTPS | Portal等の公開Gateway呼出しでFWの送信元変換を経る通信の明示 | AppGW Inbound NSG。クライアントAllowと重なるため、この1規則だけで公開元を限定したとは扱わない |
-| <a id="flow-appgw-apim"></a>`FLOW-APPGW-APIM` | AppGW → APIM内部VIP | TCP443 / HTTPS | API転送とAPIM health probe | FW経由。AppGW Outbound、APIM InboundとFWの対となる規則 |
-| <a id="flow-appgw-aca"></a>`FLOW-APPGW-ACA` | AppGW → ACA環境VIP / Portal | TCP443 / HTTPS。ACA受信NSGは443と31443 | Portal転送と`/api/health`のprobe | FW経由。AppGW Outbound、ACA InboundとFWの対となる規則 |
-| <a id="flow-appgw-kv"></a>`FLOW-APPGW-KV` | AppGW → Key Vault PE群 | TCP443 / HTTPS | 公開TLS証明書参照・更新 | PE直接。AppGW Outbound、PE Inbound。FW規則なし |
+| <a id="flow-appgw-apim"></a>`FLOW-APPGW-APIM` | AppGW → APIM内部VIP | TCP443 / HTTPS | API転送とAPIM health probe | VIP宛UDRでFWへ送り、標準Gateway FQDNでTLS検査。APIM Inboundの送信元はFirewallサブネット |
+| <a id="flow-appgw-aca"></a>`FLOW-APPGW-ACA` | AppGW → Portal用ACAの内部VIP | TCP443 / HTTPS。ACA NSGは443と31443 | Portal転送と`/api/health`のprobe | VIP宛UDRでFWへ送り、Portal FQDNでTLS検査。PortalのACA Inboundの送信元はFirewallサブネット |
+| <a id="flow-appgw-kv"></a>`FLOW-APPGW-KV` | AppGW → 公開TLS用Key Vault PE | TCP443 / HTTPS | 公開リスナー証明書のPFX secretを参照 | PE直接。AppGW Outbound、PE Inbound、対象secretの読取 |
 | <a id="flow-apim-foundry"></a>`FLOW-APIM-FOUNDRY` | APIM → Foundry PE群 | TCP443 / HTTPS、WSS | モデル、音声、PII、文書解析等の上流API | PE直接。APIM Outbound、PE Inbound。API認可は別条件 |
-| <a id="flow-apim-aca"></a>`FLOW-APIM-ACA` | APIM → ACA環境VIP / Broker | TCP443 / HTTPS。NSGは443と31443 | 本人接続・資格情報の内部窓口 | VNet直接。APIM Outbound、ACA Inbound。FW規則なし |
-| <a id="flow-apim-kv"></a>`FLOW-APIM-KV` | APIM → 構築Key Vault PE群 | TCP443 / HTTPS | Named Value等の基盤秘密参照、カスタムドメイン証明書参照・更新 | PE直接。APIM Outbound、PE Inbound。AzureKeyVaultタグ宛の基盤依存とは別 |
-| <a id="flow-aca-kv"></a>`FLOW-ACA-KV` | ACA App/Job → Key Vault PE群 | TCP443 / HTTPS | Portal/Broker等の構築秘密参照 | PE直接。ACA Outbound、PE Inbound。FW規則なし |
-| <a id="flow-aca-sql"></a>`FLOW-ACA-SQL` | ACA App/Job → SQL PE群 | TCP1433、Proxy接続時のTLS | 本人接続台帳、Portal台帳、schema初期化・更新 | PE直接。ACA Outbound、PE Inbound。FW規則なし |
+| <a id="flow-apim-aca"></a>`FLOW-APIM-ACA` | APIM → Portal用ACA内の購読プロファイル照会 | TCP443 / HTTPS。NSGは443と31443 | 購読の利用枠照会 | VNet直接。APIM Outbound、Portal用ACA Inbound。照会はAPIMサブネットと専用鍵を確認 |
+| <a id="flow-apim-broker"></a>`FLOW-APIM-BROKER` | APIM → 専用ACA内部VIPのCredential Broker | TCP443 / HTTPS。Broker NSGは443と31443 | 本人確認、CM、本人トークンのOBO交換 | VNet直接。APIM Outboundの宛先はBroker VIP、Brokerの業務InboundはAPIMサブネット |
+| <a id="flow-apim-kv"></a>`FLOW-APIM-KV` | APIM → 業務用Key Vault PE | TCP443 / HTTPS | Named Valueに対応する入口、Broker、購読照会と、使用時の所有者チケットの秘密を参照 | PE直接。APIM Outbound、PE Inbound、対象secretの読取。APIMのサーバー証明書はAzure管理の標準証明書 |
+| <a id="flow-aca-kv"></a>`FLOW-ACA-KV` | ACA App/Job → 業務用Key Vault PE | TCP443 / HTTPS | Portal、購読管理・照会、Broker等の用途別秘密と署名鍵 | PE直接。ACA Outbound、PE Inbound、実行IDの対象オブジェクト権限 |
+| <a id="flow-aca-sql"></a>`FLOW-ACA-SQL` | ACA App/Job → SQL PE群 | TCP1433、SQL接続時のTLS | 本人接続、Portal認証、購読管理・照会、schema初期化・更新 | PE直接。ACA Outbound、PE Inbound。照会IDのSQL権限は参照プロシージャの実行に限定 |
 | <a id="flow-aca-acr"></a>`FLOW-ACA-ACR` | ACA → 構築ACR PEの全IP | TCP443 / HTTPS | App/Jobイメージ取得 | PE直接。login/dataのPE全IPを両NSGへ設定 |
-| <a id="flow-aca-appgw"></a>`FLOW-ACA-APPGW` | Portal/ACA → 構築AppGW public IP | TCP443 / HTTPS、WSS | Portalサーバーから公開Gateway APIを呼ぶ | FW経由。ACA Outbound、AppGW Inbound。PortalのHTTPS入口への転送とは別 |
+| <a id="flow-aca-appgw"></a>`FLOW-ACA-APPGW` | Portal用ACA → 構築AppGW public IP | TCP443 / HTTPS、WSS | Portalサーバーから公開Gateway APIを呼ぶ | FW経由。Portal用ACA Outbound、AppGW Inbound |
+
+AppGWは公開HTTPSを終端し、WAFで検査してからAPIMと公開PortalのバックエンドへHTTPS443で再暗号化する。その2経路ではFirewall Premiumの対象Application規則がTLSを検査し、内部VIPへHTTPSを再確立する。APIMからサービスへのHTTPSは実際の宛先・ルートに従う。 [FirewallのTLS検査設計](firewall-policy-design.md)
+
+購読管理のアプリIngressは同じACA環境に限定する。プロファイル照会はAPIMから接続できるようアプリの`external`を有効にし、内部ACA環境のプライベートVIPからAPIMサブネットだけに提供する。どちらのアプリにもAppGWの公開ルートを作成しない。到達性と、本人トークンまたは専用鍵によるアプリ認可をそれぞれ受け入れる。 [ACA環境とIngressの仕様](https://learn.microsoft.com/azure/container-apps/ingress)
 
 公開側TLS、AppGWからFirewall、Firewallからバックエンド、APIMから上流へのTLSはそれぞれ別の接続である。FirewallはAppGWからAPIMとPortalへの2つのApplication規則でTLSを検査する。ACAから外部へのFirewall規則は宛先を制御する。[Firewall設計](firewall-policy-design.md)
 
@@ -75,15 +85,15 @@ NSGはstatefulである。許可された接続への応答に逆向きの新規
 
 | 通信ID | 送信元 → 宛先 | プロトコル・宛先ポート | 用途 | 経路・制御 |
 | --- | --- | --- | --- | --- |
-| <a id="flow-mgmt-kv"></a>`FLOW-MGMT-KV` | 管理VM → Key Vault PE群 | TCP443 / HTTPS | 証明書・秘密の所定保守処理 | PE直接。管理VM Outbound、PE Inbound、用途別MI/RBAC |
+| <a id="flow-mgmt-kv"></a>`FLOW-MGMT-KV` | 管理VM → 業務用Key Vault PE | TCP443 / HTTPS | 業務用Vaultの保守と許可されたメタデータの確認 | PE直接。管理VM Outbound、PE Inbound、担当者本人への期限付き権限 |
 | <a id="flow-mgmt-foundry"></a>`FLOW-MGMT-FOUNDRY` | 管理VM → Foundry PE群 | TCP443 / HTTPS | Foundryデータ面の保守 | PE直接。管理VM Outbound、PE Inbound。ARM管理は別接続 |
 | <a id="flow-mgmt-acr"></a>`FLOW-MGMT-ACR` | 管理VM → ACR PEの全IP | TCP443 / HTTPS | イメージ配備・取得の保守 | PE直接。管理VM Outbound、PE Inbound |
 | <a id="flow-mgmt-sql"></a>`FLOW-MGMT-SQL` | 管理VM → SQL PE群 | TCP1433、SQL接続時のTLS | 構築Gateway/PortalのDB直接保守 | PE直接。管理VM Outbound、PE Inbound。担当者本人のEntra認証、作業期間中の対象DB内の権限、ODBC clientが必要 |
 | <a id="flow-mgmt-apim"></a>`FLOW-MGMT-APIM` | 管理VM → APIMサブネット | TCP443 / HTTPS | private Gateway側の保守確認 | VNet直接。管理VM Outbound、APIM Inbound。APIM管理用ARMとは別 |
-| <a id="flow-mgmt-aca-https"></a>`FLOW-MGMT-ACA-HTTPS` | 管理VM → ACA環境VIP | TCP443 / HTTPS。ACA NSGは443と31443 | Broker等のprivate HTTPS入口確認 | VNet直接。管理VM Outbound、ACA Inbound。Dev gatewayは別接続 |
-| <a id="flow-mgmt-audit-japan"></a>`FLOW-MGMT-AUDIT-JAPAN` | 管理VM → collectJapan監査StorageのBlob PE群 | TCP443 / HTTPS | 日本側監査Blobの閲覧 | PE直接。管理VM Outbound227、PE Inbound229。担当者本人への構築コンテナー単位の一時読取権限 |
-| <a id="flow-mgmt-audit-foundry"></a>`FLOW-MGMT-AUDIT-FOUNDRY` | 管理VM → collectFoundry監査StorageのBlob PE群 | TCP443 / HTTPS | Foundry側監査Blobの閲覧 | PE直接。管理VM Outbound228、PE Inbound230。担当者本人への構築コンテナー単位の一時読取権限 |
-| <a id="flow-mgmt-aca-dev"></a>`FLOW-MGMT-ACA-DEV` | 管理VM → 構築リージョンのACA Dev gateway | TCP443 / HTTPS、WSS | App/環境/Jobのライブログ、App exec | FW経由。NSGのInternet443とFWの単一リージョン宛FQDN規則。担当者本人のARM token、作業対象へのAzure RBAC、対象実行の存続も必要 |
+| <a id="flow-mgmt-aca-https"></a>`FLOW-MGMT-ACA-HTTPS` | 管理VM → Portal用ACAの内部VIP | TCP443 / HTTPS。Portal用ACA NSGは443と31443 | Portalのprivate HTTPS入口確認 | VNet直接。Brokerの保守ログ・execは対象環境に許可されたDev APIを使う |
+| <a id="flow-mgmt-audit-japan"></a>`FLOW-MGMT-AUDIT-JAPAN` | 管理VM → 基盤監査Storage（`collectJapan`）のBlob PE群 | TCP443 / HTTPS | APIM、Firewall、WAFなどの基盤監査Blobの閲覧 | PE直接。管理VM Outbound227、PE Inbound229。構築コンテナー単位の読取権限 |
+| <a id="flow-mgmt-audit-foundry"></a>`FLOW-MGMT-AUDIT-FOUNDRY` | 管理VM → collectFoundry監査StorageのBlob PE群 | TCP443 / HTTPS | Foundry側監査Blobの閲覧 | PE直接。管理VM Outbound228、PE Inbound230。Foundry APIへの接続とは別 |
+| <a id="flow-mgmt-aca-dev"></a>`FLOW-MGMT-ACA-DEV` | 管理VM → 構築リージョンのACA Dev gateway | TCP443 / HTTPS、WSS | App/環境/Jobのライブログ、App exec | FW経由。NSGのInternet443とFWの単一リージョン宛FQDN規則。本人のARM token、対象リソースのRBAC、対象実行の存続も必要 |
 
 保守操作の権限とclientは[管理VMの保守操作](../operations.md#管理vmから保守データを取得する)を参照する。NSGのTCP1433/443許可だけで、SQL保守、Blob閲覧、ACA execが認可されるわけではない。手動Jobのログ確認のためだけにDDLや初期データ更新を再実行しない。
 
@@ -101,7 +111,7 @@ NSGはstatefulである。許可された接続への応答に逆向きの新規
 | <a id="flow-apim-internal-cache"></a>`FLOW-APIM-INTERNAL-CACHE` | APIMインスタンス間 | TCP6381–6383 | 内部cache依存。APIM両方向NSG。FW非通過 |
 | <a id="flow-apim-storage"></a>`FLOW-APIM-STORAGE` | APIM → Storageタグ | TCP443 / HTTPS | APIM自身の基盤Storage。FW経由。ACAアプリのStorage依存とは別 |
 | <a id="flow-apim-sql-platform"></a>`FLOW-APIM-SQL-PLATFORM` | APIM → Sqlタグ | TCP1433 | APIM自身の基盤SQL。FW経由。構築業務SQL PEとは別 |
-| <a id="flow-apim-kv-platform"></a>`FLOW-APIM-KV-PLATFORM` | APIM → AzureKeyVaultタグ | TCP443 / HTTPS | Azure基盤Key Vault依存。FW経由。構築Vault PE用のFLOW-APIM-KVとは別 |
+| <a id="flow-apim-kv-platform"></a>`FLOW-APIM-KV-PLATFORM` | APIM → AzureKeyVaultタグ | TCP443 / HTTPS | Azure基盤の依存と、構築資材外のVaultを追加バックエンドに使う場合の経路。FW経由。対象Vaultで別途ネットワークとRBACを認可する |
 | <a id="flow-apim-monitor"></a>`FLOW-APIM-MONITOR` | APIM → AzureMonitorタグ | TCP1886、443 | 監視・診断。FW経由 |
 | <a id="flow-apim-event-hubs"></a>`FLOW-APIM-EVENT-HUBS` | APIM → EventHubタグ | TCP443、5671、5672 | Event Hubs依存。FW経由。実イベント送信は採用logger設定にも依存 |
 | <a id="flow-apim-entra"></a>`FLOW-APIM-ENTRA` | APIM → AzureActiveDirectoryタグ | TCP443 / HTTPS | Entra認証・ID基盤。FW経由 |
@@ -109,9 +119,9 @@ NSGはstatefulである。許可された接続への応答に逆向きの新規
 | <a id="flow-apim-internet"></a>`FLOW-APIM-INTERNET` | APIM → Internetタグ | TCP80、443 | APIM NSG側の外向き許可枠。FWは下表の具体的なFQDN用途で制限。全Internet宛がFWでAllowになるわけではない |
 | <a id="flow-apim-ntp"></a>`FLOW-APIM-NTP` | APIM → 外部時刻源 | UDP123 | FW経由。NSGはInternet、FW宛先は`*`。DNS回答差で時刻同期を遮断しない。内部daemonの可視性とAPIMの時刻応答を区別 |
 | <a id="flow-aca-load-balancer"></a>`FLOW-ACA-LOAD-BALANCER` | AzureLoadBalancer → ACAサブネット | TCP30000–32767 | ACA基盤probe。FW非通過。AppGW/APIMのAny判断をACAへ適用しない |
-| <a id="flow-aca-internal"></a>`FLOW-ACA-INTERNAL` | ACAサブネット内 → 同サブネット | 全プロトコル・全ポート | managed基盤の内部通信。送受信とも同じACAサブネットのCIDRを明示する |
-| <a id="flow-aca-arm"></a>`FLOW-ACA-ARM` | ACA → ARM | TCP443 / HTTPS | PortalのAPIM操作、BrokerのCM操作、管理API。FW経由 |
-| <a id="flow-aca-entra"></a>`FLOW-ACA-ENTRA` | ACA → Entra ID基盤 | TCP443 / HTTPS | 認証・ID基盤とMicrosoft Graph。同タグのFW規則とlogin用FQDN規則が重なり得る |
+| <a id="flow-aca-internal"></a>`FLOW-ACA-INTERNAL` | ACAサブネット内 → 同サブネット | 全プロトコル・全ポート | managed基盤の内部通信。同じACAサブネット内の両方向を明示許可する。Portalから同じ環境内の購読管理へはHTTPS443で接続する |
+| <a id="flow-aca-arm"></a>`FLOW-ACA-ARM` | ACA → ARM | TCP443 / HTTPS | 購読管理サービス・初期化ジョブによるAPIMの購読操作、BrokerのCM操作、管理API。FW経由 |
+| <a id="flow-aca-entra"></a>`FLOW-ACA-ENTRA` | ACA → Entra ID基盤 | TCP443 / HTTPS | Portalの認可コード交換、購読管理のトークン検証用公開鍵、Microsoft Graphのアクセストークンと最新の所属の取得。既存の`AzureActiveDirectory`サービス タグにEntraサインインとMicrosoft Graphが含まれる。 [Azureサービス タグ](https://learn.microsoft.com/en-us/azure/virtual-network/service-tags-overview) |
 | <a id="flow-aca-monitor"></a>`FLOW-ACA-MONITOR` | ACA → AzureMonitorタグ | TCP443 / HTTPS | 監視・ログ送信。FW経由 |
 | <a id="flow-aca-mcr"></a>`FLOW-ACA-MCR` | ACA → Microsoft Container Registry | TCP443 / HTTPS | Microsoft提供イメージ取得。FW経由。構築ACR PEとは別 |
 | <a id="flow-aca-platform-packages"></a>`FLOW-ACA-PLATFORM-PACKAGES` | ACA → AzureFrontDoor.FirstPartyと基盤パッケージ配布先 | TCP443 / HTTPS | CDN経由のパッケージも含め、NSGから構築Firewallへ到達させる。Firewallの許可済みFQDNに限定する |

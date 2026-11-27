@@ -1,6 +1,6 @@
 # 更新・撤去・途中失敗時の扱い
 
-[README](../README.md) · [構築手順](setup/06-deploy.md) · [開発ルール](../DEVELOPMENT.md)
+[README](../README.md) · [構築手順](setup/08-provision-core.md) · [開発ルール](../DEVELOPMENT.md)
 
 本書は、現行Egakumi Coreの個別配備・途中再開・撤去の共通手順です。業務ごとの操作は[通常運用・改修の手順](operations/README.md)、受入条件と実施順は[運用テスト](testing/operations-tests.md)から確認します。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。実環境の試験状態・再開記録は環境別のGit管理外領域`.local/<environment>/`で管理します。この一般手順だけを理由に再構築や撤去を開始しません。
 
@@ -34,7 +34,7 @@ Gitからクローンし直しても`.azure/`・`.local/`は復元されませ�
 
 ## 新しい公開入力へ移す前に確認する
 
-公開入力71主項目の判断と新しい登録／定義形は[paramsの判断記録](setup/04-params.md#公開入力71主項目の判断記録)にまとめています。今回の一括改修は資材実装の段階です。Azure反映、全環境再構築E2Eと実受入は未実施であり、最終集約前のローカル試験を一式成功と扱いません。
+公開入力71主項目の判断と新しい登録／定義形は[paramsの判断記録](setup/07-params.md#公開入力71主項目の判断記録)にまとめています。今回の一括改修は資材実装の段階です。Azure反映、全環境再構築E2Eと実受入は未実施であり、最終集約前のローカル試験を一式成功と扱いません。
 
 既存の保護paramsとstateを保持して旧値を比較します。固定化した旧入力は空配列・空object・false・nullでも拒否し、共通値はconfigの正しい位置へ移します。標準Graphはparamsの`credentialProviders.graphDelegated`へClient IDと秘密参照、configの同slotへ表示名・scope・poolを分離します。追加providerは双方の`additional[]`を論理名で照合します。既存の論理／物理provider名、アプリID、秘密参照、scope文字列、pool.count=12とcapacity=8000を配置変更だけで変更しません。
 
@@ -52,13 +52,13 @@ Gitからクローンし直しても`.azure/`・`.local/`は復元されませ�
 | Portalのみ | `python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`で反映 |
 | 両アプリを順に更新 | `python3 scripts/deploy_applications.py --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`でGateway→Portalを実行 |
 
-`azd up`・`azd provision`は初期構築の入口です。構築後の運用では実行せず、上表の入口を使います。初期構築途中での再試行は[構築手順](setup/06-deploy.md)で扱います。アプリの個別更新は基盤の`azd up`を内部で再実行しません。共通基盤・Gateway・Portalを並行して更新せず、各処理の終了を確認します。個別コマンドの通常の計画生成はローカル処理です。`deploy_gateway.py`・`deploy_portal.py`の`--deployment-name`を指定すると、計画時にも指定した成功済みCore配備のoutputsをAzureから読み取ります。`deploy_applications.py`はこのオプションに対応しません。これはアプリ配備用の選択肢であり、撤去用stateを復元するコマンドではありません。
+初回構築ではAPI・Tools・CredentialのEntraアプリを登録してから、`azd up`でCoreを構築します。続けてAPIのOBO証明書登録とPortalアプリの作成・証明書登録を行い、GatewayとPortalを個別配備します。構築後の運用は上表の入口を使います。初期構築途中での再試行は[構築手順](setup/08-provision-core.md)で扱います。アプリの個別更新は、基盤の再構築と独立して実行できます。共通基盤・Gateway・Portalを並行して更新せず、各処理の終了を確認します。個別コマンドの通常の計画生成はローカル処理です。`deploy_gateway.py`・`deploy_portal.py`の`--deployment-name`を指定すると、計画時にも指定した成功済みCore配備のoutputsをAzureから読み取ります。`deploy_applications.py`はこのオプションに対応しません。これはアプリ配備用の選択肢であり、撤去用stateを復元するコマンドではありません。
 
 Gatewayは、採用時のBrokerイメージ作成・DB／CM配備・SQL初期化・起動確認の後に、API・Product・ポリシー・WAFを反映します。Portalはイメージ作成・DB／権限・SQL初期化を経て同じContainer Appを更新し、公開`/api/health`を確認します。イメージは管理VMで作成し、Core内の非公開ACRへ登録します。確認済みのソースとdigestが一致する場合は既存のビルド結果を再利用します。
 
 更新前に、対象revision、params・非秘密の設定hash、現在のアプリrevision・digest、必要なDBバックアップ、API／ポリシーの変更点を記録します。SQL初期化・migration失敗時はアプリや後続APIの公開へ進みません。復旧は原因を直して同じ入口を再実行し、自動ロールバックが完了したものとして扱いません。
 
-基盤の更新は、所有確認済みのNSG規則・UDR・APIMホスト／証明書参照、追加済みのAPIM外向け許可先を読み取り、構築入力へ引き継ぎます。企業ネットワーク変更時は [ハブ接続手順](setup/07-hub-spoke.md)も確認します。変更後の公開API実行・Portalログイン・本人接続・ログ到達は [動作テスト](testing/integration-tests.md)で別途確認します。Gatewayの`status: deployed`は業務APIの`runtimeVerified`を合格へ変更するものではありません。
+基盤の更新は、所有確認済みのNSG規則・UDR・APIMホスト／証明書参照、追加済みのAPIM外向け許可先を読み取り、構築入力へ引き継ぎます。企業ネットワーク変更時は [ハブ接続手順](setup/10-hub-spoke.md)も確認します。変更後の公開API実行・Portalログイン・本人接続・ログ到達は [動作テスト](testing/integration-tests.md)で別途確認します。Gatewayの`status: deployed`は業務APIの`runtimeVerified`を合格へ変更するものではありません。
 
 [5 NSGの構成と優先度](operations/network-security-groups.md)は共通採番JSONとBicepで管理します。新規構築で同じ定義を使用し、構築後は上表に従って対象に限定して更新します。
 
@@ -80,7 +80,7 @@ Gatewayの公開処理は、未使用と判定できるAPIM初期サンプル（
 
 ## アプリ配備の途中で失敗した場合
 
-`azd up`は共通基盤の`postprovision`成功後にGatewayを配備します。初回のPortal本体は、Entra担当者が署名証明書を登録した後に個別配備します。両アプリを更新する場合、各アプリの終了結果を確認します。
+初回は`azd up`でCoreを完了し、Entraに公開証明書を登録してからGatewayとPortalを順に個別配備します。両アプリを更新する場合、各アプリの終了結果を確認します。
 
 1. 終了した工程・終了コード・配備記録と、現在のAzure上の状態を確認する。
 2. 同じparamsと`.local/<environment>/state/latest.json`を保持して原因を修正する。SQLやイメージ構築の失敗を飛ばさない。
@@ -97,23 +97,29 @@ python3 scripts/deploy_applications.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 ## 構築後にClaudeをGUIで追加する
 
-現行の設定検証はClaudeを初期の`azd`モデル配備対象へ含める入力を拒否します。追加する場合は、構築後にAzure Portalからモデルを配備し、APIMのAPI・操作・下流認証・Product関連付けを手動で設定します。
+FoundryでClaudeモデルをデプロイし、Claude Codeから公開GatewayのAnthropic Messages APIを呼びます。初期構築後の作業です。ポータルの入力値と貼り付けるポリシーは[Claude Messagesの設定例](../apps/apim/policies/portal-examples/claude-messages.md)にあります。
 
-対象リージョン・利用枠・購入条件・実配備名・接続先を確認し、公開Gatewayから正常応答／SSE、未認証・許可外操作の拒否、監査を確認します。FoundryのPE・DNS・Firewall経路も合わせます。共通購読認可と入口検証は維持します。
+1. **Microsoft Foundry → モデルカタログ → Claude → デプロイ**で、購入条件、リージョン、バージョン、使用枠とPrivate Link対応を確認し、デプロイ名とFoundryリソースのエンドポイントを控えます。 [FoundryでClaudeモデルを使う](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude)
+2. **Foundryリソース → Access control (IAM)**で、そのリソースの推論に必要な権限をAPIMのマネージドIDに割り当てます。続けて **API Management → Backends → Add**でFoundryのHTTPSエンドポイントを`manual-claude-foundry`として登録します。APIMからの名前解決先と証明書名を確認し、下流認証のresourceを`https://ai.azure.com`にします。 [FoundryのEntra認証](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/configure-entra-id) · [APIMのマネージドIDポリシー](https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy)
+3. **API Management → APIs → Add API → HTTP**でID `manual-claude-messages`、サフィックス`models/claude`を設定し、購読を必須にします。 [HTTP APIの手動作成](https://learn.microsoft.com/en-us/azure/api-management/add-api-manually)
+4. **API → All operations → Inbound processing → Code editor**に[Claudeの貼り付け用XML](../apps/apim/policies/portal-examples/claude-messages.xml)を保存してから、操作ID `messages`、`POST /v1/messages`を追加します。固定の下流パスは`/anthropic/v1/messages`です。`Calculate effective policy`で入口、認証、利用枠、監査、資格情報の除去、固定転送先を確認します。SSEではAPIMの`forward-request`を応答バッファなしに設定します。`count_tokens`は利用するモデルとクライアントで対応を確認した場合に追加します。 [Claudeで使えるAPI](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models)
+5. **Products**で購読必須の`manual-model-users`を作成し、キーで提供するAPIを関連付けます。本人Bearerを提供する場合は、購読不要の`manual-entra-users`に対象APIを関連付けます。トークンはGateway APIの `Gateway.Invoke` 委任scopeを使います。期限切れ、scope不足、無効キーと有効Bearerの併送、許可外操作の拒否を確認します。公開状態は開発者ポータルへの表示設定です。実際のアクセス停止にはAPIとの関連付け解除や購読の停止を使います。 [APIMの購読とアクセス制御](https://learn.microsoft.com/en-us/azure/api-management/api-management-subscriptions)
+6. **Application Gateway → Rules／Path map**で、Gateway用リスナーが新しいパスをAPIMへHTTPSで転送し、有効なWAFがPreventionで動作することを確認します。共通WAFで開始し、正常要求の誤検知を確認した場合は、対象のパス・項目・ルールを絞って見直します。パス別WAFを追加する際は、そのパスで有効になる設定全体と入口ヘッダーの書換えを照合します。SSE用の応答バッファ設定も確認します。 [WAFの関連付け](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/policy-overview) · [Application GatewayのSSE設定](https://learn.microsoft.com/en-us/azure/application-gateway/use-server-sent-events)
+7. **Claude Code**では`https://<GATEWAY_HOST>/models/claude`をGatewayのベースURLにします。[Claude Codeの設定例](../apps/apim/policies/portal-examples/claude-messages.md)で購読キーまたはBearerの設定を選び、デプロイ名を指定します。MessagesとSSEを試し、`apim-request-id`から監査メタデータの認証主体・操作・結果を照合します。この手順のClaudeはFoundryへ直接転送され、監査の記録範囲はメタデータです。Claudeの利用量はFoundry側の診断で確認します。 [本文監査の対象](reference/request-body-audit.md) · [Claude CodeのGateway設定](https://code.claude.com/docs/en/llm-gateway) · [環境変数](https://code.claude.com/docs/en/env-vars)
 
-手動追加したAPI／モデルも、所有APIM・Foundry・RGを削除する`azd down`では撤去対象です。個別登録コマンドが更新しないことと、環境全体の撤去範囲を混同しません。
+本文監査を必須とする提供範囲では、Claude本文の採取と復元結果を受け入れてから公開します。手動追加の所有者と変更履歴を運用台帳に記録します。Coreの再配備前は、API・Product・WAF・経路の差分を確認します。手動追加したAPI／モデルも、所有APIM・Foundry・RGを削除する`azd down`では撤去対象です。
 
 ## DNS用マネージドIDと権限を更新する
 
 Azure Public DNSは事前作成したUAMIを使います。IDを変更する場合は、新しいIDへDNS権限を付与し、paramsの`certificate.azureDnsManagedIdentityResourceId`と、必要なら`certificate.azureDnsSubscriptionId`を更新して同じ環境へ反映します。公開TLS Jobへの関連付け・実際の証明書更新を確認してから旧権限を回収します。外部で作成したDNS用ID・公開ゾーンはCoreの撤去対象に含めません。
 
-IDや権限の変更前に[DNS事前準備](setup/03-public-dns.md)を確認してください。
+IDや権限の変更前に[DNS事前準備](setup/05-public-dns.md)を確認してください。
 
 ## ログ・監視・本人接続を確認する
 
 Coreの診断ログ・LAW export・監査Storageと、企業共通監査は所有者と信頼境界を分けて扱います。query非保持の既存環境更新は [ログ保存手順](testing/log-privacy.md)のprepare→export→routeの順で実施し、変換後ログのStorage到達を確認してから直接保存経路を切り替えます。設定のreadback成功だけで実到達を合格にしません。
 
-APIキー管理・購読同期はPortalの管理画面を使います。[購読別の制限・観測](testing/subscription-limits.md)ではSQLの制限設定、APIMへの反映、欠測を分けて確認します。
+APIキー管理・購読同期はPortalの管理画面を使います。内部の購読管理サービスが認可とAPIMの書込みを担当し、APIMは別のプロファイル照会サービスから制限設定を取得します。 [受入条件](reference/network-security-validation.md#購読管理とプロファイル照会の分離)[購読別の制限・観測](testing/subscription-limits.md)ではSQLの制限設定、APIMへの反映、欠測を分けて確認します。
 
 ## 管理VMから保守データを取得する
 
@@ -204,7 +210,7 @@ Serialの接続・ローカルログイン・TTY操作と、SSH鍵認証が維�
 
 ## 本人接続のSQL台帳
 
-Brokerの本人対応・セッションはAzure SQL、下流OAuth tokenはCMが管理します。Portalのログイン・キー台帳と、本人接続状態は別用途です。DB障害、照合ジョブ、SQL復元後の失効・再開は [SQL台帳とGateway配備](setup/credential-sql.md)と [接続セッションの契約](reference/credential-pool-design.md)に従います。ローカルSQLの試験状態をAzureの業務台帳へ同期しません。
+Brokerの本人対応・セッションはAzure SQL、下流OAuth tokenはCMが管理します。Portalのログイン・キー台帳と、本人接続状態は別用途です。DB障害、照合ジョブ、SQL復元後の失効・再開は [SQL台帳とGateway配備](setup/11-deploy-gateway.md)と [接続セッションの契約](reference/credential-pool-design.md)に従います。ローカルSQLの試験状態をAzureの業務台帳へ同期しません。
 
 ## 撤去する
 
@@ -252,8 +258,8 @@ Locked WORMがある場合は変更前に停止します。Unlockedでも構成�
    python3 -I -B scripts/prepare_registration.py --config "$DEPLOY_PARAMS_FILE"
    ```
 
-3. [Entraの準備](setup/02-entra.md#paramsから登録用の戻り先を確認する)に従い、その環境のCM用Web戻り先1件を新しいURIへ置き換え、保存後に確認する。Gateway・Portalの公開名を継続する場合は、その2件の戻り先、アプリの権限・同意、有効なsecretを保持する。
-4. 同じparams・azd環境で[構築手順](setup/06-deploy.md)を進める。撤去済みの識別子のまま、新規構築を開始しない。
+3. [ToolsのWeb戻り先の確認](setup/03-entra-tools.md#cmのweb戻り先を確認する)に従い、その環境のCM用Web戻り先1件を新しいURIへ置き換え、保存後に確認する。Gateway・Portalの公開名を継続する場合は、その2件の戻り先、アプリの権限・同意、有効なsecretを保持する。
+4. 同じparams・azd環境で[構築手順](setup/08-provision-core.md)を進める。撤去済みの識別子のまま、新規構築を開始しない。
 
 APIMと用途別WAFポリシーが、新しい共通の識別子を使います。環境名、公開ホスト名、その他の資源名は維持します。SQLデータを保持した環境のAPIM差替えは、購読・本人接続の移行を伴うため、この新規構築手順と分けて計画します。
 

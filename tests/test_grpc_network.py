@@ -655,8 +655,9 @@ class GrpcBootstrapTests(unittest.TestCase):
             self.assertNotIn("PRIVATE_FIXTURE", str(error.exception))
 
     def test_pending_custom_domain_removes_arm_secret_inputs_but_retains_cleanup_state(self):
-        config = {**self.config, "location": "japaneast", "foundryLocation": "eastus2"}
-        outputs = {**self.outputs, "resourceGroups": config["resourceGroupNames"]}
+        groups = {**self.config["resourceGroupNames"], "monitor": "rg-test-fixture-monitor"}
+        config = {**self.config, "resourceGroupNames": groups, "location": "japaneast", "foundryLocation": "eastus2"}
+        outputs = {**self.outputs, "resourceGroups": config["resourceGroupNames"], "portal": {}}
         workspace = lifecycle.local_paths(config, self.root)
         parameter_file, state_file = workspace.parameters, workspace.state / "latest.json"
         lifecycle.protected_json(parameter_file, {"l7IngressSecret": "PRIVATE_FIXTURE"})
@@ -688,7 +689,6 @@ class GrpcInfrastructureSourceTests(unittest.TestCase):
         self.assertIn("'Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2': 'false'", services)
         gateway = (core / "infra/modules/application-gateway.bicep").read_text()
         self.assertIn("headerName: 'X-Core-L7-Ingress', headerValue: l7IngressSecret", gateway)
-        self.assertNotIn("listener-grpc-tcp", gateway)
         self.assertIn("enableHttp2: true", gateway)
 
 

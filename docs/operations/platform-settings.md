@@ -115,7 +115,7 @@ APIM／ACAとKey VaultへのHTTPS443を別のFIX名・割当IPで明示する。
 
 ## AppGW後段のTLS検査を検証する
 
-新規構築では [Firewallの中間CAとApp Gatewayの公開ルート](../setup/05-config.md#firewallのtls検査を準備する) を準備します。App Gatewayの両方のプローブがHTTPS443を使用することを確認します。Portalのプローブ確認は本体配備後に行います。
+新規構築では [Firewallの中間CAとApp Gatewayの公開ルート](../reference/config-options.md#firewallのtls検査を準備する) を準備します。App Gatewayの両方のプローブがHTTPS443を使用することを確認します。Portalのプローブ確認は本体配備後に行います。
 
 既存のHTTP後段をこの構成へ変更する場合は、App Gateway、FirewallのSKU・中間CA、NSG、APIM／ACAの受信、プローブと診断設定を一つの切替計画で扱います。構築CLIは既存バックエンドが検査用ルートとHTTPSプローブに一致しない場合に停止します。切替前に対象の設定を保護領域へ保存し、受入と切戻しの順序を確定してください。
 

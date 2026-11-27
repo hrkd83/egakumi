@@ -65,6 +65,60 @@
         "type": "string"
       }
     },
+    "auditEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "eventHubsSku": {
+          "enum": [
+            "Standard",
+            "Premium"
+          ],
+          "default": "Standard"
+        },
+        "payloadImmutabilityMode": {
+          "enum": [
+            "Disabled",
+            "Locked"
+          ],
+          "default": "Disabled"
+        },
+        "payloadRetentionDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 146000
+        }
+      },
+      "if": {
+        "required": [
+          "payloadImmutabilityMode"
+        ],
+        "properties": {
+          "payloadImmutabilityMode": {
+            "const": "Locked"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payloadRetentionDays": {
+            "default": 2557
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "payloadRetentionDays": {
+            "maximum": 365,
+            "default": 30
+          }
+        }
+      }
+    },
     "network": {
       "type": "object",
       "properties": {
@@ -83,7 +137,7 @@
               "10.40.3.0/24"
             ]
           ],
-          "description": "VNet全体に登録する重複しないIPv4 CIDRです。公開例の4つ目の/24から証明書用サブネットに/27を割り当てます。サブネットの割当はsubnetPrefixesで別に指定します。"
+          "description": "VNet全体に登録する重複しないIPv4 CIDRです。サブネットの割当はsubnetPrefixesで別に指定します。"
         },
         "subnetPrefixes": {
           "type": "object",
@@ -94,9 +148,10 @@
             "firewall",
             "apim",
             "management",
-            "aca"
+            "aca",
+            "broker"
           ],
-          "description": "VNetの各サブネットをaddressSpaces内へ重複なく割り当てます。certificateを省略すると未割当範囲から安定した/27を選びます。",
+          "description": "Portal、Credential Broker、証明書Job、任意の本文監査用の委任サブネットを、VNetのaddressSpaces内へ重複なく割り当てます。",
           "properties": {
             "agw": {
               "type": "string",
@@ -145,6 +200,17 @@
               "description": "証明書専用ACAの委任サブネット。アドレス範囲は/27以上。",
               "examples": [
                 "10.40.3.0/27"
+              ]
+            },
+            "audit": {
+              "type": "string",
+              "description": "監査証跡を有効にする場合の専用ACAサブネット。最小/27。Microsoft.App/environmentsへ委任します。"
+            },
+            "broker": {
+              "type": "string",
+              "description": "Credential BrokerのACA環境専用サブネット。最小/27。Microsoft.App/environmentsへ委任します。",
+              "examples": [
+                "10.40.3.128/25"
               ]
             }
           }
@@ -1046,6 +1112,30 @@
       "additionalProperties": false,
       "description": "公開証明書はAzure Public DNSの権威ゾーンと専用マネージドIDを使い、DNS-01で発行・更新します。"
     },
+    "firewallTlsInspection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "managedIdentityResourceId",
+        "intermediateCaSecretId",
+        "rootCaCertificateFile"
+      ],
+      "description": "Firewall TLS検査の専用マネージドID、バージョン付き中間CA参照、App Gateway用ルート証明書。",
+      "properties": {
+        "managedIdentityResourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "intermediateCaSecretId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootCaCertificateFile": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "authorization": {
       "type": "object",
       "additionalProperties": false,
@@ -1298,12 +1388,25 @@
     },
     "publishApis": {
       "type": "boolean",
-      "description": "azd up全体とGateway配備の--executeによる反映を許可するか。falseではupをpreup冒頭の課金資源作成前に停止し、trueへ自動変更しません。個別の登録計画はfalseでも生成できます。基盤だけの構築はazd provisionを使います。"
+      "description": "Gateway配備の--executeによるAPI登録を許可するか。falseでもCoreの構築と登録計画の生成は可能です。"
     },
     "credentialProviders": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/credentialProvider"
+      }
+    },
+    "codex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clientId"
+      ],
+      "description": "既存のCodex端末設定との互換入力です。Coreやアプリの配備条件には使いません。",
+      "properties": {
+        "clientId": {
+          "$ref": "#/$defs/guid"
+        }
       }
     },
     "portal": {
@@ -1317,9 +1420,8 @@
         "authentication": {
           "type": "object",
           "additionalProperties": false,
-          "description": "初期構築後に手動登録する専用Portalアプリ。通常はtenantId/clientIdだけを入力し、鍵とthumbprintは保護stateから読みます。初期構築では省略できます。",
+          "description": "専用Portalアプリの登録情報。基盤用Entraアプリを分離した標準構成ではテナントにentraTenantIdを補い、鍵とthumbprintは保護stateから取得します。",
           "required": [
-            "tenantId",
             "clientId"
           ],
           "properties": {
@@ -1349,6 +1451,19 @@
             ]
           }
         },
+        "apiAuthentication": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ],
+          "description": "基盤用Entraアプリを分離した標準構成では既定でAPI試用を有効化します。",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
         "certificate": {
           "type": "object",
           "additionalProperties": false,
@@ -1370,19 +1485,6 @@
               "minimum": 7,
               "maximum": 90,
               "default": 60
-            }
-          }
-        },
-        "apiAuthentication": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "enabled"
-          ],
-          "description": "5アプリ構成では既定でAPI試用を有効化します。",
-          "properties": {
-            "enabled": {
-              "type": "boolean"
             }
           }
         }
@@ -1552,43 +1654,6 @@
     },
     "portalApiKeys": {
       "$ref": "#/$defs/portalApiKeys"
-    },
-    "firewallTlsInspection": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "managedIdentityResourceId",
-        "intermediateCaSecretId",
-        "rootCaCertificateFile"
-      ],
-      "description": "Firewall TLS検査の専用マネージドID、バージョン付き中間CA参照、App Gateway用ルート証明書。",
-      "properties": {
-        "managedIdentityResourceId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "intermediateCaSecretId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "rootCaCertificateFile": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
-    "codex": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "clientId"
-      ],
-      "description": "最終5アプリ構成で使用するCodexの公開クライアント登録です。",
-      "properties": {
-        "clientId": {
-          "$ref": "#/$defs/guid"
-        }
-      }
     }
   },
   "$defs": {
@@ -2362,6 +2427,26 @@
           "$ref": "#/$defs/guid",
           "description": "v2アクセストークンの宛先となるAPI用アプリのApplication client IDです。api://のscope URIは指定しません。"
         },
+        "obo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "keyId",
+            "certificateThumbprint"
+          ],
+          "description": "Gateway OBOが使う手動更新済みの固定Key Vault版。初回は構築結果を使用します。",
+          "properties": {
+            "keyId": {
+              "type": "string",
+              "pattern": "/keys/gateway-obo/[a-f0-9]{32}$",
+              "format": "uri"
+            },
+            "certificateThumbprint": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{64}$"
+            }
+          }
+        },
         "requiredScope": {
           "type": "string",
           "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$",
@@ -2441,26 +2526,6 @@
               }
             }
           }
-        },
-        "obo": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "keyId",
-            "certificateThumbprint"
-          ],
-          "description": "Gateway OBOが使う手動更新済みの固定Key Vault版。初回は構築結果を使用します。",
-          "properties": {
-            "keyId": {
-              "type": "string",
-              "pattern": "/keys/gateway-obo/[a-f0-9]{32}$",
-              "format": "uri"
-            },
-            "certificateThumbprint": {
-              "type": "string",
-              "pattern": "^[A-Fa-f0-9]{64}$"
-            }
-          }
         }
       }
     },
@@ -2468,11 +2533,10 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "tenantId",
         "clientId",
         "clientSecretFile"
       ],
-      "description": "CMの外部API用clientから独立した接続窓口のOIDC本人確認です。省略時は選択CM provider由来の現行設定を維持します。",
+      "description": "CMの外部API用clientから独立した接続窓口のOIDC本人確認です。基盤用Entraアプリを分離した標準構成ではテナントにentraTenantIdを補います。",
       "properties": {
         "tenantId": {
           "$ref": "#/$defs/guid"

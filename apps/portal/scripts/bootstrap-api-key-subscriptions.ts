@@ -36,10 +36,15 @@ export function readApiKeyVerificationSubscriptions(environment: Readonly<Record
   return configuration;
 }
 
-/** SQL初期化用MIとAPIM操作用MIを混同せず、後者をAPIMクライアントへ明示します。 */
-export function readApiKeyBootstrapApimEnvironment(environment: Readonly<Record<string, string | undefined>>): ApiKeyEnvironment {
+/** DDLの本人から切り離し、購読管理用の同じMIをSQLとAPIMに使用します。 */
+export function readApiKeyBootstrapApimEnvironment(environment: Readonly<Record<string, string | undefined>>,
+  managementClientId: string): ApiKeyEnvironment {
   const clientId = z.uuid().parse(environment.PORTAL_API_KEY_APIM_CLIENT_ID);
-  return getApiKeyEnvironment({ ...environment, AZURE_CLIENT_ID: clientId });
+  const settings = getApiKeyEnvironment({ ...environment, AZURE_CLIENT_ID: clientId });
+  if (settings.mode !== "managed-identity" || clientId.toLowerCase() !== managementClientId.toLowerCase()) {
+    throw new Error("Verification subscriptions require the dedicated management identity");
+  }
+  return settings;
 }
 
 /** APIMで確認したID・製品スコープ・実行可能な状態だけを、登録マニフェストへ採用します。 */

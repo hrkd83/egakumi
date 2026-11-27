@@ -539,6 +539,23 @@
           "destinationPorts": [
             "*"
           ]
+        },
+        "allow-broker-https-egress": {
+          "designRecordId": "N-APIM-OUT-BROKER-HTTPS",
+          "direction": "Outbound",
+          "priority": 223,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "ip:broker"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         }
       }
     },
@@ -604,7 +621,8 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:aca",
+            "subnet:broker"
           ],
           "destination": [
             "ips:keyVault"
@@ -672,7 +690,8 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:aca",
+            "subnet:broker"
           ],
           "destination": [
             "ips:sql"
@@ -689,7 +708,8 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:aca",
+            "subnet:broker"
           ],
           "destination": [
             "ips:registry"
@@ -1339,6 +1359,267 @@
           ],
           "destinationPorts": [
             "*"
+          ]
+        }
+      }
+    },
+    "broker": {
+      "suffix": "broker",
+      "rules": {
+        "allow-apim-https-ingress": {
+          "designRecordId": "N-BROKER-APIM-HTTPS-INGRESS",
+          "direction": "Inbound",
+          "priority": 220,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "subnet:broker"
+          ],
+          "destinationPorts": [
+            "443",
+            "31443"
+          ]
+        },
+        "allow-azure-load-balancer-ingress": {
+          "designRecordId": "N-BROKER-AZURE-LOAD-BALANCER-INGRESS",
+          "direction": "Inbound",
+          "priority": 320,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "tag:AzureLoadBalancer"
+          ],
+          "destination": [
+            "subnet:broker"
+          ],
+          "destinationPorts": [
+            "30000-32767"
+          ]
+        },
+        "allow-broker-internal-ingress": {
+          "designRecordId": "N-BROKER-ACA-INTERNAL-INGRESS",
+          "direction": "Inbound",
+          "priority": 321,
+          "access": "Allow",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "subnet:broker"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "allow-arm-https-egress": {
+          "designRecordId": "N-BROKER-ARM-HTTPS-EGRESS",
+          "direction": "Outbound",
+          "priority": 223,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "tag:AzureResourceManager"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-broker-internal-egress": {
+          "designRecordId": "N-BROKER-ACA-INTERNAL-EGRESS",
+          "direction": "Outbound",
+          "priority": 320,
+          "access": "Allow",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "subnet:broker"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "allow-entra-egress": {
+          "designRecordId": "N-BROKER-ENTRA-EGRESS",
+          "direction": "Outbound",
+          "priority": 321,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "tag:AzureActiveDirectory"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-monitor-egress": {
+          "designRecordId": "N-BROKER-MONITOR-EGRESS",
+          "direction": "Outbound",
+          "priority": 322,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "tag:AzureMonitor"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-mcr-egress": {
+          "designRecordId": "N-BROKER-MCR-EGRESS",
+          "direction": "Outbound",
+          "priority": 323,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "tag:MicrosoftContainerRegistry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-afd-first-party-egress": {
+          "designRecordId": "N-BROKER-AFD-FIRST-PARTY-EGRESS",
+          "direction": "Outbound",
+          "priority": 324,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "tag:AzureFrontDoor.FirstParty"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-key-vault-https-egress": {
+          "designRecordId": "N-BROKER-KEY-VAULT-HTTPS-EGRESS",
+          "direction": "Outbound",
+          "priority": 220,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "ips:keyVault"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-acr-https-egress": {
+          "designRecordId": "N-BROKER-ACR-HTTPS-EGRESS",
+          "direction": "Outbound",
+          "priority": 222,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "ips:registry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-sql-1433-egress": {
+          "designRecordId": "N-BROKER-SQL-1433-EGRESS",
+          "direction": "Outbound",
+          "priority": 221,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "ips:sql"
+          ],
+          "destinationPorts": [
+            "1433"
+          ]
+        },
+        "deny-any-ingress": {
+          "designRecordId": "N-BROKER-DENY-ANY-INGRESS",
+          "direction": "Inbound",
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "deny-any-egress": {
+          "designRecordId": "N-BROKER-DENY-ANY-EGRESS",
+          "direction": "Outbound",
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "allow-firewall-routed-public-https-egress": {
+          "designRecordId": "B-BROKER-15",
+          "direction": "Outbound",
+          "priority": 325,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:broker"
+          ],
+          "destination": [
+            "tag:Internet"
+          ],
+          "destinationPorts": [
+            "443"
           ]
         }
       }

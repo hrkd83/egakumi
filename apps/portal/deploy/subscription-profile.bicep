@@ -1,12 +1,10 @@
 // Portal配備が所有する接続情報です。個々の購読の値はSQLだけに保存します。
 targetScope = 'resourceGroup'
-param stem string
 param apimName string
-param environmentName string
+param profileFqdn string
 param vaultName string
 #disable-next-line secure-secrets-in-params
 param profileSecretUri string
-resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = { name: environmentName }
 resource apim 'Microsoft.ApiManagement/service@2024-05-01' existing = { name: apimName }
 resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: vaultName }
 resource profileSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' existing = {
@@ -25,7 +23,7 @@ resource url 'Microsoft.ApiManagement/service/namedValues@2024-05-01' = {
   properties: {
     displayName: 'core-subscription-profile-url'
     secret: false
-    value: 'https://ca-${stem}-portal.${environment.properties.defaultDomain}/api/internal/subscription-profile'
+    value: 'https://${profileFqdn}/api/internal/subscription-profile'
   }
 }
 resource key 'Microsoft.ApiManagement/service/namedValues@2024-05-01' = {

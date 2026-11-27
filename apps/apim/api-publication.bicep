@@ -18,6 +18,8 @@ param graphOboEnabled bool = false
 param subscriptionKeyHeader string = 'api-key'
 @description('APIMが検証した購読IDごとの共通要求回数制限。')
 param rateLimits object = { user: { enabled: false, calls: 60, renewalPeriodSeconds: 60 }, subscriptionKey: { enabled: false, calls: 60, renewalPeriodSeconds: 60, overrides: [] }, application: { enabled: false, calls: 60, renewalPeriodSeconds: 60, overrides: [] } }
+@description('監査を有効にした場合に照合済みの内部リレーHTTPS URLとAPIMの認証先を指定します。')
+param auditRelay object = {}
 @description('この明示的な API 登録処理の指定です。APIM 全体の公開・停止スイッチではありません。')
 param publishApis bool = false
 @description('実行前検査で基盤の準備済み Key Vault 参照を照合する URI。登録処理は共通 Named Value を更新しません。')
@@ -283,8 +285,27 @@ var subscriptionProfileXml = replace(replace(renderPolicyTemplate(loadTextConten
 // 原文だけを変数へ保持し、差し込みは使用先と生成元で同じ関数を呼びます。
 // 原文と置換済みXMLの二重保存を避け、説明コメントと実行コードを保ったまま容量を減らします。
 var auditBodyModelErrorXml = replace(trim(replace(replace(loadTextContent('policies/snippets/audit/audit-body-model-error/audit-body-model-error.xml'), '<fragment>', ''), '</fragment>', '')), '\n', '\n    ')
-var gatewayPolicyTemplate = replace(renderPolicyTemplate(loadTextContent('policies/api-templates/gateway.xml'), loadTextContent('policies/api-templates/gateway.cs'), gatewayTemplateSlots), '__AUDIT_BODY_MODEL_ERROR_XML__', auditBodyModelErrorXml)
-var protocolPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/api-templates/protocol.xml'), loadTextContent('policies/api-templates/protocol.cs'), protocolTemplateSlots)
+var restPolicyTemplate = replace(renderPolicyTemplate(loadTextContent('policies/api-templates/rest/rest.xml'), loadTextContent('policies/api-templates/rest/rest.cs'), gatewayTemplateSlots), '__AUDIT_BODY_MODEL_ERROR_XML__', auditBodyModelErrorXml)
+var sharedStreamPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/api-templates/shared/stream.xml'),
+  '${loadTextContent('policies/api-templates/shared/stream.cs')}${loadTextContent('policies/api-templates/ws/ws.cs')}', protocolTemplateSlots)
+var websocketPolicySections = loadTextContent('policies/api-templates/ws/ws.xml')
+var externalMcpPolicySections = loadTextContent('policies/api-templates/mcp/external.xml')
+var streamPolicySlots = [
+  { marker: '__STREAM_PRE_BASE_XML__', section: 'pre-base' }
+  { marker: '__STREAM_OBSERVE_INBOUND_XML__', section: 'observe-inbound' }
+  { marker: '__STREAM_HANDSHAKE_QUERY_XML__', section: 'handshake-query' }
+  { marker: '__STREAM_HANDSHAKE_SESSION_XML__', section: 'handshake-session' }
+  { marker: '__STREAM_BACKEND_XML__', section: 'backend' }
+  { marker: '__STREAM_ROUTE_XML__', section: 'route' }
+  { marker: '__STREAM_CREDENTIAL_OUTBOUND_XML__', section: 'credential-outbound' }
+  { marker: '__STREAM_OBSERVE_OUTBOUND_XML__', section: 'observe-outbound' }
+  { marker: '__STREAM_OBSERVE_ERROR_XML__', section: 'observe-error' }
+]
+// 通信方式で差し込む固定区画を選び、共通の実行順序とC#式を1つの正本で管理します。
+func renderStreamPolicy(sections string) string => reduce(streamPolicySlots, sharedStreamPolicyTemplate, (policy, slot) =>
+  replace(policy, slot.marker, contains(sections, '<!-- stream-${slot.section}-start -->')
+    ? split(split(sections, '<!-- stream-${slot.section}-start -->')[1], '<!-- stream-${slot.section}-end -->')[0]
+    : ''))
 var piiPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/pii/pii.xml'), loadTextContent('policies/operation-policies/pii/pii.cs'), piiPolicySlots)
 var documentAnalysisPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/document-analysis/document-analysis.xml'), loadTextContent('policies/operation-policies/document-analysis/document-analysis.cs'), documentAnalysisPolicySlots)
 var documentAnalysisStatusPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/document-analysis/document-analysis-status.xml'), loadTextContent('policies/operation-policies/document-analysis/document-analysis-status.cs'), documentAnalysisStatusPolicySlots)
@@ -294,10 +315,10 @@ var realtimeCreateTicketSource = policySourceSection(realtimeCreateSource, 'tick
 var realtimeHangupPolicyTemplate = loadTextContent('policies/operation-policies/realtime/realtime-hangup.xml')
 var realtimeHangupOwnerSource = loadTextContent('policies/operation-policies/realtime/realtime-hangup.cs')
 var liveCreatePolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/live/live-create.xml'), loadTextContent('policies/operation-policies/live/live-create.cs'), liveCreatePolicySlots)
-var mcpPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/api-templates/mcp.xml'), loadTextContent('policies/api-templates/mcp.cs'), mcpTemplateSlots)
-func configuredApiTemplate(http bool, gateway string, protocol string, profile string) string => http
-  ? replace(gateway, '__SUBSCRIPTION_PROFILE_XML__', profile)
-  : replace(protocol, '__SUBSCRIPTION_PROFILE_XML__', profile)
+var generatedMcpPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/api-templates/mcp/generated.xml'), loadTextContent('policies/api-templates/mcp/generated.cs'), mcpTemplateSlots)
+func configuredApiTemplate(apiType string) string => replace(
+  apiType == 'http' ? restPolicyTemplate : renderStreamPolicy(apiType == 'websocket' ? websocketPolicySections : externalMcpPolicySections),
+  '__SUBSCRIPTION_PROFILE_XML__', subscriptionProfileXml)
 func configuredOperationTemplate(template string, errorXml string, entraErrorXml string) string => replace(replace(replace(template, '__RATE_LIMIT_ERROR_XML__', errorXml), '__OPERATION_ENTRA_AUTHENTICATION_ERROR_XML__', entraErrorXml), '__AUDIT_BODY_MODEL_ERROR_XML__', auditBodyModelErrorXml)
 // Compact connection-failure audit retains the verified key/user identity and
 // fits the APIM fragment budget. Normal business audit remains the full fragment.
@@ -583,9 +604,23 @@ var mcpRateCleanupSnippetSlots = [
 var mcpRateCleanupXml = replace(replace(renderPolicyTemplate(mcpRateCleanupPolicyTemplate, mcpRateCleanupSource, mcpRateCleanupSnippetSlots), '<fragment>', ''), '</fragment>', '')
 // Backend authentication is declared independently of public caller auth.
 // Key material remains in Key Vault-backed named values.
-var backendAuthenticationXml = [for api in apiDefinitions: empty(operationBackendSelection(api))
+var auditRelaySelections = [for api in apiDefinitions: api.apiType == 'http' && api.name == 'openai-inference-v1' && !empty(auditRelay)]
+var auditRelayEnabled = contains(auditRelaySelections, true)
+var auditRelayPolicy = loadTextContent('policies/snippets/audit/audit-relay.xml')
+var auditRelayBackendProperties = {
+  title: 'Model audit relay'
+  protocol: 'http'
+  url: auditRelay.?url ?? ''
+  tls: { validateCertificateChain: true, validateCertificateName: true }
+}
+var auditRelayAudienceProperties = {
+  displayName: 'core-audit-relay-audience'
+  secret: false
+  value: auditRelay.?audience ?? ''
+}
+var backendAuthenticationXml = [for (api, index) in apiDefinitions: auditRelaySelections[index] ? auditRelayPolicy : empty(operationBackendSelection(api))
   ? backendAuthenticationPolicy(api, '${api.name}-backend-secret') : operationBackendSelection(api)]
-var backendHeadersXml = [for api in apiDefinitions: empty(operationBackendSelection(api)) ? backendHeaderPolicy(api) : '']
+var backendHeadersXml = [for (api, index) in apiDefinitions: !auditRelaySelections[index] && empty(operationBackendSelection(api)) ? backendHeaderPolicy(api) : '']
 // API ごとの認可契約を Base64 JSON として埋め込みます。Base64 は暗号化ではなく、安全な構文境界のためです。秘密は含めません。
 // XML全文を加工する途中の結果は配列変数へ保存せず、関数で最終結果までつなぎます。
 // ARMは各変数の展開後のサイズも数えるため、API数分のXMLを段階ごとに保存すると、
@@ -613,12 +648,12 @@ func selectGraphOboPolicy(api object, policy string, enabled bool) string => ena
   '__GRAPH_OBO_ASSERTION_XML__', graphOboSection('assertion')) : replace(policy, '    __GRAPH_OBO_ASSERTION_XML__\n', '')
 func selectHttpCredentialPolicy(api object, policy string, graphOboEnabled bool) string => api.apiType != 'http' || contains(api, 'credentialConnection') || (graphOboEnabled && graphOboApi(api)) ? policy
   : replaceCredentialBranch(replaceCredentialBranch(policy, '<!-- core-http-credential-inbound-start -->', '<!-- core-http-credential-inbound-end -->', '__BACKEND_AUTHENTICATION_XML__'), '<!-- core-http-credential-outbound-start -->', '<!-- core-http-credential-outbound-end -->', '')
-func baseApiPolicy(api object, policyTemplate string, backendAuthentication string, backendHeaders string, credentialCallerError string, graphOboEnabled bool) string => replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectGraphOboPolicy(api, selectHttpCredentialPolicy(api, policyTemplate, graphOboEnabled), graphOboEnabled),
+func baseApiPolicy(api object, policyTemplate string, backendAuthentication string, backendHeaders string, credentialCallerError string, graphOboEnabled bool, auditRelaySelected bool) string => replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectGraphOboPolicy(api, selectHttpCredentialPolicy(api, policyTemplate, graphOboEnabled), graphOboEnabled),
   '__AUTHORIZATION_BASE64__', base64(string(api.authorization))),
   '__WEBSOCKET_SETTINGS_BASE64__', api.apiType == 'websocket' ? base64(string(api.websocket)) : ''),
   '__KEY_HEADER__', api.subscriptionKeyHeader),
   '__BACKEND_ID__', '${api.name}-backend'),
-  '__DEFAULT_BACKEND_XML__', empty(operationBackendSelection(api)) ? '<set-backend-service backend-id="${api.name}-backend" />' : ''),
+  '__DEFAULT_BACKEND_XML__', !auditRelaySelected && empty(operationBackendSelection(api)) ? '<set-backend-service backend-id="${api.name}-backend" />' : ''),
   '__BACKEND_AUDIENCE__', '{{${api.name}-backend-audience}}'),
   '__CREDENTIAL_CONNECTION_BASE64__', contains(api, 'credentialConnection') ? base64(string(api.credentialConnection)) : ''),
   '__BACKEND_AUTHENTICATION_XML__', backendAuthentication),
@@ -626,12 +661,6 @@ func baseApiPolicy(api object, policyTemplate string, backendAuthentication stri
   '__HTTP_VERSION__', '1'),
   '__TOKEN_LIMIT_XML__', empty(tokenLimitOperations(api)) ? '' : '<include-fragment fragment-id="core-token-limits" />'),
   '__CREDENTIAL_CALLER_ERROR_XML__', credentialCallerError)
-
-// WebSocketはAPIのwss接続先を維持し、HTTP用backend切替の１行だけを除きます。
-// ここでもXMLの中間配列を作らず、一つのAPIの最終ポリシーを計算します。
-func selectBackendPolicy(api object, policy string) string => api.apiType == 'websocket'
-  ? replace(policy, '<set-backend-service backend-id="${api.name}-backend" />', '')
-  : policy
 
 var protocolQueriesXml = [for api in apiDefinitions: api.apiType == 'websocket' && (contains(api.websocket, 'queryParameters') || contains(api.websocket, 'allowedModels'))
   ? '${join(map(filter(items(websocketFixedParameters(api)), item => item.key != 'model' || !contains(api.websocket, 'allowedModels')), item => '<set-query-parameter name="${item.key}" exists-action="override"><value>${xmlText(item.value)}</value></set-query-parameter>'), '')}${contains(api.websocket, 'allowedModels') ? '<set-query-parameter name="model" exists-action="override"><value>@((string)context.Variables["gatewayProtocolModel"])</value></set-query-parameter>' : ''}' : '']
@@ -664,6 +693,7 @@ var policySettings = [for (api, index) in apiDefinitions: {
   graphOboEnabled: graphOboEnabled
   authentication: backendAuthenticationXml[index]
   headers: backendHeadersXml[index]
+  auditRelaySelected: auditRelaySelections[index]
   cleanup: protocolRateCleanupXml[index]
   queries: protocolQueriesXml[index]
   websocketQuery: api.apiType == 'websocket' && (contains(api.websocket, 'queryParameters') || contains(api.websocket, 'allowedModels')) ? base64(string(api.websocket.?queryParameters ?? {})) : ''
@@ -675,10 +705,10 @@ var policySettings = [for (api, index) in apiDefinitions: {
   credentialOutbound: api.apiType == 'mcp' && contains(api, 'credentialConnection') ? '<include-fragment fragment-id="core-credential-connection-outbound" />' : ''
 }]
 func apiPolicyValue(api object, template string, errorXml string, values object) string =>
-  replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectBackendPolicy(api,
-    replace(replace(replace(baseApiPolicy(api, template, values.authentication, values.headers, values.credentialCallerError, values.graphOboEnabled),
+  replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(
+    replace(replace(replace(baseApiPolicy(api, template, values.authentication, values.headers, values.credentialCallerError, values.graphOboEnabled, values.auditRelaySelected),
       '__RATE_LIMIT_ERROR_XML__', errorXml), '__RATE_LIMIT_CLEANUP_XML__', values.cleanup),
-      '__API_SETTINGS_BASE64__', base64(apiSettings(api, '', false)))),
+      '__API_SETTINGS_BASE64__', base64(apiSettings(api, '', false))),
     '__PROTOCOL_QUERY_XML__', values.queries), '__WEBSOCKET_QUERY_BASE64__', values.websocketQuery),
     '__PROTOCOL_SESSION_XML__', values.observer), '__MCP_PROXY_ROUTE_XML__', values.mcpRoute),
     '__MCP_PRM_GUARD_XML__', values.metadataGuard), '__CREDENTIAL_CONNECTION_INBOUND_XML__', values.credentialInbound),
@@ -960,6 +990,16 @@ resource operationBackends 'Microsoft.ApiManagement/service/backends@2024-05-01'
     tls: { validateCertificateChain: true, validateCertificateName: true }
   }
 }]
+resource auditRelayBackend 'Microsoft.ApiManagement/service/backends@2024-05-01' = if (auditRelayEnabled) {
+  parent: apim
+  name: 'core-audit-relay'
+  properties: auditRelayBackendProperties
+}
+resource auditRelayAudience 'Microsoft.ApiManagement/service/namedValues@2024-05-01' = if (auditRelayEnabled) {
+  parent: apim
+  name: 'core-audit-relay-audience'
+  properties: auditRelayAudienceProperties
+}
 // HTTP / WebSocket / MCP の API 本体。認証方式と公開パスを定義から反映します。
 resource apis 'Microsoft.ApiManagement/service/apis@2025-09-01-preview' = [for (api, index) in apiDefinitions: {
   parent: apim
@@ -1083,8 +1123,8 @@ resource subscriptions 'Microsoft.ApiManagement/service/subscriptions@2024-05-01
 resource apiPolicies 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' = [for (api, index) in apiDefinitions: if (api.apiType != 'websocket') {
   parent: apis[index]
   name: 'policy'
-  properties: { format: 'rawxml', value: apiPolicyValue(api, configuredApiTemplate(api.apiType == 'http', gatewayPolicyTemplate, protocolPolicyTemplate, subscriptionProfileXml), rateLimitErrorXml, policySettings[index]) }
-  dependsOn: [apiSettingsFragment, apiRequestPreparationFragment, apiInputValidationFragment, apiOperationSettingsFragment, apiAuthenticationResultFragment, apiTargetValidationFragment, chatStoreDisabledFragment, auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, entraUserProfileFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryObservationFragment, queryTelemetryFragment, modelLimitsFragment, speechSsmlGuardFragment, documentInputValidationFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment]
+  properties: { format: 'rawxml', value: apiPolicyValue(api, configuredApiTemplate(api.apiType), rateLimitErrorXml, policySettings[index]) }
+  dependsOn: [apiSettingsFragment, apiRequestPreparationFragment, apiInputValidationFragment, apiOperationSettingsFragment, apiAuthenticationResultFragment, apiTargetValidationFragment, chatStoreDisabledFragment, auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, entraUserProfileFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryObservationFragment, queryTelemetryFragment, modelLimitsFragment, speechSsmlGuardFragment, documentInputValidationFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment, auditRelayBackend, auditRelayAudience]
 }]
 // WebSocket API では API スコープの policy を作れないため、システムが自動生成する
 // onHandshake 操作へ同じ接続開始時の認証・認可を設定します。操作本体は作成・変更しません。
@@ -1094,7 +1134,7 @@ resource apiPolicies 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' 
 @batchSize(1)
 resource websocketPolicies 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = [for (api, index) in apiDefinitions: if (api.apiType == 'websocket') {
   name: '${apim.name}/${api.name}/onHandshake/policy'
-  properties: { format: 'rawxml', value: apiPolicyValue(api, configuredApiTemplate(api.apiType == 'http', gatewayPolicyTemplate, protocolPolicyTemplate, subscriptionProfileXml), rateLimitErrorXml, policySettings[index]) }
+  properties: { format: 'rawxml', value: apiPolicyValue(api, configuredApiTemplate(api.apiType), rateLimitErrorXml, policySettings[index]) }
   dependsOn: [apiPolicies, apiSettingsFragment, apiRequestPreparationFragment, auditContextFragment, backendAuditFragment, rateLimitFragment, entraUserProfileFragment, apis, backends, backendAudienceNamedValues, gatewayTelemetryFragment, backendSecretNamedValues, realtimeObserverFragment]
 }]
 // Explicit request/response schemas drive the native REST-backed MCP tool.
@@ -1225,7 +1265,7 @@ resource mcpTools 'Microsoft.ApiManagement/service/apis/tools@2025-09-01-preview
 resource mcpPolicies 'Microsoft.ApiManagement/service/apis/policies@2025-09-01-preview' = [for (api, index) in mcpApis: {
   parent: mcpServers[index]
   name: 'policy'
-  properties: { format: 'rawxml', value: mcpApiPolicyValue(api, mcpPolicyTemplate, rateLimitErrorXml) }
+  properties: { format: 'rawxml', value: mcpApiPolicyValue(api, generatedMcpPolicyTemplate, rateLimitErrorXml) }
   dependsOn: [apiSettingsFragment, apiRequestPreparationFragment, auditContextFragment, backendAuditFragment, gatewayTelemetryFragment, queryObservationFragment, queryTelemetryFragment, mcpTools]
 }]
 // Azure Monitorへの送信を表すAPIM内のloggerを先に作成します。
@@ -1333,9 +1373,9 @@ output entraPublicationSource object = {
     }] : []
   )
   policies: concat(
-    map(apiDefinitions, api => { suffix: api.apiType == 'websocket' ? '/apis/${api.name}/operations/onHandshake/policies/policy' : '/apis/${api.name}/policies/policy', value: apiPolicyValue(api, configuredApiTemplate(api.apiType == 'http', gatewayPolicyTemplate, protocolPolicyTemplate, subscriptionProfileXml), rateLimitErrorXml, policySettings[indexOf(apiDefinitions, api)]) }),
+    map(apiDefinitions, api => { suffix: api.apiType == 'websocket' ? '/apis/${api.name}/operations/onHandshake/policies/policy' : '/apis/${api.name}/policies/policy', value: apiPolicyValue(api, configuredApiTemplate(api.apiType), rateLimitErrorXml, policySettings[indexOf(apiDefinitions, api)]) }),
     map(operationEntries, entry => { suffix: '/apis/${entry.apiName}/operations/${entry.operation.name}/policies/policy', value: operationPolicyValue(entry, selectOperationTemplate(entry.constraint.kind, configuredOperationTemplate(piiPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisStatusPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), realtimePolicyValue(realtimeCreatePolicyTemplate, '__REALTIME_CREATE_TICKET_CSHARP__', realtimeCreateTicketSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '            '), realtimePolicyValue(realtimeHangupPolicyTemplate, '__REALTIME_HANGUP_OWNER_CSHARP__', realtimeHangupOwnerSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '      '), liveCreatePolicyTemplate)) }),
-    map(mcpApis, api => { suffix: '/apis/${api.mcp.name}/policies/policy', value: mcpApiPolicyValue(api, mcpPolicyTemplate, rateLimitErrorXml) }),
+    map(mcpApis, api => { suffix: '/apis/${api.mcp.name}/policies/policy', value: mcpApiPolicyValue(api, generatedMcpPolicyTemplate, rateLimitErrorXml) }),
     credentialLoginEnabled ? concat(
       [{ suffix: '/apis/credential-manager-login/policies/policy', value: credentialLoginApiPolicyXml }],
       map(filter(credentialLoginOperations, item => item.apiId == 'credential-manager-login'), item => {
@@ -1377,12 +1417,14 @@ output entraPublicationSource object = {
   )
   backends: concat(
     map(apiDefinitions, api => { suffix: '/backends/${api.name}-backend', properties: { title: api.displayName, protocol: 'http', url: api.apiType == 'websocket' ? replace(api.backendUrl, 'wss://', 'https://') : api.backendUrl, tls: { validateCertificateChain: true, validateCertificateName: true } } }),
-    map(operationBackendEntries, entry => { suffix: '/backends/${operationBackendId(entry.apiName, entry.operationName)}', properties: { title: '${entry.apiName} / ${entry.operationName}', protocol: 'http', url: entry.backend.backendUrl, tls: { validateCertificateChain: true, validateCertificateName: true } } })
+    map(operationBackendEntries, entry => { suffix: '/backends/${operationBackendId(entry.apiName, entry.operationName)}', properties: { title: '${entry.apiName} / ${entry.operationName}', protocol: 'http', url: entry.backend.backendUrl, tls: { validateCertificateChain: true, validateCertificateName: true } } }),
+    auditRelayEnabled ? [{ suffix: '/backends/core-audit-relay', properties: auditRelayBackendProperties }] : []
   )
   namedValues: concat(
     map(apiDefinitions, api => { suffix: '/namedValues/${api.name}-backend-audience', properties: { displayName: '${api.name}-backend-audience', secret: false, value: api.backendAudience } }),
     map(filter(apiDefinitions, api => api.backendAuthentication.mode == 'keyVaultHeader'), api => { suffix: '/namedValues/${api.name}-backend-secret', properties: { displayName: '${api.name}-backend-secret', secret: true, keyVault: { secretIdentifier: api.backendAuthentication.secretIdentifier } } }),
-    map(filter(operationBackendEntries, entry => entry.backend.backendAuthentication.mode == 'keyVaultHeader'), entry => { suffix: '/namedValues/${operationBackendId(entry.apiName, entry.operationName)}-secret', properties: { displayName: '${operationBackendId(entry.apiName, entry.operationName)}-secret', secret: true, keyVault: { secretIdentifier: entry.backend.backendAuthentication.secretIdentifier } } })
+    map(filter(operationBackendEntries, entry => entry.backend.backendAuthentication.mode == 'keyVaultHeader'), entry => { suffix: '/namedValues/${operationBackendId(entry.apiName, entry.operationName)}-secret', properties: { displayName: '${operationBackendId(entry.apiName, entry.operationName)}-secret', secret: true, keyVault: { secretIdentifier: entry.backend.backendAuthentication.secretIdentifier } } }),
+    auditRelayEnabled ? [{ suffix: '/namedValues/core-audit-relay-audience', properties: auditRelayAudienceProperties }] : []
   )
   apiChildren: concat(
     map(operationEntries, entry => { suffix: '/apis/${entry.apiName}/operations/${entry.operation.name}', properties: operationProperties(entry) }),

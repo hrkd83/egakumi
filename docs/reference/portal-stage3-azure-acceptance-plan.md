@@ -1,30 +1,30 @@
 # Portal工程3の統合・Azure適用計画
 
-状態：工程3の資材・認証処理・更新運用はローカル検証済み。各環境のAzure適用・証明書発行・専用Entraアプリ登録・Portal切替・実受入は、確定差分と保護記録で管理します。この文書は適用前の確認項目と変更範囲を示す計画であり、実行結果ではありません。工程4の実装方針は合意済みで、初回Entra設定は[手動登録手順](../setup/entra-portal.md)へ確定しました。
+工程3の証明書認証と更新運用、工程4のAPI試用は資材に実装済みです。Azureでの発行、専用Entraアプリの登録・同意、Portalの実受入は、配備候補の差分と環境別の保護記録を使って確認します。 [手動登録手順](../setup/09-egakumi-portal.md) · [Portalの受入試験](../testing/portal-authentication-tests.md)
 
 ## 次の作業と担当
 
-共有SQLはProxy維持、Redirect変更・Portal driver変更・Native試作は取りやめと決定しました。[標準APIの調査と比較](portal-sql-driver-feasibility.md)は終了した調査の記録として保持します。Networkの取消コミット`5f72d83`をPortalタスクがローカルへ取り込みました。SQL policyはProxy、SQL向けNSG4件はTCP1433で、実装資材は証明書改修済みの`511575f`と一致します。取消を独立に重ねず、Portalの証明書資材と公開データ許可定義を保持しました。
+空の環境では、第08章の`azd up`でCoreを構築し、証明書専用のACA JobからPortal署名用とGateway OBO用の公開証明書を取得します。Entra担当が第09章の手順でAPI用証明書の登録とPortalアプリの手動作成・登録・同意を行います。構築担当が登録結果を保護paramsに反映し、Gateway、Portalの順に個別配備します。 [正式な初回構築手順](../../README.md#新規クローンから構築する)
 
-証明書認証の工程はPortalタスクが独立して継続します。driverの選定・試作・Redirect実証を待つ工程はありません。Coreとhookの変更範囲、初期証明書準備、一度のEntra登録、Portal個別配備の適用案を具体化して提示します。AzureにRedirectは未適用のため、Azure切戻し操作は不要です。APIM/WAF資材は依存を含む確定コミットを待って統合しますが、証明書工程の設計整理を並行タスク全体の完了待ちにしません。
+共有SQLはProxyを使い、PortalのTedious/KyselyとSQL用Managed Identityによる認証を継続します。 [SQL Driver調査の記録](portal-sql-driver-feasibility.md)
 
-専用Entraアプリの手動作成・公開証明書登録は、証明書の準備と一度の登録に含める設定の確定後にEntra管理担当が行います。稼働中Portalの認証は、この作業では切り替えていません。
+稼働中Portalの認証切替や旧設定の撤去は、既存環境を移行する場合の作業です。新構成での実ログイン・Graph定期照合・API試用を受け入れてから進めます。
 
 ## 統合準備
 
-工程3の実装コミットは`511575f`です。並行作業の共有ファイルは`infra/main.bicep`と`docs/setup/portal.md`です。比較した差分は、WAF経路生成と公開経路集約、購読profile・制限部品の案内、Portal認証資材と構築順序です。双方の差分を重ねる`git apply --check`は通過し、比較元のファイルとインデックスは変更していません。
+以下はVM方式とSQL Redirect案を比較した当時の統合記録です。現在の手順は上記の正式な初回構築を参照してください。
 
-APIM側のこの確認はテキスト上の仮適用です。WAF側には関連catalog等の依存があるため、共有2ファイルだけを先に取り込まず、依存を含む確定コミットと統合します。APIM側の確定コミットは未取得で、ソースへ反映していません。
+工程3の当初の実装コミットは`511575f`です。WAF経路生成・公開経路集約とPortal認証資材・構築順序が重なる2ファイルをテキスト上で仮適用し、`git apply --check`が通過しました。当時の確認範囲は仮適用の可否です。
 
 旧Redirect案の`b44e6d7`は、ローカル統合コミット`521a92f`で工程3へ取り込みました。当時のCore・PortalのBicep生成を含む関連172試験は168成功、Windowsのリンク作成権限が必要な4件は未実施でした。この結果は旧案の履歴であり、取消後の検証結果には数えません。
 
 取消コミット`5f72d83`の取り込みでは、共有Bicep・初期証明書worker・署名ID・構築hook・Portal認証コードを保持しました。公開データ許可定義はPortalの追加pathを保持してSQL Redirect専用のpathと合成IPレコードだけを除去し、工程3の内容へ一致させました。取消後の関連試験とBicep生成は[認証試験](../testing/portal-authentication-tests.md)に記録します。これはローカルの資材確認で、Azureの配備差分・証明書発行・実ログインの確認ではありません。
 
-原checkoutの未コミット作業は保持しています。APIM側の確定コミットを取得後、共有差分・依存・文書参照と混入検査のpath移設を照合し、追加の統合箇所に対応するコンパイル・回帰を実施します。並行作業全体の完了を、適用計画の整理やEntra設定の先行設計を始める条件にしません。
+## 従来のVM方式でのAzure適用計画
 
-## 最初のAzure適用で確認する変更
+この節は従来のVM方式の判断記録です。現在の空環境からの構築は[Coreの初回構築](../setup/08-provision-core.md)で証明書用ACA Jobを使い、[Core後のEntra登録](../setup/09-egakumi-portal.md)とアプリの個別配備へ進みます。
 
-初期証明書準備に使う資材は[Core入口](../../infra/main.bicep)と構築hookです。Coreには次の変更が追加されています。
+旧方式ではCoreと構築hookが次の処理を担当していました。
 
 | 対象 | 変更・処理 |
 | --- | --- |
@@ -36,11 +36,11 @@ APIM側のこの確認はテキスト上の仮適用です。WAF側には関連c
 
 秘密鍵・PFX・backing secretはVM、ACA、ローカルへ取り出しません。証明書取得だけでは稼働中Portalの認証設定は切り替わりません。
 
-既存環境でCoreを再適用する場合、既存のTLS・公開DNS・通信整備等のhookも対象になります。適用判断には、テンプレートの差分とhookの変更を両方含めます。新規構築の`azd up`と、稼働中環境への再適用を同じ操作として扱いません。
+既存環境でCoreを再適用する場合は、TLS・公開DNS・通信整備等のhookも対象になります。適用判断にはテンプレートとhookの差分を含めます。
 
 ### 既存環境の初期証明書準備：承認済みの限定追加方式
 
-3部品だけを限定追加する実装方針は承認済みです。専用の実行入口を実装し、[ローカル検証](../testing/portal-authentication-tests.md#限定追加入口と全体構築の確認)で初期の関連133試験を確認しました。結果URLと省略metadataへの対応後の対象試験も成功しました。Azure実適用は対象環境の最終差分を提示して判断を受け、実行結果を保護記録で確認します。新規構築はCoreとhookを使う既定の手順を維持し、同じ3部品の呼出し・依存順・正式postprovisionからの公開証明書収集までを合成検証しました。構築済みの環境では、Coreと同じ次の3部品だけをIncrementalで追加します。
+従来のVM方式で構築済みの環境へ証明書準備だけを追加する場合は、次の3部品をIncrementalで追加する`initialize`を使います。当時の試験結果は[ローカル検証](../testing/portal-authentication-tests.md#限定追加入口と全体構築の確認)に記載しています。Azure適用は対象環境の最終差分を確認し、実行結果を保護記録へ残します。
 
 | 部品 | 既存資材と処理 |
 | --- | --- |
@@ -60,7 +60,7 @@ APIM側のこの確認はテキスト上の仮適用です。WAF側には関連c
 
 1. 利用者が明示した対象環境の保護params、同じcheckoutのazd環境とCore stateを選択し、所有・権限・保存先を照合します。別checkoutや別環境の入力を探索・コピーして採用しません。
 2. 統合した資材のCore変更計画を取得し、新規・変更・削除される資源と、実行されるhookを確認します。稼働中Portalが初期サンプルへ戻らないことも対象にします。
-3. 署名UAMI、鍵運用権限、VM worker、KV証明書生成以外に変更が出る場合、その内容を適用案へ明示します。SQL接続方式、WAF、APIM、TLS、DNS等の未判断変更をまとめて反映しません。
+3. 新規構築は証明書専用のACA環境、用途別のIDと権限、ACR、結果保管先を確認します。旧VM方式への限定追加は署名UAMI、鍵運用権限、VM worker、KV証明書の範囲を照合します。
 4. 現行Portalのイメージ・認証設定・ジョブ・必要な権限の復旧参照を保護保存し、適用対象・順序・確認方法を利用者へ提示して判断を受けます。
 
 SQL接続policyはProxyを維持し、PortalのTedious/KyselyとSQL用Managed Identity・Azure CLI認証を継続します。取消統合後の構築・照合資材もProxyへ揃えました。証明書準備・認証切替へSQL driver変更やSQL接続方式の切替を含めません。Coreとhookの実際の適用差分は引き続き確認し、証明書以外の変更がある場合は具体的な範囲を先に提示します。
@@ -71,13 +71,13 @@ SQL接続policyはProxyを維持し、PortalのTedious/KyselyとSQL用Managed Id
 
 | 段階 | 実施内容 | 次へ進む条件 |
 | --- | --- | --- |
-| 1. 初期証明書準備 | 新規は全体構築のCore・hook、既存環境は判断済みの3部品限定追加入口を実行し、KVで自己署名証明書を発行、公開`.cer`と固定参照を取得 | VMコマンド成功、鍵と証明書の対応、非exportable・Self・版・期限、保護保存を確認 |
-| 2. Entraの一度の登録 | 専用Portalアプリ作成、公開証明書、Portalログインcallback、工程4用callbackと`Gateway.Invoke`、Graph権限・同意を手動登録 | 合意済みの設計と確定した手順に沿い、公開証明書と対象アプリの一致、登録結果を照合 |
-| 3. Portal本体配備 | 個別配備入口でイメージをビルドし、DB・署名権限・本体・Graphジョブを準備 | 配備計画と復旧参照を提示して判断を受け、設定・イメージを読戻し |
+| 1. 初期証明書準備 | 新規は`azd up`から証明書専用ACA Jobを実行し、Portal署名用とGateway OBO用の公開`.cer`・固定参照を取得。旧VM方式の既存環境は限定追加入口を使用 | 対象Job実行の正常終了、鍵と証明書の対応、非exportable・Self・版・期限、保護保存を確認。旧方式は対応するVMコマンドの結果を確認 |
+| 2. Entraの一度の登録 | APIアプリのOBO証明書とGraph委任を登録。専用Portalアプリを作成し、Portal用公開証明書、ログインとAPI用のcallback、`Gateway.Invoke`・`Subscription.Manage`の委任、Graph権限と管理者同意を登録 | 公開証明書と対象アプリの一致、登録結果と同意状態を照合 |
+| 3. Gateway・Portal個別配備 | APIアプリのOBO用公開証明書登録後にGatewayを配備し、Portal本体とDB・署名権限・Graphジョブを準備 | 配備計画と必要な復旧参照を照合し、設定・イメージを読戻し |
 | 4. 実受入 | ログイン、tid/oidによる本人照合、既存APIキー管理、Graph管理、定期ジョブ、KVへの実通信を確認 | [認証試験](../testing/portal-authentication-tests.md)の対象条件を満たす |
 | 5. 更新・復旧の受入 | 新鍵の準備、手動公開証明書追加、固定参照切替、実確認、復旧、旧証明書削除・旧鍵版無効化を確認 | [更新運用](../operations/portal-authentication.md)の各段階を実受入 |
 | 6. 旧Portal撤去 | Portal用途の旧secret参照・読取り権限・旧callbackと移行用ソース処理を照合して撤去 | 新Portalの実受入と復旧期間の終了。CM用secret・callbackの利用を維持 |
 
-Entraアプリ作成と初回公開証明書登録を分けて申請しません。工程4の登録設定は初回申請前に確定し、工程4の認証処理・Try接続の実装は詳細設計の判断後に進めます。PortalのSQL Driver変更とSQL Redirect切替は今回取りやめました。
+Entraアプリ作成、初回公開証明書登録、工程4のAPI試用用設定は一度の依頼にまとめます。工程4では認証処理とTry接続を別途受け入れます。 [工程4の詳細設計](portal-stage4-design.md)
 
-HTTPSヘルス、設定の読戻し、ローカル署名成功をEntraログインや更新運用の実受入へ置き換えません。Next.js依存の既知脆弱性は[ローカル検証結果](../testing/portal-authentication-tests.md)の残件であり、依存更新の方針も別途確認します。
+HTTPSヘルス、構成の読戻し、ローカル署名の結果に加え、Entraログインや更新運用を実環境で確認します。依存の更新と検証時点の監査結果は[ローカル検証結果](../testing/portal-authentication-tests.md#本番依存の再監査)を参照します。

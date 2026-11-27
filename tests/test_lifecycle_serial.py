@@ -76,6 +76,7 @@ class SerialLifecycleTests(unittest.TestCase):
         return {"managementVm": management, "managementInitialSerialCreation": {"generation":self.generation,
                 "coreDeploymentId":f"/subscriptions/{self.config['subscriptionId']}/providers/Microsoft.Resources/deployments/{self.config['resourceStem']}-core", "managementVm":management},
                 "resourceGroups": self.config["resourceGroupNames"],
+                "portal": {},
                 "endpoints": {"public": "https://fixture.example.invalid"}}
 
     def deployment(self, status="Succeeded"):

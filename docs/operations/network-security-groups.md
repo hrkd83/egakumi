@@ -2,8 +2,8 @@
 
 [共通確認](common.md) · [基盤設定](platform-settings.md) · [NSG設計・通信対応](../reference/network-security-design.md) · [非NSG通信](../reference/platform-communications.md)
 
-初期構築は5 NSG・カスタム77ルール（Allow 69、Deny 8）の固定集合とする。AzureFirewallSubnetにはNSGを関連付けない。
-通信の用途を1ルールずつ名前と設計IDで記録し、ルールの作成有無を公開params／configで制御しない。
+基本構成はAppGW、APIM、Private Endpoint、管理VM、Portal用ACA、Broker用ACAでそれぞれNSGを使う。証明書用ACAの通信は専用の資材で管理し、本文監査有効時は監査用NSGを追加する。AzureFirewallSubnetにはNSGを関連付けない。
+通信の用途を1ルールずつ名前と設計IDで記録する。`auditEvidence.enabled`で本文監査の固定集合を追加し、個別規則の作成有無は公開入力で切り替えない。
 
 - 120から: クライアント要求から発生する通信。
 - 220から: この基盤の設計で追加した内部接続・保守通信。
@@ -11,15 +11,15 @@
 - 同じNSG・同じ方向・同じ帯では1ずつ採番する。各帯の先頭20番号は追加用に空ける。
 - 末尾のカスタム拒否は4096。Azure既定規則を再作成しない。
 
-この分類は資材の設計方針であり、Azureの予約番号ではない。同期・キャッシュは内部IP宛てでも
+この分類は基本構成の設計方針であり、Azureの予約番号ではない。同期・キャッシュは内部IP宛てでも
 Azure仕様上の通信として300番台へ置く。300番台の名前にはポート・プロトコルを含めない。
 [NSGの評価順序](https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview#security-rules)
 
 ## 正本とアドレス参照
 
-正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のcatalog v5で、
+基本構成の正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のversion 5で、
 名称・方向・優先度・Allow/Deny・両ポート・プロトコル・アドレス参照・設計IDを定義する。
-以下の表は正本catalog v5の77件に対応する。送信元ポートは全件Any。
+以下の表は固定集合の用途を示す。本文監査の追加規則は[本文監査NSGの正本](../../infra/audit-evidence-nsg.json)で定義する。送信元ポートは全件Any。
 
 サブネットCIDRは構築入力から、単IPは構築した資源の割当IPから、PEは構築したPE NICの全IPから
 動的に設定する。単IP・PE IPは/32とし、同じサブネットの他資源へ無条件に広げない。
@@ -31,14 +31,14 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 `network.operatorAddressPrefixes`、`network.operatorProtocol`、`network.operatorPorts`、`network.dnsServers`、`network.firewall.dnsServers`、
 `network.ntpAddressPrefixes`、`network.ntpFqdns`、`network.managementAdditionalSecurityRules`、
 `network.apimKeyVaultAccessEnabled`と`gateway.grpc`は廃止し、空値でも入力検査で拒否する。
-NSGの初期集合を変える新しいスイッチを追加しない。
 
 | Bicep | 定義区間 |
 | --- | --- |
-| [network.bicep](../../infra/modules/network.bicep) | 5 NSG・サブネット関連付け・静的基盤ルール |
+| [network.bicep](../../infra/modules/network.bicep) | 基本構成と本文監査用NSG、サブネット関連付け、静的基盤ルール |
 | [network-bindings.bicep](../../infra/modules/network-bindings.bicep) | AppGW／APIM／管理VM割当IP・Foundry／Key Vault全PE IP・終端拒否 |
 | [portal-network.bicep](../../infra/modules/portal-network.bicep)と[bindings](../../infra/modules/portal-network-bindings.bicep) | ACA VIP・ACR全PE IP |
-| [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) | 共有SQL全PE IP・APIM→ACA共有VIP・ACAの終端Deny |
+| [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) | 共有SQL全PE IP・APIMからPortal／Brokerそれぞれの内部VIPへの許可 |
+| [audit-evidence-network.bicep](../../infra/modules/audit-evidence-network.bicep)と[ingress](../../infra/modules/audit-evidence-ingress.bicep) | 本文監査ACAとPEの許可、APIMから中継の内部VIPへの許可 |
 
 ## AppGW（agw）
 
@@ -80,8 +80,9 @@ NSGの初期集合を変える新しいスイッチを追加しない。
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-foundry-https-egress` | APIMサブネットCIDR | Foundry PE全IP /32 | TCP／443 | `N-APIM-OUT-01` |
-| 220 | `allow-aca-https-egress` | APIMサブネットCIDR | ACA共有VIP /32 | TCP／443 | `N-APIM-OUT-02` |
-| 221 | `allow-key-vault-https-egress` | APIMサブネットCIDR | Key Vault PE全IP /32 | TCP／443 | `N-APIM-OUT-03` |
+| 220 | `allow-aca-https-egress` | APIMサブネットCIDR | Portal用ACAの内部VIP /32 | TCP／443 | `N-APIM-OUT-02` |
+| 221 | `allow-key-vault-https-egress` | APIMサブネットCIDR | 業務用Key Vault PE全IP /32 | TCP／443 | `N-APIM-OUT-03` |
+| 223 | `allow-broker-https-egress` | APIMサブネットCIDR | Broker内部VIP /32 | TCP／443 | `N-APIM-OUT-BROKER-HTTPS` |
 | 320 | `allow-storage-egress` | APIMサブネットCIDR | `Storage`タグ | TCP／443 | `N-APIM-OUT-04` |
 | 321 | `allow-sql-egress` | APIMサブネットCIDR | `Sql`タグ | TCP／1433 | `N-APIM-OUT-05` |
 | 322 | `allow-key-vault-egress` | APIMサブネットCIDR | `AzureKeyVault`タグ | TCP／443 | `N-APIM-OUT-06` |
@@ -110,16 +111,16 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-apim-foundry-https-ingress` | APIMサブネットCIDR | Foundry PE全IP /32 | TCP／443 | `B-PE-05` |
-| 220 | `allow-appgw-key-vault-https-ingress` | AppGWサブネットCIDR | Key Vault PE全IP /32 | TCP／443 | `B-PE-01` |
-| 221 | `allow-apim-key-vault-https-ingress` | APIMサブネットCIDR | Key Vault PE全IP /32 | TCP／443 | `B-PE-02` |
-| 222 | `allow-aca-key-vault-https-ingress` | ACAサブネットCIDR | Key Vault PE全IP /32 | TCP／443 | `B-PE-03` |
-| 223 | `allow-mgmt-vm-key-vault-https-ingress` | 管理VM private IP /32 | Key Vault PE全IP /32 | TCP／443 | `B-PE-04` |
+| 220 | `allow-appgw-key-vault-https-ingress` | AppGWサブネットCIDR | 公開TLS用Key Vault PE全IP /32 | TCP／443 | `B-PE-01` |
+| 221 | `allow-apim-key-vault-https-ingress` | APIMサブネットCIDR | 業務用Key Vault PE全IP /32 | TCP／443 | `B-PE-02` |
+| 222 | `allow-aca-key-vault-https-ingress` | Portal・BrokerサブネットCIDR | 業務用Key Vault PE全IP /32 | TCP／443 | `B-PE-03` |
+| 223 | `allow-mgmt-vm-key-vault-https-ingress` | 管理VM private IP /32 | 業務用・公開TLS用Key VaultのPE全IP /32 | TCP／443 | `B-PE-04` |
 | 224 | `allow-mgmt-vm-foundry-https-ingress` | 管理VM private IP /32 | Foundry PE全IP /32 | TCP／443 | `B-PE-06` |
 | 225 | `allow-mgmt-vm-sql-1433-ingress` | 管理VM private IP /32 | 共有SQL PE全IP /32 | TCP／1433 | `N-PE-IN-MGMT-SQL` |
-| 226 | `allow-aca-sql-1433-ingress` | ACAサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-PE-07` |
-| 227 | `allow-aca-acr-https-ingress` | ACAサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-PE-08` |
+| 226 | `allow-aca-sql-1433-ingress` | Portal・BrokerサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-PE-07` |
+| 227 | `allow-aca-acr-https-ingress` | Portal・BrokerサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-PE-08` |
 | 228 | `allow-mgmt-vm-acr-https-ingress` | 管理VM private IP /32 | ACR PE全IP /32 | TCP／443 | `B-PE-09` |
-| 229 | `allow-mgmt-vm-audit-storage-platform-https-ingress` | 管理VM private IP /32 | collectJapan監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS` |
+| 229 | `allow-mgmt-vm-audit-storage-platform-https-ingress` | 管理VM private IP /32 | 基盤監査Storage（`collectJapan`）のBlob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS` |
 | 230 | `allow-mgmt-vm-audit-storage-foundry-https-ingress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-FOUNDRY-HTTPS` |
 | 4096 | `deny-any-ingress` | Any | Any | Any／Any | `B-PE-14` |
 
@@ -139,12 +140,13 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
-| 220 | `allow-key-vault-https-egress` | 管理VM private IP /32 | Key Vault PE全IP /32 | TCP／443 | `B-MGMT-02` |
+| 220 | `allow-key-vault-https-egress` | 管理VM private IP /32 | 業務用・公開TLS用Key VaultのPE全IP /32 | TCP／443 | `B-MGMT-02` |
 | 221 | `allow-acr-https-egress` | 管理VM private IP /32 | ACR PE全IP /32 | TCP／443 | `B-MGMT-03` |
 | 222 | `allow-apim-https-egress` | 管理VM private IP /32 | APIMサブネットCIDR | TCP／443 | `B-MGMT-18` |
 | 223 | `allow-foundry-https-egress` | 管理VM private IP /32 | Foundry PE全IP /32 | TCP／443 | `B-MGMT-21` |
 | 224 | `allow-sql-1433-egress` | 管理VM private IP /32 | 共有SQL PE全IP /32 | TCP／1433 | `N-MGMT-OUT-SQL` |
-| 227 | `allow-audit-storage-platform-https-egress` | 管理VM private IP /32 | collectJapan監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS` |
+| 226 | `allow-aca-https-egress` | 管理VM private IP /32 | ACA共有VIP /32 | TCP／443 | `N-MGMT-OUT-ACA-HTTPS` |
+| 227 | `allow-audit-storage-platform-https-egress` | 管理VM private IP /32 | 基盤監査Storage（`collectJapan`）のBlob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS` |
 | 228 | `allow-audit-storage-foundry-https-egress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-FOUNDRY-HTTPS` |
 | 320 | `allow-azure-resource-manager-egress` | 管理VMサブネットCIDR | `AzureResourceManager`タグ | TCP／443 | `B-MGMT-06` |
 | 321 | `allow-entra-egress` | 管理VMサブネットCIDR | `AzureActiveDirectory`タグ | TCP／443 | `B-MGMT-07` |
@@ -200,7 +202,7 @@ VNet・Private Endpointへの具体的な経路が優先されるため、Firewa
 通信の許可は送信元と宛先のNSGに記録します。Firewallには現在の経路で通過する通信だけを登録し、
 将来の経路変更用の許可は含めません。
 
-PortalとCredential Brokerの共用ACAは、必要な受信と送信を明示して両方向の残りを拒否します。
+Portal用のACA環境は、必要な受信と送信を明示して両方向の残りを拒否します。
 同じACAサブネット内の基盤通信は両方向で許可し、他サブネットとの接続は個別の規則で許可します。
 [ACA基盤のNSG要件](https://learn.microsoft.com/en-us/azure/container-apps/firewall-integration#nsg-allow-rules)
 
@@ -210,9 +212,9 @@ PortalとCredential Brokerの共用ACAは、必要な受信と送信を明示し
 | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-firewall-https-ingress` | FirewallサブネットCIDR | ACAサブネットCIDR | TCP／443, 31443 | `B-ACA-03` |
 | 220 | `allow-apim-https-ingress` | APIMサブネットCIDR | ACAサブネットCIDR | TCP／443, 31443 | `B-ACA-04` |
-| 222 | `allow-mgmt-vm-https-ingress` | 管理VM /32 | ACAサブネットCIDR | TCP／443, 31443 | `N-ACA-IN-MGMT-HTTPS` |
+| 222 | `allow-mgmt-vm-https-ingress` | 管理VM private IP /32 | ACAサブネットCIDR | TCP／443, 31443 | `N-ACA-IN-MGMT-HTTPS` |
 | 320 | `allow-azure-load-balancer-ingress` | `AzureLoadBalancer`タグ | ACAサブネットCIDR | TCP／30000-32767 | `B-ACA-05` |
-| 321 | `allow-aca-internal-ingress` | ACAサブネットCIDR | ACAサブネットCIDR | Any／Any | `B-ACA-17` |
+| 321 | `allow-aca-internal-ingress` | ACAサブネットCIDR | ACAサブネットCIDR | Any／Any | `B-ACA-INTERNAL-IN` |
 | 4096 | `deny-any-ingress` | Any | Any | Any／Any | `N-ACA-IN-TERMINAL` |
 
 ### Outbound
@@ -220,7 +222,7 @@ PortalとCredential Brokerの共用ACAは、必要な受信と送信を明示し
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-appgw-https-egress` | ACAサブネットCIDR | AppGW公開IP /32 | TCP／443 | `B-ACA-11` |
-| 220 | `allow-key-vault-https-egress` | ACAサブネットCIDR | Key Vault PE全IP /32 | TCP／443 | `B-ACA-06` |
+| 220 | `allow-key-vault-https-egress` | ACAサブネットCIDR | 業務用Key Vault PE全IP /32 | TCP／443 | `B-ACA-06` |
 | 221 | `allow-sql-1433-egress` | ACAサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-ACA-07` |
 | 222 | `allow-acr-https-egress` | ACAサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-ACA-08` |
 | 223 | `allow-arm-https-egress` | ACAサブネットCIDR | `AzureResourceManager`タグ | TCP／443 | `B-ACA-13` |
@@ -232,15 +234,54 @@ PortalとCredential Brokerの共用ACAは、必要な受信と送信を明示し
 | 325 | `allow-firewall-routed-public-https-egress` | ACAサブネットCIDR | `Internet`タグ | TCP／443 | `B-ACA-21` |
 | 4096 | `deny-any-egress` | Any | Any | Any／Any | `N-ACA-OUT-TERMINAL` |
 
+## Broker専用ACA（`broker`）
+
+Brokerの業務入口をAPIMのサブネットに限定する。専用環境の基盤通信と必要な送信を許可し、受信・送信とも末尾で拒否する。
+
+### Inbound
+
+| 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
+| --- | --- | --- | --- | --- | --- |
+| 220 | `allow-apim-https-ingress` | APIMサブネットCIDR | BrokerサブネットCIDR | TCP／443, 31443 | `N-BROKER-APIM-HTTPS-INGRESS` |
+| 320 | `allow-azure-load-balancer-ingress` | `AzureLoadBalancer`タグ | BrokerサブネットCIDR | TCP／30000-32767 | `N-BROKER-AZURE-LOAD-BALANCER-INGRESS` |
+| 321 | `allow-broker-internal-ingress` | BrokerサブネットCIDR | BrokerサブネットCIDR | Any／Any | `N-BROKER-ACA-INTERNAL-INGRESS` |
+| 4096 | `deny-any-ingress` | Any | Any | Any／Any | `N-BROKER-DENY-ANY-INGRESS` |
+
+### Outbound
+
+| 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
+| --- | --- | --- | --- | --- | --- |
+| 220 | `allow-key-vault-https-egress` | BrokerサブネットCIDR | 業務用Key Vault PE全IP /32 | TCP／443 | `N-BROKER-KEY-VAULT-HTTPS-EGRESS` |
+| 221 | `allow-sql-1433-egress` | BrokerサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `N-BROKER-SQL-1433-EGRESS` |
+| 222 | `allow-acr-https-egress` | BrokerサブネットCIDR | ACR PE全IP /32 | TCP／443 | `N-BROKER-ACR-HTTPS-EGRESS` |
+| 223 | `allow-arm-https-egress` | BrokerサブネットCIDR | `AzureResourceManager`タグ | TCP／443 | `N-BROKER-ARM-HTTPS-EGRESS` |
+| 320 | `allow-broker-internal-egress` | BrokerサブネットCIDR | BrokerサブネットCIDR | Any／Any | `N-BROKER-ACA-INTERNAL-EGRESS` |
+| 321 | `allow-entra-egress` | BrokerサブネットCIDR | `AzureActiveDirectory`タグ | TCP／443 | `N-BROKER-ENTRA-EGRESS` |
+| 322 | `allow-monitor-egress` | BrokerサブネットCIDR | `AzureMonitor`タグ | TCP／443 | `N-BROKER-MONITOR-EGRESS` |
+| 323 | `allow-mcr-egress` | BrokerサブネットCIDR | `MicrosoftContainerRegistry`タグ | TCP／443 | `N-BROKER-MCR-EGRESS` |
+| 324 | `allow-afd-first-party-egress` | BrokerサブネットCIDR | `AzureFrontDoor.FirstParty`タグ | TCP／443 | `N-BROKER-AFD-FIRST-PARTY-EGRESS` |
+| 4096 | `deny-any-egress` | Any | Any | Any／Any | `N-BROKER-DENY-ANY-EGRESS` |
+
+## 本文監査を有効にした場合の追加規則
+
+| NSG | 追加件数 | 許可する通信と拒否 |
+| --- | --- | --- |
+| 本文監査ACA | 16 | APIMからのHTTPS、ロードバランサー、同一サブネット内のACA基盤通信を受ける。既定出口はFirewall経由とし、必要な管理通信とFoundry・ACR・Event Hubs・本文Blob・チェックポイントBlobの実PEへ接続する。受信・送信の末尾はDeny。 |
+| APIM | 1 | 中継ACAの内部VIP `/32` へTCP 443を許可する。 |
+| Private Endpoint | 6 | 本文監査ACAと上記5種類のPEの組を許可し、管理VMからは本文BlobのPEを追加で許可する。 |
+| 管理VM | 1 | 本文BlobのPEへTCP 443を許可する。閲覧には別途、対象コンテナーへの権限を付与する。 |
+
+本文監査ACAは専用の内部環境を使う。中継アプリの入口はAPIMサブネットと認証済みAPIMのIDに限定し、保存ワーカーには入口を作成しない。具体的な規則と構築後の確認は[本文監査NSGの正本](../../infra/audit-evidence-nsg.json)と[本文監査設計](../reference/request-body-audit.md)を参照する。
+
 ## 既定規則と末尾拒否の扱い
 
-5 NSGそれぞれでAzure既定のInbound 65000/65001/65500、Outbound 65000/65001/65500を維持する。
+全NSGでAzure既定のInbound 65000/65001/65500、Outbound 65000/65001/65500を維持する。
 NSGはstatefulなので、受信で許可した接続の応答のための逆方向Allowは作成しない。
 [既定規則と接続状態](https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview)
 
 AppGWとAPIMのAzureLoadBalancer受信は、送信元タグ以外をAnyに統一して明示する。
-AppGW／APIM／PE／管理VM／ACAの受信と、APIM／管理VM／ACAの送信は、優先度4096のDenyを終端とする。
-AppGWとPEの送信は既定規則を評価する。
+本文監査用を含む全NSGの受信末尾にDenyを置く。
+APIM／管理VM／Portal・Broker・本文監査の各ACAの送信末尾にもDenyを置く。AppGWとPEの送信末尾には置かない。
 
 標準AppGW v2はInternet向け送信包括許可を必要とするため、既定Outbound許可を維持する。
 AppGWの3件の明示送信Allowは通信設計の記録でもあり、これらだけで送信範囲を限定したとは解釈しない。
@@ -265,7 +306,7 @@ DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と�
 
 ## 新規構築と既存環境の移行
 
-新規構築は同じ固定Bicepと[正式構築手順](../setup/06-deploy.md)を使う。
+新規構築は同じ固定Bicepと[正式構築手順](../setup/08-provision-core.md)を使う。
 同じNSGの子ルールへの書込は、`batchSize(1)`と`dependsOn`で直列化する。
 モジュールは`network → networkBindings → portalNetwork → portal → portalNetworkBindings → credentialNetwork`の
 順で実行し、各モジュール内でも同じNSGを更新する子ルールに依存関係を置く。
@@ -273,8 +314,9 @@ ACAの末尾Denyは、共有SQL向けNSG許可と所有Firewall規則が完了�
 既存NSGの親は再PUTせず、タグは専用Tags API、ルールは子リソースで更新する。
 この順序と固定ルールの全条件をコンパイル済み資材で確認し、新規構築と再適用で同じ定義を使う。
 
-既存環境も最終状態は同じ資材に収束させる。今回の関連改修ではApp Gateway後段のHTTPS・gRPC撤去・標準DNS固定・管理VMのAzureホストPHC同期を
-含むため、既存のHTTPバックエンドは最終Coreの適用前に切替計画を確認する。
+次の限定適用は、選択した固定集合に対応するネットワークとACA環境を前提に、規則と関連付けを照合する。本文監査が有効なら専用環境とPEも先に揃える。稼働中BrokerのACA環境変更は別途計画する。
+
+旧HTTP後段や旧Firewall SKUを使う環境は、[HTTPS切替の計画](platform-settings.md#appgw後段のtls検査を検証する)を確認してから固定NSGの更新を行う。
 
 1. Windows側Azure CLIで認証し、入力・Core state・所有RG／VNet／NSG／内部資源・実ルールを読み取る。
    WSLはローカル試験とBicepコンパイルに使用し、Entra認証にLinux側Azure CLIを使わない。
@@ -287,8 +329,8 @@ ACAの末尾Denyは、共有SQL向けNSG許可と所有Firewall規則が完了�
    基盤監査Storageの旧名2件は、TCP／443・送受信元・既定優先度の完全一致を確認し、
    同じ許可条件のまま優先度1500へ退避する。新名の227／229が確認できるまで旧名を削除せず、
    中断後も退避済みのルールを確認して再開できる。保守資材の限定適用では元の優先度にある旧名も照合する。
-4. [NSG限定資材](../../infra/modules/nsg-fixed-upgrade.bicep)を単独what-ifで検証し、固定77子と
-   新ACA NSGだけをIncremental配備する。既存NSGの親、UDR、VNet親、Firewall本体、Public IPは書かない。
+4. [NSG限定資材](../../infra/modules/nsg-fixed-upgrade.bicep)を単独what-ifで検証し、固定集合の子規則と
+   必要なACA NSGだけをIncremental配備する。既存NSGの親、UDR、VNet親、Firewall本体、Public IPは書かない。
    その後、ACA subnetの直前ETagを使った限定PUTでNSG関連付けだけを追加する。
    `complete_fixed_nsg_rules`が5関連付け・全77条件と既定規則を照合した後にだけ、完全一致する旧子を回収する。
    catalog v2の旧管理325は既知legacy tupleとの完全一致と直前ETagで限定削除し、所有Firewall collectionから管理VM NTP規則を除いて読み戻す。APIMのUDP123許可、未知の企業規則を削除しない。
@@ -309,13 +351,11 @@ ACAの末尾Denyは、共有SQL向けNSG許可と所有Firewall規則が完了�
 所有する既存NSG名を読み取る。新ACA parentのtagsは再構築と同じ構築tagsと固定3タグのunionとする。
 実VNetのDNSとFirewall上流DNSがAzure提供の空設定であり、Firewall DNS proxyが有効であることを
 NSG変更前に要求する。手動custom DNSがあればこの入口で切り替えず、規則の更新前に停止する。
-ACAでは所有先の一致、構築Firewall宛の既定経路、既定送信アクセスとBGP伝搬の無効化を先に照合する。
-AppGW向け復路がある場合はその定義も照合し、実際の入口と復路はAzureの受入で確認する。
-公開params／configは増やさず、catalog v5の77規則を常に生成する。許可を配備してから末尾Denyを設定する。
-`verify_fixed_nsg_upgrade_what_if`は77子の全tupleを照合し、展開診断、対象子のIgnore、
+構築設定に対応する固定規則を生成し、本文監査が有効なら追加規則を生成する。
+`verify_fixed_nsg_upgrade_what_if`は対象子の全tupleを照合し、展開診断、対象子のIgnore、
 不足、削除、既存parentやNSG以外への書込を拒否する。what-ifのSucceededだけで判断しない。
 
-`associate_fixed_aca_nsg`は77子が揃った後に、ACA subnetの既知writable設定を保持して
+`associate_fixed_aca_nsg`は対象の固定子ルールが揃った後に、Portal用ACA subnetの既知writable設定を保持して
 NSG参照だけを変更する。現routeTable、delegations、標準送信設定等を保持し、API仕様の
 readOnly以外で未対応の項目があれば値を省略せず停止する。現在の関連付けが別NSGなら停止する。
 変更前記録・直前ETag・If-Match・一致readbackを必要とし、応答不明や未完了時はPUTを再送しない。

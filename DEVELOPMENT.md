@@ -107,9 +107,10 @@ Python 3.11以上と [端末の準備条件](docs/setup/01-prerequisites.md) を
 ```sh
 # リポジトリのルートで実行します。
 python3 -m venv .venv
-.venv/bin/python -m pip install -r scripts/integration-requirements.txt -r apps/credential-broker/requirements.txt
+.venv/bin/python -m pip install -r scripts/integration-requirements.txt -r apps/credential-broker/requirements.txt -r apps/audit-relay/requirements.txt
 .venv/bin/python -B -m unittest discover -s tests -v
 PYTHONPATH=apps/credential-broker .venv/bin/python -B -m unittest discover -s apps/credential-broker/tests -v
+PYTHONPATH=apps/audit-relay .venv/bin/python -B -m unittest discover -s apps/audit-relay/tests -v
 ```
 
 Windowsでは仮想環境の `Scripts/python.exe` を使い、環境変数は利用するシェルの書式で指定します。
@@ -122,7 +123,7 @@ Windowsでは仮想環境の `Scripts/python.exe` を使い、環境変数は利
 | 認証窓口 | 取引とセッションの所有者・期限・一度限りの利用、Cookie、CM接続、SQL競合・利用枠 |
 | Portal | 認証、テナント・グループ・所有者の認可、APIキー管理、購読同期、モデル応答とstream |
 
-以下の出力を保存する場合は、[第1章](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で`DEPLOY_ENVIRONMENT`・`DEPLOY_LOCAL_DIRECTORY`・`DEPLOY_PARAMS_FILE`を設定します。架空データだけの確認でも保存先を環境別領域へ揃えます。
+以下の出力を保存する場合は、[第01章](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で`DEPLOY_ENVIRONMENT`・`DEPLOY_LOCAL_DIRECTORY`・`DEPLOY_PARAMS_FILE`を設定します。架空データだけの確認でも保存先を環境別領域へ揃えます。
 
 PowerShellを使う試験は `WORKFORCE_PWSH`、インストール済み `pwsh`、対応するportable版から実行環境を選びます。Bicepの実行ファイルは `BICEP_CLI` で指定できます。依存不足でスキップした項目は理由とともに記録します。
 
@@ -146,7 +147,7 @@ npx tsc --noEmit
 npm run build
 ```
 
-SQL統合試験は通常の `npm test` ではスキップします。[ローカルSQLの準備](docs/testing/portal-local-auth.md) を済ませ、専用ローカルSQL環境で `PORTAL_SQL_INTEGRATION_TESTS=1` と試験用資格情報を指定して実行します。管理者には試験専用DBの作成権限、権限検証には `PORTAL_SQL_RUNTIME_USER`／`PORTAL_SQL_RUNTIME_PASSWORD` の事前作成済みログインが必要です。各試験は独立したDBを作成し、終了時にそのDBだけを削除します。
+SQL統合試験は通常の `npm test` ではスキップします。[SQL統合試験の単独手順](docs/testing/portal-local-auth.md#sql統合試験だけを実行する)に従い、専用ローカルSQL環境で `PORTAL_SQL_INTEGRATION_TESTS=1` と試験用資格情報を指定して実行します。管理者には試験専用DBの作成権限、権限検証には `PORTAL_SQL_RUNTIME_USER`／`PORTAL_SQL_RUNTIME_PASSWORD` の事前作成済みログインが必要です。各試験は独立したDBを作成し、終了時にそのDBだけを削除します。
 
 ### 実環境の試験
 
@@ -154,7 +155,7 @@ SQL統合試験は通常の `npm test` ではスキップします。[ローカ�
 
 ## 構築前チェックの責務
 
-`python3 scripts/deployment/lifecycle.py validate --config <params>` はローカルの設定検証です。`preup`／`preprovision` は、必要な依存、Azure DNS用ID、Azure登録・権限・容量、APIM名の利用可否を構築直前に確認します。詳細は [スクリプト一覧](scripts/README.md) を参照してください。
+`python3 scripts/deployment/lifecycle.py validate --config <params>` はローカルの設定検証です。`preprovision` は、必要な依存、Azure DNS用ID、Azure登録・権限・容量、APIM名の利用可否を構築直前に確認します。詳細は [スクリプト一覧](scripts/README.md) を参照してください。
 
 イメージの配備先、ビルド結果、再利用するdigest・ソースhash・一時資源の回収記録はGatewayとPortalで共通の検査を使います。サービス固有の配布物allowlistと秘密・symlinkの拒否は、それぞれの配布境界で確認します。実資源の状態は変わるため、構築直前の確認はローカルテストとは別に必要です。
 
@@ -168,17 +169,17 @@ SQL統合試験は通常の `npm test` ではスキップします。[ローカ�
 | 4 | [main.bicep](infra/main.bicep)・[modules](infra/modules) | 5RG、ネットワーク、ID、サービスの依存関係 |
 | 5 | [certificate-bootstrap.sh](infra/guest/certificate-bootstrap.sh)・[certificate.ps1](infra/guest/certificate.ps1)・[configure-audit.sh](infra/guest/configure-audit.sh)・[prepare-management-client.sh](infra/guest/prepare-management-client.sh) | Ubuntu初期化、証明書取得・更新・復旧、OS監視、保守clientの準備 |
 | 6 | [deploy_applications.py](scripts/deploy_applications.py) | 基盤構築後のGateway→Portalの順次実行と、途中失敗時の停止 |
-| 7 | [Gateway配備資材](apps/apim/deploy/)・[deploy_gateway.py](scripts/deploy_gateway.py)・[deploy_portal.py](scripts/deploy_portal.py) | 各アプリのDB・実行用ID・ジョブ・イメージと、API・製品・検証用購読の配備 |
+| 7 | [Gateway配備資材](apps/apim/deploy/README.md)・[deploy_gateway.py](scripts/deploy_gateway.py)・[deploy_portal.py](scripts/deploy_portal.py) | 各アプリのDB・実行用ID・ジョブ・イメージと、API・製品・検証用購読の配備 |
 | 8 | [cleanup.py](scripts/deployment/helpers/cleanup.py) | モデル・APIM先削除、削除保護と所有照合 |
 | 9 | [tests](tests)・[Portalテスト](apps/portal/tests/) | ローカルで検査する契約と回帰テスト。実環境の受入条件は冒頭の各仕様書を参照 |
 
 Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshellのコメントから役割・順序・保証範囲を追えます。秘密値や運用中の証明書をコメント・公開例へ転記しません。
 
-`scripts/`には構築以外の手動コマンドや疎通試験クライアントも含まれます。基盤のhookは`deployment/lifecycle.py`、up完了前のアプリ配備は`deploy_applications.py`が担当し、補助処理は`deployment/helpers/`にまとめています。[用途別の一覧](scripts/README.md)で、構築時に使う処理とAPI登録・試験・運用で使う処理を確認できます。
+`scripts/`には構築以外の手動コマンドや疎通試験クライアントも含まれます。基盤のhookは`deployment/lifecycle.py`、アプリの個別配備は`deploy_gateway.py`と`deploy_portal.py`が担当し、補助処理は`deployment/helpers/`にまとめています。[用途別の一覧](scripts/README.md)で、構築時に使う処理とAPI登録・試験・運用で使う処理を確認できます。
 
-`infra/`は共通基盤、`apps/apim/deploy/`と`apps/portal/`はその上で動くアプリの配備単位です。管理VM内で動く共通の証明書・OS設定・保守clientは[infra/guest/](infra/guest/)に置き、各アプリのイメージ構築はそれぞれの`deploy/build-image.sh`に置きます。初期の`azd up`はAPIM本体、共通SQLサーバー・SQL初期化用ID、ネットワーク・Private Endpoint、ACA環境・ACR、共有Entra secretを用意し、`postprovision`で実出力と入口設定を仕上げます。その後、対話可能な`postup`から`deploy_applications.py --execute`を実行します。GatewayのSQL初期化・起動確認・APIと製品の登録に成功してから、Portalの認証DB・検証用購読・イメージと本体を配備します。
+`infra/`は共通基盤です。Gatewayは`apps/apim/`と`apps/credential-broker/`の資材を統合配備し、Portalは`apps/portal/`から配備します。管理VM内で動く共通の証明書・OS設定・保守clientは[infra/guest/](infra/guest/)に置き、BrokerとPortalのイメージ構築は各アプリの`deploy/build-image.sh`に置きます。初回の`azd up`はAPIM、共通SQLサーバー、ネットワーク、Private Endpoint、ACA環境、非公開ACRを用意します。`azd provision`も同じCore工程を実行し、`postprovision`で認証用公開証明書2枚と入口設定を確認します。証明書のEntra登録とPortalアプリの登録後にGatewayを配備し、APIと製品の登録が成功したらPortalを配備します。
 
-`azd provision`は基盤だけを対象にします。全体の`azd up`は基盤→Gateway→Portalを順に実行します。標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は空配列やfalseでも拒否します。既存local paramsと非標準値を無断変換せず、[入力配置・移行条件](docs/setup/04-params.md#既存入力の移行を確認する)を確認します。基盤に必要なWAF・監査ログの情報も同じ正本から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
+初回構築では[空環境からの構築手順](docs/setup/08-provision-core.md)に沿って段階的に行います。標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は空配列やfalseでも拒否します。既存local paramsと非標準値を無断変換せず、[入力配置・移行条件](docs/setup/07-params.md#既存入力の移行を確認する)を確認します。基盤に必要なWAF・監査ログの情報も同じ正本から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
 
 構築済み環境の更新・途中失敗からの再開では、同じparamsとCoreの`.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。Portalの初回対話は`portalApiKeys.platformGroupId`と`groupNamePattern`だけを同じparamsへ保存します。非対話ならこの2項目を事前設定します。内部groups・検証購読は管理グループ1件、標準API正本の全製品、configのverificationMaxSubscriptions（初期5）から生成し、公開paramsへ書き戻しません。
 
@@ -186,9 +187,9 @@ APIM全体ポリシーは[service.xml](apps/apim/policies/service.xml)、各API�
 
 購読キーによる共通認可は全体ポリシーに集約し、資材固定の購読キーヘッダー`api-key`とAPIM標準の購読検証を使います。公開ヘッダー入力と`requiredScope`は廃止し、社員委任scopeは`Gateway.Invoke`へ固定します。API側は`<base />`で継承し、モデル・入力・出力等の操作制約と下流認証を設定します。API登録は子資源の配備成功を確認した後、ETag付きで共通ポリシーを統合・読戻し確認します。
 
-configの`gateway.authentication.credentialLogin`へ共通セッション設定を置き、paramsには任意identityのClient ID・秘密参照だけを置きます。identityを省略した場合の選択CM provider由来の本人確認とPortalの既存profile利用は維持し、今回の配置整理だけでClient ID・secret・認証方式を切り替えません。`credentialLogin`を設定すると、[CM共通接続窓口](docs/setup/credential-manager-login.md)を追加します。`/auth/connections`のstart/status/logoutは購読必須、`/auth/connections/browser`のlaunch/callbackはブラウザー用の一時取引で保護します。本人セッションを必要とするAPIだけがCMを利用します。キーはサーバー側へ保管し、ブラウザーのJavaScriptへ配布しません。
+configの`gateway.authentication.credentialLogin`へ共通セッション設定を置き、paramsには任意identityのClient ID・秘密参照だけを置きます。identityを省略した場合の選択CM provider由来の本人確認とPortalの既存profile利用は維持し、今回の配置整理だけでClient ID・secret・認証方式を切り替えません。`credentialLogin`を設定すると、[CM共通接続窓口](docs/reference/credential-manager-login.md)を追加します。`/auth/connections`のstart/status/logoutは購読必須、`/auth/connections/browser`のlaunch/callbackはブラウザー用の一時取引で保護します。本人セッションを必要とするAPIだけがCMを利用します。キーはサーバー側へ保管し、ブラウザーのJavaScriptへ配布しません。
 
-証明書のDNS-01はAzure Public DNSと事前作成したUAMIを使用します。`scripts/deployment/helpers/dns_selection.py`は準備済みのAzure DNS設定を確認します。DNS側Subscription ID・UAMIリソースIDは構築前にparamsへ必須設定します。`prepare_secrets.py`はCM用Entra secretの案内・非表示入力・保護保存を担当します。`preup`はローカル依存と準備済み公開IDを検査して構築へ進みます。公開例を直接書き換えず導入先paramsを使い、秘密値はparams/configへ書き込みません。
+証明書のDNS-01はAzure Public DNSと事前作成したUAMIを使用します。`scripts/deployment/helpers/dns_selection.py`は準備済みのAzure DNS設定を確認します。DNS側Subscription ID・UAMIリソースIDは構築前にparamsへ必須設定します。`prepare_secrets.py`はCM用Entra secretの案内・非表示入力・保護保存を担当します。`preprovision`はローカル依存と準備済み公開IDを検査します。公開例を直接書き換えず導入先paramsを使い、秘密値はparams/configへ書き込みません。
 
 ## APIM共通ポリシーを改修する
 
@@ -209,7 +210,7 @@ python3 -B scripts/render_apim_policy.py --config "$DEPLOY_PARAMS_FILE" \
 
 通常の構築・更新は[準備コマンド](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で公開例から作成した環境別paramsと、その参照先configを使います。[標準API定義](apps/apim/apis/)を常用で読み、Gateway配備時にCoreの実outputsから接続先を解決します。標準導入で回帰用の合成設定やbindingsを別に作る必要はありません。
 
-設定を変更するときは [params](docs/setup/04-params.md)・[config](docs/setup/05-config.md)・Schemaを揃え、[ローカル確認](#ローカル確認)を実行します。配備・API公開・撤去では同じ正本設定を使います。
+設定を変更するときは [params](docs/setup/07-params.md)・[config](docs/reference/config-options.md)・Schemaを揃え、[ローカル確認](#ローカル確認)を実行します。配備・API公開・撤去では同じ正本設定を使います。
 
 以下は目的を限定した開発用補助です。公開用の入力・結果例は、実値から独立した架空データだけに限定します。実環境を扱う入力・出力は環境別の`.local/<environment>/`に限定します。ルートの`.state/`・`secrets/`等へ実情報を保存しません。通常の導入手順と分けます。
 
@@ -256,6 +257,6 @@ DecisionのCLIは既定で計画表示だけです。標準Gatewayの実行に�
 
 ## 固定依存と配布物
 
-CoreのPython依存は[共通requirements](scripts/integration-requirements.txt)と[Brokerのrequirements](apps/credential-broker/requirements.txt)、PortalのNode依存は[package.json](apps/portal/package.json)と[package-lock.json](apps/portal/package-lock.json)で管理します。変更内容に応じたローカル検査と、該当する仕様書の実環境試験で確認します。
+CoreのPython依存は[共通requirements](scripts/integration-requirements.txt)、[Brokerのrequirements](apps/credential-broker/requirements.txt)、[本文監査のrequirements](apps/audit-relay/requirements.txt)で管理します。PortalのNode依存は[package.json](apps/portal/package.json)と[package-lock.json](apps/portal/package-lock.json)で管理します。変更内容に応じたローカル検査と、該当する仕様書の実環境試験で確認します。
 
 公開ソースには架空値と配布可能な素材だけを含めます。秘密・実環境の導入先設定・証明書・実行証跡は環境別のGit管理外領域`.local/<environment>/`で管理し、wheel／image／ZIP等の配布物にも混入させません。実情報の保存を認めるのはルートの`.local/`とazd専用の`.azure/`だけであり、ignore対象一般を保存・公開の許可と解釈しません。不要な生成物は個別に回収し、別用途のデータを一括削除しません。

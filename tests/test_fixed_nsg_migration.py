@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import ipaddress
 import json
+from ipaddress import ip_network
 from pathlib import Path
 import sys
 import unittest
@@ -24,6 +25,11 @@ ACA_DEFAULT_DENY_ADDITIONS = {
 }
 
 
+def fixed_rule_count():
+    contract = nsg._catalog('nsg-rule-priorities.json')
+    return sum(len(group['rules']) for group in contract['groups'].values())
+
+
 def fixture_config():
     return {'subscriptionId': '11111111-1111-4111-8111-111111111111', 'productName': 'fixture',
             'environmentName': 'test', 'resourceStem': 'test-fixture', 'location': 'japaneast',
@@ -31,12 +37,14 @@ def fixture_config():
             'resourceGroupNames': {k: 'rg-test-fixture-'+k for k in ('nw', 'svc', 'maint', 'monitor')},
             'network': {'subnetPrefixes': {'agw': '10.70.0.0/24', 'pep': '10.70.1.0/24',
                         'firewall': '10.70.2.0/26', 'apim': '10.70.2.64/26',
-                        'management': '10.70.2.128/26', 'aca': '10.70.2.192/26'}}}
+                        'management': '10.70.2.128/26', 'aca': '10.70.2.192/26',
+                        'broker': '203.0.113.0/26'}}}
 
 
 def fixture_bindings(config):
     return {'subnets': copy.deepcopy(config['network']['subnetPrefixes']),
             'ips': {'apim': '10.70.2.68', 'aca': '10.70.2.196', 'management': '10.70.2.132',
+                    'broker': str(ip_network(config['network']['subnetPrefixes']['broker'])[4]),
                     'firewallPublic': '192.0.2.10', 'appGatewayPublic': '198.51.100.10'},
             'ipSets': {'foundry': ['10.70.1.4', '10.70.1.5'], 'keyVault': ['10.70.1.6', '10.70.1.7'],
                        'registry': ['10.70.1.8', '10.70.1.9'], 'sql': ['10.70.1.10', '10.70.1.11'],
@@ -76,8 +84,9 @@ class MemoryTransport:
             properties = {'addressPrefix': self.prefixes[key]}
             if key == 'pep':
                 properties['privateEndpointNetworkPolicies'] = 'NetworkSecurityGroupEnabled'
-            if key == 'aca':
-                properties.update(routeTable={'id': self.aca_route_table_id}, defaultOutboundAccess=False)
+            if key in ('aca', 'broker'):
+                route_table = self.nw + 'routeTables/rt-' + self.stem + '-' + key
+                properties.update(routeTable={'id': route_table}, defaultOutboundAccess=False)
             if key != 'firewall' and not (legacy and key=='aca'):
                 properties['networkSecurityGroup'] = {'id': self.nsg_id(key)}
             subnet_properties.append({'id': identity, 'name': identity.rsplit('/', 1)[-1], 'properties': properties})
@@ -103,7 +112,7 @@ class MemoryTransport:
             # The historical pre-fixed fixture predates the v2 management NTP child.
             # v2 retirement is covered independently rather than changing its old 45-rule history.
             rules = [] if empty else [self.child(self.nsg_id(key), name, nsg._definition(rule, self.bindings))
-                    for name, rule in manifest['groups'][key]['rules'].items()
+                    for name, rule in manifest['groups'].get(key, {}).get('rules', {}).items()
                     if not (legacy and key == 'management' and name == 'allow-time-sync-egress')]
             self.add(self.nsg_id(key), nsg.NSG_TYPE, {'securityRules': rules, 'defaultSecurityRules': self.defaults(key),
                      'subnets': [{'id': self.subnets[key]}], 'networkInterfaces': []})
@@ -114,8 +123,10 @@ class MemoryTransport:
         self.add(svc+'Microsoft.ApiManagement/service/apim-'+self.stem+'-abc123', 'Microsoft.ApiManagement/service',
                  {'privateIPAddresses': [self.bindings['ips']['apim']], 'virtualNetworkType': 'Internal',
                   'virtualNetworkConfiguration': {'subnetResourceId': self.subnets['apim']}})
-        self.add(svc+'Microsoft.App/managedEnvironments/cae-'+self.stem, 'Microsoft.App/managedEnvironments',
-                 {'staticIp': self.bindings['ips']['aca'], 'vnetConfiguration': {'internal': True, 'infrastructureSubnetId': self.subnets['aca']}})
+        for key, suffix in (('aca', ''), ('broker', '-broker')):
+            self.add(svc+'Microsoft.App/managedEnvironments/cae-'+self.stem+suffix, 'Microsoft.App/managedEnvironments',
+                     {'staticIp': self.bindings['ips'][key], 'publicNetworkAccess': 'Disabled', 'vnetConfiguration': {
+                         'internal': True, 'infrastructureSubnetId': self.subnets[key]}})
         self.vm_id = self.groups['maint']+'/providers/Microsoft.Compute/virtualMachines/vm-'+self.stem+'-mgmt'
         self.nic_id = self.groups['maint']+'/providers/Microsoft.Network/networkInterfaces/nic-'+self.stem+'-mgmt'
         self.add(self.vm_id, 'Microsoft.Compute/virtualMachines', {
@@ -138,7 +149,8 @@ class MemoryTransport:
                    ('auditStorageJapan', 'audit-japan-blob', mon+'st'+self.stem.replace('-', '')+'jp', 'Microsoft.Storage/storageAccounts', ['blob']),
                    ('auditStorageFoundry', 'audit-foundry-blob', mon+'st'+self.stem.replace('-', '')+'us', 'Microsoft.Storage/storageAccounts', ['blob']))
         for key, suffix, target_id, kind, group_ids in targets:
-            self.add(target_id, kind, {}, location='eastus2' if key in ('foundry', 'auditStorageFoundry') else 'japaneast')
+            self.add(target_id, kind, {},
+                     location='eastus2' if key in ('foundry', 'auditStorageFoundry') else 'japaneast')
             pe_id = self.nw+'privateEndpoints/pe-'+self.stem+'-'+suffix
             nic_id = self.nw+'networkInterfaces/nic-'+suffix+'-synthetic'
             self.add(pe_id, 'Microsoft.Network/privateEndpoints', {'subnet': {'id': self.subnets['pep']},
@@ -378,6 +390,22 @@ class FixedNsgMigrationTests(unittest.TestCase):
         self.assertEqual(nsg.read_fixed_nsg_bindings(self.config, transport), transport.bindings)
         self.assertFalse(transport.mutations())
 
+    def test_broker_bindings_reject_shared_route_table_or_public_access(self):
+        for issue in ('route-table', 'public-access'):
+            transport = MemoryTransport(self.config)
+            if issue == 'route-table':
+                subnet = next(item for item in transport.resources[transport.vnet_id]['properties']['subnets']
+                              if item['id'] == transport.subnets['broker'])
+                subnet['properties']['routeTable']['id'] = transport.nw + 'routeTables/rt-' + transport.stem + '-aca'
+                expected = 'Broker subnet route table'
+            else:
+                environment = transport.groups['svc'] + '/providers/Microsoft.App/managedEnvironments/cae-' + transport.stem + '-broker'
+                transport.resources[environment]['properties']['publicNetworkAccess'] = 'Enabled'
+                expected = 'Broker ACA environment'
+            with self.subTest(issue=issue), self.assertRaisesRegex(nsg.FixedNsgError, expected):
+                nsg.read_fixed_nsg_bindings(self.config, transport)
+            self.assertFalse(transport.mutations())
+
     def test_audit_blob_discovery_keeps_every_ip_across_every_endpoint_nic(self):
         transport = MemoryTransport(self.config)
         for key, suffix, address in (('auditStorageJapan', 'audit-japan-blob', '10.70.1.16'),
@@ -436,9 +464,6 @@ class FixedNsgMigrationTests(unittest.TestCase):
                 parent = transport.resources[transport.nsg_id(group)]
                 parent['properties']['securityRules'] = [
                     rule for rule in parent['properties']['securityRules'] if 'audit-storage-' not in rule['name']]
-            if not legacy:
-                self.assertEqual(sum(len(nsg._inventory(transport.resources[transport.nsg_id(group)]))
-                                     for group in nsg.GROUPS), 70)
             saved_endpoints = {}
             for suffix in ('audit-japan-blob', 'audit-foundry-blob'):
                 identity = transport.nw + 'privateEndpoints/pe-' + transport.stem + '-' + suffix
@@ -459,7 +484,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
                 completed = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
                 self.assertEqual(completed['azureWrites'], expected_moves)
                 self.assertEqual(sum(len(nsg._inventory(transport.resources[transport.nsg_id(group)]))
-                                     for group in nsg.GROUPS), 77)
+                                     for group in nsg.GROUPS), fixed_rule_count())
 
     def test_preparation_accepts_prior_aca_rules_and_resumes_after_partial_terminal_rules(self):
         new_allows = ACA_DEFAULT_DENY_ADDITIONS - {'deny-any-ingress', 'deny-any-egress'}
@@ -506,7 +531,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
         self.assertEqual(sum(event == 'staged' for event, _ in self.events), 45)
         writes = transport.mutations(); self.assertTrue(all(c['method']=='PUT' for c in writes))
         self.assertEqual(writes[0]['body']['properties']['priority'], 4080)
-        for group in nsg.GROUPS[:-1]:
+        for group in ('agw', 'apim', 'pep', 'management'):
             current = transport.resources[transport.nsg_id(group)]
             old = before[transport.nsg_id(group)]
             self.assertEqual(current['properties']['defaultSecurityRules'], old['properties']['defaultSecurityRules'])
@@ -518,7 +543,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
         transport.deploy_fixed()
         completed = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
         self.assertEqual(completed['azureWrites'], 45)
-        self.assertEqual(sum(len(transport.resources[transport.nsg_id(g)]['properties']['securityRules']) for g in nsg.GROUPS), 77)
+        self.assertEqual(sum(len(transport.resources[transport.nsg_id(g)]['properties']['securityRules']) for g in nsg.GROUPS), fixed_rule_count())
         self.assertEqual(nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)['azureWrites'], 0)
         self.assertTrue(all('/securityRules/' in c['path'] and c['headers']['If-Match']!='*' for c in transport.mutations()))
 
@@ -683,7 +708,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
         for group in nsg.GROUPS:
             parent = transport.resources[transport.nsg_id(group)]
             parent['properties']['securityRules'] = [child for child in parent['properties']['securityRules']
-                if not any(token.split(':', 1)[1] in ('aca', 'registry', 'sql') and
+                if not any(token.split(':', 1)[1] in ('aca', 'broker', 'registry', 'sql') and
                            token.split(':', 1)[0] in ('ip', 'address', 'ips', 'addresses')
                            for token in manifest['groups'][group]['rules'][child['name']]['source'] +
                                         manifest['groups'][group]['rules'][child['name']]['destination'])]

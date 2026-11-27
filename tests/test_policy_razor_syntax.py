@@ -34,7 +34,7 @@ def policy_expressions():
     """配備と同じ監査rendererでC#正本を展開し、XML内のAPIM式を集める。"""
     cases = []
     for path in sorted(set([*POLICIES.glob("*.xml"),
-                            *(POLICIES / "api-templates").glob("*.xml"),
+                            *(POLICIES / "api-templates").rglob("*.xml"),
                             *(POLICIES / "credential-login").glob("*.xml"), SERVICE_POLICY,
                             POLICIES / "fragments/request/core-query-observation/core-query-observation.xml",
                             POLICIES / "fragments/request/core-api-input-validation/core-api-input-validation.xml",

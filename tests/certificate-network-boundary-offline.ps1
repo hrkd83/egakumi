@@ -24,14 +24,18 @@ foreach ($prefix in @('http://', 'https://')) {
         throw 'Could not install offline request factory'
     }
 }
-$script:Config=[pscustomobject]@{keyVaultName='kv-fixture'}
+$script:Config=[pscustomobject]@{keyVaultName='kv-fixture-tls'}
+$tlsVaultUri='https://'+$script:Config.keyVaultName+'.vault.azure.net'
+$credentialVaultUri='https://kv-fixture.vault.azure.net'
 $Action='Install'
 
 foreach ($target in @(
     'https://management.azure.com/subscriptions/fixture/resourceGroups/fixture/providers/Microsoft.ApiManagement/service/apim-fixture?api-version=2024-05-01',
     'https://management.azure.com/',
     'https://other-vault.vault.azure.net/secrets/fixture',
-    'https://kv-fixture.vault.azure.net.untrusted.invalid/secrets/fixture'
+    'https://kv-fixture-tls.vault.azure.net.untrusted.invalid/secrets/fixture',
+    ($credentialVaultUri+'/secrets/core-l7-ingress-secret?api-version=7.4'),
+    ($credentialVaultUri+'/secrets/core-realtime-ticket-key?api-version=7.4')
 )) {
     $denied=$false
     try {Invoke-Json $target 'PATCH' @{} | Out-Null}
@@ -48,7 +52,7 @@ foreach ($target in @(
 # still permits its two intended destinations. No request object is created.
 foreach ($target in @(
     'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F',
-    'https://kv-fixture.vault.azure.net/secrets/fixture?api-version=7.4'
+    ($tlsVaultUri+'/secrets/fixture?api-version=7.4')
 )) {
     $before=[OfflineCertificateRequestFactory]::Calls
     $intercepted=$false

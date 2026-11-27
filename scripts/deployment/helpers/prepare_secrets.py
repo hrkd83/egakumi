@@ -134,11 +134,11 @@ def _specifications(config: dict) -> list[dict]:
         specifications.append({"kind": "dns", "path": certificate["pluginArgumentsFile"], "certificate": certificate, "purposes": []})
     for provider in config.get("credentialProviders", []):
         specifications.append({"kind": "entra", "path": provider["clientSecretFile"],
-                               "purposes": [{"kind": "cm", "name": provider.get("name", ""), "clientId": provider.get("clientId", "")} ]})
+                               "purposes": [{"kind": "cm", "name": provider.get("name", "")}]})
     identity = config.get("gateway", {}).get("authentication", {}).get("credentialLogin", {}).get("identity")
     if identity:
         specifications.append({"kind": "entra", "path": identity["clientSecretFile"],
-                               "purposes": [{"kind": "identity", "name": "", "clientId": identity["clientId"]}]})
+                               "purposes": [{"kind": "identity", "name": ""}]})
     unique = {}
     for specification in specifications:
         path = _checked_path(specification["path"])
@@ -150,7 +150,7 @@ def _specifications(config: dict) -> list[dict]:
         for purpose in specification["purposes"]:
             if purpose not in unique[key]["purposes"]:
                 unique[key]["purposes"].append(purpose)
-    # Gatewayアプリのsecretを先に、続いて選択DNS事業者の入力へ進む。
+    # Entraアプリのsecretを先に、続いて選択DNS事業者の入力へ進む。
     return sorted(unique.values(), key=lambda item: item["kind"] == "dns")
 
 
@@ -181,10 +181,6 @@ def _guide_lines(specification: dict) -> list[str]:
     if specification["kind"] == "entra":
         lines = ["Entraアプリのシークレットの「値」を用意してください。",
                  "  " + _purpose_label(specification)]
-        application_ids = list(dict.fromkeys(_public_label(purpose["clientId"])
-                               for purpose in specification["purposes"] if purpose["clientId"]))
-        if application_ids:
-            lines.append("  アプリID: " + ", ".join(application_ids))
         lines.append("  取得先: Entra > アプリの登録 > 証明書とシークレット >「値」")
         return lines
     plugin = specification["certificate"]["plugin"]
@@ -201,14 +197,20 @@ def _guide_lines(specification: dict) -> list[str]:
 def _storage_guide(config: dict, root: Path, specifications: list[dict]) -> list[str]:
     """入力する秘密ごとに、端末と構築時の保存先を一行で示す。"""
     lines = []
+    login = config.get("gateway", {}).get("authentication", {}).get("credentialLogin", {})
     for specification in specifications:
         try:
             local = specification["path"].relative_to(root).as_posix()
         except ValueError:
             local = "設定で指定した保護ファイル"
-        cloud = "Key Vault" if specification["kind"] == "dns" else ("APIMと認証窓口用Key Vault" if config.get("gateway", {}).get("authentication", {}).get("credentialLogin") else "APIM")
-        if specification["kind"] == "entra" and all(purpose["kind"] == "identity" for purpose in specification["purposes"]):
-            cloud = "認証窓口用Key Vault"
+        cloud = "Key Vault"
+        if specification["kind"] == "entra":
+            if all(purpose["kind"] == "identity" for purpose in specification["purposes"]):
+                cloud = "認証窓口用Key Vault"
+            elif login and "identity" not in login:
+                cloud = "APIMと認証窓口用Key Vault"
+            else:
+                cloud = "APIM"
         lines.append("  保存先: " + _public_label(local) + "（構築時に" + cloud + "へ設定）")
     return lines
 

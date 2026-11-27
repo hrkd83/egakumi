@@ -1,6 +1,6 @@
 # 利用資格・APIキー・本人接続プールを保守する
 
-[共通確認](common.md) · [Portal設定](../setup/portal.md) · [CMプール設計](../reference/credential-pool-design.md)
+[共通確認](common.md) · [Portal設定](../setup/12-deploy-portal.md) · [CMプール設計](../reference/credential-pool-design.md)
 
 構築済み環境で行う設定変更、キーの更新、購読の同期、CMプール増設と定期点検を扱う。変更前の値と対象、利用先、戻し方を[共通確認](common.md)で記録してから実施する。実情報・秘密・実測結果はチェックアウト直下の`.local/<environment>/`内で保護し、公開文書や通常ログへ転記しない。
 
@@ -15,7 +15,7 @@
 
 Portalの管理グループ所属、Azure RBAC、Entraの管理権限は別である。P／Gは既存の個別配備入口であり、設定変更でもDB・権限・API・WAF等を照合する。基盤の`azd up`・`azd provision`を通常保守の入口にしない。
 
-今回の公開入力整理は[71主項目の判断記録](../setup/04-params.md#公開入力71主項目の判断記録)に従う。値の移設だけでID・secret・認証方式・identity省略時fallbackを変更しない。Azureへの一括反映・全環境再構築E2Eは未実施であり、既存運用試験を今回の成功へ読み替えない。
+今回の公開入力整理は[71主項目の判断記録](../setup/07-params.md#公開入力71主項目の判断記録)に従う。値の移設だけでID・secret・認証方式・identity省略時fallbackを変更しない。Azureへの一括反映・全環境再構築E2Eは未実施であり、既存運用試験を今回の成功へ読み替えない。
 
 ## 1. 所属・Portalの対象条件・管理グループを変更する
 

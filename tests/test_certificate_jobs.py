@@ -70,7 +70,8 @@ class CertificateJobTests(TestCase):
                               'pullIdentityId': id_scope + 'pull', 'tlsIdentity': {'id': id_scope + 'tls', 'clientId': synthetic_id(1)},
                               'portalIdentity': {'id': id_scope + 'portal', 'clientId': synthetic_id(2)},
                               'dnsIdentityId': id_scope + 'dns', 'dnsClientId': synthetic_id(3),
-                              'tlsConfig': {'certificateName': 'public-tls'}, 'portalConfig': {'certificateName': 'portal-signing'},
+                              'tlsConfig': {'keyVaultName': vault_name, 'certificateName': 'public-tls'},
+                              'portalConfig': {'certificateName': 'portal-signing'},
                               'portalStateContainerName': 'portal-certificate-state'}
         self.outputs = {'managementVm': {'id': self.vm}, 'certificateBootstrap': bootstrap}
         self.target = jobs._targets(self.config, self.outputs)
@@ -208,6 +209,17 @@ class CertificateJobTests(TestCase):
         with self.assertRaisesRegex(ValueError, 'does not attest'):
             jobs._result(self.config, self.target, 'tls', 'initial', {}, 'a' * 32,
                          self.receipt('a' * 32, dns_names=['gateway.example.com']), now=12)
+
+    def test_tls_job_rejects_a_different_worker_vault_or_certificate_before_start(self):
+        settings = self.outputs['certificateBootstrap']['jobPlan']['tlsConfig']
+        for key, value in (('keyVaultName', 'kv-fixture'), ('certificateName', 'different-certificate')):
+            transport, save = mock.Mock(), mock.Mock()
+            with self.subTest(setting=key), mock.patch.dict(settings, {key: value}), \
+                    self.assertRaisesRegex(ValueError, 'certificate job outputs differ'):
+                jobs.run_certificate_action(self.config, self.outputs, transport, save,
+                    workspace=self.workspace, mode='tls', action='renew')
+            transport.request.assert_not_called()
+            save.assert_not_called()
 
     def test_private_receipt_chunks_are_bound_and_temp_role_and_commands_removed(self):
         for mode, container in (('tls', 'certificate-jobs'), ('portal', 'portal-certificate-state')):

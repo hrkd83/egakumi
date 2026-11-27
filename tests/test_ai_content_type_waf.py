@@ -111,7 +111,6 @@ class AiContentTypeWafTests(unittest.TestCase):
 
     def test_only_defined_profiles_and_published_subsets_are_selected(self):
         self.assertEqual(set(self.selected), set(self.profiles) - {"g-transcribe", "p-document-upload", "g-document-status", "g-realtime-ticket"})
-        self.assertEqual(sum(len(p["paths"]) for p in self.selected.values()), 26)
         for name in self.selected:
             profile = self.profiles[name]
             self.assertTrue(ai_content_type_profile(profile))

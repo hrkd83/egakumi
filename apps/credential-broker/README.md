@@ -2,9 +2,13 @@
 
 APIM経由で本人接続を管理する内部FastAPIサービスです。MSALの認可コードフローで本人を確認し、Azure SQLの永続台帳でプール割当・接続・取引・セッションを管理します。業務API用のアクセストークンと更新トークンはCredential Managerが管理します。
 
-初期配備は`azd up`のGateway工程で行います。構築済み環境を個別に更新する場合は、リポジトリのルートから`python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute`を実行します。既存管理VMでのイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、本体と照合ジョブ、APIMのAPI登録まで一括実行します。`--execute`なしはローカル計画だけです。[配備手順](../../docs/setup/credential-sql.md#4-gatewayを配備する)と[CM共通接続手順](../../docs/setup/credential-manager-login.md)を参照してください。
+Broker本体、SQL初期化ジョブ、定期照合ジョブは、Coreが準備する専用サブネットの内部CAE（`cae-${stem}-broker`）に配置します。APIMは専用CAEの既定ドメインへ直接HTTPSで接続します。アプリの`external: true`は内部CAEのプライベートロードバランサーに発行するための設定で、Broker用NSGがAPIMサブネットを許可します。ブラウザーの本人接続とcallbackは引き続き公開GatewayのURLを使います。 [Azure Container Appsのingress](https://learn.microsoft.com/en-us/azure/container-apps/ingress)
 
-Broker本体・実行用ID・credentials DB・SQL初期化ジョブ・定期照合ジョブ・保守割当は初期常設です。本人接続の認証プロファイルが未設定でも構築し、`BROKER_PROFILES_JSON={}`で起動します。OIDCのproviderや秘密を補完せず、本人接続APIとcallback用WAFは業務認証の設定に応じて用意します。空プロファイルでのSQL初期化はスキーマと実行IDの権限を準備し、既存プールを無効化しません。定期照合は期限切れ状態だけを掃除し、CM接続の照合・削除や既存割当の変更は行いません。
+Core構築と公開証明書のEntra登録後、Gatewayの個別配備でBrokerを用意します。初回配備・更新はリポジトリのルートから`python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute`を実行します。既存管理VMでのイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、本体と照合ジョブ、APIMのAPI登録まで一括実行します。`--execute`なしはローカル計画だけです。[配備手順](../../docs/setup/11-deploy-gateway.md#4-gatewayを配備する)と[CM共通接続手順](../../docs/reference/credential-manager-login.md)を参照してください。
+
+Gateway配備は同じCoreのBroker専用CAE出力を参照し、実行前に実環境のドメイン、サブネット、既存のアプリとジョブの所属を照合します。旧共有CAEに同名の資源がある場合は、既存のSQL台帳とCM接続を引き継ぐ切替を別途計画するため、配備を停止します。
+
+Broker本体・実行用ID・credentials DB・SQL初期化ジョブ・定期照合ジョブを初期構築で作成します。本人接続の認証プロファイルが未設定でも構築し、`BROKER_PROFILES_JSON={}`で起動します。OIDCのproviderや秘密を補完せず、本人接続APIとcallback用WAFは業務認証の設定に応じて用意します。空プロファイルでのSQL初期化はスキーマと実行IDの権限を準備し、既存プールを無効化しません。定期照合は期限切れ状態だけを掃除し、CM接続の照合・削除や既存割当の変更は行いません。
 
 ## 起動に必要な設定
 
@@ -40,7 +44,7 @@ SQLスキーマとpool行は、配備用IDで事前に初期化します。ア�
 
 `sql/001_initial.sql`、`002_session_lifecycle.sql`、`003_idle_connection_cleanup.sql`、`004_verified_user_caller.sql`を番号順に一度ずつ適用します。002は旧取引・旧セッション証明だけを回収し、CM接続とプール・本人対応表を保持します。再配備で適用済み002を繰り返さないため、新方式のセッションは削除しません。本人・接続の失効世代、認証取引に保存した本人・接続の世代スナップショット、現行／旧値／候補のハッシュをSQLで照合します。Microsoftのアクセストークン・更新トークンはSQLに保存しません。003はスキーマ版3として接続の利用日時と回収用のSQL処理を更新します。既存の`LastUsedAt`は巻き戻さず保持します。004は購読IDとユーザー主体を別の列で保持し、既存の購読・セッション・取引・CM接続を維持します。
 
-旧Brokerはスキーマ版を正確に3と照合するため、004で版4へ移行した時点で旧imageのhealthは失敗します。保守時間を確保して、同じソース・paramsから**SQL版4→対応版Broker imageと定期照合ジョブ→APIMポリシー**の順に配備します。SQL移行後に旧imageだけへ戻しても復旧しません。対応版で前進して再試行し、DB復元が必要なら[SQLの復旧手順](../../docs/setup/credential-sql.md#運用と復旧)に従います。SQL復元はCMの状態を巻き戻しません。
+旧Brokerはスキーマ版を正確に3と照合するため、004で版4へ移行した時点で旧imageのhealthは失敗します。保守時間を確保して、同じソース・paramsから**SQL版4→対応版Broker imageと定期照合ジョブ→APIMポリシー**の順に配備します。SQL移行後に旧imageだけへ戻しても復旧しません。対応版で前進して再試行し、DB復元が必要なら[SQLの復旧手順](../../docs/setup/11-deploy-gateway.md#運用と復旧)に従います。SQL復元はCMの状態を巻き戻しません。
 
 ## 内部API
 

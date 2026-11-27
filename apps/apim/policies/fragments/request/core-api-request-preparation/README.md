@@ -23,6 +23,6 @@
 診断で採取するfrontendの要求ヘッダーとは区別し、その採取タイミングや値を監査の主キーとして扱いません。
 Brokerへ渡す本人・購読の内部ヘッダーは、必要な操作が後で検証済み情報から生成します。
 
-呼出元は `gateway.xml`、`protocol.xml`、`mcp.xml` です。各ファイルにはこの部品の見出し・目的・処理と、同名の `include-fragment` を置きます。
+呼出元はRESTの`rest/rest.xml`、WebSocketと外部MCPの`shared/stream.xml`、生成MCPの`mcp/generated.xml`です。どの経路も共有認証から戻った直後に、同名の`include-fragment`を呼びます。
 XMLだけで3処理を定義するため、同名C#ファイルやフラグメント内の別フラグメント呼出しはありません。
 本文・モデル・ツール・SSEの処理を追加しません。後段の要求ID再設定とBearerの整合確認は、別の棚卸対象として維持します。

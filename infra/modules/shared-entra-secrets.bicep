@@ -1,4 +1,4 @@
-// 共通Entraアプリのclient secretを保存します。PortalとGatewayが同じ参照を使います。
+// 旧構成から更新する場合に、本人確認で使用中のCM secret参照を維持します。
 targetScope = 'resourceGroup'
 param vaultName string
 param profiles object

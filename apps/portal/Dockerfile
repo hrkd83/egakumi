@@ -14,7 +14,7 @@ FROM dependencies AS production-dependencies
 RUN npm prune --omit=dev --ignore-scripts --no-audit --no-fund
 
 FROM node:24-bookworm-slim AS runtime
-WORKDIR /app
+WORKDIR /app/portal
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
@@ -29,6 +29,8 @@ COPY --from=build --chown=node:node /app/scripts/api-key-subscription-import.ts 
 COPY --from=build --chown=node:node /app/lib ./lib
 COPY --from=build --chown=node:node /app/scripts/serve-portal.ts ./scripts/
 COPY --from=build --chown=node:node /app/sql ./sql
+COPY --from=build --chown=node:node /app/services/subscription-admin/server.mjs /app/subscription-admin/
+COPY --from=build --chown=node:node /app/services/subscription-profile/server.mjs /app/subscription-profile/
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

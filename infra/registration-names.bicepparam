@@ -21,5 +21,6 @@ param registration = {
   apiCenterName: apiCenterName
   gatewayOrigin: 'https://${publicHostName}'
   credentialManagerRedirectUri: 'https://authorization-manager.consent.azure-apim.net/redirect/apim/${apimName}'
+  credentialIdentityRedirectUri: 'https://${publicHostName}/auth/connections/browser/identity-callback'
   apiCenterPortalRedirectUri: 'https://${apiCenterName}.portal.${apiCenterLocation}.azure-apicenter.ms'
 }

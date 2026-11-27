@@ -97,7 +97,7 @@ public static class StandardAuthFixture {
   return results.ToString(Formatting.None);
  }
 }'''
-        for marker, filename in (("__HTTP__", "gateway.xml"), ("__PROTOCOL__", "protocol.xml"), ("__MCP__", "mcp.xml")):
+        for marker, filename in (("__HTTP__", "rest.xml"), ("__PROTOCOL__", "stream.xml"), ("__MCP__", "generated.xml")):
             source = source.replace(marker, actual_expression(filename, "gatewayDecision"))
         common = ET.fromstring(render_common_authentication_fragments(entra_enabled=False)['core-common-authentication'])
         key_validation = common.find("./choose/otherwise/set-variable[@name='gatewayAuthenticationFailure']").get('value').strip()

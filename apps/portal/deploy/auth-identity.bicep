@@ -1,4 +1,4 @@
-// SQL/APIM/ACR用の既存identityから、Portal認証鍵の署名主体だけを分離します。
+// Portalの署名とAPI保存鍵の読取りに、それぞれ専用のIDを用意します。
 targetScope = 'resourceGroup'
 param stem string
 param location string

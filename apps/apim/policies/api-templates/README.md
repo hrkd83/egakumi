@@ -4,11 +4,20 @@ API公開時に設定値を埋めて登録するポリシーテンプレート�
 複数APIで使うテンプレートは正本を共有し、実API名ごとのコピーを作らない。
 `service.xml`のようなAll APIsの全体ポリシーとは適用先が異なる。
 
+| 正本 | Azureの適用先 | 役割 |
+| --- | --- | --- |
+| `rest/rest.xml`／`rest/rest.cs` | HTTP APIのAll operations | HTTP操作の設定、認可、監査、利用枠、下流接続を管理する |
+| `ws/ws.xml`／`ws/ws.cs` | WebSocket APIの`onHandshake` | 固定WSS接続、モデルとquery、Observerの所有者確認を管理する |
+| `mcp/external.xml` | 外部MCP APIのAll operations | 登録済み外部MCPの接続先、URI、CM応答、query監査を管理する |
+| `mcp/generated.xml`／`mcp/generated.cs` | 生成MCP APIのAll operations | ツール入力とRESTへの認証引き渡しを処理し、業務利用はREST側で計数する |
+
+WebSocketと外部MCPは`shared/stream.xml`／`shared/stream.cs`を共有します。Bicepが選択した区画を共有の実行順序へ配置し、完成したポリシーを所定のAzureスコープへ登録します。ローカルでは、合成のHTTP 16件・WebSocket 6件・外部MCP 3件・生成MCP 1件と、読戻し比較用の85ポリシーが、配置変更の前後で一致しました。
+
 MOD-147では、Bicepの41個の展開専用関数と同じ区画読取りの別名2個を、固定slot配列と共通の展開関数2個へ集約した。ユーザー定義関数は実コンパイルで99個から58個となり、ARMの64個上限内となる。slotはmarker・区画・属性／本文の引用符変換・trim・字下げを従来の順序で保持し、配備資源と保護sourceへ同じ完成XMLを渡す。正規フォルダーのXML／C#、短式・通信・認証・監査・旧互換資材は変更しない。これは生成処理の整理であり、Azure反映・読戻し・実受入の完了を意味しない。
 
 本文再構成では、Chat・Responses・Hostedの保存指定編集とHTTPのモデルalias編集が、文字列の日時表記を保持する。raw本文を一度だけ読み、quoted文字列値の開き引用符直後へ退避用の`~`を一つ足してからJSON.NETで解析し、StringのJValueから先頭一文字だけを戻す。元から`~`で始まる値、空文字、escape、property名、コメント、数値・Boolean・null・配列・オブジェクトを保持し、本文の構造検査はJSON.NETへ任せる。読取り回数・消費／保持・後段への順序は維持する。[公式の許可型一覧](https://learn.microsoft.com/en-us/azure/api-management/api-management-policy-expressions)のRegex・JObject・JValue・Stringだけを使い、非掲載の`JsonSerializerSettings`等は追加しない。
 
-モデルaliasの本文式は同名`gateway.cs`の`model-alias-body`へ管理し、XMLは選択分岐を維持する。PythonとBicepは同じ固定slotから式を展開する。退避用のRegexには各2秒の有限timeoutを指定し、壊れた引用符・コメントを繰り返す本文も無制限に再探索しない。解析例外は既存のcatch／on-errorへ渡す。監査用のbody-model読取りは本文を書き戻さないため変更しない。代表受入では非stream Responsesのmetadataへ同じ日時の異なる表記と前置き語付きの対照を渡し、直接deploymentとaliasの経路で応答の文字列を完全比較する。モデル生成本文の一致を転送値の証拠にせず、提供元直結対照の有無も区別する。実値と結果は保護証跡へ保存し、ローカル試験と反映後の実受入を同一視しない。
+モデルaliasの本文式は`rest/rest.cs`の`model-alias-body`へ管理し、XMLは選択分岐を維持する。PythonとBicepは同じ固定slotから式を展開する。退避用のRegexには各2秒の有限timeoutを指定し、壊れた引用符・コメントを繰り返す本文も無制限に再探索しない。解析例外は既存のcatch／on-errorへ渡す。監査用のbody-model読取りは本文を書き戻さないため変更しない。代表受入では非stream Responsesのmetadataへ同じ日時の異なる表記と前置き語付きの対照を渡し、直接deploymentとaliasの経路で応答の文字列を完全比較する。モデル生成本文の一致を転送値の証拠にせず、提供元直結対照の有無も区別する。実値と結果は保護証跡へ保存し、ローカル試験と反映後の実受入を同一視しない。
 
 MOD-144では、WebSocket／外部MCPのモデル選択・認証結果引渡し・監査モデル設定・query検査の4属性式だけを同名`protocol.cs`の固定4区画へ結線しました。Python／Bicepは属性encoderを使い、準備済みモデル・キー／Bearerの本人引渡し・固定query・監査・本文非読取り・接続先・既存on-errorを維持します。actual-beforeの3mode生成物と構造・全属性・C#tokens・string／char値が一致し、既存36件41.547秒は全件成功しました。実モデル／query／認証・監査・全protocol生成・配備／保護source一致・容量・構文・所有を確認し、独立レビューに追加所見はありません。ローカルの有限候補の区画結線は閉じました。失敗監査readerの生成差はMOD-145で補正し、管理図・リンク・所有説明を現行正本へ揃えました。Azure反映・実受入と旧互換撤去は別に確認します。
 
@@ -58,19 +67,13 @@ Agentの通常オプションと保存防止（MOD-75）はローカル実装・
 
 Agentのinput透過（MOD-74）はローカル実装・関連検証済みです。`hostedAgentPost`でinputの必須・型・user／input_text・許可属性のサンプル検査を撤去し、完全なmessage／reasoning／function、一般ID・file_id・引用情報を保持します。配列直下の明示的なcode_interpreter_callだけは通常Responsesと同じ条件で403です。MOD-74時点では本文4項目・JSON400・サイズ・認証／枠・store:falseと既存metadataを維持しました。関連123件が初回から全件成功しました（35.467s、失敗・スキップなし）。共有Hosted174条件、親の追加22条件、実Bicep生成・配備／読戻しsource・正本所有・容量・Razorを確認しました。inputの参照転送を所有者隔離や保存停止の達成とは扱わず、本文直下の受付は別の残件です。MOD-73の結果とは別実行で、工程1全体は未完了・Azure未反映です。
 
-| 正本 | Azureの適用先 | 役割 |
-| --- | --- | --- |
-| `gateway.xml`／`gateway.cs` | 各HTTP APIのAll operations | HTTP APIごとの設定を受け取り、共通ポリシーを継承した後に操作・モデル・認可・転送を処理する |
-| `mcp.xml`／`mcp.cs` | 各生成MCP APIのAll operations | MCP APIごとの設定を受け取り、共通ポリシーを継承した後にMCP入力とREST操作への接続を処理する |
-| `protocol.xml`／`protocol.cs` | 各WebSocket APIの`onHandshake`操作／外部MCP APIのAll operations | 共通ポリシーを継承し、認可・転送先の接続を準備する。外部MCPだけにqueryルールの判定・監査処理を生成時に差し込む |
-
-HTTPの`gateway.xml`はAPI・操作と本文のモデル名から内部設定を自動選択します。旧`X-Egakumi-Profile`の受付選択・値数/ID検査は行わず、下流転送前の削除だけを清掃として維持します。操作の基本設定＋モデル別差分を`core-api-operation-settings`で取得します。モデルalias、固定転送先と選択後の既存検査を維持します。[設定部品](../fragments/settings/core-api-settings/README.md)で実行時変数との関係を確認できます。
+HTTPの`rest/rest.xml`はAPI・操作と本文のモデル名から内部設定を自動選択します。旧`X-Egakumi-Profile`の受付選択・値数/ID検査は行わず、下流転送前の削除だけを清掃として維持します。操作の基本設定＋モデル別差分を`core-api-operation-settings`で取得します。モデルalias、固定転送先と選択後の既存検査を維持します。[設定部品](../fragments/settings/core-api-settings/README.md)で実行時変数との関係を確認できます。
 
 Chat Completionsの保存防止はローカル実装・合成検証済みです。HTTP APIのうち、実効接続先が`foundryOpenAi`、操作がPOST `/chat/completions`、制約が`bodyModel`である操作IDを配備時に`chatStoreDisabledOperationIds`へ生成します。操作に`backendOverride`があれば、その接続先を使って選びます。API名やモデル一覧には依存せず、同じ宣言の追加APIや、新しく配備したGPTにも適用します。標準Chatに同居するcompatibleモデルとmodel-routerも対象です。別操作・別接続先・WebSocket・外部MCP・生成MCPへは広げません。
 
 対象Chatは元の本文サイズ・alias・利用枠の処理後、下流へ送る前に[core-chat-store-disabled](../fragments/request/core-chat-store-disabled/core-chat-store-disabled.xml)を呼びます。本文を一度だけJSONオブジェクトとして消費して読み、`store`だけをBooleanのfalseへ揃え、準備した文字列をそのまま`set-body`へ渡します。未指定なら追加し、true・null・別型もfalseへ上書きします。model・messages・stream・その他の値は保持します。オブジェクトを読めない、非オブジェクト・null・本文なしの場合は400・`INVALID_REQUEST_BODY`、`rejected`監査、本文なし・要求ID・`Cache-Control: no-store`で終了します。Responsesの保存防止処理は維持し、Foundry側の設定は変更しません。ChatとResponsesを合わせた関連113件の確認を完了しました（112件成功後、合成宣言不足の対象1件を修正・再実行して成功）。Azure反映・実受入は未確認です。
 
-HTTPの`core-api-target-validation`は、登録モデル一覧の照合とmodel型の再確認を撤去します。`bodyModel`・`textEmbeddings`・`rerank`は、この部品では本文を読まず200の内部成功結果を返します。Responsesはmodelを再確認せず、tools・tool_choice条件とMOD-32のinput条件のために本文を読みます。input内のfile_id・file_ids・vector_store_idsを再帰的に調べる403は撤去します。ResponsesのJSON読取り失敗・非オブジェクト本文・nullは400・`INVALID_REQUEST_BODY`とし、監査`rejected`・応答理由`Invalid request body`、本文なしと要求IDを維持します。Hosted（MOD-37）とA2A（MOD-45）の本文読取り例外・nullも400へ分けます。読めた本文の残る受付条件403と、内部操作JSON不備500は別に扱います。同じ固定接続先・同じAPI形式の未登録モデルは、操作の基本設定、共通認証・利用回数制限・本文サイズ枠を使います。モデル別の差分がないことだけで停止せず、必要な先行モデル設定準備のJSON・model不備400、設定不備500・サイズ超過413、aliasと異なる接続パスの固定URI選択は維持します。
+HTTPの`core-api-target-validation`は、登録モデル一覧とmodelの入力型を提供元に委ねます。共有HTTPテンプレートは`bodyModel`・`textEmbeddings`・`rerank`について、本文サイズ確認後のこの部品の呼び出しを省きます。Responsesはmodelを再確認せず、tools・tool_choice条件とMOD-32のinput条件のために本文を読みます。input内のfile_id・file_ids・vector_store_idsを再帰的に調べる403は撤去します。ResponsesのJSON読取り失敗・非オブジェクト本文・nullは400・`INVALID_REQUEST_BODY`とし、監査`rejected`・応答理由`Invalid request body`、本文なしと要求IDを維持します。Hosted（MOD-37）とA2A（MOD-45）の本文読取り例外・nullも400へ分けます。読めた本文の残る受付条件403と、内部操作JSON不備500は別に扱います。同じ固定接続先・同じAPI形式の未登録モデルは、操作の基本設定、共通認証・利用回数制限・本文サイズ枠を使います。モデル別の差分がないことだけで停止せず、必要な先行モデル設定準備のJSON・model不備400、設定不備500・サイズ超過413、aliasと異なる接続パスの固定URI選択は維持します。
 
 Responsesのメソッド・パスの再確認も撤去し、正式な設定検査とAPIMの操作照合へ任せます。正式登録は引き続き`statelessResponses`・POST `/responses`だけです。部品の直接評価でGETや別URLが残る本文条件に従うことは、Gatewayでその経路を公開する意味ではありません。
 
@@ -88,7 +91,7 @@ ChatとResponsesのstore=falseは、Gateway経由の今回の応答を保存し�
 
 旧MOD-17～25では、参照のnull化・Itemやidの削除・file_idによる403を段階的に検証しました。file_id:null整理時の98件、type未指定／null整理時の97件、明示item_reference整理時の96件は、それぞれ当時の契約に対する結果です。現在はこれらの参照加工・file ID拒否を撤去するため、その成功結果を新契約の成功へ転用しません。旧条件と結果はポリシー一覧と統合試験書の履歴として保持します。
 
-`protocol.xml`の動的WebSocketモデル選択は、指定modelまたは既存のdefaultModelを使い、登録一覧の内容で拒否しません。defaultModelを持たない固定接続先用の操作では、従来の固定query契約を使います。query単一値・固定queryとの照合、認証と転送先は維持します。Portal・配備前検査用のモデル一覧データを残し、要求の利用可否や監査モデル名の採否には使いません。この一覧拒否の撤去はローカル実装・実C#とBicep生成の関連検証を完了し、Azure反映・実接続は別途確認します。
+`ws/ws.cs`の動的WebSocketモデル選択は、指定modelまたは既存のdefaultModelを使い、登録一覧の内容で拒否しません。defaultModelを持たない固定接続先用の操作では、従来の固定query契約を使います。query単一値・固定queryとの照合、認証と転送先は維持します。Portal・配備前検査用のモデル一覧データを残し、要求の利用可否や監査モデル名の採否には使いません。この一覧拒否の撤去はローカル実装・実C#とBicep生成の関連検証を完了し、Azure反映・実接続は別途確認します。
 
 監査モデル名の登録一覧照合撤去（MOD-35）はローカル実装・結合検証済みです。[core-audit-body-model.xml](../fragments/audit/core-audit-body-model/core-audit-body-model.xml)と[core-audit-context.xml](../fragments/audit/core-audit-context/core-audit-context.xml)からallowedModelsとの比較だけを撤去し、新しく配備したモデルも一覧を更新せずtargetModelへ記録します。既存の正規表現`^[A-Za-z0-9_.-]{1,160}$`と、値が空・形式不一致・読取り例外なら空文字にする扱いを維持します。共通処理はWebSocket設定から始め、準備済みHTTP本文変数、pathModelのパス、操作の固定modelで順に上書きする既存の取得順序を保ちます。HTTP本文の読取りは専用部品のpreserveContentを維持し、共通部品にはBody.Asを追加しません。aliasは監査前に解決・書換えた配備名を記録します。allowedModelsの設定はPortalなどの用途に残し、認証・親要求の追跡候補・資格情報の処理と監査項目は変更しません。Azure未反映、新しい監査モデル条件の実経路ログは未確認です。
 
@@ -184,7 +187,7 @@ MOD-40～42の本人再照合と、MOD-43までのgatewayDecision直後の不許
 
 Speech実本文超過413の理由文整理（MOD-30）はローカル実装済みです。`core-speech-ssml-guard`が実受信サイズ超過を返す応答の理由文だけを、`Request limit validation failed`から共有サイズ応答と同じ`Request too large`へ揃えます。HTTP状態413、公開JSONの`REQUEST_TOO_LARGE`とrequestId、`apim-request-id`、監査の`rejected`／`REQUEST_TOO_LARGE`／413、`Cache-Control: no-store`、上限・拒否条件とDTD／ENTITYの400応答は維持します。差分確認済み、Azure未反映で、現行理由文の実HTTP応答と実本文超過413の受入は未確認です。
 
-Document解析の入力条件は、`gateway.xml`が[core-document-input-validation](../fragments/request/core-document-input-validation/README.md)を利用回数制限・下流接続準備・`accepted`監査より前で呼んで確認します。特定の開始操作へ適用するDocumentポリシーは、[操作別ポリシー](../operation-policies/README.md)の`document-analysis/document-analysis.xml`に置き、`<base />`でこのAPIテンプレートを継承します。同じ入力検査は開始操作で繰り返しません。
+Document解析の入力条件は、`rest/rest.xml`が[core-document-input-validation](../fragments/request/core-document-input-validation/README.md)を利用回数制限・下流接続準備・`accepted`監査より前で呼んで確認します。特定の開始操作へ適用するDocumentポリシーは、[操作別ポリシー](../operation-policies/README.md)の`document-analysis/document-analysis.xml`に置き、`<base />`でこのAPIテンプレートを継承します。同じ入力検査は開始操作で繰り返しません。
 
 3正本の配置変更では内容とAzureの適用先を保持した。その後の汎用query構成では、HTTP・生成MCPの呼出位置を維持し、外部MCPには要求準備後の判定と応答・エラー監査を差し込む。WebSocketではquery差し込みを空にする。ローカル実装とAzure反映・受入を区別し、各テンプレート内の全制御を棚卸済みとは扱わない。
 未着手の他の資材は現在の位置を保ち、初めて棚卸または改修する作業時に配置・名前・説明を揃える。

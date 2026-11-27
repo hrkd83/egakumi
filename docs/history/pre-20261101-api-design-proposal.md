@@ -226,9 +226,9 @@ TTSはAzure Speech、PII分析はAzure Languageを使う。文書OCRは既存Fou
 
 API登録処理が全体ポリシーのXMLとETagを確認し、API登録の成功後に共通キー認可を適用する。通常のキーはリリース済みAPIをまとめた`released-apis`へ所属する。検証用製品はモデル・音声の`model-users`、PII・文書解析の`pii-users`、本人接続の`connection-users`を維持する。本人接続APIは、購読とCMセッションの所有者・接続・期限を照合する。
 
-Graph等の本人接続APIは、セッション未指定・期限切れ・CM再認証時にHTTP 409 `ConnectionRequired`と認証URL・完了確認用の情報を返す。基盤がMicrosoft認証・CM・SQLを担当し、呼び出しアプリはURL表示・完了確認・利用者ごとのセッション保存・元要求の1回再実行を行う。[本人接続の利用手順](../setup/credential-manager-login.md)
+Graph等の本人接続APIは、セッション未指定・期限切れ・CM再認証時にHTTP 409 `ConnectionRequired`と認証URL・完了確認用の情報を返す。基盤がMicrosoft認証・CM・SQLを担当し、呼び出しアプリはURL表示・完了確認・利用者ごとのセッション保存・元要求の1回再実行を行う。[本人接続の利用手順](../reference/credential-manager-login.md)
 
-`azureTenantId`はAzure配置・Key Vault・RBAC・構築用認証、`entraTenantId`はCMの本人認証テナントとして扱う。後者の省略時は前者を使う。CMは購読ID・provider・確認済み本人・期限に結び付けた接続セッションを参照する。BFFはログイン利用者と保存セッションを対応付ける。[Entraの準備](../setup/02-entra.md#azureとentraのテナントを決める)
+`azureTenantId`はAzure配置・Key Vault・RBAC・構築用認証、`entraTenantId`はCMの本人認証テナントとして扱う。後者の省略時は前者を使う。CMは購読ID・provider・確認済み本人・期限に結び付けた接続セッションを参照する。BFFはログイン利用者と保存セッションを対応付ける。[Entraの準備](../setup/07-params.md#同一テナントと別テナントの指定)
 
 すべてのXMLポリシーに、各処理の目的・入力・適用条件・失敗時の応答が分かる日本語コメントを付ける。
 

@@ -46,7 +46,7 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
         }}
 
     def test_first_partial_and_repeated_up_only_read_owned_nsgs(self):
-        suffixes = ("agw", "apim", "pep", "vm", "aca", "certificate")
+        suffixes = ("agw", "apim", "pep", "vm", "aca", "certificate", "broker")
         for present in ((), ("agw", "pep"), suffixes):
             responses = [self.nsg_response(suffix) if suffix in present else {"statusCode": 404, "body": None}
                          for suffix in suffixes]
@@ -106,7 +106,8 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
 
     def test_direct_core_deployment_discovers_before_put(self):
         absent = {"statusCode": 404, "body": None}
-        transport = ScriptedTransport([absent] + [self.nsg_response(suffix) for suffix in ("agw", "apim", "pep", "vm", "aca")]
+        suffixes = ("agw", "apim", "pep", "vm", "aca", "certificate", "broker")
+        transport = ScriptedTransport([absent] + [self.nsg_response(suffix) for suffix in suffixes]
             + [absent] * 9 + [
             {"statusCode": 201, "body": {}},
             {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded", "outputs": {}}}},
@@ -116,50 +117,15 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"runtimeVerified": False}) as ingress:
             self.assertEqual(lifecycle.deploy_phase(self.config, "core", secrets={}), {})
         ingress.assert_called_once()
-        self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 15 + ["PUT", "GET"])
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 17 + ["PUT", "GET"])
         self.assertIn("/registries/", transport.calls[0]["path"])
         self.assertIn("-certificate?", transport.calls[6]["path"])
+        self.assertIn("-broker?", transport.calls[7]["path"])
         values = transport.mutations()[0]["body"]["properties"]["parameters"]
         self.assertEqual(values["existingNetworkSecurityGroupNames"]["value"],
-                         [f"nsg-{self.config['resourceStem']}-{suffix}" for suffix in ("agw", "apim", "pep", "vm", "aca")])
+                         [f"nsg-{self.config['resourceStem']}-{suffix}" for suffix in suffixes])
 
-    def test_preup_generates_discovered_internal_parameter_after_authentication(self):
-        """初回でもtenant照合→RP登録→環境設定・所有資源読取の順を守る。"""
-        expected = [f"nsg-{self.config['resourceStem']}-agw"]
-        routes = {f"rt-{self.config['resourceStem']}-agw": [{"name": "actual-vip", "properties": {
-            "addressPrefix": "10.40.2.68/32", "nextHopType": "VirtualAppliance", "nextHopIpAddress": "10.40.2.4"}}]}
-        observed_order = []
-
-        def environment_command(arguments):
-            self.assertEqual(arguments[:3], ["azd", "env", "set"])
-            if arguments[3] == "EGAKUMI_ARM_PARAMETERS_FILE":
-                self.assertEqual(arguments[4:], [".local/test/generated/main.parameters.json", "--environment", "test"])
-                observed_order.append("parameter-reference")
-            else:
-                observed_order.append("environment")
-            return {}
-        with mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
-                mock.patch.object(lifecycle, "local_preflight"), \
-                mock.patch.object(lifecycle, "azure_preflight", side_effect=lambda _: observed_order.append("tenant")) as login, \
-                mock.patch.object(lifecycle, "register_providers", side_effect=lambda _: observed_order.append("register")) as register, \
-                mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-                mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
-                mock.patch.object(lifecycle, "run", side_effect=environment_command), \
-                mock.patch.object(lifecycle, "ArmTransport") as arm, \
-                mock.patch.object(lifecycle, "discover_existing_network_security_groups", side_effect=lambda *_: observed_order.append("nsg") or expected) as discover, \
-                mock.patch.object(lifecycle, "discover_existing_route_table_routes", side_effect=lambda *_: observed_order.append("routes") or routes) as discover_routes, \
-                mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
-                mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}):
-            self.assertEqual(lifecycle.main(["preup"]), 0)
-            login.assert_called_once_with(self.config)
-            register.assert_called_once_with(self.config)
-            discover.assert_called_once_with(self.config, arm.return_value)
-            discover_routes.assert_called_once_with(self.config, arm.return_value)
-        self.assertEqual(observed_order, ["tenant", "register", "environment", "environment", "environment", "nsg", "routes", "parameter-reference"])
-        self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["existingNetworkSecurityGroupNames"]["value"], expected)
-        self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["existingRouteTableRoutes"]["value"], routes)
-
-    def test_preup_authentication_mismatch_stops_before_discovery_or_env_updates(self):
+    def test_preprovision_authentication_mismatch_stops_before_discovery_or_env_updates(self):
         with mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
                 mock.patch.object(lifecycle, "local_preflight"), \
                 mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
@@ -169,14 +135,14 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "discover_existing_network_security_groups") as discover, \
                 mock.patch.object(lifecycle, "discover_existing_route_table_routes") as discover_routes, \
                 contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(lifecycle.main(["preup"]), 1)
+            self.assertEqual(lifecycle.main(["preprovision"]), 1)
         register.assert_not_called()
         discover.assert_not_called()
         discover_routes.assert_not_called()
         run.assert_not_called()
         self.assertFalse(self.paths.parameters.exists())
 
-    def test_preup_registration_failure_stops_before_env_or_resource_reads(self):
+    def test_preprovision_registration_failure_stops_before_env_or_resource_reads(self):
         """RP登録失敗で止まり、azd設定やARM資源読取へ進まない。"""
         with mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
                 mock.patch.object(lifecycle, "local_preflight"), \
@@ -189,7 +155,7 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "discover_existing_route_table_routes") as routes, \
                 mock.patch.object(lifecycle, "discover_existing_apim_hostnames") as domains, \
                 contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(lifecycle.main(["preup"]), 1)
+            self.assertEqual(lifecycle.main(["preprovision"]), 1)
         login.assert_called_once_with(self.config)
         register.assert_called_once_with(self.config)
         run.assert_not_called()
@@ -203,7 +169,7 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
         expected = [f"nsg-{self.config['resourceStem']}-agw"]
         transport = ScriptedTransport([{"statusCode": 404, "body": None}] * 4
                                      + [self.nsg_response("agw")]
-                                     + [{"statusCode": 404, "body": None}] * 14)
+                                     + [{"statusCode": 404, "body": None}] * 17)
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
                 mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
                 mock.patch.object(lifecycle, "capacity_preflight"), \
@@ -214,7 +180,7 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
             lifecycle.preprovision(self.config)
         self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["existingNetworkSecurityGroupNames"]["value"], expected)
         self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["existingRouteTableRoutes"]["value"],
-                         {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "aca", "certificate")})
+                         {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "aca", "certificate", "broker")})
 
 
 class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
@@ -238,7 +204,7 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
                     {"name": "direct-default", "properties": {"addressPrefix": "0.0.0.0/0", "nextHopType": "Internet"}}]},
         }}
 
-        if suffix == "certificate":
+        if suffix in ("certificate", "broker", "audit"):
             result["body"]["properties"]["disableBgpRoutePropagation"] = True
             result["body"]["properties"]["routes"] = [{"name": "default-egress", "properties": {
                 "addressPrefix": "0.0.0.0/0", "nextHopType": "VirtualAppliance",
@@ -274,7 +240,7 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
         response = self.route_table_response("aca")
         routes = response["body"]["properties"]["routes"]
         default_route = routes.pop()
-        transport = ScriptedTransport(prefix_responses + [response, {"statusCode": 404, "body": None}])
+        transport = ScriptedTransport(prefix_responses + [response] + [{"statusCode": 404, "body": None}] * 2)
         snapshot = lifecycle.discover_existing_route_table_routes(self.config, transport)
         self.assertEqual(len(snapshot[response["body"]["name"]]), 1)
         self.assertFalse(transport.mutations())
@@ -295,7 +261,7 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
                   "nextHopIpAddress": "10.40.2.4"}
         response["body"]["properties"]["routes"].append({"name": "agw-return", "properties": fields})
         prefix_responses = [{"statusCode": 404, "body": None}] * 3
-        transport = ScriptedTransport(prefix_responses + [response, {"statusCode": 404, "body": None}])
+        transport = ScriptedTransport(prefix_responses + [response] + [{"statusCode": 404, "body": None}] * 2)
         snapshot = lifecycle.discover_existing_route_table_routes(config, transport)
         self.assertEqual(snapshot[response["body"]["name"]][-1]["properties"], fields)
         self.assertFalse(transport.mutations())
@@ -307,7 +273,7 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
         self.assertFalse(transport.mutations())
 
     def test_first_partial_and_repeated_up_snapshot_only_owned_tables(self):
-        suffixes = ("agw", "apim", "vm", "aca", "certificate")
+        suffixes = ("agw", "apim", "vm", "aca", "certificate", "broker")
         for present in ((), ("agw",), suffixes):
             responses = [self.route_table_response(suffix) if suffix in present else {"statusCode": 404, "body": None}
                          for suffix in suffixes]
@@ -390,7 +356,7 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
         properties["responseMetadata"] = "READ_METADATA_FIXTURE"
         properties["routes"][0]["responseMetadata"] = "READ_METADATA_FIXTURE"
         properties["routes"][0]["properties"]["responseMetadata"] = "READ_METADATA_FIXTURE"
-        transport = ScriptedTransport([response] + [{"statusCode": 404, "body": None}] * 4)
+        transport = ScriptedTransport([response] + [{"statusCode": 404, "body": None}] * 5)
         observed = lifecycle.discover_existing_route_table_routes(self.config, transport)
         self.assertEqual(observed[response["body"]["name"]][0]["properties"]["addressPrefix"], "10.40.2.68/32")
         self.assertNotIn("READ_METADATA_FIXTURE", json.dumps(observed))
@@ -407,7 +373,7 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
 
     def test_direct_core_deployment_reads_full_routes_before_its_only_put(self):
         snapshots = [self.route_table_response(suffix) for suffix in ("agw", "apim", "vm", "aca")]
-        transport = ScriptedTransport([{"statusCode": 404, "body": None}] * 7 + snapshots + [{"statusCode": 404, "body": None}] * 4 + [
+        transport = ScriptedTransport([{"statusCode": 404, "body": None}] * 8 + snapshots + [{"statusCode": 404, "body": None}] * 5 + [
             {"statusCode": 201, "body": {}},
             {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded", "outputs": {}}}}])
         with mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -415,17 +381,18 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"runtimeVerified": False}) as ingress:
             self.assertEqual(lifecycle.deploy_phase(self.config, "core", secrets={}), {})
         ingress.assert_called_once()
-        self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 15 + ["PUT", "GET"])
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 17 + ["PUT", "GET"])
         self.assertIn("/registries/", transport.calls[0]["path"])
-        self.assertIn("-certificate?", transport.calls[11]["path"])
+        self.assertIn("-certificate?", transport.calls[12]["path"])
+        self.assertIn("-broker?", transport.calls[13]["path"])
         routes = transport.mutations()[0]["body"]["properties"]["parameters"]["existingRouteTableRoutes"]["value"]
-        self.assertEqual(len(routes), 5)
+        self.assertEqual(len(routes), 6)
         self.assertEqual(routes[f"rt-{self.config['resourceStem']}-certificate"], [])
         for snapshot in snapshots:
             self.assertEqual(routes[snapshot["body"]["name"]][0]["properties"]["addressPrefix"], "10.40.2.68/32")
 
     def test_final_preprovision_route_discovery_failure_clears_secret_input_but_keeps_state(self):
-        transport = ScriptedTransport([{"statusCode": 404, "body": None}] * 10 + [{"statusCode": 403, "body": {}}])
+        transport = ScriptedTransport([{"statusCode": 404, "body": None}] * 11 + [{"statusCode": 403, "body": {}}])
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
                 mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
                 mock.patch.object(lifecycle, "capacity_preflight"), \

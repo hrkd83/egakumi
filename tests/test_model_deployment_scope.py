@@ -41,23 +41,21 @@ class ModelDeploymentScopeTests(unittest.TestCase):
                     with self.assertRaisesRegex(configuration.ConfigurationError, "outside azd provisioning"):
                         self.normalize(raw)
 
-    def test_invalid_model_stops_both_hooks_before_local_preparation_or_azure_access(self):
+    def test_invalid_model_stops_preprovision_before_local_preparation_or_azure_access(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "config.json"
             raw = fixture()
             raw["services"]["modelDeployments"] = [self.model()]
             source.write_text(json.dumps(raw), encoding="utf-8")
-            for command in ("preup", "preprovision"):
-                with self.subTest(command=command), \
-                     mock.patch.object(lifecycle, "local_preflight") as local, \
-                     mock.patch.object(lifecycle, "run") as cli, \
-                     mock.patch.object(lifecycle, "ArmTransport") as arm, \
-                     contextlib.redirect_stderr(io.StringIO()) as error:
-                    self.assertEqual(lifecycle.main([command, "--config", str(source)]), 1)
-                self.assertIn("outside azd provisioning", error.getvalue())
-                local.assert_not_called()
-                cli.assert_not_called()
-                arm.assert_not_called()
+            with mock.patch.object(lifecycle, "local_preflight") as local, \
+                 mock.patch.object(lifecycle, "run") as cli, \
+                 mock.patch.object(lifecycle, "ArmTransport") as arm, \
+                 contextlib.redirect_stderr(io.StringIO()) as error:
+                self.assertEqual(lifecycle.main(["preprovision", "--config", str(source)]), 1)
+            self.assertIn("outside azd provisioning", error.getvalue())
+            local.assert_not_called()
+            cli.assert_not_called()
+            arm.assert_not_called()
 
 
     def test_model_schemas_match_supported_provisioning_scope(self):

@@ -22,6 +22,7 @@ from urllib.error import HTTPError, URLError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from deployment import lifecycle
 from deployment.helpers import cleanup
+from deployment.helpers.audit_evidence import evidence_container_id, evidence_policy_id
 from deployment.helpers import prepare_secrets as secret_preparation
 from deployment.helpers.configuration import normalize_configuration
 from configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
@@ -158,6 +159,56 @@ class ImmutabilityTests(unittest.TestCase):
         lifecycle.lock_and_verify_policies(self.storage, transport)
         self.assertEqual(len(transport.calls), 1)
         self.assertEqual(transport.calls[0]["method"], "GET")
+
+
+class BodyImmutabilityTests(unittest.TestCase):
+    def setUp(self):
+        self.config = normalize_configuration(fixture())
+        self.config['auditEvidence'] = {'enabled': True, 'payloadImmutabilityMode': 'Locked',
+                                        'payloadRetentionDays': 2557}
+        self.policy_id = evidence_policy_id(self.config)
+        self.outputs = {'auditEvidence': {'evidenceContainerId': evidence_container_id(self.config),
+                        'payloadImmutability': {'policyId': self.policy_id, 'mode': 'Locked', 'retentionInDays': 2557}}}
+        self.absent = {'statusCode': 404, 'headers': {}, 'body': None}
+
+    def policy(self, state, *, append=False, append_all=False):
+        result = response_policy(state, append=append)
+        result['body']['id'] = self.policy_id
+        result['body']['properties']['allowProtectedAppendWritesAll'] = append_all
+        return result
+
+    def test_first_then_repeat_body_lock_only_changes_unlocked_policy(self):
+        transport = ScriptedTransport([self.policy('Unlocked'), {'statusCode': 200, 'body': {}, 'headers': {}}, self.policy('Locked')])
+        lifecycle.lock_body_audit_policy(self.config, self.outputs, transport)
+        self.assertEqual([call['method'] for call in transport.calls], ['GET', 'POST', 'GET'])
+        self.assertEqual(transport.mutations()[0]['path'], self.policy_id + '/lock?api-version=2023-05-01')
+        repeated = ScriptedTransport([self.policy('Locked'), self.absent, self.policy('Locked')])
+        self.assertEqual(lifecycle.prepare_body_audit_immutability(self.config, repeated), [self.policy_id])
+        lifecycle.lock_body_audit_policy(self.config, self.outputs, repeated)
+        self.assertFalse(repeated.mutations())
+
+    def test_body_lock_rejects_a_different_policy_or_any_append_exception(self):
+        wrong_id = self.policy('Unlocked')
+        wrong_id['body']['id'] = self.policy_id.replace('/payload/', '/foreign/')
+        for observed in (wrong_id, self.policy('Unlocked', append=True), self.policy('Unlocked', append_all=True)):
+            with self.subTest(observed=observed):
+                transport = ScriptedTransport([observed])
+                with self.assertRaises(lifecycle.DeploymentError):
+                    lifecycle.lock_body_audit_policy(self.config, self.outputs, transport)
+                self.assertFalse(transport.mutations())
+
+    def test_existing_body_worm_blocks_downgrade_and_automatic_deletion(self):
+        path = evidence_container_id(self.config).removesuffix('/blobServices/default/containers/payload') + '/managementPolicies/default'
+        existing = {'statusCode': 200, 'headers': {}, 'body': {'id': path, 'properties': {'policy': {'rules': [
+            {'enabled': True, 'definition': {'actions': {'baseBlob': {'delete': {'daysAfterCreationGreaterThan': 30}}}}}
+        ]}}}}
+        with self.assertRaisesRegex(lifecycle.DeploymentError, 'delete rule'):
+            lifecycle.prepare_body_audit_immutability(self.config, ScriptedTransport([self.absent, existing]))
+        self.config['auditEvidence']['enabled'] = False
+        transport = ScriptedTransport([self.policy('Locked')])
+        with self.assertRaisesRegex(lifecycle.DeploymentError, 'cannot disable'):
+            lifecycle.prepare_body_audit_immutability(self.config, transport, previously_deployed=True)
+        self.assertFalse(transport.mutations())
 
 
 if __name__ == "__main__":

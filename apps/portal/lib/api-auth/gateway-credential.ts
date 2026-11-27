@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { ApiKeyActor } from "../api-keys/contracts.ts";
-import { getApiKeyService } from "../api-keys/service.ts";
+import { getPortalApiKeyService } from "../subscription-service/client.ts";
 import { ApiAuthenticationError } from "./settings.ts";
 import { getPortalApiAuthentication, type PortalBearer } from "./service.ts";
 import type { TryCredential } from "./try-credential.ts";
@@ -25,7 +25,7 @@ export function gatewayExecutionHeaders(example: HeadersInit, credential: Gatewa
 /** 特定Gatewayへ送る資格情報を、同じ本人のSQLセッションまたはキー台帳から取得します。 */
 export async function resolveGatewayCredential(request: Request, actor: ApiKeyActor, selection: TryCredential,
   apiId: string, origin: string,
-  resolveSubscriptionKey = (owner: ApiKeyActor, id: string, api: string) => getApiKeyService().executionKey(owner, id, api),
+  resolveSubscriptionKey = (owner: ApiKeyActor, id: string, api: string) => getPortalApiKeyService(request).executionKey(owner, id, api),
   resolveBearer?: () => Promise<PortalBearer>): Promise<GatewayCredential> {
   if (selection.authentication !== "bearer") {
     const value = await resolveSubscriptionKey(actor, selection.apiKeyId, apiId);

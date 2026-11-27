@@ -5,6 +5,7 @@ import copy
 import json
 import time
 import unittest
+from unittest.mock import patch
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
@@ -40,11 +41,10 @@ class MetadataClient:
 
 class IdentityTests(unittest.TestCase):
     def test_real_msal_produces_state_nonce_and_pkce(self):
-        client = OidcClient(SETTINGS.public_origin, application_factory=lambda profile:
-            msal.ConfidentialClientApplication(profile.client_id, profile.client_secret,
-                authority="https://login.microsoftonline.com/" + profile.tenant_id,
-                instance_discovery=False, http_client=MetadataClient()))
-        envelope = client.begin(PROFILE)
+        application = msal.ConfidentialClientApplication
+        with patch.object(msal, "ConfidentialClientApplication", side_effect=lambda *args, **kwargs:
+                application(*args, **kwargs, instance_discovery=False, http_client=MetadataClient())):
+            envelope = OidcClient(SETTINGS.public_origin).begin(PROFILE)
         query = parse_qs(urlsplit(envelope["auth_uri"]).query)
         self.assertEqual([envelope["state"]], query["state"])
         self.assertEqual([envelope["expectedNonce"]], query["nonce"])
@@ -52,6 +52,7 @@ class IdentityTests(unittest.TestCase):
         self.assertIn("code_verifier", envelope["msalFlow"])
         self.assertIn("openid", query["scope"][0].split())
         self.assertIn("profile", query["scope"][0].split())
+        self.assertNotIn("offline_access", query["scope"][0].split())
         self.assertNotIn("access_token", envelope["msalFlow"])
 
     def test_credential_login_uses_only_oidc_scopes_and_its_fixed_callback(self):

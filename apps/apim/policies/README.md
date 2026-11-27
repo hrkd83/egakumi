@@ -10,6 +10,8 @@
 
 本書は現在の管理仕様を説明する。変更ごとの判断は[工程1・2の棚卸報告](../../../docs/reference/apim-phase12-review.md)、環境別の反映・実接続・監査照合の状況は保護された作業記録で管理する。ソースの整理、合成検証、実環境検証を区別する。
 
+初期APIの適用先は[ポリシー対応表](portal-examples/scope-map.md)、構築後の手動追加は[REST・SSEのポリシー例](portal-examples/README.md)を参照する。
+
 ```text
 policies/
 ├── service.xml
@@ -137,12 +139,19 @@ policies/
 │           └── core-api-settings.xml
 ├── api-templates/
 │   ├── README.md
-│   ├── gateway.cs
-│   ├── gateway.xml
-│   ├── mcp.cs
-│   ├── mcp.xml
-│   ├── protocol.cs
-│   └── protocol.xml
+│   ├── rest/
+│   │   ├── rest.cs
+│   │   └── rest.xml
+│   ├── ws/
+│   │   ├── ws.cs
+│   │   └── ws.xml
+│   ├── mcp/
+│   │   ├── external.xml
+│   │   ├── generated.cs
+│   │   └── generated.xml
+│   └── shared/
+│       ├── stream.cs
+│       └── stream.xml
 ├── operation-policies/
 │   ├── credential-login/
 │   │   ├── README.md
@@ -256,7 +265,7 @@ policies/
 | `snippets/audit/credential-telemetry/` | CMの拒否監査の全messageを同名C#で管理する。既存主体投影をその式へ収め、CMへcompact説明でinline展開する |
 | `fragments/authentication/core-credential-connection-outbound/` | 下流claims・失効の案内と検証済み接続更新ヘッダーを扱う。claims監査の全messageと主体投影を同名C#へ収め、Azure ID・応答条件を維持する |
 
-`service.xml`はAll APIsへ1つ登録する全体ポリシーである。`api-templates/gateway.xml`は各HTTP API、`api-templates/mcp.xml`は各生成MCP API、`api-templates/protocol.xml`は各WebSocket APIの`onHandshake`と外部MCP APIのAll operationsへ登録する共有テンプレートである。「複数APIで正本を共有する」ことと「All APIsへ全体ポリシーとして適用する」ことを区別する。[APIテンプレートの適用先](api-templates/README.md)を参照する。
+`service.xml`はAll APIsへ1つ登録する。`api-templates/rest/rest.xml`、`api-templates/mcp/external.xml`、`api-templates/mcp/generated.xml`は対象APIのAll operationsへ組み立てて登録する。`api-templates/ws/ws.xml`はWebSocketの`onHandshake`へ組み立てて登録する。WebSocketと外部MCPが共有する実行順序と認証式は`api-templates/shared/`に置く。 [APIテンプレートの適用先](api-templates/README.md)
 
 図は現行正本の配置を示す。`policies`直下のファイルは`service.xml`と`README.md`だけである。旧認証互換XML・依存C#と旧形式の再生成処理を公開資材から撤去し、責務別の正本へ揃える。実際の旧fragment辞書に対する限定した説明差分の照合、current／desiredの厳密照合、保存した過去rawの完全照合、新規構築用のcanonical派生inline生成は維持する。ソースの整理と対象環境の反映・実受入は別に確認する。
 
@@ -288,17 +297,17 @@ HTTPの操作制約・下流接続、WebSocketのモデル・固定query、生�
 
 ## 各APIで共通認証後の要求を準備する
 
-`gateway.xml`、`protocol.xml`、`mcp.xml`は、`<base />`直後に`core-api-request-preparation`を呼ぶ。
+REST、WebSocket、外部MCP、生成MCPの各ポリシーは、`<base />`直後に`core-api-request-preparation`を呼ぶ。
 棚卸で承認した「内部用の本人・購読IDヘッダーを削除して続行」「要求IDをAPIMの値で上書き」「共通認証の完了が未設定またはfalseなら503」の3処理を、この順序で共有する。
 認証の再実行ではなく、各APIの権限検査・下流接続へ進む前の準備である。CMのブラウザー受付へは追加しない。
 単純なXMLだけのleaf fragmentとし、要求準備の条件・応答を所有する。詳しくは [要求準備の説明](fragments/request/core-api-request-preparation/README.md) を参照する。
 
 ## HTTP APIへ認証済み利用者情報を引き渡す
 
-HTTPの`gateway.xml`は操作・モデル設定の準備後に`core-api-authentication-result`を呼び、共通認証済みの購読または社員情報と監査用ラベルを`gatewayDecision`へまとめる。
+HTTPの`rest/rest.xml`は操作・モデル設定の準備後に`core-api-authentication-result`を呼び、共通認証済みの購読または社員情報と監査用ラベルを`gatewayDecision`へまとめる。
 同名XML・C#を`fragments/authentication/core-api-authentication-result/`で管理し、組み立てる式とAPIのフローを分ける。
 引き渡し失敗時の監査と500応答は、テンプレート内の直後の分岐に残す。他のフラグメントのソースをこの部品へ展開しない。
-詳しくは [認証結果の引き渡し](fragments/authentication/core-api-authentication-result/README.md) を参照する。Protocol／MCP側は同名テンプレートC#の固定区画へ整理し、同じ確認済み本人を引き継ぐ。
+WebSocketと外部MCPは`shared/stream.cs`、生成MCPは`mcp/generated.cs`の固定区画で、同じ確認済み主体を引き継ぐ。 [認証結果の引き渡し](fragments/authentication/core-api-authentication-result/README.md)
 
 ## 利用回数枠を選び計数する
 
@@ -360,19 +369,19 @@ HTTP操作の`queryObservation`、生成MCPと外部MCPの宣言から、Bicep�
 
 [core-query-telemetry](fragments/audit/core-query-telemetry/README.md)は同名XML／C#を正本とし、`query-guard`イベントのschema 2で有無・複数値を記録する。クエリ名・値・URL、mode、件数区分、旧拒否イベントを新規出力しない。他イベントと過去監査のKQL読取りは別に管理する。
 
-外部MCPの受付・応答・エラー処理は`protocol.xml`へ生成時に差し込み、WebSocketではその区画を空にする。query観測は入力検査やURI転送と分け、観測できたことだけでサービス互換性を保証しない。[観測対象の設定](../../../docs/operations/apim.md)を参照する。
+外部MCPの受付・応答・エラー時のquery観測は、`mcp/external.xml`が適用区画を指定する。query観測と入力検査は別の設定で管理する。 [観測対象の設定](../../../docs/operations/apim.md)
 
 ## 操作定義から入力検査の対象を選ぶ
 
 HTTP操作の`inputContract = {}`は検査対象の宣言である。Bicepが操作IDの参照表を生成し、[core-api-input-validation](fragments/request/core-api-input-validation/README.md)はContent-Type宣言の存在・単一値・非空MIME部分という共通条件を確認する。MIME許可一覧、HTTPメソッド、API名・操作名・path・kindによる再照合は行わない。未指定操作には検査を追加せず、メソッドとURLはAPIMの操作登録が照合する。
 
-`gateway.xml`はquery観測の後、操作・モデル設定の選択と本文読取りより前に呼ぶ。不備は`INVALID_CONTENT_TYPE_HEADER`の拒否監査、本文なし400・要求ID・no-storeへ分類する。判定通過は完全なMIME構文や要求全体の妥当性を保証しない。Document固有入力、本文サイズ、Speech宣言、WAFはそれぞれの契約で確認する。
+`rest/rest.xml`はquery観測の後、操作・モデル設定の選択と本文読取りより前に呼ぶ。不備は`INVALID_CONTENT_TYPE_HEADER`の拒否監査、本文なし400・要求ID・no-storeへ分類する。判定通過は完全なMIME構文や要求全体の妥当性を保証しない。Document固有入力、本文サイズ、Speech宣言、WAFはそれぞれの契約で確認する。
 
 ## STEP4の認証部品
 
 `core-common-authentication`は、STEP3で判定した接続ログインのブラウザー受付を除き、通常の要求を認証する。
 設定したキー用ヘッダーがあればAPIMが検証した購読を確認し、なければEntraのBearerトークンを検証する。
-不正なキーを、有効なBearerトークンで救済しない。API名やクライアントアプリの許可リストでBearer受付を選別しない。
+不正なキーの要求は401で終了する。Bearerは初期構築の購読不要Productを使う。手動追加用の購読不要Productは`manual-`で始まるAPIに限り共通認証が受け付け、手動APIのポリシーで専用の所属を照合する。Productの確認後は同じテナント・audience・委任scope・本人を検証する。
 
 同名のC#ファイルには、キーの確認、Bearer形式の確認、本人情報の取得、会社設定と認証結果の組立、失敗監査の主体準備という5つの名前付き区画を置く。
 各区画をXMLの対応する式へ生成時に埋め込むため、C#ファイル全体を一度に実行する構成ではない。

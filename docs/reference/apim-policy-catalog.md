@@ -14,7 +14,7 @@
 
 Bearer認可は全業務API、生成MCP、保護されたCM共通APIを対象にする。認証用テナント、API audience、v2トークン、委任スコープ`Gateway.Invoke`を検証し、クライアントアプリIDによる許可リストは設けない。CMのブラウザー用サインイン開始・コールバックは、取引stateやCookieを照合する補助経路として別に扱う。
 
-API登録処理は、APIの配備成功を確認してから共通ポリシーを適用し、読み直して照合する。`azd up`は共通基盤・モデルを準備し、続くGateway工程が必要なCM provider・認証窓口・名前付きの値・APIを設定してからPortalを配備する。
+API登録処理は、APIの配備成功を確認してから共通ポリシーを適用し、読み直して照合する。`azd up`で共通基盤・モデルを準備し、Entra登録後のGateway個別配備でCM provider・認証窓口・名前付きの値・APIを設定する。続いてPortalを個別配備する。
 
 ### 現行正本と棚卸履歴の境界
 
@@ -66,7 +66,7 @@ Realtimeの開始・終了は[operation-policies/realtime](../../apps/apim/polic
 | Azureの部品名 | XMLの正本 | C#式の正本 | 処理・出力 |
 | --- | --- | --- | --- |
 | `core-api-settings` | `fragments/settings/core-api-settings/core-api-settings.xml` | `fragments/settings/core-api-settings/core-api-settings.cs` | 各APIの`base`前で設定を読み、`gatewayAuditSettings`と`gatewayControlSettings`を準備する。共通InboundのSTEPとは別のAPI側処理 |
-| `core-api-request-preparation` | `fragments/request/core-api-request-preparation/core-api-request-preparation.xml` | なし（XMLのみ） | `gateway.xml`・`protocol.xml`・`mcp.xml`の`base`直後で内部IDヘッダー除去、APIM要求ID設定、共通認証の完了確認を順に行う |
+| `core-api-request-preparation` | `fragments/request/core-api-request-preparation/core-api-request-preparation.xml` | なし（XMLのみ） | 各APIテンプレートの`base`直後で内部IDヘッダー除去、APIM要求ID設定、共通認証の完了確認を順に行う |
 | `core-query-observation` | `fragments/request/core-query-observation/core-query-observation.xml` | `fragments/request/core-query-observation/core-query-observation.cs` | 認証完了は先行する要求準備が確認する。HTTP操作またはMCPのメソッド・公開相対pathからラベルを選び、`gatewayQueryObservation`へ`route`・`httpMethod`・`presence`・`duplicates`だけを保存する。許可判定・mode・拒否応答は持たない |
 | `core-api-input-validation` | `fragments/request/core-api-input-validation/core-api-input-validation.xml` | `fragments/request/core-api-input-validation/core-api-input-validation.cs` | 明示した対象操作でContent-Type宣言の存在・1値・非空MIME部分を確認し、`gatewayApiInputValidationPassed`へ真偽値を保存する。MIME一覧比較・メソッド再確認・query拒否は行わず、400応答と拒否監査は共有HTTP APIテンプレートの直後の分岐で行う |
 | `core-api-operation-settings` | `fragments/request/core-api-operation-settings/core-api-operation-settings.xml` | `fragments/request/core-api-operation-settings/core-api-operation-settings.cs` | 操作の基本設定へ必要なモデル別差分を重ね、選択済み設定と任意の監査ラベルを`gatewayOperationSelection`へ保存する |
@@ -237,7 +237,7 @@ ChatとResponsesのstore=falseは、Gateway経由の今回の応答を保存し�
 
 続くツール棚卸（MOD-31）では、利用者別に隔離できない保存資源は基本的に蓄積させない方針を採用した。内蔵Code Interpreterは応答履歴とは別にコンテナ・ファイルを保持し、同project内で利用者別に隔離されないため、toolsのfunction限定を維持して一律開放は進めない。Microsoftの[Responses手順](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/responses)はinput内のcode_interpreter_callからも既存コンテナを参照できると説明しており、function限定とstore=falseだけで全資源の保存・参照防止を達成したとは扱わない。MOD-31時点ではinputからの参照は未棚卸であった。現在のcode_interpreter_callの拒否はMOD-32に従い、その他の既存資源の参照と所有者確認は継続棚卸の対象である。
 
-カスタムツールは、アプリがfunction呼出しを受け、個人接続付きMCPで実行して結果をFoundryへ返す構成を候補とする。追加APIの外部MCPプロキシはCM連携の正式設定・生成に対応するが、標準の個人接続はGraph向けである。MCP用のOAuth接続先・scope・同じresource hostの固定本人確認先と、MCP側の本人認証・資源隔離を別途設計する。購読キー単独を個人識別として扱わず、[本人接続セッション](../setup/credential-manager-login.md)と検証済み利用者を対応付ける。Foundryからremote MCPへCMの個人接続を自動で引き継ぐ処理は未実装である。MOD-31は公式仕様と既存正本の読取りによる方針整理で、新しい拒否条件・本文加工・MCP資源・Azure変更や実受入を実施した記録ではない。
+カスタムツールは、アプリがfunction呼出しを受け、個人接続付きMCPで実行して結果をFoundryへ返す構成を候補とする。追加APIの外部MCPプロキシはCM連携の正式設定・生成に対応するが、標準の個人接続はGraph向けである。MCP用のOAuth接続先・scope・同じresource hostの固定本人確認先と、MCP側の本人認証・資源隔離を別途設計する。購読キー単独を個人識別として扱わず、[本人接続セッション](credential-manager-login.md)と検証済み利用者を対応付ける。Foundryからremote MCPへCMの個人接続を自動で引き継ぐ処理は未実装である。MOD-31は公式仕様と既存正本の読取りによる方針整理で、新しい拒否条件・本文加工・MCP資源・Azure変更や実受入を実施した記録ではない。
 
 Code Interpreter呼出しItemの拒否（MOD-32）は、Responsesのinput配列直下のオブジェクトで、typeが文字列code_interpreter_callの場合だけ要求全体を403にする。共有コンテナとファイルの参照を、この種類のItemで渡さないために追加した。該当要素を削除して続行せず、既存のrejected／AUTHORIZATION_DENIED／403監査、本文なし、要求ID付きのapim-request-idとCache-Control: no-storeを使う。再帰走査は行わず、深い位置の同名type、typeの欠落・null・別型・大小文字の違いはこの条件では拒否しない。通常のmessage・reasoning・function、一般のid・call_id・引用注釈と、受け付けたinputの順序・内容・参照値を保持する。store=false・指定時conversation=null／background=false、その他のtools・tool_choice、本文JSON不備400・内部設定500と先行条件は維持する。ローカル実装・合成検証済みである。MOD-32時点の関連71件が初回からすべて成功した（17.266s、失敗・スキップなし）。追加の実C#24対照と親フロー45対照で、共有21条件の403が5条件・200が16条件と他kind3条件を確認した。本文保持・既存の応答／監査、実BicepとPythonの生成XMLの一致、正本所有先とRazor構文も確認した。当時のinclude制限は続くMOD-33で撤去し、この71件を新しいinclude条件の検証成功へ転用しない。Azure未反映・実Foundryでの新条件の受入は未確認である。
 
@@ -424,7 +424,7 @@ Agentの通常オプションと保存防止（MOD-75）はローカル実装・
 | 信頼した入口 | AppGW経由の識別値を通常HTTP(S)で常設確認。gRPC専用の入口免除は廃止 | `fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml`、`service.xml` |
 | 購読キー | 設定済みヘッダーが1個で空でないこと、`context.Subscription.Id`の存在を確認。URLのキーを拒否 | `service.xml` |
 | Entraアクセストークン | キーヘッダーがない要求で署名・期限、認証用テナント、API audience、v2、`Gateway.Invoke`を検証。クライアントアプリIDは認可の制限に使わない | `fragments/authentication/core-common-authentication/core-common-authentication.xml`、`service.xml` |
-| 呼出主体 | キーは`subscription:<購読ID>`、Bearerは`user:<テナントID>:<ユーザーObject ID>`。同じ購読または同じユーザーの利用枠を共有 | `gateway.xml`、`protocol.xml`、`mcp.xml` |
+| 呼出主体 | キーは`subscription:<購読ID>`、Bearerは`user:<テナントID>:<ユーザーObject ID>`。同じ購読または同じユーザーの利用枠を共有 | [各APIテンプレート](../../apps/apim/policies/api-templates/README.md) |
 | 要求ID | 正常応答・例外応答へ監査と同じ`apim-request-id`を設定 | `service.xml` |
 | CM補助 | キーまたはBearerで検証した主体を内部brokerへ渡す。個人APIではSQL台帳の本人セッションと同じ主体を照合 | `credential_login.py`、`credential-login/*.xml`、`fragments/authentication/core-credential-connection/` |
 
@@ -440,15 +440,15 @@ Agentの通常オプションと保存防止（MOD-75）はローカル実装・
 
 基盤が提供するすべてのAPIは、キー／Bearerの両認証に標準対応する。STEP3でCMのブラウザー受付の例外を判定した後、STEP4はキー用ヘッダーの有無だけで認証方法を選ぶ。Bearer分岐の条件へAPI名の一覧を埋め込まない。APIごとにBearer対応をtrue／falseで宣言する設定や実行時の分岐は設けない。配備前に、生成した全API・操作のポリシーが共通認証を継承し、検証済みの購読または社員を扱う構成であることを照合する。構成が不足していれば配備を停止し、要求受付後にAPI別の対応フラグで拒否する構成にはしない。共通認証の完了状態やEntraトークンの検証結果を確認する処理は引き続き残す。専用Productへ所属させるAPI集合は、配備処理が正本から自動生成して照合するために保持する。要求ごとの認証方法を選ぶ条件には使わない。
 
-Bearer要求のProductが存在し、専用Productであることは共通認証で一度だけ確認する。`gateway.xml`、`protocol.xml`、`mcp.xml`はProduct確認を重複させず、共通認証とEntra検証の完了、検証済み本人情報の整合性を確認して`gatewayDecision`へ引き渡す。
+Bearer要求のProductが存在し、専用Productであることは共通認証で一度だけ確認する。各APIテンプレートはProduct確認を重複させず、共通認証とEntra検証の完了、検証済み本人情報の整合性を確認して`gatewayDecision`へ引き渡す。
 
-キー要求の検証済み購読の存在と、購読IDが空でないこと、キー用ヘッダーが空・空白だけでなく値の数が1つであることは、共通認証で一度だけ確認する。`gateway.xml`、`protocol.xml`、`mcp.xml`は共通認証の完了を確認した後、この購読IDを呼出主体へ引き継ぎ、同じ購読・ヘッダー検査を繰り返さない。値の数はAPIMが認識した値配列の個数であり、生のHTTPヘッダー行数やカンマを含む1文字列と同一視しない。Bearer側の購読混在と本人情報の整合確認は維持する。MCPからRESTへの転送は別要求なので、REST側の共通認証も実行する。
+キー要求の検証済み購読の存在と、購読IDが空でないこと、キー用ヘッダーが空・空白だけでなく値の数が1つであることは、共通認証で一度だけ確認する。各APIテンプレートは共通認証の完了を確認した後、この購読IDを呼出主体へ引き継ぎ、同じ購読・ヘッダー検査を繰り返さない。値の数はAPIMが認識した値配列の個数であり、生のHTTPヘッダー行数やカンマを含む1文字列と同一視しない。Bearer側の購読混在と本人情報の整合確認は維持する。MCPからRESTへの転送は別要求なので、REST側の共通認証も実行する。
 
 キー用ヘッダーには専用の名前を設定する。APIが要求IDへ書き換える`x-ms-client-request-id`と、AppGWの相関用の`x-appgw-trace-id`は使用できず、既存の認証・接続用ヘッダーと同様に配備前の設定検査で拒否する。これにより、共通認証から各APIへ引き継ぐ途中で内部ヘッダーの処理がキーを書き換える構成を防ぐ。
 
 ## APIごとのポリシー
 
-各APIに登録する共有テンプレートは`api-templates/gateway.xml`（HTTP API）、`api-templates/mcp.xml`（生成MCP API）、`api-templates/protocol.xml`（WebSocketの`onHandshake`と外部MCP API）である。All APIsへ登録する`service.xml`とは適用先が異なる。3テンプレートの配置変更ではXMLの内容を変えず、全制御の棚卸完了とは扱わない。[配置と適用先](../../apps/apim/policies/api-templates/README.md)を参照する。
+APIと操作のスコープに登録するテンプレートは、[REST、WebSocket、外部MCP、生成MCP](../../apps/apim/policies/api-templates/README.md)に分かれる。全体スコープには`service.xml`を登録する。
 
 | 処理 | 実施内容 |
 | --- | --- |
@@ -473,7 +473,7 @@ Bearer要求のProductが存在し、専用Productであることは共通認証
 
 旧`gateway.queryGuards`、APIの`queryGuard`参照、`core-query-guard`fragment、`core-query-guard-modes` Named Valueは廃止対象であり、現行設定として使わない。④・⑤までのmode補完・設定不備で停止する方式は移行前の設計となる。新fragmentと参照APIのAzure反映・全graph照合・読戻し、正本checkpoint更新は完了した。キー／BearerのResponses JSON・SSEと対応する監査照合を確認した。旧fragment・旧Named Valueは参照不在を確認して退役し、読戻しで不在を確認した。現行生成元・構築入力・正本checkpoint・通常配備の期待値にも旧資材を含まない。所有・currentの一般照合と過去の保護証跡は維持する。query観測・転送や他の経路の受入は未完である。
 
-外部MCP用フローは`api-templates/protocol.xml`へ生成時に差し込み、WebSocketでは空にする。入力検査の条件は次段落で扱い、URI変換・モデル本文検査・生成MCPのPII向け制約は未棚卸のまま保持する。観測専用化だけでqueryの通過・転送や各モデル・ツールの互換性が整ったとは扱わない。[query観測部品](../../apps/apim/policies/fragments/request/core-query-observation/README.md)と[運用時の確認](../operations/apim.md)を参照する。残る処理は必要性・効果・負荷・複雑さを比較して個別に採否を判断する。
+外部MCPの観測用フローは`api-templates/mcp/external.xml`が所有する。WebSocketの受信queryと固定queryの制御は`api-templates/ws/ws.xml`で管理する。各設定の確認は[query観測部品](../../apps/apim/policies/fragments/request/core-query-observation/README.md)と[運用時の確認](../operations/apim.md)を参照する。
 
 その後に承認したPIIの除外分割は、App GatewayのWAF設定として別に管理する。現行構成はRESTの`g-pii-rest`で`text`、MCPの`g-pii-mcp`で`params.arguments.text`だけを`RequestArgValues / Equals`から除外し、`p-pii-redact`は維持する。このWAF変更はAPIMの入力検査とは独立し、認証・モデル機能・OBO・URI制約・他のWAF規則を変更しない。Azure反映・読戻しと正常REST／MCPの通過・マスキング確認を完了し、旧`g-pii-redact`は参照不在を確認して退役した。未実施の異常系と同名queryへの除外の挙動は残件である。通常reconcileによる旧資源の自動削除へは変更せず、移行中の旧binding保持・復旧と成功後の退役を区別する。[WAF側の設定・移行手順](../testing/waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)を参照する。
 
@@ -498,7 +498,7 @@ Content-Typeの存在・単一値確認は`TryGetValue`による一度の取得�
 | Speech | SSML／WAVを検査し、Speech用URI・ヘッダー・Entra認証形式へ変換 | TTS 8 KiB・STT 1 MiBの独自枠を撤廃。DTD／ENTITY拒否、対応形式・提供元の時間制約は維持 |
 | Decision | 配備名と型付き要求を検査し、固定の`/systemone`へ転送 | `decision-1`。8 KiBの独自枠を撤廃 |
 | PII | `{text,language}`を検査しLanguage用要求・結果へ変換 | 固定のPIIモデル版、対応言語と警告コードを照合。生成MCPも同じREST処理を使う |
-| Graph /me | CMの本人接続を検査し、本人のユーザー情報を固定`$select`で取得 | 氏名・所属・連絡先・アカウント状態など12属性。任意のGraph URLや属性追加は不可 |
+| Graph /me | キー利用時はCMの本人接続、Bearer利用時はOBOで、本人のユーザー情報を固定`$select`で取得 | 氏名・所属・連絡先・アカウント状態など12属性。任意のGraph URLや属性追加は不可 |
 | Document Analysis | raw binaryの開始POSTと、署名チケット・同じ呼出主体での状態GETを提供 | 入力500,000,000 bytes、結果500 MiB、受付202→状態GET→完了200。[文書解析の契約](document-analysis.md) |
 
 通常のAI APIの`maxRequestBytes`設定はAPIM Classicのバッファー上限**500 MiB（524,288,000 bytes）**に揃える。本文を読み出す検査では、JSONはBase64や構造を含むUTF-8本文全体、multipartはファイル以外の境界・項目も含む実サイズを比較する。音声認識・音声ファイルの文字起こし・画像編集・音声合成は`requestBodySizeCheck=declared`とし、共有部品による申告サイズの早期413を残す。前の3操作は共有部品による実サイズの読取り・比較を行わず、音声合成は専用SSML部品で実サイズも比較する。提供元のモデル・形式・料金プランによる上限が小さい場合は提供元が拒否するため、500 MiBは各モデルの受付保証ではない。Content-Lengthは必須化しない。`actual`または未指定の操作とTTSの専用部品は、chunked入力も実受信サイズで検査する。申告のみの操作でAzureが適用する技術制約は、この部品の実サイズ検査とは区別する。[APIMの技術上限](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#api-management-gateway-runtime-limits)
@@ -535,15 +535,57 @@ WebRTCの接続制御はAPIMを通り、音声メディアは端末とサービ�
 
 ## Credential Managerとの接合
 
-CMは、必要なAPIが利用する共通の下流OAuth機能とする。`graph-profile-v1`のGraph APIと、CMが必要なMCPに適用できる。入口の購読キーまたはEntraアクセストークンによる認可と、下流の本人OAuth接続を分ける。
+CMは、必要なAPIが利用する共通の下流OAuth機能である。`graph-profile-v1`のキー経路と、CMが必要なMCPに適用する。GraphのBearer経路では、Gateway用BearerをBrokerでOBO交換し、Graphの委任トークンを固定の本人取得に使う。
 
 本人接続は、CM共通APIでサインインを開始し、確認済みの呼出主体・本人・provider・接続・期限をセッションに結び付ける。キーでは同じ購読、Bearerでは同じテナント・ユーザーを照合し、両方式の間でセッションの所有者を移さない。対象APIへ`X-Core-Connection-Session`を送る。任意のUPNや接続名の指定を本人確認の代わりに使わない。
 
 サービス共有接続は、サーバー設定のproviderとconnectionを使う。どちらもCMの`get-authorization-context identity-type=managed`がAPIM自身の接続利用権限を確認し、CMが下流tokenを取得・更新する。本人セッションの検査は、その前のCoreポリシーで行う。
 
-初回のログインURL提示、サインイン、状態照会、元要求の再実行は[CM接続手順](../setup/credential-manager-login.md)を参照する。API応答だけで利用者のブラウザを開くとは扱わない。Dify等は対応ツール／プラグインで連携する。
+初回のログインURL提示、サインイン、状態照会、元要求の再実行は[CM接続手順](credential-manager-login.md)を参照する。API応答だけで利用者のブラウザを開くとは扱わない。Dify等は対応ツール／プラグインで連携する。
 
 接続再認証は409、下流の権限不足は403として区別し、下流の生エラー・token・Cookie・認証URLを業務応答へ流さない。
+
+## ポータルで追加するAPI
+
+初期構築では[API定義](../../apps/apim/apis/README.md)から、操作、固定バックエンド、個別制御を宣言します。[Bicep](../../apps/apim/api-publication.bicep)がXMLとC#を組み立て、同じ生成元を公開後の読戻しに使います。[適用先一覧](../../apps/apim/policies/portal-examples/scope-map.md)では、標準APIの公開パス、操作ID、Azureのスコープ、個別XMLを確認できます。
+
+| 資材 | Azureポータルでの適用先 | 対象 |
+| --- | --- | --- |
+| `service.xml` | All APIs | 信頼済み入口、共通認証、要求情報と監査用の主体 |
+| `fragments/` | Policy fragments | 認証、監査、利用枠、要求準備などの共通処理 |
+| `api-templates/rest/rest.xml` と `rest.cs` | REST APIのAll operations | Model REST、Tool REST、RESTのSSE、WebRTCのHTTP通話制御 |
+| `api-templates/ws/ws.xml` と `ws.cs` | WebSocket APIの `onHandshake` | Realtime、文字起こし、Voice Live。WebRTC用のWebSocketシグナリングを含む |
+| `api-templates/mcp/external.xml` | 外部MCP APIのAll operations | 外部MCPサーバーへの固定転送、必要な上流OAuth、セッションとSSE |
+| `api-templates/mcp/generated.xml` と `generated.cs` | 生成MCP APIのAll operations | PIIなどの既存REST操作をMCPツールとして公開 |
+| `api-templates/shared/stream.xml` と `stream.cs` | WebSocketと外部MCPの生成時に展開 | 両者で共通の認証結果、利用枠、監査、固定転送 |
+| `operation-policies/` | 各Operation | Document、PII、Realtime、Liveなどに必要な固有制御 |
+
+新しい操作は、下表の通信方式と必要な制御から選びます。バックエンドへ固定経路で転送し、入力項目やモデル機能の妥当性は提供元に任せます。RESTではJSON、SSE、multipart、バイナリを同じ分類で扱い、転送と受信上限を操作に合わせます。
+
+| APIの分類 | 再利用するフロー | API・操作で設定する差分 |
+| --- | --- | --- |
+| テキスト生成 | REST JSON／SSE | 固定パス、下流認証、利用枠、SSEの転送 |
+| 埋め込み、リランク、意思決定 | REST JSON | 固定パス、下流認証、利用枠 |
+| 画像生成、音声STT／TTS | REST JSON／multipart／バイナリ | 受信上限、必要なヘッダー、SSMLで必要な外部参照対策 |
+| リアルタイム音声 | WebSocketの接続開始、WebRTCのREST制御 | 固定接続先、モデルquery、通話の所有者と終了操作 |
+| Tool REST API | REST | 下流権限、必要な操作の所有者、非同期結果の取得契約 |
+| MCP | 外部MCP、生成MCP | 公開するtool、セッション、固定接続先、下流認証。生成MCPは元のREST操作の認可を再利用 |
+
+### 初期構築用ポリシーの変更
+
+RESTの `bodyModel`、`textEmbeddings`、`rerank` は、適用済みの操作設定を再度読み直して許可を返す処理を省きます。埋め込みやリランク、意思決定の一部と、同じ種類の制約を使う生成APIが対象です。モデルの上書き・本文加工・転送が必要な既存処理は適用操作の定義で確認できます。固定バックエンド、本文上限、共有資源の保護、本人・所有者、監査、利用枠はゲートウェイの責務です。
+
+`inputContract` は、対象のContent-Typeヘッダーが1値で空でないことを確認します。WAFの型別ルールはヘッダーを基に分岐するため、このAPIMの確認を含めて保護します。Document・Realtimeの所有者照合、SSMLの外部参照対策、Responsesの保存・共有資源対策、生成MCPの引数とREST側の再認証については、[適用操作と根拠](apim-phase12-review.md)を参照します。
+
+### 構築後のAPIMとWAF
+
+手動追加APIは[REST／SSEのポリシー例](../../apps/apim/policies/portal-examples/README.md)から、専用API ID、固定バックエンド、Operation IDとパス、利用枠を設定します。購読キーは専用の購読必須Product、本人Bearerを提供する場合は `manual-` で始まるAPIを購読不要の `manual-entra-users` に関連付けます。共通認証は同じテナント・audience・委任scope・本人を確認します。管理対象Productのメンバーシップには標準構築時の照合があるため、手動追加には独立したProductを使います。各Operationで `Calculate effective policy` を開き、入口・認証・利用枠・監査・認証情報の除去・固定転送先を確認します。 [APIMでのポリシー継承](https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-policies)
+
+AppGWでは新しいパスに実際に効くWAFとAPIMへのHTTPS経路を確認します。標準ではGateway側の既定経路と共通WAFを使います。パス別WAFを追加する際は、既定ポリシーに代わってそのパスで有効になる設定と、信頼済み入口ヘッダーの書換えを照合します。本文形式に固有の例外が必要な場合は、実際に遮断した正常要求からパス、項目、管理ルールを特定します。 [WAFの関連付けと優先順位](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/policy-overview)
+
+監査は要求ID、認証済み主体、API・操作、転送先、結果を記録し、対応する提供元の利用量を照合します。現行の診断は入出力本文0バイトです。新しいSSE APIでは転送時に本文を読み込まず、提供元の診断とGateway要求を照合します。 [APIMのSSEと診断](https://learn.microsoft.com/en-us/azure/api-management/how-to-server-sent-events)
+
+API、Product、固定バックエンド、診断、WAF関連付けを変更台帳に記録し、Core再配備前の差分確認に使います。具体的なGUI操作は[Claudeの手動追加手順](../operations.md#構築後にclaudeをguiで追加する)にまとめています。
 
 ## GUIで確認する場所
 

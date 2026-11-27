@@ -58,17 +58,19 @@ QUERY_TELEMETRY_SECTIONS = {
 }
 SECTION_TEXT_MARKERS = {"__GATEWAY_MODEL_ALIAS_BODY_CSHARP__","__GATEWAY_HOSTED_BODY_CSHARP__","__GATEWAY_RESPONSES_BODY_CSHARP__","__REALTIME_CREATE_CLIENT_SECRETS_REQUEST_CSHARP__","__CREDENTIAL_CHALLENGE_RESPONSE_BODY_CSHARP__","__PII_OUTPUT_CSHARP__"}
 SECTION_EXPRESSION_FILES = {
-    "api-templates/protocol.cs": {
-        "model-selection": "__PROTOCOL_MODEL_SELECTION_CSHARP__",
+    "api-templates/shared/stream.cs": {
         "authentication-result": "__PROTOCOL_AUTHENTICATION_RESULT_CSHARP__",
+    },
+    "api-templates/ws/ws.cs": {
+        "model-selection": "__PROTOCOL_MODEL_SELECTION_CSHARP__",
         "audit-model-setting": "__PROTOCOL_AUDIT_MODEL_SETTING_CSHARP__",
         "query-validation": "__PROTOCOL_QUERY_VALIDATION_CSHARP__",
     },
-    "api-templates/mcp.cs": {
+    "api-templates/mcp/generated.cs": {
         "gateway-decision": "__MCP_GATEWAY_DECISION_CSHARP__",
         "pii-arguments": "__MCP_PII_ARGUMENTS_CSHARP__",
     },
-    "api-templates/gateway.cs": {
+    "api-templates/rest/rest.cs": {
         "model-alias-body": "__GATEWAY_MODEL_ALIAS_BODY_CSHARP__",
         "hosted-body": "__GATEWAY_HOSTED_BODY_CSHARP__",
         "responses-body": "__GATEWAY_RESPONSES_BODY_CSHARP__",

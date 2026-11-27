@@ -74,9 +74,13 @@ class ArmExpression:
         values = [value(argument) for argument in arguments]
         if name in ("true", "false"): return name == "true"
         if name == "reference":
+            if "__references" in parameters:
+                return parameters["__references"][values[0]]
             return {"identity":{"principalId":"77777777-7777-4777-8777-777777777777"}}
         if name == "parameters":
             return parameters[values[0]]
+        if name == "tenant":
+            return parameters["__tenant"]
         if name == "variables":
             return parameters["__variables"][values[0]]
         if name == "copyIndex":
@@ -87,6 +91,12 @@ class ArmExpression:
             return dict(zip(values[::2], values[1::2]))
         if name == "createArray":
             return values
+        if name == "concat":
+            if all(isinstance(item, list) for item in values):
+                return [item for group in values for item in group]
+            if all(isinstance(item, str) for item in values):
+                return "".join(values)
+            raise AssertionError("ARM concat requires only arrays or only strings")
         if name == "equals":
             return values[0] == values[1]
         if name == "not":

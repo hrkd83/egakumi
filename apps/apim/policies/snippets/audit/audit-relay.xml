@@ -1,0 +1,24 @@
+<!-- 監査対象の操作は認可・利用枠の確認後、固定の内部接続先へ送ります。 -->
+<choose id="core-audit-relay-route">
+  <when condition="@(context.Operation.Id == &quot;chat-completions&quot; &amp;&amp; context.Request.Method == &quot;POST&quot;)">
+    <rewrite-uri template="/chat/completions" copy-unmatched-params="true" />
+  </when>
+  <when condition="@(context.Operation.Id == &quot;responses-create&quot; &amp;&amp; context.Request.Method == &quot;POST&quot;)">
+    <rewrite-uri template="/responses" copy-unmatched-params="true" />
+  </when>
+  <otherwise>
+    <set-variable name="gatewayAuditPhase" value="policy-error" />
+    <set-variable name="gatewayAuditCode" value="AUDIT_RELAY_ROUTE_UNAVAILABLE" />
+    <set-variable name="gatewayAuditStatus" value="@(503)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+    <return-response>
+      <set-status code="503" reason="Audit relay route unavailable" />
+      <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+      <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+    </return-response>
+  </otherwise>
+</choose>
+<set-header name="Cookie" exists-action="delete" />
+<set-header name="x-api-key" exists-action="delete" />
+<set-backend-service backend-id="core-audit-relay" />
+<authentication-managed-identity resource="{{core-audit-relay-audience}}" ignore-error="false" />

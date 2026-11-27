@@ -51,7 +51,7 @@ async function routeFixture() {
   const routeAdapters: Record<string, string> = {
     "@/lib/auth-environment": data(environment),
     "@/lib/auth-session": sessionUrl,
-    "@/lib/api-keys/service": data(`export const getApiKeyService=()=>({executionKey:(...args)=>${access}.executionKey(...args)})`),
+    "@/lib/subscription-service/client": data(`export const getPortalApiKeyService=()=>({executionKey:(...args)=>${access}.executionKey(...args)})`),
     "@/lib/model-catalog": data(`export const getRealtimeModels=()=>${access}.models`),
   };
   const sessionAdapters: Record<string, string> = {

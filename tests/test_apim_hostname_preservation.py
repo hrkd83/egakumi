@@ -185,30 +185,29 @@ class ApimHostnamePreservationTests(LifecycleFixture, unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(lifecycle.DeploymentError):
                 lifecycle.discover_existing_apim_hostnames(self.config, self.transport(body))
 
-    def test_preup_and_final_preprovision_write_the_same_owned_snapshot_into_private_inputs(self):
-        for phase in ("preup", "preprovision"):
-            absent = {"statusCode": 404, "body": None}
-            responses = [absent, absent] if phase == "preprovision" else []
-            with self.subTest(phase=phase), mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
-                    mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
-                    mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-                    mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
-                    mock.patch.object(lifecycle, "run", return_value={}), \
-                    mock.patch.object(lifecycle, "ArmTransport", return_value=ScriptedTransport(responses)), \
-                    mock.patch.object(lifecycle, "capacity_preflight"), \
-                    mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
-                    mock.patch.object(lifecycle, "configure_app_insights_cap"), \
-                    mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
-                    mock.patch.object(lifecycle, "discover_existing_network_security_groups", return_value=[]), \
-                    mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
-                    mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
-                    mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
-                    mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value=self.expected()) as discover, \
-                    contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(lifecycle.main([phase]), 0)
-                discover.assert_called_once()
-                values = json.loads(self.paths.parameters.read_text())["parameters"]
-                self.assertEqual(values["existingApimHostnameConfigurations"]["value"], self.expected())
+    def test_preprovision_writes_the_owned_snapshot_into_private_inputs(self):
+        absent = {"statusCode": 404, "body": None}
+        responses = [absent, absent]
+        with mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
+                mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
+                mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
+                mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
+                mock.patch.object(lifecycle, "run", return_value={}), \
+                mock.patch.object(lifecycle, "ArmTransport", return_value=ScriptedTransport(responses)), \
+                mock.patch.object(lifecycle, "capacity_preflight"), \
+                mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
+                mock.patch.object(lifecycle, "configure_app_insights_cap"), \
+                mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
+                mock.patch.object(lifecycle, "discover_existing_network_security_groups", return_value=[]), \
+                mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
+                mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
+                mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
+                mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value=self.expected()) as discover, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(lifecycle.main(["preprovision"]), 0)
+            discover.assert_called_once()
+            values = json.loads(self.paths.parameters.read_text())["parameters"]
+            self.assertEqual(values["existingApimHostnameConfigurations"]["value"], self.expected())
 
     def test_direct_core_put_includes_snapshot_and_monitoring_does_not_discover_domains(self):
         for phase in ("core", "monitoring"):

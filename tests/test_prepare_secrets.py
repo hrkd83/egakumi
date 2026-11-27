@@ -371,18 +371,27 @@ class RetainedSecretHelperTests(unittest.TestCase):
         self.assertEqual(len(self.output.getvalue().strip().splitlines()), 1)
         self.assert_safe_output_and_no_staging()
 
-    def test_multiple_entra_inputs_are_distinguished_by_public_names_and_client_ids(self):
+    def test_multiple_entra_inputs_use_purpose_names_and_distinct_storage_without_client_ids(self):
         other = self.root / "secrets/another-client.txt"
+        identity = self.root / "secrets/credential-client.txt"
+        identity_id = "33333333-3333-3333-3333-333333333333"
         self.config["credentialProviders"][0].update({"name": "cm-provider", "clientId": UUID_ONE})
         self.config["credentialProviders"].append({"name": "another-cm-provider", "clientId": UUID_TWO, "clientSecretFile": str(other)})
-        result, prompt = self.invoke([CLIENT_SECRET, "SYNTHETIC-OTHER-CLIENT", TOKEN])
-        self.assertEqual(result["created"], [str(self.entra), str(other), str(self.dns)])
-        self.assertEqual(prompt.call_count, 3)
-        self.assertIn("cm-provider", self.output.getvalue())
-        self.assertIn("another-cm-provider", self.output.getvalue())
-        self.assertIn(UUID_ONE, self.output.getvalue())
-        self.assertIn(UUID_TWO, self.output.getvalue())
-        self.assertNotIn("SYNTHETIC-OTHER-CLIENT", self.output.getvalue())
+        self.config["gateway"] = {"authentication": {"credentialLogin": {"identity": {
+            "clientId": identity_id, "clientSecretFile": str(identity),
+        }}}}
+        result, prompt = self.invoke([CLIENT_SECRET, "SYNTHETIC-OTHER-CLIENT", "SYNTHETIC-IDENTITY-CLIENT", TOKEN])
+        self.assertEqual(result["created"], [str(self.entra), str(other), str(identity), str(self.dns)])
+        self.assertEqual(prompt.call_count, 4)
+        guide = self.output.getvalue()
+        guide_lines = [line.strip() for line in guide.splitlines()]
+        for line in ("入力: CM接続: cm-provider", "入力: CM接続: another-cm-provider",
+                     "入力: CM本人確認（OIDC）", "保存先: secrets/another-client.txt（構築時にAPIMへ設定）",
+                     "保存先: secrets/credential-client.txt（構築時に認証窓口用Key Vaultへ設定）"):
+            self.assertIn(line, guide_lines)
+        terminal = guide + self.errors.getvalue() + "\n".join(call.args[0] for call in prompt.call_args_list)
+        for value in (UUID_ONE, UUID_TWO, identity_id, "SYNTHETIC-OTHER-CLIENT", "SYNTHETIC-IDENTITY-CLIENT"):
+            self.assertNotIn(value, terminal)
         self.assert_safe_output_and_no_staging()
 
     def test_dns_guides_cover_provider_specific_inputs_and_acquisition_menus(self):
@@ -431,7 +440,7 @@ class RetainedSecretHelperTests(unittest.TestCase):
         self.invoke([CLIENT_SECRET])
         guide = self.output.getvalue()
         self.assertIn("接続: provider", guide)
-        self.assertIn("アプリID: " + UUID_ONE, guide)
+        self.assertNotIn(UUID_ONE, guide + self.errors.getvalue())
         self.assertIn("証明書とシークレット", guide)
         self.assertIn("保存先: secrets/entra-client-secret.txt", guide)
         self.assertIn("構築時にAPIMへ設定", guide)
