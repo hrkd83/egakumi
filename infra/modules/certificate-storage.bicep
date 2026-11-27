@@ -10,6 +10,7 @@ param vaultRetentionDays int
 param vaultPurgeProtection bool
 param portalVaultName string
 param portalCertificateName string
+param prepareGatewayObo bool = false
 param registryName string
 param pullPrincipalId string
 param tlsPrincipalId string
@@ -158,6 +159,16 @@ module portalSigningKey 'portal-auth-key-operations.bicep' = {
     vaultName: portalVaultName
     keyName: portalCertificateName
     principalId: portalPrincipalId
+  }
+}
+
+module gatewayOboKey 'portal-auth-key-operations.bicep' = if (prepareGatewayObo) {
+  name: '${stem}-gateway-obo-key-reader'
+  params: {
+    vaultName: portalVaultName
+    keyName: 'gateway-obo'
+    principalId: portalPrincipalId
+    allowDisable: false
   }
 }
 

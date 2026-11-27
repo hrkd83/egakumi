@@ -125,6 +125,10 @@ var dataProfiles = map(filter(dataManifest.profiles, profile => createWafPolicy 
 })
 var dataGatewayPaths = flatten(map(filter(dataProfiles, profile => profile.scope == 'gateway'), profile => profile.paths))
 var dataPortalPaths = flatten(map(filter(dataProfiles, profile => profile.scope == 'portal'), profile => profile.paths))
+var portalAuthCallbackPaths = filter([
+  '/api/auth/callback/microsoft'
+  '/api/api-auth/callback'
+], path => !contains(dataPortalPaths, path))
 var speechPaths = speechRawBodyPaths
 var useSpeechWafPolicy = createWafPolicy && !empty(speechPaths)
 // 本人確認callbackはAPIの公開一覧が空でも必要なため、構築するWAFで保護します。
@@ -195,7 +199,7 @@ resource portalWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFire
 }
 
 // Microsoftが発行する不透明な認可コードだけを、実測したSQLi誤検知の3規則から除外します。
-// このポリシーはPortalの正規callback完全パスだけに関連付け、他の引数・規則は維持します。
+// PortalログインとAPI試用の各callbackの完全パスだけへ適用し、他の引数・規則とマスキングを維持します。
 resource portalAuthWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (createWafPolicy) {
   name: 'wafpol-p-auth-${wafPolicyIdentifier}'
   location: location
@@ -590,10 +594,10 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
         properties: {
           defaultBackendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-portal' }
           defaultBackendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-portal' }
-          pathRules: concat(dataPortalPathRules, contains(dataPortalPaths, '/api/auth/callback/microsoft') ? [] : [{
+          pathRules: concat(dataPortalPathRules, empty(portalAuthCallbackPaths) ? [] : [{
             name: 'microsoft-auth-callback'
             properties: {
-              paths: ['/api/auth/callback/microsoft']
+              paths: portalAuthCallbackPaths
               firewallPolicy: { id: portalAuthWafPolicy!.id }
               backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-portal' }
               backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-portal' }

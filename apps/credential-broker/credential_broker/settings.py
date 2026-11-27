@@ -1,6 +1,7 @@
 """公開設定と Secret 環境変数を分け、起動時に不足を検出する。"""
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass, field
 import json
 import os
@@ -60,6 +61,34 @@ class Profile:
 
 
 @dataclass(frozen=True)
+class GraphOboSettings:
+    tenant_id: str
+    client_id: str
+    key_url: str
+    certificate_thumbprint: str
+
+    @classmethod
+    def from_environment(cls, env):
+        tenant, client, key, thumbprint = (
+            env.get("BROKER_OBO_" + name, "") for name in (
+                "TENANT_ID", "CLIENT_ID", "KEY_URL", "CERTIFICATE_THUMBPRINT"
+            )
+        )
+        if (tenant, client, key, thumbprint) == ("", "", "", ""):
+            return None
+        endpoint = urlsplit(https_url(key))
+        if (not re.fullmatch(r"[a-z][a-z0-9-]{1,22}[a-z0-9]\.vault\.azure\.net", endpoint.hostname)
+                or not re.fullmatch(r"/keys/gateway-obo/[a-f0-9]{32}", endpoint.path)
+                or key != f"https://{endpoint.hostname}{endpoint.path}"
+                or not re.fullmatch(r"[A-Za-z0-9_-]{43}", thumbprint)):
+            raise SettingsError("Graph OBO certificate configuration is invalid or incomplete")
+        decoded = base64.urlsafe_b64decode(thumbprint + "=")
+        if base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=") != thumbprint:
+            raise SettingsError("Graph OBO certificate configuration is invalid or incomplete")
+        return cls(guid(tenant), guid(client), key, thumbprint)
+
+
+@dataclass(frozen=True)
 class Settings:
     public_origin: str
     shared_key: str = field(repr=False)
@@ -78,6 +107,7 @@ class Settings:
     rotation_handoff_seconds: int = 600
     rotation_candidate_ttl_seconds: int = 600
     login_calls_per_minute: int = 10
+    graph_obo: GraphOboSettings | None = None
 
     @classmethod
     def from_environment(cls, env=None):
@@ -138,7 +168,7 @@ class Settings:
                 guid(required("AZURE_SUBSCRIPTION_ID")), group, apim, guid(required("APIM_PRINCIPAL_ID")),
                 guid(required("AZURE_TENANT_ID")), guid(required("AZURE_CLIENT_ID")), transaction_ttl,
                 idle_timeout, absolute_lifetime, rotation_interval, rotation_grace, rotation_handoff,
-                rotation_candidate_ttl, login_limit)
+                rotation_candidate_ttl, login_limit, GraphOboSettings.from_environment(env))
         except (ValueError, KeyError, TypeError, AttributeError):
             raise SettingsError("Broker configuration is invalid or incomplete") from None
 

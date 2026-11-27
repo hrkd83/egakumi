@@ -373,6 +373,28 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual([path.split("?")[0] for _, path, _, _ in transport.calls][-4:],
                              [plan["apimId"]+"/authorizationProviders/graph-delegated-a",assignment_path,plan["apimId"]+"/authorizationProviders/graph-delegated-b",assignment_path.replace("graph-delegated-a/","graph-delegated-b/")])
 
+    def test_graph_obo_publication_validates_the_exact_ready_broker_certificate_binding(self):
+        from deployment.helpers.gateway_obo_certificate import runtime_environment
+
+        config, plan, apim, inventory, _ = self.credential_role_fixture()
+        plan["parameters"] = {**plan["parameters"], "graphOboEnabled": {"value": True}}
+        settings = {"tenantId": config["azureTenantId"], "clientId": "66666666-6666-4666-8666-666666666666",
+                    "keyUrl": "https://kv-" + config["resourceStem"] + ".vault.azure.net/keys/gateway-obo/" + "a" * 32,
+                    "certificateThumbprint": "b" * 43}
+        app_id = publish._scope(config, "svc") + "/providers/Microsoft.App/containerApps/" + publish.resource_names(config)["application"]
+        revision_id = app_id + "/revisions/ready-001"
+        for resource_id in (app_id, revision_id):
+            inventory[resource_id]["body"]["properties"]["template"]["containers"][0]["env"] = [
+                {"name": key, "value": value} for key, value in runtime_environment(settings).items()
+            ]
+        with mock.patch("deployment.helpers.gateway_obo_certificate.deployment_settings", return_value=settings):
+            publish.verify_credential_login(config, plan, apim, Transport(inventory))
+            inventory[revision_id]["body"]["properties"]["template"]["containers"][0]["env"][-1]["value"] = "different"
+            transport = Transport(inventory)
+            with self.assertRaisesRegex(ValueError, "exact Graph OBO certificate binding"):
+                publish.verify_credential_login(config, plan, apim, transport)
+            self.assertEqual([method for method, _, _, _ in transport.calls], ["GET"] * 3)
+
     def test_personal_cm_access_rejects_other_roles_scopes_principals_and_incomplete_inventory(self):
         role_guids = {
             "old-custom": "55555555-5555-4555-8555-555555555555",

@@ -418,6 +418,19 @@
               "default": 60
             }
           }
+        },
+        "apiAuthentication": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ],
+          "description": "5アプリ構成では既定でAPI試用を有効化します。",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
         }
       },
       "description": "Core管理ポータルの必須公開ホスト。専用サブネットはnetwork.subnetPrefixes.acaへ指定します。",
@@ -451,6 +464,19 @@
           "minLength": 1
         }
       }
+    },
+    "codex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clientId"
+      ],
+      "description": "最終5アプリ構成で使用するCodexの公開クライアント登録です。",
+      "properties": {
+        "clientId": {
+          "$ref": "#/$defs/guid"
+        }
+      }
     }
   },
   "$defs": {
@@ -465,6 +491,26 @@
         "audience": {
           "$ref": "#/$defs/guid",
           "description": "v2アクセストークンの宛先となるAPI用アプリのApplication client IDです。api://のscope URIは指定しません。"
+        },
+        "obo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "keyId",
+            "certificateThumbprint"
+          ],
+          "description": "Gateway OBOが使う手動更新済みの固定Key Vault版。初回は構築結果を使用します。",
+          "properties": {
+            "keyId": {
+              "type": "string",
+              "pattern": "/keys/gateway-obo/[a-f0-9]{32}$",
+              "format": "uri"
+            },
+            "certificateThumbprint": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{64}$"
+            }
+          }
         }
       }
     },

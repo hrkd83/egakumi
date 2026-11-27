@@ -72,7 +72,7 @@ export function imageResponsePreview(raw: Record<string, unknown>): { text: stri
   return { text, truncated };
 }
 
-const errors = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable"]);
+const errors = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable"]);
 
 /** 応答をサイズ制限内で読み、公開した結果の形をもう一度検証します。 */
 export async function readImageResponse(response: Response, signal?: AbortSignal): Promise<ImageGenerationResult> {

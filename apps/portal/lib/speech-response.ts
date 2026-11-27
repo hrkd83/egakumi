@@ -79,7 +79,7 @@ export async function readSpeechBody(body: ReadableStream<Uint8Array> | null, ma
   const bytes = new Uint8Array(length); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; } return bytes;
 }
 
-const publicErrors = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable"]);
+const publicErrors = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable"]);
 /** 上流の任意メッセージを表示せず、固定された失敗種別だけをUIへ渡します。 */
 function publicFailure(value: unknown): TextGenerationFailure {
   const data = value && typeof value === "object" ? value as Record<string, unknown> : {}; const error = data.error && typeof data.error === "object" ? data.error as Record<string, unknown> : {};

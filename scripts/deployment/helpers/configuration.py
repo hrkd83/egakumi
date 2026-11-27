@@ -63,7 +63,7 @@ TOP_KEYS = {
     "schemaVersion", "productName", "environmentName", "subscriptionId",
     "azureTenantId", "entraTenantId", "location", "foundryLocation", "apiCenterLocation", "tags", "network",
     "services", "gateway", "management", "monitoring", "certificate", "firewallTlsInspection", "authorization",
-    "apiDefinitions", "publishApis", "credentialProviders", "portal", "credentialBroker", "portalAuthentication", "portalApiKeys",
+    "apiDefinitions", "publishApis", "credentialProviders", "portal", "codex", "credentialBroker", "portalAuthentication", "portalApiKeys",
 }
 NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 API_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
@@ -77,7 +77,7 @@ PARAMETER_KEYS = {
     "$schema", "$comment", "configFile", "schemaVersion", "productName",
     "environmentName", "subscriptionId", "azureTenantId", "entraTenantId", "services", "gateway",
     "management", "monitoring", "certificate", "firewallTlsInspection",
-    "credentialProviders", "portal", "portalApiKeys", "network", "location", "foundryLocation", "apiCenterLocation", "tags",
+    "credentialProviders", "portal", "codex", "portalApiKeys", "network", "location", "foundryLocation", "apiCenterLocation", "tags",
 }
 # このVNet内で構築する資材のアドレスだけをNSGへ動的に渡します。
 # VNet・Firewall DNSとNSG初期集合はBicep内で固定し、公開入力では変更しません。
@@ -97,7 +97,8 @@ RETIRED_FIREWALL_INPUTS = {
     "apimAllowedFqdns", "managementAllowedFqdns",
 }
 PARAMETER_SECTION_KEYS = {
-    "portal": {"publicHostName", "authentication", "certificate"},
+    "portal": {"publicHostName", "authentication", "certificate", "apiAuthentication"},
+    "codex": {"clientId"},
     "network": PARAMETER_NETWORK_IP_KEYS,
     "services": {"publisherName", "publisherEmail", "apimInstanceId"},
     "gateway": {"publicHostName", "authentication"},
@@ -124,8 +125,9 @@ PARAMETER_OWNED_PATHS = (
       for key in PARAMETER_SECTION_KEYS[section]),
     ("firewallTlsInspection",),
     ("gateway", "publicHostName"),
-    ("portal",),
+    ("portal",), ("codex",),
     ("gateway", "authentication", "entra", "audience"),
+    ("gateway", "authentication", "entra", "obo"),
     *(("gateway", "authentication", "credentialLogin", "identity", key) for key in ("clientId", "clientSecretFile")),
     *(("credentialProviders", "graphDelegated", key) for key in ("clientId", "clientSecretFile")),
     *(("portalApiKeys", key) for key in ("platformGroupId", "groupNamePattern")),
@@ -261,12 +263,18 @@ def _entra_authentication(value: Any) -> dict:
     """同じAPIの委任認証を完全検査する。公開設定に有効・無効の切替を持たせない。"""
     path = "gateway.authentication.entra"
     settings = _object(value, path, {
-        "audience", "requiredScope", "userLimits",
+        "audience", "requiredScope", "userLimits", "obo",
     })
     for name in ("audience", "requiredScope", "userLimits"):
         if name not in settings:
             _fail(path + "." + name, "must be specified for delegated authentication")
     settings["audience"] = _guid(settings.get("audience"), path + ".audience")
+    if "obo" in settings:
+        obo = _object(settings["obo"], path + ".obo", {"keyId", "certificateThumbprint"})
+        _string(obo.get("keyId"), path + ".obo.keyId")
+        thumbprint = _string(obo.get("certificateThumbprint"), path + ".obo.certificateThumbprint")
+        if not re.fullmatch(r"[a-fA-F0-9]{64}", thumbprint):
+            _fail(path + ".obo.certificateThumbprint", "must be the SHA-256 hex digest of the public certificate")
     scope = _string(settings.get("requiredScope"), path + ".requiredScope", maximum=128)
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{0,127}", scope):
         _fail(path + ".requiredScope", "must be one delegated scope name without a resource prefix")
@@ -1343,7 +1351,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     _integer(mon.setdefault("appInsightsIngestionWarningGb", 80), "monitoring.appInsightsIngestionWarningGb", 1, 100000)
     _bool(mon.setdefault("enableLogAlerts", False), "monitoring.enableLogAlerts")
     c["monitoring"] = mon
-    portal = _object(c.get("portal"), "portal", {"publicHostName", "authentication", "certificate"})
+    portal = _object(c.get("portal"), "portal", PARAMETER_SECTION_KEYS["portal"])
     portal_cert = _object(portal.setdefault("certificate", {}), "portal.certificate", {"certificateName", "validityMonths", "renewBeforeDays"})
     portal_cert_name = _string(portal_cert.setdefault("certificateName", "portal-auth"),
                                "portal.certificate.certificateName", maximum=127)
@@ -1521,12 +1529,13 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     # カタログ用の説明も無料の設定検査で作れることを先に確認する。
     # 説明自体はBicep入力時にだけ追加し、利用者の設定ファイルへは混ぜない。
     with_catalog_descriptions(c)
-    portal = _object(c.get("portal"), "portal", {"publicHostName", "authentication", "certificate"})
+    portal = _object(c.get("portal"), "portal", PARAMETER_SECTION_KEYS["portal"])
     host = _host(portal.get("publicHostName"), "portal.publicHostName")
     if not host.startswith("portal.") or host == g["publicHostName"]:
         _fail("portal.publicHostName", "must be a distinct portal subdomain")
     if not any(name == host or (name.startswith("*.") and host.split(".", 1)[1] == name[2:]) for name in cert["domainNames"]):
         _fail("certificate.domainNames", "must cover the Portal hostname")
+    _validate_separated_entra_apps(c, portal, authentication, providers)
     # Coreの最初の変更より前に、API公開と同じFW表現可能性を検査します。
     # 内部生成値を公開設定へ保存せず、秘密やURLをエラーへ含めません。
     from .firewall_destinations import generated_apim_service_fqdns
@@ -1535,6 +1544,50 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     except ValueError:
         _fail("apiDefinitions", "external destinations require HTTPS/WSS on port 443 and DNS hosts without embedded credentials; private input suppressed")
     return c
+
+
+def _validate_separated_entra_apps(config, portal, authentication, providers):
+    """新規5アプリ構成の入力を、Portalの登録前後で段階的に照合します。"""
+    api = authentication.get("entra", {})
+    obo = api.get("obo")
+    if obo:
+        if api.get("requiredScope") != "Gateway.Invoke":
+            _fail("gateway.authentication.entra.obo", "requires the Gateway.Invoke delegated scope")
+        from .portal_auth_certificate import application_vault_origin
+        prefix = application_vault_origin(config["resourceStem"]) + "/keys/gateway-obo/"
+        if not re.fullmatch(re.escape(prefix) + r"[a-f0-9]{32}", obo["keyId"]):
+            _fail("gateway.authentication.entra.obo.keyId", "must pin the dedicated key in this foundation")
+    final = "codex" in config
+    if "apiAuthentication" in portal:
+        trial = _object(portal["apiAuthentication"], "portal.apiAuthentication", {"enabled"})
+        _bool(trial.get("enabled"), "portal.apiAuthentication.enabled")
+        if trial["enabled"] and not final:
+            _fail("portal.apiAuthentication", "requires the five-app registration inputs")
+    if not final:
+        return
+    codex = _object(config["codex"], "codex", {"clientId"})
+    codex_id = _guid(codex.get("clientId"), "codex.clientId")
+    login = authentication.get("credentialLogin", {})
+    credential = login.get("identity", {})
+    tools = next((p for p in providers if p["name"] == "graph-delegated"), {})
+    portal_app = portal.get("authentication", {})
+    if (api.get("requiredScope") != "Gateway.Invoke" or tools.get("identityProvider") != "aad"
+            or "graph-delegated" not in login.get("providerNames", [])
+            or tools.get("oauthTenantId") != config["entraTenantId"]
+            or credential.get("tenantId") != config["entraTenantId"] or not credential.get("clientId")):
+        _fail("codex", "requires the dedicated API, Tools and Credential registrations in the authentication tenant")
+    clients = [api["audience"], tools["clientId"], credential["clientId"], codex_id]
+    if portal_app:
+        if portal_app["tenantId"] != config["entraTenantId"]:
+            _fail("portal.authentication.tenantId", "must match the authentication tenant")
+        clients.append(portal_app["clientId"])
+    if len(set(value.casefold() for value in clients)) != len(clients):
+        _fail("codex", "requires a distinct client ID for each application")
+    if tools["clientSecretFile"] == credential["clientSecretFile"]:
+        _fail("credentialProviders.graphDelegated.clientSecretFile", "Tools and Credential must use separate protected files")
+    if portal["certificate"]["certificateName"] == "gateway-obo":
+        _fail("portal.certificate.certificateName", "must differ from the dedicated Gateway signing key")
+    portal.setdefault("apiAuthentication", {"enabled": True})
 
 
 def _read_configuration_source(source: Path) -> dict:
@@ -1726,7 +1779,7 @@ def load_configuration_source(path: Path | str) -> dict:
         authentication = gateway.get("authentication", {})
         if isinstance(authentication, dict):
             if "entra" in authentication:
-                _object(authentication["entra"], "gateway.authentication.entra", {"audience"})
+                _object(authentication["entra"], "gateway.authentication.entra", {"audience", "obo"})
             if "credentialLogin" in authentication:
                 login = _object(authentication["credentialLogin"], "gateway.authentication.credentialLogin", {"identity"})
                 if "identity" in login:
@@ -1845,6 +1898,8 @@ def build_bicep_configuration(configuration: dict) -> dict:
     # エディター用のschema/commentはローカルに保持し、取得やARMへの送信はしない。
     result.pop("$schema", None)
     result.pop("$comment", None)
+    if result.pop("codex", None):
+        result["entraRolloutEnabled"] = True
     result["management"].pop("sshPublicKeyFile", None)
     result.pop("firewallTlsInspection", None)
     for provider in result["credentialProviders"]:

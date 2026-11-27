@@ -17,11 +17,17 @@ MARKER = 'EGAKUMI_PORTAL_AUTH:'
 COMPUTE_API = '2024-07-01'
 
 
-def certificate_record(value: dict, config: dict, *, allow_expired=False) -> dict:
+def application_vault_origin(stem):
+    """選択済み環境に対応するアプリ用Vaultのデータプレーン起点。"""
+    name = 'kv-' + stem
+    return 'https://' + name + '.vault.azure.net'
+
+
+def certificate_record(value: dict, config: dict, *, allow_expired=False, certificate_name=None) -> dict:
     """取得元と版・期限・公開DERのthumbprintを照合し、想定外の項目を捨てます。"""
     try:
-        vault = 'https://' + 'kv-' + config['resourceStem'] + '.vault.azure.net'
-        name = config['portal']['certificate']['certificateName']
+        vault = application_vault_origin(config['resourceStem'])
+        name = certificate_name or config['portal']['certificate']['certificateName']
         for field, kind in (('certificateId', 'certificates'), ('keyId', 'keys')):
             prefix = vault + '/' + kind + '/' + name + '/'
             if not value[field].startswith(prefix) or not re.fullmatch('[a-f0-9]{32}', value[field][len(prefix):]):

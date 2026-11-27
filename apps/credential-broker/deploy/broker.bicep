@@ -15,6 +15,7 @@ param apimPrincipalId string
 param apimName string
 param brokerKeySecretUri string
 param oidcSecrets array
+param graphObo object = {}
 param idleTimeoutSeconds int
 param absoluteLifetimeSeconds int
 param rotationIntervalSeconds int
@@ -56,6 +57,12 @@ var schemaEnvironment = union(commonEnvironment, {
   SQL_RUNTIME_CLIENT_ID: runtimeIdentity.clientId
   SQL_RUNTIME_USER_NAME: runtimeIdentity.name
 })
+var oboEnvironment = empty(graphObo) ? {} : {
+  BROKER_OBO_TENANT_ID: graphObo.tenantId
+  BROKER_OBO_CLIENT_ID: graphObo.clientId
+  BROKER_OBO_KEY_URL: graphObo.keyUrl
+  BROKER_OBO_CERTIFICATE_THUMBPRINT: graphObo.certificateThumbprint
+}
 var oidcEnvironment = [for item in oidcSecrets: { name: item.env, secretRef: item.name }]
 var commonSecrets = concat([{ name: 'broker-key', keyVaultUrl: brokerKeySecretUri, identity: runtimeIdentity.id }],
   map(oidcSecrets, item => { name: item.name, keyVaultUrl: item.uri, identity: runtimeIdentity.id }))
@@ -102,7 +109,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = if (deployApplication) {
       containers: [{
         name: 'credential-broker'
         image: image
-        env: concat(map(items(runtimeEnvironment), item => { name: item.key, value: item.value }), [{ name: 'BROKER_SHARED_KEY', secretRef: 'broker-key' }], oidcEnvironment)
+        env: concat(map(items(union(runtimeEnvironment, oboEnvironment)), item => { name: item.key, value: item.value }), [{ name: 'BROKER_SHARED_KEY', secretRef: 'broker-key' }], oidcEnvironment)
         resources: { cpu: json('0.5'), memory: '1Gi' }
         probes: [for type in ['Startup', 'Readiness', 'Liveness']: {
           type: type

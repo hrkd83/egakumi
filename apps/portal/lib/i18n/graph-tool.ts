@@ -3,7 +3,7 @@ import type { Locale } from "./config";
 
 /** Graphの実アクセス、本人接続と組み込み案内に使う日本語文言です。 */
 const ja = {
-  connected: "Microsoft Graphは実APIに接続", real: "実API", mock: "サンプル", mockNotice: "Microsoft Graphは選択したAPIキーで実行します。ほかのツールは画面サンプルです。",
+  connected: "Microsoft Graphは実APIに接続", real: "実API", mock: "サンプル", mockNotice: "Microsoft Graphは選択した認証方式で実行します。ほかのツールは画面サンプルです。",
   description: "Microsoft Graph /me でサインインした本人のユーザー情報を取得します。API仕様と組み込み方を確認し、本人接続から属性の取得まで実際に試せます。",
   key: "実行に使うAPIキー", chooseKey: "APIキーを選択", refreshKeys: "一覧を更新", loadingKeys: "利用可能なAPIキーを確認しています。", noKeys: "このAPIを利用できる有効なキーがありません。", manageKeys: "APIキー管理へ",
   keyHelp: "現在の所属グループで利用できるキーを選択します。キーと本人接続セッションはPortalのサーバー内で保管します。",
@@ -13,10 +13,10 @@ const ja = {
   permissionsNote: "本人の /me を委任されたアクセス許可で読み取ります。返却される属性はMicrosoft Graphの権限・テナント設定・登録内容に依存します。表示用の属性値だけを認可や本人確認の根拠にしないでください。必要な権限は管理者が確認し、読み取りのために書き込み権限を追加しません。",
   permissionsReference: "Microsoft公式：ユーザーの取得と必要な権限", upstreamSelect: "GatewayからMicrosoft Graphへ送る取得項目",
   execute: "自分のユーザー情報を取得", running: "APIを確認しています…", login: "Microsoftで認証する", waiting: "Microsoft認証の完了を待っています。別タブで認証を完了すると、自動で本人のユーザー情報を取得します。",
-  loginNote: "選択したキーでGraph APIを先に呼び出し、本人接続が必要な場合だけMicrosoft認証へ進みます。Portalと同じMicrosoftアカウントを使用してください。",
+  loginNote: "アクセストークンではGatewayが本人の権限を引き継ぎます。APIキーで本人接続を求められた場合は、Portalと同じMicrosoftアカウントで認証してください。",
   check: "認証状況を確認", expired: "認証用URLの有効期限が切れました。「自分のユーザー情報を取得」からやり直してください。", timedOut: "認証状況の確認に失敗しました。接続を確認してから、認証状況をもう一度確認できます。",
   completed: "本人のユーザー情報を取得しました", sessionUpdatePending: "APIの取得は成功しました。セッション値の更新確定は次回のアクセス時に再試行します。再認証は不要です。",
-  noResponse: "APIキーを選んで実行すると、実際のユーザー情報の応答をここに表示します。", requestId: "リクエストID", duration: "応答時間", response: "実行結果", guide: "組み込みガイド", schema: "リクエスト・応答仕様", copy: "コピー", copied: "コピーしました", copyFailed: "コピーできませんでした。コードを選択してコピーしてください。",
+  noResponse: "認証方式を選んで実行すると、実際のユーザー情報の応答をここに表示します。", requestId: "リクエストID", duration: "応答時間", response: "実行結果", guide: "組み込みガイド", schema: "リクエスト・応答仕様", copy: "コピー", copied: "コピーしました", copyFailed: "コピーできませんでした。コードを選択してコピーしてください。",
   guideIntro: "呼び出しアプリのバックエンドが、確認済み利用者・購読・本人接続セッションを紐付けて管理します。画面へ渡すのは認証用URL、完了状態、業務の応答だけです。",
   steps: ["バックエンドから購読キーを付けてGraph APIを呼ぶ。保存済み本人接続があれば、そのセッションも付ける。", "409 ConnectionRequired のときだけ、仮セッションと認証取引をバックエンドへ保存し、loginUrl を利用者へ表示する。", "バックエンドから認証状況を確認し、完了時の tenantId / ownerId とアプリのログイン本人が一致することを検証する。", "本人専用の接続セッションを付けてGraph APIを再実行する。日次の値更新はバックエンドで保存・確定する。"],
   lifetime: "既定では無操作7日・認証完了から最長30日。業務APIの正常な本人セッション検証が期限の延長対象です。完了確認や期限維持だけの通信では延長しません。",
@@ -28,8 +28,10 @@ const ja = {
   requestHeaders: "購読キーと、保存済みの場合だけ本人接続セッションを付けます。", noRequestBody: "GETリクエストに本文はありません。",
   subscriptionHeader: "このAPIの利用を許可された購読キー。バックエンドだけで保管します。", sessionHeader: "認証済み本人に対応する接続セッション。初回は省略します。",
   connectionRequired: "本人接続が必要であることを示す固定コードです。", authenticationData: "バックエンドで保管する認証取引です。利用者画面へ渡すのはloginUrlだけです。",
+  reauthenticate: "Graphの追加認証を行う",
   errors: {
     AuthenticationRequired: "Portalのサインインが必要です。ページを開き直してください。", AuthenticationUnavailable: "Portalの認証を確認できませんでした。時間をおいて再度お試しください。", RequestNotAllowed: "この操作は許可されていません。", InvalidRequest: "入力を確認してから実行してください。", GatewayNotConfigured: "Gatewayの接続先が設定されていません。",
+    ApiAuthenticationRequired: "試用のアクセストークン認証へ再接続してください。", ApiAuthenticationBusy: "試用の認証を更新しています。少し待ってから実行してください。", ApiAuthenticationUnavailable: "試用のアクセストークンを確認できませんでした。時間をおいて再度お試しください。",
     ApiKeyUnavailable: "選択したキーを利用できません。一覧を更新してください。", ApiKeyAccessUnavailable: "キーの利用権限を確認できませんでした。時間をおいて一覧を更新してください。", GatewayUnavailable: "Gatewayに接続できませんでした。時間をおいて再実行してください。", GatewayResponseInvalid: "Gatewayの応答を確認できませんでした。", GraphAccessDenied: "Microsoft Graphへのアクセスが許可されていません。", GraphReauthenticationRequired: "接続の再認証、または条件付きアクセスの確認が必要です。基盤管理者へ確認してください。",
     RateLimitExceeded: "呼び出し上限に達しました。時間をおいて再実行してください。", ConnectionIdentityMismatch: "Microsoft認証の本人がPortalのログイン本人と一致しません。同じアカウントで認証してください。", ConnectionStateUnavailable: "本人接続の保存状態を確認できませんでした。時間をおいて再実行してください。", SessionUpdateRequired: "本人接続の更新を完了できませんでした。時間をおいて再実行してください。",
   },
@@ -40,7 +42,7 @@ export type GraphToolDictionary = typeof ja;
 
 /** Graph機能を英語で案内する、同じ公開情報の辞書です。 */
 const en: GraphToolDictionary = {
-  connected: "Microsoft Graph uses the live API", real: "Live API", mock: "Sample", mockNotice: "Microsoft Graph runs with your selected API key. Other tools are interface samples.",
+  connected: "Microsoft Graph uses the live API", real: "Live API", mock: "Sample", mockNotice: "Microsoft Graph runs with your selected authentication method. Other tools are interface samples.",
   description: "Retrieve the signed-in user's information with Microsoft Graph /me. Explore the API contract and test the complete flow from connecting your account to reading user attributes.",
   key: "API key for this request", chooseKey: "Select an API key", refreshKeys: "Refresh list", loadingKeys: "Checking available API keys.", noKeys: "No active key is available for this API.", manageKeys: "Manage API keys",
   keyHelp: "Choose a key owned by one of your current groups. Key values and connection sessions remain on the Portal server.",
@@ -50,10 +52,10 @@ const en: GraphToolDictionary = {
   permissionsNote: "Reads the signed-in user's /me with delegated permissions. Returned attributes depend on Microsoft Graph permissions, tenant configuration, and directory data. Do not use display attributes alone for authorization or identity verification. Administrators should verify required permissions without adding write permissions for a read-only task.",
   permissionsReference: "Microsoft documentation: get a user and required permissions", upstreamSelect: "Fields the Gateway requests from Microsoft Graph",
   execute: "Retrieve my user information", running: "Checking the API…", login: "Authenticate with Microsoft", waiting: "Waiting for Microsoft authentication. Once you finish in the other tab, your user information will load automatically.",
-  loginNote: "The selected key calls Graph first. Microsoft authentication is requested only when a personal connection is needed. Use the same Microsoft account as your Portal sign-in.",
+  loginNote: "With an access token, the Gateway calls Graph on your behalf. If an API key request asks for a personal connection, use the same Microsoft account as your Portal sign-in.",
   check: "Check authentication", expired: "The login URL expired. Start again with Retrieve my user information.", timedOut: "Authentication status could not be checked. Check your connection and try checking again.",
   completed: "User information retrieved", sessionUpdatePending: "The API request succeeded. Session update confirmation will be retried on your next request. You do not need to authenticate again.",
-  noResponse: "Select an API key and run the request to see the actual user information response here.", requestId: "Request ID", duration: "Duration", response: "Result", guide: "Integration guide", schema: "Request and response", copy: "Copy", copied: "Copied", copyFailed: "Copy failed. Select the code and copy it manually.",
+  noResponse: "Select an authentication method and run the request to see your user information here.", requestId: "Request ID", duration: "Duration", response: "Result", guide: "Integration guide", schema: "Request and response", copy: "Copy", copied: "Copied", copyFailed: "Copy failed. Select the code and copy it manually.",
   guideIntro: "Your application's backend binds the verified user, subscription, and personal connection session. Only the login URL, completion status, and business response are sent to the UI.",
   steps: ["Call Graph from your backend with a subscription key and, when available, the user's saved connection session.", "Only on 409 ConnectionRequired, save the provisional session and authentication transaction on your backend, then display loginUrl.", "Check status on the backend and compare the completed tenantId / ownerId with your verified application user.", "Retry Graph with that user's connection session. Store and confirm daily value updates on the backend."],
   lifetime: "Defaults are 7 days of inactivity and a maximum of 30 days after authentication. Successful session validation for business requests can extend inactivity expiry. Status polling and keepalive traffic cannot.",
@@ -65,8 +67,10 @@ const en: GraphToolDictionary = {
   requestHeaders: "Include the authorized subscription key and the personal connection session when one is already saved.", noRequestBody: "The GET request has no body.",
   subscriptionHeader: "A subscription key authorized for this API. Store it only on your backend.", sessionHeader: "The connection session bound to the verified user. Omit it on the first request.",
   connectionRequired: "A fixed error code indicating that a personal connection is required.", authenticationData: "An authentication transaction retained by the backend. Only loginUrl is passed to the user interface.",
+  reauthenticate: "Complete additional Graph authentication",
   errors: {
     AuthenticationRequired: "Sign in to the Portal again.", AuthenticationUnavailable: "Portal authentication could not be checked. Try again later.", RequestNotAllowed: "This request is not allowed.", InvalidRequest: "Check the input and try again.", GatewayNotConfigured: "The Gateway origin is not configured.",
+    ApiAuthenticationRequired: "Reconnect access token authentication to try this API.", ApiAuthenticationBusy: "API authentication is refreshing. Wait a moment and try again.", ApiAuthenticationUnavailable: "The API access token could not be checked. Try again later.",
     ApiKeyUnavailable: "This API key is unavailable. Refresh the list.", ApiKeyAccessUnavailable: "API key access could not be checked. Refresh the list later.", GatewayUnavailable: "The Gateway could not be reached. Try again later.", GatewayResponseInvalid: "The Gateway returned an unexpected response.", GraphAccessDenied: "Access to Microsoft Graph was denied.", GraphReauthenticationRequired: "Reauthentication or a conditional access check is required. Contact your platform administrator.",
     RateLimitExceeded: "The request limit was reached. Try again later.", ConnectionIdentityMismatch: "The Microsoft account does not match your Portal account. Authenticate with the same account.", ConnectionStateUnavailable: "The saved connection state could not be checked. Try again later.", SessionUpdateRequired: "The connection update could not be completed. Try again later.",
   },

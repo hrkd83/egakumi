@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiKeyIdSchema } from "./api-keys/contracts.ts";
+import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
 import type { DecisionAnswer, DecisionInput, DecisionJson, DecisionModel, DecisionResult } from "./decision-types.ts";
 
 /**
@@ -57,7 +57,7 @@ export const decisionInputSchema = z.object({
 }).strict();
 
 /** 実行要求にだけ台帳IDを付け、コード例に購読情報が混ざることを防ぎます。 */
-export const decisionExecutionSchema = decisionInputSchema.extend({ apiKeyId: apiKeyIdSchema });
+export const decisionExecutionSchema = z.union([decisionInputSchema.safeExtend(tryApiKeyFields), decisionInputSchema.safeExtend(tryBearerFields)]);
 
 const probability = z.number().finite().min(0).max(1);
 const summarySchema = z.object({

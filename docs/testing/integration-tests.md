@@ -4,6 +4,17 @@
 
 構築資材の試験は [構築テスト仕様書](construction-tests.md)、開発手順は [DEVELOPMENT.md](../../DEVELOPMENT.md)、導入順は [README.md](../../README.md) を参照してください。
 
+## 5アプリ構成でのEntra受入
+
+[工程3〜8](../reference/entra-app-rollout-plan.md#工程38の資材と受入条件)の実接続を同じ資材revisionで確認します。各項目の実環境結果は未実施です。
+
+| 経路 | 確認 |
+| --- | --- |
+| Portal認証 | 独立したPortalアプリのログインとログアウト、管理Graph、定期照合、既存ユーザーとキー所有権 |
+| API試用 | キー／Bearerで同じモデルAPI、SSE、非同期、Realtimeを呼ぶ。別本人・期限切れを拒否し、必要時に追加認証する |
+| Graph | 購読キーはToolsとCredentialの本人接続、Bearerはegakumi-apiのOBOで同じ本人の結果を得る。Graphの追加認証・同意不足・テナント不一致も確認する |
+| Codex | 選んだCLIとDesktopでPKCE、トークン更新、ResponsesのSSE、ツール、先行端末の切り戻しを確認する |
+
 ## 1. 対象と仕様の基準
 
 - 実施時には、この公開コードのrevisionと対象環境の設定を固定します。過去の非公開実行結果を合格の根拠に使いません。

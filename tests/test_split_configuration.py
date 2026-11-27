@@ -349,6 +349,9 @@ class SplitConfigurationTests(unittest.TestCase):
                 if portal_section:
                     # Portal の配置制約を検査する前に、params の型で拒否されないようにします。
                     parameters["portal"] = {"publicHostName": "portal.example.com"}
+                if path == ("codex",):
+                    # paramsを有効なオブジェクトにしてconfig側の配置制約まで到達させます。
+                    parameters["codex"] = {"clientId": fixture()["subscriptionId"]}
                 with self.subTest(path=".".join(path), empty=not value):
                     with self.assertRaisesRegex(ConfigurationError, r"move.*params\.") as caught:
                         self.sources(options, parameters)

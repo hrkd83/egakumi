@@ -1,5 +1,7 @@
 "use client";
 
+import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+
 import { useFieldIds } from "@/lib/use-field-ids";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -96,6 +98,7 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
   const apiId = model?.apiId ?? "";
   const choicesReady = keyChoices.apiId === apiId && keyChoices.status === "ready";
   const selectedKey = choicesReady ? keyChoices.keys.find((key) => key.id === apiKeyId) : undefined;
+  const authentication = useTryAuthentication(selectedKey?.id);
   const loading = status === "loading";
   const parsed = textGenerationInputSchema.safeParse({ ...input, modelId: model?.id, operationId: model?.operationId, ...(model?.maxOutputTokens === null ? { maxOutputTokens: undefined } : {}) });
   const valid = parsed.success && model !== undefined && (model.maxOutputTokens === null || typeof input.maxOutputTokens === "number" && input.maxOutputTokens >= getMinimumTextOutputTokens(model) && input.maxOutputTokens <= model.maxOutputTokens);
@@ -142,13 +145,13 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
     if (requestRef.current || !model) return;
     store.getState().reconcileInput(input);
     if (!parsed.success || !valid) { fail({ error: { code: "InvalidRequest" } }); return; }
-    if (!selectedKey) { fail({ error: { code: "ApiKeyUnavailable" } }); return; }
+    if (!authentication.credential) { fail({ error: { code: "ApiKeyUnavailable" } }); return; }
     const controller = new AbortController();
     requestRef.current = controller;
     setActiveTab("response");
     begin(input);
     try {
-      const response = await fetch("/api/models/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...parsed.data, apiKeyId: selectedKey.id }), signal: controller.signal });
+      const response = await fetch("/api/models/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...parsed.data, ...authentication.credential }), signal: controller.signal });
       const received = await readModelResponse(response, model, { onStreamUpdate: (partial) => { if (!controller.signal.aborted) updateResult(partial); } });
       if (!controller.signal.aborted) complete(received);
     } catch (error) {
@@ -190,7 +193,9 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
     </>}
     settings={
       <form onSubmit={execute} className="space-y-5">
-      <div className="space-y-2 rounded-lg border border-border bg-white p-3">
+        <TryAuthenticationPicker model={authentication} locale={locale} disabled={loading} />
+
+      <div className="space-y-2 rounded-lg border border-border bg-white p-3" hidden={authentication.selection.mode === "bearer"}>
         <div className="flex items-center justify-between gap-3">
           <label htmlFor={fieldId("integration-api-key")} className="text-sm font-medium">{guide.apiKey}</label>
           <Button type="button" variant="ghost" size="sm" disabled={loading || keyChoices.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button>
@@ -220,7 +225,7 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
       <div className="space-y-2"><label htmlFor={fieldId("integration-message")} className="block text-sm font-medium">{text.prompt}</label><Textarea id={fieldId("integration-message")} required rows={4} maxLength={MAX_TEXT_MESSAGE_CHARACTERS} disabled={loading} value={input.message} onChange={(event) => updateInput({ message: event.target.value })} placeholder={SAMPLE_TEXT_PROMPT} className="bg-white text-sm leading-7" /></div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-lg text-sm leading-6 text-muted-foreground">{guide.fixedNotice}</p>
-        <div className="flex items-center gap-2">{loading && <Button type="button" variant="outline" size="sm" onClick={cancelRequest}><Square className="size-3" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={loading || !valid || !selectedKey} className="gap-2">{loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{loading ? guide.running : guide.run}</Button></div>
+        <div className="flex items-center gap-2">{loading && <Button type="button" variant="outline" size="sm" onClick={cancelRequest}><Square className="size-3" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={loading || !valid || !authentication.credential} className="gap-2">{loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{loading ? guide.running : guide.run}</Button></div>
       </div>
       {!valid && <p role="alert" className="text-sm text-destructive">{text.errors.InvalidRequest}</p>}
     </form>

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import { ApiKeyError, type ApiKeyActor, type ApiKeyRecord } from "../lib/api-keys/contracts.ts";
+import { ApiAuthenticationError } from "../lib/api-auth/settings.ts";
 import type { PrivateState, SharedStateStore, StateTransaction } from "../lib/connection-session/client.ts";
 import { ConnectionSessionClient, ConnectionSessionError } from "../lib/connection-session/client.ts";
 import { getGraphToolEnvironment, handleGraphToolConnection, handleGraphToolKeys, handleGraphToolProfile, type GraphToolDependencies } from "../lib/graph-tool-server.ts";
@@ -71,6 +72,80 @@ async function body(response: Response): Promise<Record<string, unknown>> {
 function challenge(): Response { return Response.json({ error: { code: "ConnectionRequired" }, authentication: auth }, { status: 409 }); }
 /** 完了確認はメタデータと検証した本人だけを返します。 */
 function completion(actor: ApiKeyActor = owner): Response { return Response.json({ ...metadata(), status: "complete", tenantId: actor.tenantId, ownerId: actor.objectId }); }
+
+test("GraphのBearerは固定の業務APIへ一度だけ送信し、CMを利用しない", async () => {
+  const app = setup([challenge(), Response.json(profile)]);
+  const token = "fixture." + "b".repeat(20);
+  const selection = { authentication: "bearer" };
+  const status = { ...selection, action: "status" };
+  const dependencies: GraphToolDependencies = {
+    ...app.dependencies,
+    resolveBearer: async () => ({ value: token, expiresAt: Date.now() + 60_000, accessExpiresAt: Date.now() + 700_000, generation: 1,
+      binding: { ...owner, sessionId: "test-portal-session", hash: "c".repeat(64) } }),
+    authorizeBearer: async () => undefined,
+  };
+  assert.equal((await handleGraphToolProfile(request(), dependencies)).status, 409);
+  const stateReads = app.store.reads;
+  assert.deepEqual(await body(await handleGraphToolConnection(request("connection", status), dependencies)), { status: "expired" });
+  const success = await handleGraphToolProfile(request("profile", selection), dependencies);
+  assert.equal(success.status, 200);
+  assert.deepEqual((await body(success)).profile, profile);
+  assert.equal(app.credentialCalls.length, 1);
+  assert.equal(app.store.reads, stateReads);
+  assert.equal(app.calls.length, 2);
+  const call = app.calls[1];
+  const headers = new Headers(call.init.headers);
+  assert.equal(call.url, `${origin}/tools/graph/v1/me`);
+  assert.equal(headers.has("api-key"), false);
+  assert.equal(headers.has("x-core-connection-session"), false);
+  assert.equal(headers.get("authorization"), `Bearer ${token}`);
+});
+
+test("Graphの実行中にPortalのBearerが失効したら本人情報を返さず再送しない", async () => {
+  const app = setup();
+  let authorized = true;
+  let calls = 0;
+  const response = await handleGraphToolProfile(request("profile", { authentication: "bearer" }), {
+    ...app.dependencies,
+    resolveBearer: async () => ({ value: "fixture." + "z".repeat(20), expiresAt: Date.now() + 60_000, accessExpiresAt: Date.now() + 700_000,
+      generation: 1, binding: { ...owner, sessionId: "test-portal-session", hash: "c".repeat(64) } }),
+    authorizeBearer: async () => {
+      if (!authorized) throw new ApiAuthenticationError("ApiAuthenticationRequired", 401);
+    },
+    fetch: async () => { calls++; authorized = false; return Response.json(profile); },
+  });
+  assert.equal(response.status, 401);
+  assert.deepEqual(await body(response), { error: { code: "ApiAuthenticationRequired" } });
+  assert.equal(calls, 1);
+  assert.equal(app.credentialCalls.length, 0);
+});
+
+test("同じテナントのGraph追加認証だけを返し、CMを利用しない", async () => {
+  const expected = Buffer.from('{"access_token":{"acrs":{"essential":true,"value":"c1"}}}');
+  const invalid = Buffer.from('{"id_token":{"nonce":{"essential":true}}}');
+  const baseChallenge = `Bearer authorization_uri="https://login.microsoftonline.com/${owner.tenantId}/oauth2/v2.0/authorize", error="insufficient_claims", claims="`;
+  for (const [challenge, forwarded] of [
+    [baseChallenge + expected.toString("base64") + '"', expected.toString("base64url")],
+    [baseChallenge + invalid.toString("base64") + '"', undefined],
+    [baseChallenge.replace(owner.tenantId, "another-tenant") + expected.toString("base64") + '"', undefined],
+    ['Bearer error="insufficient_claims", claims="synthetic-claims"', undefined],
+  ] as const) {
+    const app = setup([Response.json({ error: { code: "GRAPH_REAUTHENTICATION_REQUIRED" } }, {
+      status: 401, headers: { "www-authenticate": challenge },
+    })]);
+    const response = await handleGraphToolProfile(request("profile", { authentication: "bearer" }), {
+      ...app.dependencies,
+      resolveBearer: async () => ({ value: "fixture." + "b".repeat(20), expiresAt: Date.now() + 60_000, accessExpiresAt: Date.now() + 700_000,
+        generation: 1, binding: { ...owner, sessionId: "test-portal-session", hash: "c".repeat(64) } }),
+      authorizeBearer: async () => undefined,
+    });
+    assert.equal(response.status, 403);
+    assert.deepEqual(await body(response), { error: { code: "GraphReauthenticationRequired" }, ...(forwarded ? { claims: forwarded } : {}) });
+    assert.equal(response.headers.has("www-authenticate"), false);
+    assert.equal(app.store.reads, 0);
+    assert.equal(app.calls.length, 1);
+  }
+});
 
 /** 実時間やネットワークを使わず、共通期限と各要求の中断を進める単調時計です。 */
 function deadlines(context: TestContext) {

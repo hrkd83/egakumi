@@ -310,7 +310,7 @@ class CredentialIdentityRuntimeTests(unittest.TestCase):
         msal.ConfidentialClientApplication.assert_called_once_with(IDENTITY_CLIENT,
             client_credential=SYNTHETIC_SECRET,
             authority='https://login.microsoftonline.com/' + config['azureTenantId'],
-            token_cache=msal.TokenCache.return_value)
+            token_cache=msal.TokenCache.return_value, exclude_scopes=['offline_access'])
 
 
 class CredentialIdentityGatewayTests(unittest.TestCase):

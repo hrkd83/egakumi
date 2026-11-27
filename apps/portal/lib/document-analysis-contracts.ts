@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MAX_BUFFERED_BODY_BYTES, MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
-import { apiKeyIdSchema } from "./api-keys/contracts.ts";
+import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
 import documentContract from "./generated/document-analysis-contract.json" with { type: "json" };
 
 /** 文書ファイルを解析する公開済みのGateway APIです。 */
@@ -16,13 +16,14 @@ export const DOCUMENT_MODELS = ["prebuilt-read", "prebuilt-layout"] as const;
 export const DOCUMENT_MEDIA_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/tiff", "image/bmp", "image/heif", "image/heic", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/html"] as const;
 
 /** ブラウザーから受け付ける選択値です。URL・任意ヘッダーは指定できません。 */
-export const documentAnalysisInputSchema = z.object({ model: z.enum(DOCUMENT_MODELS), apiKeyId: apiKeyIdSchema }).strict();
+const documentInput = z.strictObject({ model: z.enum(DOCUMENT_MODELS) });
+export const documentAnalysisInputSchema = z.union([documentInput.extend(tryApiKeyFields), documentInput.extend(tryBearerFields)]);
 export type DocumentAnalysisModel = typeof DOCUMENT_MODELS[number];
 export type DocumentAnalysisMediaType = typeof DOCUMENT_MEDIA_TYPES[number];
 
 /** 解析失敗時は固定コードだけを公開し、Azureの例外や秘密情報を返しません。 */
 export const documentAnalysisErrorSchema = z.object({
-  error: z.object({ code: z.enum(["AuthenticationRequired", "AuthenticationUnavailable", "RequestNotAllowed", "InvalidRequest", "DocumentTooLarge", "UnsupportedDocument", "DocumentRejected", "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "DocumentAnalysisTimeout", "DocumentAnalysisUnavailable", "DocumentAnalysisFailed", "DocumentResultTooLarge", "RequestCancelled", "DocumentOperationExpired", "DocumentOperationUnavailable"]) }).strict(),
+  error: z.object({ code: z.enum(["AuthenticationRequired", "AuthenticationUnavailable", "RequestNotAllowed", "InvalidRequest", "DocumentTooLarge", "UnsupportedDocument", "DocumentRejected", "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "DocumentAnalysisTimeout", "DocumentAnalysisUnavailable", "DocumentAnalysisFailed", "DocumentResultTooLarge", "RequestCancelled", "DocumentOperationExpired", "DocumentOperationUnavailable"]) }).strict(),
   requestId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).optional(),
   retryAfterSeconds: z.number().int().positive().max(86_400).optional(),
 }).strict();

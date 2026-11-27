@@ -19,6 +19,7 @@ param databaseSettings object
 param vaultName string
 param credentialProviderName string
 param authentication object = {}
+param apiAuthentication object = {}
 param authIdentity object
 param clientId string
 param tenantId string
@@ -43,6 +44,17 @@ module authKeyAccess 'auth-key-access.bicep' = if (!empty(authentication)) {
   params: { vaultName: vaultName, keyName: split(authentication.keyId, '/')[4], authIdentity: authIdentity }
 }
 var authRuntimeIdentity = empty(authentication) ? {} : authIdentity
+resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: vaultName }
+resource apiAuthSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' existing = {
+  parent: vault
+  name: 'core-portal-api-auth-key'
+}
+var apiAuthReaderRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
+resource apiAuthReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(apiAuthentication)) {
+  scope: apiAuthSecret
+  name: guid(apiAuthSecret.id, apiAuthentication.identity.principalId, apiAuthReaderRole)
+  properties: { roleDefinitionId: apiAuthReaderRole, principalId: apiAuthentication.identity.principalId, principalType: 'ServicePrincipal' }
+}
 
 module gatewayEgress 'gateway-egress.bicep' = {
   name: '${stem}-portal-gateway-egress'
@@ -117,11 +129,13 @@ module application 'application.bicep' = if (deployApplication) {
     clientSecretUri: database.outputs.clientSecretUri
     authentication: authentication
     authIdentity: authRuntimeIdentity
+    apiAuthentication: apiAuthentication
     signingSecretUri: database.outputs.signingSecretUri
     expectedEgressIp: expectedEgressIp
     apimResourceId: apiKeys.outputs.apimResourceId
     profileSecretUri: database.outputs.profileSecretUri
   }
+  dependsOn: [apiAuthReader]
 }
 
 // SQL初期化が成功した後のアプリ更新工程でだけ、定期照合を配備します。

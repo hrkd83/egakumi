@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { TryCredential } from "./api-auth/try-credential.ts";
 import { readDocumentAnalysisResponse, DocumentAnalysisResponseError, type DocumentAnalysisModel, type DocumentAnalysisResult } from "./document-analysis-contracts.ts";
 
 /** ブラウザーが持つのは本人に束縛された暗号化参照だけで、Gatewayチケットは含みません。 */
@@ -18,7 +19,7 @@ async function pause(milliseconds: number, signal: AbortSignal): Promise<void> {
 }
 
 /** 受付後は同一オリジンのBFFへ状態を問い合わせ、元のファイルを再送せず完了を待ちます。 */
-export async function waitForDocumentAnalysis(response: Response, model: DocumentAnalysisModel, apiKeyId: string, signal: AbortSignal, dependencies: { fetch?: typeof globalThis.fetch; wait?: typeof pause; onPending?: (operation: DocumentAnalysisPending) => void } = {}): Promise<DocumentAnalysisResult> {
+export async function waitForDocumentAnalysis(response: Response, model: DocumentAnalysisModel, credential: string | TryCredential, signal: AbortSignal, dependencies: { fetch?: typeof globalThis.fetch; wait?: typeof pause; onPending?: (operation: DocumentAnalysisPending) => void } = {}): Promise<DocumentAnalysisResult> {
   let current = response;
   let operation: DocumentAnalysisPending | undefined;
   while (current.status === 202) {
@@ -29,8 +30,9 @@ export async function waitForDocumentAnalysis(response: Response, model: Documen
     if (Date.parse(operation.expiresAt) <= Date.now()) throw new DocumentAnalysisResponseError({ error: { code: "DocumentOperationExpired" } });
     await (dependencies.wait ?? pause)(Math.min(operation.retryAfterSeconds * 1000, Math.max(0, Date.parse(operation.expiresAt) - Date.now())), signal);
     try {
-      current = await (dependencies.fetch ?? globalThis.fetch)("/api/tools/documents/status", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKeyId, handle: operation.handle }), signal });
-      if ([429, 502, 503, 504].includes(current.status)) {
+      current = await (dependencies.fetch ?? globalThis.fetch)("/api/tools/documents/status", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(typeof credential === "string" ? { apiKeyId: credential } : credential), handle: operation.handle }), signal });
+      if ([429, 502, 503, 504].includes(current.status) &&
+          (typeof credential === "string" || credential.authentication !== "bearer")) {
         const seconds = Number(current.headers.get("retry-after"));
         await current.body?.cancel();
         current = Response.json({ ...operation, retryAfterSeconds: Number.isInteger(seconds) && seconds > 0 && seconds <= 86_400 ? seconds : Math.min(60, operation.retryAfterSeconds * 2) }, { status: 202 });

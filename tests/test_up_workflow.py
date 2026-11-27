@@ -61,6 +61,19 @@ class UpWorkflowTests(LifecycleFixture, unittest.TestCase):
         self.assertIn("--execute", hook_arguments("postup", "deploy_applications.py"))
         self.assertEqual(hook_arguments("postprovision", "lifecycle.py"), ["postprovision"])
 
+    def test_five_app_up_does_not_deploy_before_the_manual_registration_handoff(self):
+        config = {**self.config, "codex": {"clientId": self.config["subscriptionId"]}}
+        with mock.patch.object(lifecycle, "load_configuration", return_value=config), \
+             mock.patch.object(lifecycle, "local_preflight") as local, \
+             mock.patch.object(lifecycle, "azure_preflight") as azure, \
+             mock.patch.object(lifecycle, "ArmTransport") as transport, \
+             contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(lifecycle.main(["preup", "--config", str(self.paths.params)]), 1)
+        self.assertIn("azd provision", errors.getvalue())
+        local.assert_not_called()
+        azure.assert_not_called()
+        transport.assert_not_called()
+
     def test_explicit_false_stops_up_before_local_preparation_and_any_azure_access(self):
         config = {**self.config, "publishApis": False}
         with mock.patch.object(lifecycle, "load_configuration", return_value=config), \
@@ -121,7 +134,7 @@ class UpWorkflowTests(LifecycleFixture, unittest.TestCase):
              mock.patch.dict(os.environ, {"WORKFORCE_CONFIG": str(selected)}), \
              contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(applications.main(hook_arguments("postup", "deploy_applications.py")), 0)
-        self.assertEqual(children, ["deploy_gateway.py", "deploy_portal.py"])
+        self.assertEqual(children, ["deploy_gateway.py"])
         self.assertEqual(json.loads((self.paths.state / "latest.json").read_text()), saved)
         self.assertEqual(selected.read_text(), "{}")
 

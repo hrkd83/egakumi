@@ -3,8 +3,10 @@ targetScope = 'resourceGroup'
 param stem string
 param location string
 param tags object
+@allowed(['portal-auth', 'portal-api-auth'])
+param purpose string = 'portal-auth'
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
-  name: 'id-${stem}-portal-auth'
+  name: 'id-${stem}-${purpose}'
   location: location
   tags: tags
 }

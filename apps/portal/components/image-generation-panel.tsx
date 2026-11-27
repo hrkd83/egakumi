@@ -1,5 +1,7 @@
 "use client";
 
+import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+
 import { useFieldIds } from "@/lib/use-field-ids";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -58,6 +60,7 @@ export function ImageGenerationPanel({ models, dictionary, locale, gatewayOrigin
   const apiId = model?.apiId ?? "";
   const keysReady = keyState.apiId === apiId && keyState.status === "ready";
   const selectedKey = keysReady ? keyState.keys.find((key) => key.id === state.apiKeyId) : undefined;
+  const authentication = useTryAuthentication(selectedKey?.id);
   const parsed = imageGenerationInputSchema.safeParse(state.input);
   let payload: Record<string, unknown> | null = null;
   try { if (model && parsed.success) payload = buildImageGenerationRequest(model, parsed.data); } catch { /* 入力途中の値は送信せず、フォームのエラーとして表示します。 */ }
@@ -78,11 +81,11 @@ export function ImageGenerationPanel({ models, dictionary, locale, gatewayOrigin
   /** 表示したプロンプトと設定を送り、接続先とキーはサーバーで解決します。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (controller.current || !payload || !selectedKey || !parsed.success) return;
+    if (controller.current || !payload || !authentication.credential || !parsed.success) return;
     const abort = new AbortController(); controller.current = abort;
     store.setState({ loading: true, tab: "response", result: null, failure: null, cancelled: false });
     try {
-      const response = await fetch("/api/models/images", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...parsed.data, apiKeyId: selectedKey.id }), signal: abort.signal });
+      const response = await fetch("/api/models/images", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...parsed.data, ...authentication.credential }), signal: abort.signal });
       const result = await readImageResponse(response, abort.signal);
       if (!abort.signal.aborted) store.setState({ result });
     } catch (error) { if (!abort.signal.aborted) store.setState({ failure: error instanceof ModelResponseError ? error.failure : { error: { code: "GenerationFailed" } } }); }
@@ -100,7 +103,9 @@ export function ImageGenerationPanel({ models, dictionary, locale, gatewayOrigin
     </>}
     settings={
       <form onSubmit={execute} className="space-y-5">
-      <div className="space-y-2 rounded-lg border border-border bg-white p-3">
+        <TryAuthenticationPicker model={authentication} locale={locale} disabled={state.loading} />
+
+      <div className="space-y-2 rounded-lg border border-border bg-white p-3" hidden={authentication.selection.mode === "bearer"}>
         <div className="flex items-center justify-between gap-3"><label htmlFor={fieldId("image-api-key")} className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || keyState.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button></div>
         <Select value={selectedKey?.id ?? ""} disabled={state.loading || !keysReady || !keyState.keys.length} onValueChange={(apiKeyId) => store.setState({ apiKeyId })}><SelectTrigger id={fieldId("image-api-key")} aria-describedby={fieldId("image-key-help")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{keyState.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block min-w-0 truncate" title={[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}>{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
         <p id={fieldId("image-key-help")} className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
@@ -113,7 +118,7 @@ export function ImageGenerationPanel({ models, dictionary, locale, gatewayOrigin
       <div className="space-y-2"><label htmlFor={fieldId("image-count")} className="text-sm font-medium">{imageText.count}</label><Input id={fieldId("image-count")} type="number" min={model.minImages ?? 1} max={model.maxImages ?? 1} step={1} value={state.input.count ?? 1} disabled={state.loading || model.maxImages === 1} onChange={(event) => updateInput({ count: event.target.valueAsNumber })} /></div>
       <div className="space-y-2"><label htmlFor={fieldId("image-prompt")} className="block text-sm font-medium">{imageText.prompt}</label><Textarea id={fieldId("image-prompt")} rows={4} maxLength={MAX_IMAGE_PROMPT_CHARACTERS} required disabled={state.loading} value={state.input.prompt} placeholder={SAMPLE_IMAGE_PROMPT} onChange={(event) => updateInput({ prompt: event.target.value })} className="bg-white text-sm leading-7" /></div>
       <p className="text-sm leading-6 text-muted-foreground">{imageText.fixedNotice}</p><p className="text-sm leading-6 text-muted-foreground">{imageText.wait}</p>
-      <div className="flex justify-end gap-2">{state.loading && <Button type="button" size="sm" variant="outline" onClick={cancel}><Square className="size-3" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={state.loading || !payload || !selectedKey || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{state.loading ? imageText.running : imageText.run}</Button></div>
+      <div className="flex justify-end gap-2">{state.loading && <Button type="button" size="sm" variant="outline" onClick={cancel}><Square className="size-3" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={state.loading || !payload || !authentication.credential || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{state.loading ? imageText.running : imageText.run}</Button></div>
       {!payload && <p role="alert" className="text-sm text-destructive">{text.errors.InvalidRequest}</p>}
     </form>
     }

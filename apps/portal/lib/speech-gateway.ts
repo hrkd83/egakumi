@@ -5,11 +5,12 @@ import { isAllowedPortalQuery } from "./portal-query.ts";
 import { containsModelCredential } from "./model-credential.ts";
 
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
-import { getApiKeyService } from "./api-keys/service.ts";
+import { apiAuthenticationFailure, gatewayExecutionHeaders, resolveGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
+import type { PortalBearer } from "./api-auth/service.ts";
 import { getSpeechModels } from "./model-catalog.ts";
 import { getPublicModelGatewayOrigin } from "./model-public-config.ts";
 import { buildSpeechRequest, getSpeechEndpoint, getSpeechHeaders, validateSpeechModel } from "./speech-integration.ts";
-import { MAX_SPEECH_AUDIO_BYTES, MAX_SPEECH_JSON_BYTES, MAX_SPEECH_UPLOAD_BYTES, speechExecutionSchema, type SpeechInput } from "./speech-request.ts";
+import { MAX_SPEECH_AUDIO_BYTES, MAX_SPEECH_JSON_BYTES, MAX_SPEECH_UPLOAD_BYTES, speechExecutionSchema } from "./speech-request.ts";
 import { parseSpeechAudio, parseSpeechTranscript, readSpeechBody } from "./speech-response.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
 import type { SpeechModel } from "./model-types.ts";
@@ -22,6 +23,7 @@ export type SpeechDependencies = {
   readModels?: () => readonly SpeechModel[] | Promise<readonly SpeechModel[]>;
   readGatewayEnvironment?: () => Promise<{ origin: string }>;
   resolveSubscriptionKey?: (actor: ApiKeyActor, keyId: string, apiId: string) => Promise<string>;
+  resolveBearer?: () => Promise<PortalBearer>;
   fetch?: typeof globalThis.fetch; timeoutMs?: number;
 };
 
@@ -46,7 +48,7 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
   if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   const maximumBody = MAX_BUFFERED_BODY_BYTES;
   if (Number(request.headers.get("content-length") ?? 0) > maximumBody) return failure("InvalidRequest", 413);
-  let input: SpeechInput & { apiKeyId: string }; let uploadedAudio: Uint8Array | undefined;
+  let input: ReturnType<typeof speechExecutionSchema.parse>; let uploadedAudio: Uint8Array | undefined;
   try {
     const bytes = await readSpeechBody(request.body, maximumBody, request.signal);
     if (multipart) {
@@ -81,16 +83,19 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
   let endpoint: string;
   try { const environment = dependencies.readGatewayEnvironment ? await dependencies.readGatewayEnvironment() : { origin: getPublicModelGatewayOrigin() }; if (!environment.origin) throw new Error("Missing gateway origin"); endpoint = getSpeechEndpoint(model, environment.origin); }
   catch { return failure("GatewayNotConfigured", 503); }
-  let key: string;
+  let credential: GatewayCredential;
   try {
-    key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId)))(actor, input.apiKeyId, model.apiId);
-    if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new Error("Invalid key");
-  } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
+    credential = await resolveGatewayCredential(request, actor, input, model.apiId, new URL(endpoint).origin,
+      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+  } catch (error) {
+    const apiAuth = apiAuthenticationFailure(error);
+    if (apiAuth) return failure(apiAuth.code, apiAuth.status);
+    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   const timeout = modelDeadline(dependencies.timeoutMs); const signal = AbortSignal.any([request.signal, timeout]); const started = performance.now(); let requestId: string | undefined;
   try {
     const upstream = await (dependencies.fetch ?? globalThis.fetch)(endpoint, { method: "POST", redirect: "error", cache: "no-store", signal, body,
-      headers: { ...getSpeechHeaders(model), ...(contentType ? { "Content-Type": contentType } : {}), "api-key": key } });
+      headers: gatewayExecutionHeaders({ ...getSpeechHeaders(model), ...(contentType ? { "Content-Type": contentType } : {}) }, credential) });
     const identifier = upstream.headers.get("apim-request-id"); if (identifier && /^[a-zA-Z0-9_-]{1,128}$/.test(identifier)) requestId = identifier;
     const details = requestId ? { requestId } : {};
     if (!upstream.ok) {
@@ -103,9 +108,9 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
     if ((model.kind === "tts" ? !["audio/wav", "audio/x-wav"].includes(mediaType ?? "") : mediaType !== "application/json") || Number(upstream.headers.get("content-length") ?? 0) > maximum) { void upstream.body?.cancel().catch(() => undefined); return failure("GenerationFailed", 502, details); }
     const bytes = await readSpeechBody(upstream.body, maximum, signal);
     // WAVの付随チャンクやJSONの追加項目へ資格情報が反射されても、ブラウザーへ渡しません。
-    if (Buffer.from(bytes).includes(Buffer.from(key))) return failure("GenerationFailed", 502, details);
+    if (Buffer.from(bytes).includes(Buffer.from(credential.value))) return failure("GenerationFailed", 502, details);
     const value: unknown = model.kind === "tts" ? null : JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-    if (model.kind !== "tts" && containsModelCredential(value, key)) return failure("GenerationFailed", 502, details);
+    if (model.kind !== "tts" && containsModelCredential(value, credential.value)) return failure("GenerationFailed", 502, details);
     const durationMs = Math.round(performance.now() - started);
     const result = model.kind === "tts" ? parseSpeechAudio(bytes, Buffer.from(bytes).toString("base64"), model, durationMs, requestId)
       : parseSpeechTranscript(value, model, durationMs, requestId);

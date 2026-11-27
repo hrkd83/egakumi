@@ -2,15 +2,18 @@ import { MAX_BUFFERED_BODY_BYTES } from "./model-runtime-limits.ts";
 import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 
+import { randomUUID } from "node:crypto";
 import WebSocket, { type RawData } from "ws";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
-import { getApiKeyService } from "./api-keys/service.ts";
+import { apiAuthenticationFailure, readGatewayBearer, resolveGatewayCredential, watchGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
+import { getPortalApiAuthentication, type PortalApiAuthentication, type PortalBearer } from "./api-auth/service.ts";
+import type { TryCredential } from "./api-auth/try-credential.ts";
 import { getAuthEnvironment } from "./auth-environment.ts";
 import { getRealtimeModels } from "./model-catalog.ts";
 import { getPublicModelGatewayOrigin } from "./model-public-config.ts";
 import { getTextGenerationEndpoint } from "./model-integration.ts";
 import type { RealtimeModel } from "./model-types.ts";
-import { openRealtimeCallHandle, sealRealtimeCallHandle, type RealtimeCallHandle } from "./realtime-call-handle.ts";
+import { bearerRealtimeCallSchema, openRealtimeCallHandle, sealRealtimeCallHandle, type RealtimeCall } from "./realtime-call-handle.ts";
 import { REALTIME_MAX_DURATION_MS, realtimeStopSchema, realtimeStreamEventSchema, realtimeWebRtcExecutionSchema, resolveRealtimeOutputTokens, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
 import { readSpeechBody } from "./speech-response.ts";
 import { REALTIME_CONVERSATION_INSTRUCTIONS as conversationInstructions } from "./realtime-protocol.ts";
@@ -28,6 +31,8 @@ export type RealtimeWebRtcDependencies = {
   readModels?: () => readonly RealtimeModel[] | Promise<readonly RealtimeModel[]>;
   readGatewayEnvironment?: () => Promise<{ origin: string }>;
   resolveSubscriptionKey?: (actor: ApiKeyActor, keyId: string, apiId: string) => Promise<string>;
+  resolveBearer?: () => Promise<PortalBearer>;
+  bearerOperations?: Pick<PortalApiAuthentication, "sealOperation" | "openOperation" | "stopRealtimeCall">;
   readHandleSecret?: () => string; fetch?: typeof globalThis.fetch;
   connectWebSocket?: (url: string, headers: Record<string, string>, signal: AbortSignal) => Promise<RealtimeControlSocket>;
   timeoutMs?: number;
@@ -109,32 +114,48 @@ async function openControlSocket(url: string, headers: Record<string, string>, s
   };
 }
 
-/** 呼び出しごとに所属・製品・有効状態を確認し、キー実値をサーバー内だけで使用します。 */
-async function resolveKey(dependencies: RealtimeWebRtcDependencies, actor: ApiKeyActor, keyId: string, apiId: string): Promise<string> {
-  const key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, api) => getApiKeyService().executionKey(owner, id, api)))(actor, keyId, apiId);
-  if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new Error("Invalid subscription credential"); return key;
+/** 種類ごとの認証失敗を、秘密情報のない固定応答へ変換します。 */
+function credentialFailure(error: unknown): Response {
+  const apiAuth = apiAuthenticationFailure(error);
+  if (apiAuth) return failure(apiAuth.code, apiAuth.status);
+  return error instanceof ApiKeyError && error.status < 500
+    ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503);
 }
 
 /** 上流の所有者情報を、期限より長く使える復旧参照にしないための検査です。 */
-function captureCall(response: Response, actor: ApiKeyActor, apiKeyId: string, modelId: string): RealtimeCallHandle | undefined {
+function captureCall(response: Response, actor: ApiKeyActor, selection: TryCredential, modelId: string): RealtimeCall | undefined {
   const callId = response.headers.get("X-Core-Call-Id") ?? ""; const ticket = response.headers.get("X-Core-Call-Ticket") ?? "";
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(callId) || !/^[A-Za-z0-9_.-]{1,4096}$/.test(ticket)) return;
   try {
     const payload = JSON.parse(Buffer.from(ticket.split(".")[0], "base64url").toString("utf8")); const now = Date.now();
     // APIMとアプリの時計差を許容しても、暗号化参照自体はローカルの590秒以内に制限します。
     // 実際の所有者・期限は、observer／hangupを受けるAPIMが署名とともに検証します。
-    if (payload.v !== 3 || payload.callId !== callId || !Number.isInteger(payload.exp) || payload.exp * 1000 <= now || payload.exp * 1000 > now + 660_000) return;
-    return { version: 1, tenantId: actor.tenantId, objectId: actor.objectId, apiKeyId, modelId, callId, ticket, expiresAt: Math.min(payload.exp * 1000, now + 590_000) };
+    const bearer = selection.authentication === "bearer";
+    if (payload.v !== (bearer ? 4 : 3) || payload.callId !== callId || !Number.isInteger(payload.exp)
+      || payload.exp * 1000 <= now || payload.exp * 1000 > now + 660_000) return;
+    if (bearer && (payload.subscriptionId !== "" || payload.callerId !== `user:${actor.tenantId}:${actor.objectId}`)) return;
+    const call = { modelId, callId, ticket, expiresAt: Math.min(payload.exp * 1000, now + 590_000) };
+    return selection.authentication === "bearer" ? { ...call, version: 2 }
+      : { ...call, version: 1, tenantId: actor.tenantId, objectId: actor.objectId, apiKeyId: selection.apiKeyId };
   } catch { return; }
 }
 
 /** 利用者のURLやLocationを追跡せず、固定登録されたhangupへ一度だけ送ります。 */
-async function stopCall(call: RealtimeCallHandle, model: RealtimeModel, origin: string, key: string, fetcher: typeof globalThis.fetch): Promise<boolean> {
+async function stopCall(call: RealtimeCall, model: RealtimeModel, origin: string, credential: GatewayCredential, fetcher: typeof globalThis.fetch,
+  bearerOperations?: RealtimeWebRtcDependencies["bearerOperations"]): Promise<boolean> {
   try {
     validateModel(model); if (model.family !== "realtime" || !model.hangupPath || call.expiresAt <= Date.now()) return false;
     const endpoint = getTextGenerationEndpoint({ path: model.hangupPath.replace("{callId}", encodeURIComponent(call.callId)) }, origin);
-    const response = await fetcher(endpoint, { method: "POST", headers: { "Content-Type": "application/json", "api-key": key, "X-Core-Call-Ticket": call.ticket }, body: "{}", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(12_000) });
-    void response.body?.cancel().catch(() => undefined); return response.status === 200 || response.status === 204;
+    const send = async (headers: Record<string, string>, ticket: string, signal: AbortSignal) => {
+      const response = await fetcher(endpoint, { method: "POST", headers: {
+        "Content-Type": "application/json", ...headers, "X-Core-Call-Ticket": ticket,
+      }, body: "{}", redirect: "error", cache: "no-store", signal });
+      void response.body?.cancel().catch(() => undefined);
+      return response.status === 200 || response.status === 204;
+    };
+    if (credential.bearer) return await (bearerOperations ?? getPortalApiAuthentication()).stopRealtimeCall(credential.bearer, call,
+      (access, ticket, signal) => send({ Authorization: `Bearer ${access}` }, ticket, signal));
+    return await send(credential.headers, call.ticket, AbortSignal.timeout(12_000));
   } catch { return false; }
 }
 
@@ -143,16 +164,29 @@ export async function handleRealtimeStop(request: Request, dependencies: Realtim
   const actor = await authorize(request, dependencies); if (actor instanceof Response) return actor;
   if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
-  let call: RealtimeCallHandle; let model: RealtimeModel; let origin: string;
+  let call: RealtimeCall; let model: RealtimeModel; let origin: string; let bearer: PortalBearer | undefined;
   try {
     const input = realtimeStopSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readSpeechBody(request.body, 17_000, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])))));
-    call = openRealtimeCallHandle(input.handle, (dependencies.readHandleSecret ?? (() => getAuthEnvironment().secret))(), actor);
-    const selected = (await (dependencies.readModels ?? getRealtimeModels)()).find((entry) => entry.id === call.modelId); if (!selected) throw new Error("Missing model"); model = selected; validateModel(model);
     origin = (dependencies.readGatewayEnvironment ? await dependencies.readGatewayEnvironment() : { origin: getPublicModelGatewayOrigin() ?? "" }).origin;
+    if (input.handle.startsWith("r2.")) {
+      bearer = await (dependencies.resolveBearer?.() ?? readGatewayBearer(request, actor, origin));
+      call = bearerRealtimeCallSchema.parse(await (dependencies.bearerOperations ?? getPortalApiAuthentication()).openOperation(bearer, "realtime", input.handle.slice(3)));
+      if (call.expiresAt <= Date.now()) return failure("InvalidRequest", 400);
+    } else {
+      call = openRealtimeCallHandle(input.handle, (dependencies.readHandleSecret ?? (() => getAuthEnvironment().secret))(), actor);
+    }
+    const selected = (await (dependencies.readModels ?? getRealtimeModels)()).find((entry) => entry.id === call.modelId); if (!selected) throw new Error("Missing model"); model = selected; validateModel(model);
     getTextGenerationEndpoint(model, origin);
-  } catch { return failure("InvalidRequest", 400); }
-  let key: string; try { key = await resolveKey(dependencies, actor, call.apiKeyId, model.apiId); } catch (error) { return failure(error instanceof ApiKeyError && error.status < 500 ? "ApiKeyUnavailable" : "ApiKeyAccessUnavailable", error instanceof ApiKeyError && error.status < 500 ? 403 : 503); }
-  const confirmed = await stopCall(call, model, origin, key, dependencies.fetch ?? globalThis.fetch);
+  } catch (error) {
+    return apiAuthenticationFailure(error) ? credentialFailure(error) : failure("InvalidRequest", 400);
+  }
+  let credential: GatewayCredential;
+  try {
+    const selection: TryCredential = call.version === 2 ? { authentication: "bearer" } : { apiKeyId: call.apiKeyId };
+    credential = await resolveGatewayCredential(request, actor, selection, model.apiId, origin, dependencies.resolveSubscriptionKey,
+      bearer ? async () => bearer! : undefined);
+  } catch (error) { return credentialFailure(error); }
+  const confirmed = await stopCall(call, model, origin, credential, dependencies.fetch ?? globalThis.fetch, dependencies.bearerOperations);
   return Response.json({ stopStatus: confirmed ? "confirmed" : "unconfirmed" }, { status: confirmed ? 200 : 502, headers: privateHeaders });
 }
 
@@ -163,7 +197,7 @@ export async function handleRealtimeStop(request: Request, dependencies: Realtim
 export async function handleRealtimeWebRtc(request: Request, dependencies: RealtimeWebRtcDependencies): Promise<Response> {
   const actor = await authorize(request, dependencies); if (actor instanceof Response) return actor;
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
-  let input: RealtimeInput & { apiKeyId: string; sdp: string }; let model: RealtimeModel; let origin: string; let selectedVoice: string | undefined;
+  let input: ReturnType<typeof realtimeWebRtcExecutionSchema.parse>; let model: RealtimeModel; let origin: string; let selectedVoice: string | undefined;
   try {
     if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
     input = realtimeWebRtcExecutionSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readSpeechBody(request.body, MAX_BUFFERED_BODY_BYTES, request.signal)))); validateRealtimeSdp(input.sdp);
@@ -176,15 +210,22 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
   } catch { return failure("InvalidRequest", 400); }
   try { origin = (dependencies.readGatewayEnvironment ? await dependencies.readGatewayEnvironment() : { origin: getPublicModelGatewayOrigin() ?? "" }).origin; getTextGenerationEndpoint(model, origin); }
   catch { return failure("GatewayNotConfigured", 503); }
-  let key: string; let secret: string | undefined;
+  let credential: GatewayCredential; let secret: string | undefined;
   try {
-    key = await resolveKey(dependencies, actor, input.apiKeyId, model.apiId);
-    if (model.observer) { const observerKey = await resolveKey(dependencies, actor, input.apiKeyId, model.observer.apiId); if (observerKey !== key) throw new Error("Inconsistent subscription"); }
-    if (model.family === "realtime") { secret = (dependencies.readHandleSecret ?? (() => getAuthEnvironment().secret))(); if (secret.length < 32) return failure("GatewayNotConfigured", 503); }
-  } catch (error) { return failure(error instanceof ApiKeyError && error.status < 500 ? "ApiKeyUnavailable" : "ApiKeyAccessUnavailable", error instanceof ApiKeyError && error.status < 500 ? 403 : 503); }
+    credential = await resolveGatewayCredential(request, actor, input, model.apiId, origin,
+      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+    if (model.observer && credential.scheme === "api-key") {
+      const observer = await resolveGatewayCredential(request, actor, input, model.observer.apiId, origin, dependencies.resolveSubscriptionKey);
+      if (observer.value !== credential.value) throw new Error("Inconsistent subscription");
+    }
+    if (model.family === "realtime" && credential.scheme === "api-key") {
+      secret = (dependencies.readHandleSecret ?? (() => getAuthEnvironment().secret))();
+      if (secret.length < 32) return failure("GatewayNotConfigured", 503);
+    }
+  } catch (error) { return credentialFailure(error); }
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   const cancelled = new AbortController(); const deadline = AbortSignal.timeout(Math.min(dependencies.timeoutMs ?? REALTIME_MAX_DURATION_MS, REALTIME_MAX_DURATION_MS));
-  const signal = AbortSignal.any([request.signal, cancelled.signal, deadline]); const fetcher = dependencies.fetch ?? globalThis.fetch; const connector = dependencies.connectWebSocket ?? openControlSocket;
+  const signal = watchGatewayCredential(credential, AbortSignal.any([request.signal, cancelled.signal, deadline])); const fetcher = dependencies.fetch ?? globalThis.fetch; const connector = dependencies.connectWebSocket ?? openControlSocket;
   const encoder = new TextEncoder(); const started = performance.now(); let consumerClosed = false;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -195,30 +236,36 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
         try { controller.enqueue(encoded); } catch { consumerClosed = true; cancelled.abort(); }
       };
       void (async () => {
-        let socket: RealtimeControlSocket | undefined; let call: RealtimeCallHandle | undefined; let handle: string | undefined; let answerSent = false; let createAttempted = false; let failed = false;
+        let socket: RealtimeControlSocket | undefined; let call: RealtimeCall | undefined; let handle: string | undefined; let answerSent = false; let createAttempted = false; let failed = false;
         // 障害の位置だけを診断します。本文・SDP・本人・購読・通話ID・秘密値は記録しません。
         let stage = "opening-control"; let upstreamStatus: number | undefined;
         const heartbeat = setInterval(() => { try { emit({ type: "status", stage: answerSent ? "receiving" : "connecting", elapsedMs: Math.round(performance.now() - started) }); } catch { cancelled.abort(); } }, 5_000);
         try {
           emit({ type: "status", stage: "connecting", elapsedMs: 0, maximumDurationMs: REALTIME_MAX_DURATION_MS });
           if (model.family === "voice-live") {
-            socket = await connector(websocketEndpoint(model.path, origin), { "api-key": key }, signal);
+            socket = await connector(websocketEndpoint(model.path, origin), { ...credential.headers }, signal);
             await socket.send(voiceLiveOffer(model, input.sdp, input));
           } else {
             createAttempted = true;
-            const upstream = await fetcher(getTextGenerationEndpoint(model, origin), { method: "POST", headers: { "api-key": key, "Content-Type": "application/json", Accept: model.family === "realtime" ? "application/sdp" : "application/json" },
+            const upstream = await fetcher(getTextGenerationEndpoint(model, origin), { method: "POST", headers: { ...credential.headers, "Content-Type": "application/json", Accept: model.family === "realtime" ? "application/sdp" : "application/json" },
               body: JSON.stringify(model.family === "realtime" ? { sdp: input.sdp } : { sdp: input.sdp, instructions: conversationInstructions, voice: selectedVoice }), redirect: "error", cache: "no-store", signal });
             upstreamStatus = upstream.status; stage = "validating-answer";
-            if (model.family === "realtime") { call = captureCall(upstream, actor, input.apiKeyId, model.id); if (call) handle = sealRealtimeCallHandle(call, secret!); }
+            if (model.family === "realtime") {
+              call = captureCall(upstream, actor, input, model.id);
+              if (call?.version === 1) handle = sealRealtimeCallHandle(call, secret!);
+              if (call?.version === 2 && credential.bearer) {
+                handle = `r2.${await (dependencies.bearerOperations ?? getPortalApiAuthentication()).sealOperation(credential.bearer, "realtime", randomUUID(), call, call.expiresAt)}`;
+              }
+            }
             if (model.family === "realtime" ? upstream.status !== 201 : !upstream.ok) { void upstream.body?.cancel().catch(() => undefined); throw new Error("Gateway session creation failed"); }
             const bytes = await readSpeechBody(upstream.body, MAX_BUFFERED_BODY_BYTES, signal); const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-            if (text.includes(key) || call && text.includes(call.ticket)) throw new Error("Credential reflected in response");
+            if (text.includes(credential.value) || call && text.includes(call.ticket)) throw new Error("Credential reflected in response");
             let answer: string;
             if (model.family === "realtime") {
               if (!call || upstream.headers.get("content-type")?.split(";", 1)[0] !== "application/sdp") throw new Error("Invalid owned session answer"); answer = validateRealtimeSdp(text);
               const observerUrl = new URL(websocketEndpoint(model.observer!.path, origin)); observerUrl.searchParams.set("call_id", call.callId);
               stage = "opening-observer";
-              socket = await connector(observerUrl.href, { "api-key": key, "X-Core-Call-Ticket": call.ticket }, signal);
+              socket = await connector(observerUrl.href, { ...credential.headers, "X-Core-Call-Ticket": call.ticket }, signal);
             } else {
               if (upstream.headers.get("content-type")?.split(";", 1)[0] !== "application/json") throw new Error("Invalid session answer");
               const value: unknown = JSON.parse(text); if (!value || typeof value !== "object" || Array.isArray(value)
@@ -237,7 +284,7 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
             if (!kind) continue;
             if (kind === "error" || kind === "rtc.call.error") throw new Error("Service control error");
             if (model.family === "voice-live" && kind === "rtc.call.sdp.created") {
-              if (answerSent) throw new Error("Duplicate session answer"); const answer = validateRealtimeSdp(event.sdp_answer); if (answer.includes(key)) throw new Error("Credential reflected in response");
+              if (answerSent) throw new Error("Duplicate session answer"); const answer = validateRealtimeSdp(event.sdp_answer); if (answer.includes(credential.value)) throw new Error("Credential reflected in response");
               emit({ type: "answer", sdp: answer }); answerSent = true;
             }
             emit({ type: "event", eventType: kind, elapsedMs: Math.round(performance.now() - started) });
@@ -251,9 +298,9 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
           } }
         } catch { failed = !signal.aborted || !answerSent; }
         finally {
-          clearInterval(heartbeat); let stopStatus: "confirmed" | "unconfirmed" | "transport-closed" = "transport-closed";
-          if (model.family === "realtime") stopStatus = call && await stopCall(call, model, origin, key, fetcher) ? "confirmed" : createAttempted ? "unconfirmed" : "transport-closed";
+          clearInterval(heartbeat); cancelled.abort(); let stopStatus: "confirmed" | "unconfirmed" | "transport-closed" = "transport-closed";
           try { await socket?.close(); } catch { if (model.family !== "realtime") stopStatus = "unconfirmed"; }
+          if (model.family === "realtime") stopStatus = call && await stopCall(call, model, origin, credential, fetcher, dependencies.bearerOperations) ? "confirmed" : createAttempted ? "unconfirmed" : "transport-closed";
           if (failed || stopStatus === "unconfirmed") console.warn("Realtime control failed", { family: model.family, stage, upstreamStatus, ownershipCaptured: Boolean(call), answerSent, stopStatus });
           try {
             if (failed) emit({ type: "error", error: { code: deadline.aborted ? "GatewayTimeout" : "GenerationFailed" }, ...(handle && stopStatus !== "confirmed" ? { handle } : {}) });

@@ -329,7 +329,7 @@ class SsmlWafTests(unittest.TestCase):
         properties = self.value(gateway["properties"], parameters)
         pathmap = next(item for item in properties["urlPathMaps"] if item["name"] == "pathmap-portal-auth")["properties"]
         path = next(item for item in pathmap["pathRules"] if item["name"] == "microsoft-auth-callback")
-        self.assertEqual(path["properties"]["paths"], ["/api/auth/callback/microsoft"])
+        self.assertEqual(path["properties"]["paths"], ["/api/auth/callback/microsoft", "/api/api-auth/callback"])
         self.assertTrue(path["properties"]["firewallPolicy"]["id"].endswith("/wafpol-p-auth-abc123"))
         self.assertEqual(path["properties"]["backendAddressPool"], pathmap["defaultBackendAddressPool"])
         self.assertEqual(path["properties"]["backendHttpSettings"], pathmap["defaultBackendHttpSettings"])

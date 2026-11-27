@@ -3,11 +3,12 @@ import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
-import { getApiKeyService } from "./api-keys/service.ts";
+import { apiAuthenticationFailure, gatewayExecutionHeaders, resolveGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
+import type { PortalBearer } from "./api-auth/service.ts";
 import { getImageGenerationModels } from "./model-catalog.ts";
 import { getPublicModelGatewayOrigin } from "./model-public-config.ts";
 import { buildImageGenerationRequest, getImageGenerationHeaders } from "./image-integration.ts";
-import { imageGenerationExecutionSchema, MAX_IMAGE_RESPONSE_BYTES, type ImageGenerationInput } from "./image-request.ts";
+import { imageGenerationExecutionSchema, MAX_IMAGE_RESPONSE_BYTES } from "./image-request.ts";
 import { parseImageGenerationResult } from "./image-response.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
 import type { ImageGenerationModel } from "./model-types.ts";
@@ -21,6 +22,7 @@ export type ImageGenerationDependencies = {
   readModels?: () => readonly ImageGenerationModel[] | Promise<readonly ImageGenerationModel[]>;
   readGatewayEnvironment?: () => Promise<{ origin: string }>;
   resolveSubscriptionKey?: (actor: ApiKeyActor, keyId: string, apiId: string) => Promise<string>;
+  resolveBearer?: () => Promise<PortalBearer>;
   fetch?: typeof globalThis.fetch; timeoutMs?: number;
 };
 
@@ -58,7 +60,7 @@ export async function handleImageGeneration(request: Request, dependencies: Imag
   // WAFの引数値除外は同名queryにも作用するため、本文以外の入力を受け付けません。
   if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
-  let input: ImageGenerationInput & { apiKeyId: string };
+  let input: ReturnType<typeof imageGenerationExecutionSchema.parse>;
   try { input = imageGenerationExecutionSchema.parse(JSON.parse(await readBody(request.body, MAX_BUFFERED_BODY_BYTES, request.signal))); } catch { return failure("InvalidRequest", 400); }
   let model: ImageGenerationModel | undefined;
   try { model = (await (dependencies.readModels ?? getImageGenerationModels)()).find((entry) => entry.id === input.modelId); } catch { return failure("ModelUnavailable", 503); }
@@ -73,17 +75,20 @@ export async function handleImageGeneration(request: Request, dependencies: Imag
     if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) throw new Error("Invalid origin");
     origin = url.origin;
   } catch { return failure("GatewayNotConfigured", 503); }
-  let key: string;
+  let credential: GatewayCredential;
   try {
-    key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId)))(actor, input.apiKeyId, model.apiId);
-    if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new Error("Invalid key");
-  } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
+    credential = await resolveGatewayCredential(request, actor, input, model.apiId, origin,
+      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+  } catch (error) {
+    const apiAuth = apiAuthenticationFailure(error);
+    if (apiAuth) return failure(apiAuth.code, apiAuth.status);
+    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
   const timeout = modelDeadline(dependencies.timeoutMs);
   const signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();
   let requestId: string | undefined;
   try {
-    const upstream = await (dependencies.fetch ?? globalThis.fetch)(new URL(model.path, origin), { method: "POST", redirect: "error", cache: "no-store", signal, body, headers: { ...getImageGenerationHeaders(), "api-key": key } });
+    const upstream = await (dependencies.fetch ?? globalThis.fetch)(new URL(model.path, origin), { method: "POST", redirect: "error", cache: "no-store", signal, body, headers: gatewayExecutionHeaders(getImageGenerationHeaders(), credential) });
     const identifier = upstream.headers.get("apim-request-id");
     if (identifier && /^[a-zA-Z0-9_-]{1,128}$/.test(identifier)) requestId = identifier;
     const details = requestId ? { requestId } : {};
@@ -96,7 +101,7 @@ export async function handleImageGeneration(request: Request, dependencies: Imag
     const raw = await readBody(upstream.body, MAX_IMAGE_RESPONSE_BYTES, signal);
     const value: unknown = JSON.parse(raw);
     // 想定外の上流がキーを正常応答へ反射しても、ブラウザーへの転送を止めます。
-    if (containsModelCredential(value, key, raw)) return failure("GenerationFailed", 502, details);
+    if (containsModelCredential(value, credential.value, raw)) return failure("GenerationFailed", 502, details);
     return Response.json(parseImageGenerationResult(value, model.id, Math.round(performance.now() - started), requestId), { headers });
   } catch {
     const details = requestId ? { requestId } : {};

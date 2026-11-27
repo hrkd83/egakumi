@@ -18,7 +18,7 @@ const cohereResponse = z.object({
   embeddings: z.object({ float: z.array(vector).min(1) }),
   meta: z.object({ billed_units: z.object({ input_tokens: tokenCount }).optional() }).optional(),
 });
-const publicErrors = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable"]);
+const publicErrors = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable"]);
 
 /** 上流JSONを検証し、順序・件数・次元が要求と一致した実ベクトルだけを成功にします。 */
 export function parseEmbeddingResult(value: unknown, model: EmbeddingModel, input: EmbeddingInput, durationMs: number, requestId?: string): EmbeddingResult {

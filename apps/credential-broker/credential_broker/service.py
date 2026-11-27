@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 from .caller import UserCaller
 from .cm import CmError
 from .identity import IdentityError
+from .obo import GraphOboError
 from .store import (StoreCapacity, StoreConflict, StoreNotAuthorized, StoreNotFound,
                     StoreRateLimited, StoreRotationConflict, StoreRotationExpired, StoreUnavailable)
 
@@ -62,13 +63,19 @@ def browser_cookie(value):
 
 
 class BrokerService:
-    def __init__(self, settings, store, identity, cm, *, clock=time.time, random=secrets.token_hex):
+    def __init__(self, settings, store, identity, cm, *, graph_obo=None, clock=time.time, random=secrets.token_hex):
         self.settings, self.store, self.identity, self.cm = settings, store, identity, cm
+        self.graph_obo = graph_obo
         self.clock, self.random = clock, random
 
     def authenticate(self, key):
         if (not isinstance(key, str) or not hmac.compare_digest(key.encode(), self.settings.shared_key.encode())):
             raise BrokerError("BrokerAuthenticationRequired", 401)
+
+    def graph_token(self, assertion, caller):
+        if self.graph_obo is None:
+            raise GraphOboError()
+        return self.graph_obo.exchange(assertion, caller)
 
     def profile(self, name):
         if not isinstance(name, str) or name not in self.settings.profiles:

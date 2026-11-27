@@ -3,7 +3,8 @@ import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 import { containsModelCredential } from "./model-credential.ts";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
-import { getApiKeyService } from "./api-keys/service.ts";
+import { apiAuthenticationFailure, resolveGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
+import type { PortalBearer } from "./api-auth/service.ts";
 import { getDecisionModels } from "./model-catalog.ts";
 import { getModelGatewayEnvironment, type ModelGatewayEnvironment } from "./model-gateway.ts";
 import { readEmbeddingBody } from "./embedding-response.ts";
@@ -21,6 +22,7 @@ export type DecisionGatewayDependencies = {
   readPortalOrigin: () => string;
   readGatewayEnvironment?: () => Promise<ModelGatewayEnvironment>;
   resolveSubscriptionKey?: (actor: ApiKeyActor, id: string, apiId: string) => Promise<string>;
+  resolveBearer?: () => Promise<PortalBearer>;
   readModels?: () => readonly DecisionModel[] | Promise<readonly DecisionModel[]>;
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
@@ -62,11 +64,14 @@ export async function handleDecision(request: Request, dependencies: DecisionGat
     const origin = new URL(gateway.origin);
     if (origin.protocol !== "https:" || origin.origin !== gateway.origin || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) throw new Error("Invalid origin");
   } catch { return failure("GatewayNotConfigured", 503); }
-  let key: string;
+  let credential: GatewayCredential;
   try {
-    key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId)))(actor, input.apiKeyId, model.apiId);
-    if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new Error("Invalid key");
-  } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
+    credential = await resolveGatewayCredential(request, actor, input, model.apiId, gateway.origin,
+      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+  } catch (error) {
+    const apiAuth = apiAuthenticationFailure(error);
+    if (apiAuth) return failure(apiAuth.code, apiAuth.status);
+    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
   const timeout = modelDeadline(dependencies.timeoutMs);
   const signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();
@@ -74,7 +79,7 @@ export async function handleDecision(request: Request, dependencies: DecisionGat
   try {
     const response = await (dependencies.fetch ?? globalThis.fetch)(new URL(model.path, gateway.origin), {
       method: "POST", redirect: "error", cache: "no-store", signal,
-      headers: { "Content-Type": "application/json", Accept: "application/json", "api-key": key }, body,
+      headers: { "Content-Type": "application/json", Accept: "application/json", ...credential.headers }, body,
     });
     const id = response.headers.get("apim-request-id");
     if (id && /^[a-zA-Z0-9_-]{1,128}$/.test(id)) requestId = id;
@@ -87,7 +92,7 @@ export async function handleDecision(request: Request, dependencies: DecisionGat
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") { await response.body?.cancel(); return failure("GenerationFailed", 502, details); }
     const raw = await readEmbeddingBody(response.body, MAX_BUFFERED_BODY_BYTES, signal);
     const value = JSON.parse(raw);
-    if (containsModelCredential(value, key, raw)) throw new Error("Credential reflection");
+    if (containsModelCredential(value, credential.value, raw)) throw new Error("Credential reflection");
     const result = parseDecisionResult(value, model, input, Math.round(performance.now() - started), requestId);
     return Response.json(result, { headers: responseHeaders });
   } catch {

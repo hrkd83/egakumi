@@ -8,6 +8,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$script:Subject = 'CN=Portal authentication'
 
 function Invoke-PortalVault {
     param([string]$Method, [string]$Path, $Body = $null)
@@ -40,7 +41,7 @@ function Get-PortalPolicy {
         issuer = @{ name = 'Self' }
         key_props = @{ exportable = $false; kty = 'RSA'; key_size = 3072; reuse_key = $false }
         secret_props = @{ contentType = 'application/x-pkcs12' }
-        x509_props = @{ subject = 'CN=Portal authentication'; validity_months = $Months; key_usage = @('digitalSignature'); ekus = @('1.3.6.1.5.5.7.3.2') }
+        x509_props = @{ subject = $script:Subject; validity_months = $Months; key_usage = @('digitalSignature'); ekus = @('1.3.6.1.5.5.7.3.2') }
         # Entra登録は手動。KVだけで自動更新してcurrentを置き換えないようにします。
         lifetime_actions = @()
     }
@@ -80,7 +81,7 @@ function Read-PortalCertificate {
     $der = [Convert]::FromBase64String($cert.cer)
     $leaf = [Security.Cryptography.X509Certificates.X509Certificate2]::new($der)
     try {
-        if ($leaf.HasPrivateKey -or $leaf.Subject -cne 'CN=Portal authentication' -or $leaf.Issuer -cne $leaf.Subject) { throw 'Unexpected certificate' }
+        if ($leaf.HasPrivateKey -or $leaf.Subject -cne $script:Subject -or $leaf.Issuer -cne $leaf.Subject) { throw 'Unexpected certificate' }
         $rsa = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($leaf)
         try {
             $parameters = $rsa.ExportParameters($false)
@@ -213,6 +214,9 @@ try {
     if ($config.vaultName -notmatch '^[a-z0-9-]{3,24}$' -or $config.certificateName -notmatch '^[a-z0-9-]{1,127}$' -or $config.validityMonths -notin 1..24) { throw 'Invalid certificate configuration' }
     $script:Vault = "https://$($config.vaultName).vault.azure.net"
     $script:Name = $config.certificateName
+    $script:Subject = if ($ContainerJob -and $env:CERTIFICATE_PORTAL_STATE_OBJECT -ceq 'gateway-obo') {
+        'CN=Gateway OBO authentication'
+    } else { 'CN=Portal authentication' }
     $script:Months = $config.validityMonths
     $handler = [System.Net.Http.HttpClientHandler]::new()
     $handler.AllowAutoRedirect = $false

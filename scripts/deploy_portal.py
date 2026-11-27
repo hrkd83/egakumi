@@ -105,7 +105,10 @@ def deployment_inputs(config, state, image_digest=None):
     auth_identity = portal.get('authIdentity')
     if not isinstance(auth_identity, dict) or str(auth_identity.get('id', '')).lower() != (identities + f'id-{stem}-portal-auth').lower():
         raise ValueError('The dedicated authentication identity is missing from the initial foundation')
+    from deployment.helpers.portal_api_auth import deployment_settings as api_authentication_settings
+    api_authentication = api_authentication_settings(config, portal, identities)
     return {
+        **({'apiAuthentication': api_authentication} if api_authentication else {}),
         'stem': stem, 'location': config['location'],
         'tags': {**config.get('tags', {}), 'product': config['productName'], 'environment': config['environmentName'], 'azd-env-name': config['environmentName']},
         'environmentName': expected['environmentName'], 'registryName': expected['registryName'],
@@ -141,6 +144,17 @@ def verify_foundation(config, values, transport):
         if not all(re.fullmatch(r'[0-9a-fA-F-]{36}', str(identity[field] or '')) for field in ('clientId', 'principalId')):
             raise ValueError('Portal managed identity is incomplete')
         values[key] = identity
+    if values.get('apiAuthentication'):
+        identity = values['apiAuthentication']['identity']
+        expected_id = identity['id']
+        current = checked(transport, 'GET', expected_id + '?api-version=2023-01-31',
+                          label='Read Portal API storage identity')
+        properties = current.get('properties', {})
+        if (str(current.get('id', '')).casefold() != expected_id.casefold()
+                or any(not re.fullmatch(r'[0-9a-fA-F-]{36}', str(identity.get(key) or ''))
+                       or str(properties.get(key, '')).casefold() != identity[key].casefold()
+                       for key in ('clientId', 'principalId'))):
+            raise ValueError('Portal API storage identity differs from the selected foundation')
     prefix = group_scope(config) + '/providers/'
     sql_id = prefix + 'Microsoft.Sql/servers/sql-' + values['stem']
     server = checked(transport, 'GET', sql_id + '?api-version=2023-08-01', label='Read shared SQL server')
@@ -277,20 +291,24 @@ def wait_application(config, transport, *, expected_image_digest=None, timeout=9
     raise ValueError('Portal revision is not ready; inspect Container Apps')
 
 
-def verify_public(origin, *, timeout=180, sleep=time.sleep, monotonic=time.monotonic):
-    """Keep the public JSON/cache contract with the host's verified TLS."""
+def verify_public(origin, *, api_authentication=False, timeout=180, sleep=time.sleep, monotonic=time.monotonic):
+    """公開HTTPSのJSONとキャッシュ制御から、指定した機能の準備を照合する。"""
+    path = '/api/health/api-auth' if api_authentication else '/api/health'
+    expected = {'status': 'ready'} if api_authentication else {'status': 'ok', 'service': 'egakumi-portal'}
     deadline = monotonic() + timeout
     while monotonic() < deadline:
         try:
-            status, body, cache_control = read_public_json(origin + '/api/health',
+            status, body, cache_control = read_public_json(origin + path,
                 accept='application/json', user_agent='egakumi-portal-deployment/1.0', timeout=20)
             if (type(status) is int and status == 200 and type(body) is dict
-                    and body == {'status': 'ok', 'service': 'egakumi-portal'}
+                    and body == expected
                     and isinstance(cache_control, str) and 'no-store' in cache_control.lower()):
                 return
         except (OSError, ValueError):
             pass
         sleep(5)
+    if api_authentication:
+        raise ValueError('Portal is available, but API authentication storage did not pass its public health check')
     raise ValueError('Portal revision is running but the public health check did not succeed')
 
 
@@ -318,6 +336,8 @@ def deploy_release(config, values, template, transport, *, state=None,
     gateway_readiness = require_appgw_backend_tls_ready(config, transport)
     print('ポータル: 公開URLから起動状態を確認します。', flush=True)
     verify_public(values['publicOrigin'])
+    if values.get('apiAuthentication'):
+        verify_public(values['publicOrigin'], api_authentication=True)
     apim_id = group_scope(config) + '/providers/Microsoft.ApiManagement/service/' + values['apimName']
     profiles = activate_profile_settings(apim_id, transport, infrastructure_api_definitions(config['apiDefinitions']))
     return {'backendTls': gateway_readiness, 'callbackWaf': callback_waf,
@@ -374,6 +394,15 @@ def main(argv=None):
         return 0
     template = run_json(['az', 'bicep', 'build', '--file', str(REPOSITORY / 'apps/portal/deploy/main.bicep'), '--stdout'])
     verify_foundation(config, values, transport)
+    if values.get('apiAuthentication'):
+        from deployment.helpers.portal_api_auth import ensure_initial_key
+        from operations.common import OperationContext, OperationError
+        context = OperationContext(workspace.params, config, state, workspace, transport)
+        try:
+            with context.locked():
+                values['apiAuthentication']['keyUrl'] = ensure_initial_key(config, workspace, transport, protected_json)
+        except OperationError as error:
+            raise ValueError(str(error)) from None
     if values['imageDigest'] is None:
         values['imageDigest'] = build_image(config, state, transport, data=data, source_hash=source_hash,
             record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))
@@ -383,6 +412,7 @@ def main(argv=None):
     result = {'status': 'deployed', 'database': plan['database'], 'application': plan['application'],
         'authentication': values['authentication'],
         'sqlInitialized': True, 'applicationReady': True, 'publicHealthVerified': True,
+        'apiAuthenticationHealthVerified': bool(values.get('apiAuthentication')),
         'imageDigest': values['imageDigest'], 'publicUrl': values['publicOrigin'], 'azdUpExecuted': False,
         'callbackWaf': gateway_readiness['callbackWaf'],
         'backendTls': gateway_readiness['backendTls'],

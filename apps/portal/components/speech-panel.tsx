@@ -1,5 +1,7 @@
 "use client";
 
+import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+
 import { inspectSpeechUpload, MAX_TRANSCRIPTION_FILE_BYTES, TRANSCRIPTION_FILE_ACCEPT } from "@/lib/speech-upload";
 
 import { useFieldIds } from "@/lib/use-field-ids";
@@ -96,6 +98,7 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
   const apiId = model?.apiId ?? "";
   const keysReady = keyState.apiId === apiId && keyState.status === "ready";
   const selectedKey = keysReady ? keyState.keys.find((key) => key.id === state.apiKeyId) : undefined;
+  const authentication = useTryAuthentication(selectedKey?.id);
   const parsed = speechInputSchema.safeParse(state.input);
   const origin = gatewayOrigin ?? "https://gateway.example.com";
   const number = new Intl.NumberFormat(locale);
@@ -173,14 +176,14 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
   /** 入力文または選択ファイルをBFF経由で送り、古い要求の結果で上書きしません。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (requestRef.current || !model || !payload || !parsed.success || !selectedKey || !gatewayOrigin || !inputReady) return;
+    if (requestRef.current || !model || !payload || !parsed.success || !authentication.credential || !gatewayOrigin || !inputReady) return;
     clearResult();
     const controller = new AbortController();
     requestRef.current = controller;
     store.setState({ loading: true, tab: "response" });
     try {
       const signal = controller.signal;
-      const response = await fetch("/api/models/speech", { ...buildSpeechExecutionRequest(model, parsed.data, selectedKey.id, state.inputFile), signal });
+      const response = await fetch("/api/models/speech", { ...buildSpeechExecutionRequest(model, parsed.data, authentication.credential, state.inputFile), signal });
       const result = await readSpeechResponse(response, signal);
       if (controller.signal.aborted || requestRef.current !== controller) return;
       if (result.kind !== model.kind) throw new Error("Unexpected speech operation");
@@ -212,7 +215,9 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
     <div className="max-w-xl"><div className="space-y-2"><label htmlFor={fieldId("speech-operation")} className="text-sm font-medium">{speech.operation}</label><Select value={model.id} disabled={state.loading || state.fileChecking} onValueChange={(id) => { const next = models.find((entry) => entry.id === id); if (next) { rememberModel({ id: next.id }); updateInput({ ...defaultSpeechInput(next), text: state.input.text }); } }}><SelectTrigger id={fieldId("speech-operation")} className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{models.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.kind === "tts" ? speech.tts : speech.stt}{entry.modelId ? ` · ${entry.modelId}` : ""}</SelectItem>)}</SelectContent></Select></div></div>
   </div>;
   const settings = <form onSubmit={execute} className="space-y-5">
-      <div className="space-y-2 rounded-lg border border-border bg-white p-3">
+        <TryAuthenticationPicker model={authentication} locale={locale} disabled={state.loading} />
+
+      <div className="space-y-2 rounded-lg border border-border bg-white p-3" hidden={authentication.selection.mode === "bearer"}>
         <div className="flex items-center justify-between gap-3"><label htmlFor={fieldId("speech-api-key")} className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || keyState.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button></div>
         <Select value={selectedKey?.id ?? ""} disabled={state.loading || !keysReady || !keyState.keys.length} onValueChange={(apiKeyId) => { clearResult(); store.setState({ apiKeyId }); }}><SelectTrigger id={fieldId("speech-api-key")} aria-describedby={fieldId("speech-key-help")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{keyState.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block min-w-0 truncate" title={[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}>{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
         <p id={fieldId("speech-key-help")} className="text-sm leading-5 text-muted-foreground">{guide.apiKeyHelp}</p>
@@ -235,7 +240,7 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
         <div className="space-y-3 rounded-lg border border-border bg-white p-3"><label htmlFor={fieldId("speech-file")} className="block text-sm font-medium">{speech.file}</label><Input id={fieldId("speech-file")} type="file" accept={model.providerId === "openai" ? TRANSCRIPTION_FILE_ACCEPT : ".wav,audio/wav,audio/x-wav"} disabled={state.loading || state.fileChecking} onChange={(event) => void selectAudio(event.target.files?.[0])} className="bg-white" /><p className="text-sm leading-6 text-muted-foreground">{(model.providerId === "openai" ? speech.transcriptionFileHelp : speech.fileHelp).replace("{size}", number.format(maximumUploadBytes / 1_048_576))}</p>{state.fileChecking && <p role="status" className="text-sm text-muted-foreground">{speech.fileChecking}</p>}{(state.fileError || fileTooLarge) && <p role="alert" className="text-sm text-destructive">{speech.fileInvalid}</p>}{state.inputFile && <p className="break-all text-sm text-muted-foreground">{state.inputFile.name} · {number.format(state.inputFile.size)} B</p>}{state.inputAudioUrl && <audio ref={inputAudioRef} controls preload="none" src={state.inputAudioUrl} aria-label={speech.file} className="w-full" />}<a href={SPEECH_SAMPLE_PATH} download="speech-ja-jp.wav" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline underline-offset-4"><Download className="size-3.5" />{speech.sampleDownload}</a><p className="text-sm leading-6 text-muted-foreground">{speech.sampleNotice}</p></div>
       </>}
       <p className="text-sm leading-6 text-muted-foreground">{speech.wait}</p>
-      <div className="flex justify-end gap-2">{state.loading && <Button type="button" size="sm" variant="outline" onClick={cancel}><Square className="size-3.5" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={state.loading || !payload || !selectedKey || !gatewayOrigin || !inputReady}>{state.loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{state.loading ? runningText : model.kind === "tts" ? speech.runTts : speech.runStt}</Button></div>
+      <div className="flex justify-end gap-2">{state.loading && <Button type="button" size="sm" variant="outline" onClick={cancel}><Square className="size-3.5" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={state.loading || !payload || !authentication.credential || !gatewayOrigin || !inputReady}>{state.loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{state.loading ? runningText : model.kind === "tts" ? speech.runTts : speech.runStt}</Button></div>
       {!payload && <p role="alert" className="text-sm text-destructive">{text.errors.InvalidRequest}</p>}
     </form>;
   const requestContent = <div className="space-y-6">

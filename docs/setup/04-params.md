@@ -1,6 +1,6 @@
 # 4. paramsの準備・リファレンス
 
-Portal初期構築では`portal.authentication`を省略できます。専用ACA JobでKV自己署名証明書を準備した後、Entra担当が専用アプリを作成・公開証明書を登録し、`portal.authentication.tenantId/clientId`を保護paramsへ設定します。鍵版とthumbprintは同じ環境の保護stateから読みます。[Portal Entra登録](entra-portal.md)を参照してください。
+Portal初期構築では`portal.authentication`を省略できます。専用ACA JobでKV自己署名証明書を準備した後、Entra担当が専用アプリを作成・公開証明書を登録し、`portal.authentication.tenantId/clientId`を保護paramsへ設定します。鍵版とthumbprintは同じ環境の保護stateから読みます。最終5アプリの新規構築では次の用途別入力をそろえ、[第6章](06-deploy.md)の段階構築に進みます。[Portal Entra登録](entra-portal.md)を参照してください。
 
 前：[3. 公開DNSの準備](03-public-dns.md) · [README](../../README.md) · 次：[5. configの調整](05-config.md)
 
@@ -49,6 +49,18 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 6. `credentialProviders.graphDelegated.clientId`を既存Graph接続アプリのClient IDへ置換し、`clientSecretFile`の保護参照を確認する。
 7. `gateway.authentication.entra.audience`をegakumi-apiのClient IDへ置換する。任意の独立接続窓口アプリを使う場合だけ、`credentialLogin.identity.clientId`と`clientSecretFile`を設定する。
 8. Portal初回の管理グループObject IDと表示名正規表現を用意する。対話なしで実行する場合は`portalApiKeys.platformGroupId`と`groupNamePattern`を事前に設定する。
+
+### 5アプリの登録を記入する
+
+| 役割 | paramsに置く値 |
+| --- | --- |
+| API | `gateway.authentication.entra.audience` |
+| Codex | `codex.clientId`。これを指定した構築では5アプリの分離を検査する |
+| Tools | `credentialProviders.graphDelegated.clientId`と`clientSecretFile` |
+| Credential | `gateway.authentication.credentialLogin.identity.clientId`と`clientSecretFile`。Tools用とは別のファイル |
+| Portal | 公開証明書登録後に`portal.authentication.tenantId`と`clientId`を追加 |
+
+すべてのアプリでApplication (client) IDを使い、認証用`entraTenantId`に登録します。API試用は5アプリ構成で既定有効です。既存環境の切替中に試用を停止する場合は`portal.apiAuthentication.enabled`を`false`にしてPortalだけ再配備します。通常のOBO初回は保護stateの証明書を固定します。管理者が別版を発行・Entra登録済みの場合だけ、`gateway.authentication.entra.obo.keyId`と公開証明書DERのSHA-256の`certificateThumbprint`を組で指定します。
 
 ### 同一テナントと別テナントの指定
 

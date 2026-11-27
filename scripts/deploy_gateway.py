@@ -28,7 +28,7 @@ from deployment.helpers.credential_image import (
     build_image, checked, read_build_receipt, reusable_image, source_bundle,
 )
 from deployment.helpers.credential_broker_lifecycle import prepare_secret
-from deployment.helpers.credential_pools import credential_login_enabled, resource_names
+from deployment.helpers.credential_pools import credential_login_enabled, resource_names, verify_existing_provider_registrations
 from deployment.helpers.management_client_assets import management_client_inventory, update_management_client_assets
 from deployment.helpers.grpc_lifecycle import configure_named_values, require_shared_ingress
 from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, state_from_outputs
@@ -262,6 +262,10 @@ def main(argv=None):
     digest = args.image_digest or reusable_image(config, image_state, source_hash, build_record, transport=transport)
     values = {'configuration': build_bicep_configuration(config), 'foundation': foundation,
               'imageDigest': digest or '', 'deployApplication': False}
+    from deployment.helpers.gateway_obo_certificate import deployment_settings as gateway_obo_settings
+    graph_obo = gateway_obo_settings(config, workspace)
+    if graph_obo:
+        values['graphObo'] = graph_obo
     summary = {'status': 'planned', 'azureWrites': 0, 'azdUpRequired': False,
         'apiSelection': 'specified' if source.get('apiDefinitions') else 'standard',
         'apiCount': len(config['apiDefinitions']), 'credentialBrokerEnabled': True,
@@ -287,6 +291,8 @@ def main(argv=None):
     if config.get('gateway', {}).get('authentication', {}).get('credentialLogin', {}).get('identity'):
         values['credentialIdentitySecret'] = load_credential_identity_secret(config)
     verify_foundation(config, foundation, transport)
+    if graph_obo:
+        verify_existing_provider_registrations(config, publication_plan['apimId'], transport)
     values['brokerKey'] = broker_secret(config, foundation, transport)
     if not digest:
         values['imageDigest'] = build_image(config, image_state, transport, data=data, source_hash=source_hash,

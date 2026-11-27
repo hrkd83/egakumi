@@ -2,15 +2,19 @@ import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { ApiKeyActor } from "./api-keys/contracts.ts";
 import type { RealtimeModel } from "./model-types.ts";
-import { realtimeExecutionSchema } from "./realtime-request.ts";
+import { realtimeInputSchema } from "./realtime-request.ts";
+import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
+import type { PortalBearer } from "./api-auth/service.ts";
 import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
 
 /** 公開する双方向接続はこのパスだけです。URLへキーや本人情報は含めません。 */
 export const REALTIME_RELAY_PATH = "/api/models/realtime/socket";
 /** 認可済みの接続情報です。この値はloopback内だけで使い、ブラウザーへ送信しません。 */
-export type RealtimeRelayContext = { actor: ApiKeyActor; model: RealtimeModel; key: string; apiKeyId: string; gatewayOrigin: string; portalOrigin: string };
+export type RealtimeRelayContext = { actor: ApiKeyActor; model: RealtimeModel; gatewayOrigin: string; portalOrigin: string } &
+  ({ key: string; apiKeyId: string; bearer?: never } | { key?: never; apiKeyId?: never; bearer: PortalBearer });
 /** ブラウザーは接続開始時だけモデルと購読を選べます。任意URLや上流イベントを指定できません。 */
-export const realtimeRelayStartSchema = realtimeExecutionSchema.extend({ type: z.literal("start"), sdp: z.string().min(20).max(MAX_RUNTIME_STRING_CHARACTERS).optional() }).strict();
+const relayStart = realtimeInputSchema.extend({ type: z.literal("start"), sdp: z.string().min(20).max(MAX_RUNTIME_STRING_CHARACTERS).optional() });
+export const realtimeRelayStartSchema = z.union([relayStart.extend(tryApiKeyFields), relayStart.extend(tryBearerFields)]);
 
 /** 内部認可口の証明を定時間で照合し、未設定・長さ違い・推測値を拒否します。 */
 export function verifyRealtimeInternalProof(expected: string | undefined, actual: string | null | undefined): boolean {

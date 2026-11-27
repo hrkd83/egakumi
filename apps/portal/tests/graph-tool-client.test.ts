@@ -77,6 +77,21 @@ test("完了確認は台帳IDと固定actionだけを送信し、取引や本人
   await expectFailure(() => checkGraphToolConnection(keyId, new AbortController().signal), "GatewayResponseInvalid");
 });
 
+test("Bearerでは実行・完了確認とも認証方式だけを指定する", async () => {
+  const signal = new AbortController().signal;
+  const credential = { authentication: "bearer" } as const;
+  globalThis.fetch = async (url, options) => {
+    const checking = url === "/api/tools/graph/connection";
+    assert.deepEqual(JSON.parse(String(options?.body)), checking ? { ...credential, action: "status" } : credential);
+    const headers = new Headers(options?.headers);
+    assert.equal(headers.has("authorization"), false);
+    assert.equal(headers.has("api-key"), false);
+    return Response.json(checking ? { status: "complete" } : completed);
+  };
+  assert.deepEqual(await executeGraphTool(credential, origin, signal), completed);
+  assert.equal(await checkGraphToolConnection(credential, signal), "complete");
+});
+
 test("プロフィールは選択した公開項目を検査し、追加秘密値や過大な値を拒否する", async () => {
   assert.equal(graphToolProfileSchema.safeParse({ id: "user", displayName: null }).success, true);
   assert.equal(graphToolProfileSchema.safeParse({ id: "user" }).success, true);

@@ -10,7 +10,7 @@ const responseSchema = z.object({
   results: z.array(z.object({ index: z.number().int().nonnegative().safe(), relevance_score: z.number().finite().min(0).max(1) })).min(1),
   meta: z.object({ billed_units: z.object({ search_units: z.number().int().nonnegative().safe().optional() }).optional() }).optional(),
 });
-const publicErrors = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable"]);
+const publicErrors = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable"]);
 
 /** 上流の順位を検証し、indexで元の文書を対応付けます。本文内容を推測して補完しません。 */
 export function parseRerankResult(value: unknown, model: RerankModel, input: RerankInput, durationMs: number, requestId?: string): RerankResult {
