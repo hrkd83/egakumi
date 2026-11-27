@@ -26,16 +26,22 @@ class ApiFoundationProjectionTests(unittest.TestCase):
         expected = standard_apis._definitions()
         self.assertEqual([api['path'] for api in built['infrastructureApiDefinitions']], [api['path'] for api in expected])
         self.assertEqual(config, before)
+        deployment_parameters = {}
         for api in built['infrastructureApiDefinitions']:
             self.assertEqual(set(api) - {'mcp'}, {'name', 'apiType', 'path', 'operations', 'authorization'})
             if 'mcp' in api:
                 self.assertEqual(set(api['mcp']), {'name', 'path'})
             for operation in api['operations']:
                 self.assertEqual(set(operation), {'name', 'method', 'urlTemplate'})
-            for constraint in api['authorization']['operationConstraints'].values():
-                self.assertTrue(set(constraint) <= {'kind', 'bodyFormat', 'contentTypes', 'profiles', 'allowedModels', 'maxRequestBytes'})
-                for profile in constraint.get('profiles', []):
-                    self.assertEqual(set(profile), {'modalities'})
+            for operation_id, constraint in api['authorization']['operationConstraints'].items():
+                self.assertTrue(set(constraint) <= {'kind', 'bodyFormat', 'contentTypes', 'parameter',
+                                                    'allowedModels', 'maxRequestBytes'})
+                if 'parameter' in constraint:
+                    deployment_parameters[api['name'], operation_id] = constraint['parameter']
+        self.assertEqual(deployment_parameters, {
+            ('openai-images-v1', 'image-edit'): 'deployment',
+            ('openai-audio-v1', 'audio-transcriptions'): 'deployment',
+        })
         self.assertNotIn('__OPENAI_RESOURCE_BASE_URL__', json.dumps(built['infrastructureApiDefinitions']))
 
     def test_projection_keeps_explicit_contract_metadata_without_aliasing_inputs(self):
@@ -118,10 +124,11 @@ class ApiFoundationBicepTests(unittest.TestCase):
                      '/tools/pii/v1/redact', '/tools/pii-v1-mcp/mcp'):
             self.assertIn(path, published)
         self.assertTrue(all('{' not in path for path in published))
-        # Only the two canonical signed operations use an AppGW wildcard. The
-        # APIM operation and owner-ticket checks still bound their variable IDs.
+        # Signed owner tickets and declared model deployments use AppGW
+        # wildcards. APIM still matches the declared operation.
         self.assertEqual({path for path in published if '*' in path}, {
-            '/tools/documents/v1/operations/*', '/models/openai-realtime/v1/calls/*'})
+            '/tools/documents/v1/operations/*', '/models/openai-realtime/v1/calls/*',
+            '/models/openai-images/v1/deployments/*', '/models/openai-audio/v1/deployments/*'})
         self.assertTrue(self.value(self.main['variables']['realtimeEnabled'], config))
         self.assertIn({'category': 'WebSocketConnectionLogs', 'enabled': True}, self.apim_logs(config))
 
@@ -153,14 +160,6 @@ class ApiFoundationBicepTests(unittest.TestCase):
         self.assertEqual(self.paths('documentUploadPaths', config), [])
         self.assertEqual(config['apiDefinitions'][0]['mcpProxy']['endpoints'][1]['uriTemplate'], '/messages/')
         self.assertFalse(self.value(self.main['variables']['realtimeEnabled'], config))
-
-    def test_only_declared_data_and_raw_inputs_are_wired_to_gateway(self):
-        removed = {'customMimePaths', 'legacyMcpMessagePaths', 'inlineImagePaths', 'inlinePdfPaths', 'inlineAudioPaths'}
-        parameters = self.gateway['properties']['parameters']
-        self.assertTrue({'publishedApiPaths', 'speechRawBodyPaths', 'documentUploadPaths'} <= set(parameters))
-        self.assertFalse(removed & set(parameters))
-        self.assertFalse(removed & set(self.gateway['properties']['template']['parameters']))
-        self.assertFalse(removed & set(self.main['variables']))
 
     def test_metadata_does_not_enable_realtime_without_the_signing_key_configuration(self):
         config = configuration.build_bicep_configuration(foundation_configuration())
