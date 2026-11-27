@@ -104,7 +104,7 @@ OBO証明書を手動更新する場合は、同じ証明書名で新しい非�
 | Application ID URIとGateway.Invoke | Portalの委任アクセス許可、管理者同意、要求scope |
 | 単一テナント・scope・token versionの保存後確認 | アプリ登録の受入。接続試験の結果とは別に記録 |
 
-**APIのClient IDを`credentialProviders.graphDelegated.clientId`や追加providerの`clientId`へ設定しません。** そこはCMの下流OAuthクライアント用です。[paramsの認可設定](07-params.md)の`gateway.authentication.entra.audience`へ引き継ぐ値です。公開paramsには`audience`を置き、共通`userLimits`はconfigへ移設しました。委任scopeは資材固定の`Gateway.Invoke`で、公開`requiredScope`入力は廃止しています。有効化・対象API・クライアント許可リストは入力しません。専用Productの所属を閉じた配備段階で資材を照合し、対象環境での実APIMの検証・公開・接続受入を別に確認します。既存の共用アプリを回収する条件は[移行手順](../reference/entra-app-rollout-plan.md#工程8旧共用アプリと移行設定を撤去する)で確認します。
+**APIのClient IDを`credentialProviders.graphDelegated.clientId`や追加providerの`clientId`へ設定しません。** そこはCMの下流OAuthクライアント用です。[paramsの認可設定](07-params.md)の`gateway.authentication.entra.audience`へ引き継ぐ値です。公開paramsには`audience`、共通configには`userLimits`を設定します。委任scopeは資材固定の`Gateway.Invoke`です。有効化・対象API・クライアント許可リストは入力しません。専用Productの所属を閉じた配備段階で資材を照合し、対象環境での実APIMの検証・公開・接続受入を別に確認します。
 
 掲載画像はフルHD（1920×1080ピクセル）の画面を原寸で撮影し、拡大縮小せずPNGで保存しています。文書上で縮小表示される場合は、画像をクリックして原寸画像を開き、確認してください。
 
@@ -114,4 +114,4 @@ OBO証明書を手動更新する場合は、同じ証明書名で新しい非�
 
 公式仕様：[Web APIとアクセス許可](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-configure-app-access-web-apis) · [Microsoft Graph形式のアプリマニフェスト](https://learn.microsoft.com/en-us/entra/identity-platform/reference-microsoft-graph-app-manifest) · [アクセストークンのクレーム](https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference)
 
-次：[03. egakumi-toolsの登録](03-entra-tools.md) · [後続のAPIM認可・アプリ分離計画](../reference/entra-app-rollout-plan.md)
+次：[03. egakumi-toolsの登録](03-entra-tools.md) · [後続のAPIM認可・アプリ分離計画](../reference/identity/entra-apps.md)

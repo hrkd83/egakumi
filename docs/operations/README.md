@@ -1,26 +1,22 @@
-# 通常運用・改修の手順
+# 運用手順
 
-[共通確認](common.md) · [スクリプト一覧](../../scripts/operations/README.md) · [運用テスト](../testing/operations-tests.md)
+構築後の変更は[対象環境と記録の照合](common.md)から始めます。作業内容に応じて次の手順を選んでください。
 
-このプロダクトを運営し、エンハンス・不具合修正を行う担当者のための手順。変更対象に応じて次の入口を選び、変更前の値・実反映・通常利用・終了時の扱いを確認する。
+| 作業 | 手順 |
+| --- | --- |
+| Gateway・Portalの個別配備、失敗した配備の再開 | [構築後の更新と配備の再開](deployment.md) |
+| API・操作・ポリシーの変更 | [APIMのAPI定義とポリシー](apim.md) |
+| AzureポータルからClaudeモデルを公開 | [Claude Messages APIの追加](claude-messages.md) |
+| Portalの画面・ガイド・コードの修正 | [Portalの改修と切戻し](portal.md) |
+| Foundryのモデル・容量・版の変更 | [Foundryモデル管理](foundry.md) |
+| 例外の購読キー発行・上限設定、CMプールの増設 | [購読キーと本人接続プール](access-and-keys.md) |
+| 本人接続の定期処理、SQL台帳と障害復旧 | [Credential Brokerの運用](credential-broker.md) |
+| Entra client secret・公開TLS・DNS用IDの更新 | [認証情報と公開TLSの更新](secrets-and-certificates.md) |
+| PortalのEntra署名証明書の更新 | [Portal認証証明書](portal-authentication.md) |
+| 公開TLSとPortal署名証明書のJobを確認 | [証明書Job](certificate-jobs.md) |
+| WAF・外向き通信・監視・サービス容量の調整 | [基盤設定](platform-settings.md) · [API Center](platform-settings.md#api-centerのカタログ管理) · [NSG](network-security-groups.md) |
+| 管理VMへの接続・権限の付与と回収・Serial Console | [管理VMへの本人接続](management-vm-access.md) |
+| 管理VMからの監査・ログ取得、ACA exec、SQL保守 | [管理VMの保守操作](management-client.md) · [SQLの権限と接続](management-sql-access.md) |
+| 利用を終了し、所有資源を撤去 | [環境の撤去と再構築](teardown.md) |
 
-設定変更は、params・config・API定義・WAF manifest等のJSON資材を編集し、`scripts/operations/`のスクリプトで計画・反映することを基本とする。通常運用ではポリシーXMLを直接編集しない。共通ポリシーの処理自体を変える場合は[開発者向けの改修手順](../../DEVELOPMENT.md#apim共通ポリシーを改修する)を使う。例外の購読キーは基盤管理者がAzureポータル上のAPIMで管理する。
-
-| 普段の作業 | 手順 | 主な入口 |
-| --- | --- | --- |
-| 作業対象・保護入力・戻し方を確認する | [共通確認](common.md) | 同じparams・state・現物の照合、変更計画 |
-| Portalの画面・ガイド・コードを直す | [Portal改修](portal.md) | ローカル検査→Portal個別配備（P） |
-| API・操作・入力制約・ポリシーを直す | [APIM変更](apim.md) | 定義・生成ポリシーの検査→Gateway個別配備（G） |
-| モデル・容量・版・公開先を変える | [Foundryモデル管理](foundry.md) | `operations/model.py`→参照config・API・必要なPortalを整合 |
-| secretの期限更新・TLS証明書更新 | [認証情報・証明書の更新](secrets-and-certificates.md) | `operations/entra_secret.py`・`certificate.py`、新規認証・公開TLS確認 |
-| 所属・利用条件・キー・購読・CM容量を保守する | [利用資格・キー・プール](access-and-keys.md) | Azureポータル、G、既存ジョブ |
-| WAF・外向き許可・監視・サービス容量を変える | [基盤設定の通常変更](platform-settings.md) | `operations/waf.py`・`monitoring.py`、G等の対象限定反映 |
-| NSGの通信範囲・優先度を確認する | [NSGの構成と優先度](network-security-groups.md) | 共通採番JSONと初期構築5モジュールのBicep |
-| 通信要件・Firewallの許可範囲・判断を確認する | [通信要件](../reference/network-communication-requirements.md)・[Firewall設計](../reference/firewall-policy-design.md) | 実経路、RCG/collection/規則、対応NSG、[検証と実証結果の管理](../reference/network-security-validation.md) |
-| 管理VMから監査Blob・保存ログ・ACAログを読む、Appへ限定execする、SQLを保守する | [管理VMの保守操作](../operations.md#管理vmから保守データを取得する) | 担当者本人のEntra ID、作業期間中の対象別権限、保護inventory |
-
-運用テストはこの業務のまとまりから選び、各作業の必要な検査・変更・確認・戻し方を一連で確認する。権限組合せ・全モデル・全入力の網羅は構築・統合テストに分ける。
-
-初期構築は[構築手順](../setup/08-provision-core.md)、利用終了・撤去は[撤去手順](../operations.md#撤去する)を使う。更新のために環境を再構築しない。大規模な障害復旧訓練や新規管理機能を、本手順の試験のために追加しない。
-
-手順の机上確認・ローカル検証と、実環境での運用試験は別に記録する。実測前の結果欄は未実施とする。
+初回構築は[構築手順](../../README.md#新規クローンから構築する)へ進みます。配備・更新の受入は[運用テスト](../testing/operations-tests.md)から作業に合うケースを選び、ローカル確認と実環境の結果を分けて記録します。利用できる運用コマンドは[スクリプト一覧](../../scripts/operations/README.md)を参照してください。

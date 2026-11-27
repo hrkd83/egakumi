@@ -121,6 +121,6 @@ DNSゾーンを別Subscriptionに置いている場合、paramsへ設定するDN
 
 構築資材は初回発行の前に指定したIDを公開TLS Jobへ紐づけます。初回取得・定期更新ではそのIDでDNSのTXTを作成し、認証後に該当の検証値を回収します。公開TLS用Key VaultへのアクセスにはJob専用の実行IDを使います。IDとDNS権限は外部の事前準備資源として維持し、Coreの`azd down`で削除する構成にはしません。
 
-入力の形式検査やロール割り当ての登録確認は、実際の証明書発行・更新の成功確認とは別です。構築後の証明書・更新timerの確認は[運用手順](../operations.md)を参照してください。
+入力の形式検査やロール割り当ての登録確認は、実際の証明書発行・更新の成功確認とは別です。構築後の証明書・更新timerの確認は[運用手順](../operations/README.md)を参照してください。
 
 [Microsoft公式：ユーザー割り当てIDの作成](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/manage-user-assigned-managed-identities-azure-portal) · [Azureロールの割り当て](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal) · [Azure DNSの権限](https://learn.microsoft.com/en-us/azure/dns/dns-protect-zones-recordsets)

@@ -127,7 +127,7 @@ Code Interpreter呼出しItemの拒否を追加する前の関連113件では、
 
 続く工程1の判断で、利用者別に隔離できない保存資源は基本的に蓄積させない方針を採用しました。`store=false`は応答履歴の指定で、内蔵Code Interpreterのコンテナ・入力ファイル・生成ファイルの保存や再利用を止める指定ではありません。[Microsoft公式手順](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/responses)は、コンテナが同じproject内で利用者別に隔離されず、input内の`code_interpreter_call`でも既存コンテナを参照できると説明しています。toolsのfunction限定を維持し、内蔵ツールを一律開放する変更は進めません。
 
-カスタムツールは、アプリがfunction呼出しを受けて個人接続付きのMCPへ実行要求を送り、その結果をFoundryへ返す構成で扱えます。追加APIの外部MCPプロキシには既存CM連携を組み込めますが、MCP用のOAuth接続先・scope・固定の本人確認先と、MCP側の本人認証・資源隔離が必要です。購読キーだけでは個人を確定できず、本人専用の接続セッションまたは検証済みの利用者情報を使います。[本人接続の契約](../../../../../../docs/reference/credential-manager-login.md)を参照してください。
+カスタムツールは、アプリがfunction呼出しを受けて個人接続付きのMCPへ実行要求を送り、その結果をFoundryへ返す構成で扱えます。追加APIの外部MCPプロキシには既存CM連携を組み込めますが、MCP用のOAuth接続先・scope・固定の本人確認先と、MCP側の本人認証・資源隔離が必要です。購読キーだけでは個人を確定できず、本人専用の接続セッションまたは検証済みの利用者情報を使います。[本人接続の契約](../../../../../../docs/reference/identity/credential-manager-login.md)を参照してください。
 
 Foundryのremote MCPから同じCM個人接続を自動で使う経路は未実装です。また、function限定はinputからの既存コンテナ参照まで無効にする保証ではありません。この方針整理の時点では新しい拒否条件・本文加工・MCP資源を追加せず、続く判断で下記の明示的なCode Interpreter呼出しItemだけを拒否しました。他の既存資源の参照・所有者確認は継続棚卸の対象です。Azure設定は変更していません。
 

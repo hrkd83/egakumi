@@ -24,8 +24,8 @@
 
 ## 監視・保守・通信の受入
 
-- 共用ACAとBroker用ACAの両方向の末尾DenyとFirewall経路を読み戻します。ACR Private Endpointからのイメージ取得、App／Jobの起動・スケールと監視、新規の未許可通信の拒否を確認します。 [ネットワークの受入条件](../reference/network-security-validation.md#実環境の受入確認)
-- 本文監査が有効な環境では、採取対象APIの応答、監査記録の保存、権限と復元の条件を確認します。 [本文監査の受入](../reference/request-body-audit.md#azure受入)
+- 共用ACAとBroker用ACAの両方向の末尾DenyとFirewall経路を読み戻します。ACR Private Endpointからのイメージ取得、App／Jobの起動・スケールと監視、新規の未許可通信の拒否を確認します。 [ネットワークの受入条件](../testing/network-security-validation.md#実環境の受入確認)
+- 本文監査が有効な環境では、採取対象APIの応答、監査記録の保存、権限と復元の条件を確認します。 [本文監査の受入](../reference/audit/request-body-audit.md#azure受入)
 - 通知先を使う場合は初回確認とテスト通知の受信を確認します。証明書専用ACA Jobの初回発行と定期更新設定、DNS用UAMIの関連付け・DNS側RBACを確認します。 [証明書用Job](../operations/certificate-jobs.md)
 
-確認結果は同じ環境の保護領域に保存します。運用は[更新と運用](../operations.md)、構築試験が終わって資源を削除する場合は[撤去手順](../operations.md#撤去する)へ進みます。
+確認結果は同じ環境の保護領域に保存します。運用は[更新と運用](../operations/README.md)、構築試験が終わって資源を削除する場合は[撤去手順](../operations/teardown.md#撤去する)へ進みます。

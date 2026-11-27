@@ -34,6 +34,6 @@
 | `gateway.authentication.credentialLogin.identity.clientId` | `egakumi-credential` のアプリケーション（クライアント）ID |
 | `gateway.authentication.credentialLogin.identity.clientSecretFile` | 標準は `./secrets/entra-credential-secret.txt` |
 
-Coreの構築前に、Web戻り先、Graphデータアクセス許可の不在、クライアントID、Tools用と異なる秘密ファイル参照を確認します。本人確認からGraph接続までの動作は[Gateway配備後](11-deploy-gateway.md#5-本人接続を試験する)に確認します。既存のアプリや接続を切り替える場合は、利用者の再同意と旧接続の停止を確認してから旧権限・資格情報を回収します。 [移行と回収の順序](../reference/entra-app-rollout-plan.md#工程8旧共用アプリと移行設定を撤去する)
+Coreの構築前に、Web戻り先、Graphデータアクセス許可の不在、クライアントID、Tools用と異なる秘密ファイル参照を確認します。本人確認からGraph接続までの動作は[Gateway配備後](11-deploy-gateway.md#5-本人接続を試験する)に確認します。
 
 次：[05. 公開DNSの準備](05-public-dns.md)

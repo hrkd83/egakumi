@@ -55,7 +55,7 @@ KVの秘密鍵、PFX、backing secretは取り出しません。Entra担当へ�
 | --- | --- |
 | 認証tenant | 保護paramsの`entraTenantId`。Portalと既存APIの利用者認証を同じtenantへ揃える。`azureTenantId`はKV・ACA等のAzure管理用であり、登録先の代わりに使わない |
 | Portalの公開HTTPSホスト | 保護paramsの`portal.publicHostName`。以下の2つの戻り先へ同じホストを使う |
-| 既存APIアプリのClient ID | 保護paramsの`gateway.authentication.entra.audience`。アクセス許可の追加で既存APIアプリを選ぶために使う |
+| APIアプリのClient ID | 保護paramsの`gateway.authentication.entra.audience`。アクセス許可の追加で既存APIアプリを選ぶために使う |
 | 公開証明書 | 初期構築で取得した`portal-auth-public.cer`と同じ環境の`state/portal-auth-certificate.json`。証明書のthumbprint・期限を照合する |
 
 | 項目 | 設定 |
@@ -68,7 +68,7 @@ KVの秘密鍵、PFX、backing secretは取り出しません。Entra担当へ�
 | 工程4のAPI用Redirect URI | `https://portal.example.com/api/api-auth/callback`。API試用の追加認証からPortalへ戻る固定経路 |
 | 証明書 | 初期構築で取得した`portal-auth-public.cer` |
 | GraphのOIDC Delegated権限 | `openid`、`profile`、`email`、`offline_access`。ID tokenとAPI用更新トークン要求に対応する同意を同じ作業で確認 |
-| API Delegated権限 | 既存のAPI用アプリが公開する`Gateway.Invoke`を、新しいPortal用アプリに追加。完全なscopeは`api://<API_APP_CLIENT_ID>/Gateway.Invoke`。ユーザー本人のアクセストークンでGateway APIを呼ぶための許可。API用アプリの構築・scope公開は[APIアプリの準備](02-entra-api.md)の前提 |
+| API Delegated権限 | API用アプリが公開する`Gateway.Invoke`を、新しいPortal用アプリに追加。完全なscopeは`api://<API_APP_CLIENT_ID>/Gateway.Invoke`。ユーザー本人のアクセストークンでGateway APIを呼ぶための許可。API用アプリの構築・scope公開は[APIアプリの準備](02-entra-api.md)の前提 |
 | 管理者同意 | 上記権限を組織の手続きに従って同意 |
 | Implicit grant / Public client flows | 無効 |
 | 新Portalのclient secret | 作成しない |
@@ -88,27 +88,7 @@ Portalログインで要求する`openid profile email`はOIDCのscopeです。A
 6. 必要な管理者同意を実施し、許可の種類・対象API・同意状態を確認します。Entra担当が必要とする申請・承認は組織の手続きに従います。
 7. 「概要」のDirectory tenant IDとApplication client IDを構築担当へ安全に渡します。Object IDをClient IDの代わりに入力しません。利用者割当必須や条件付きアクセスがある場合は、受入用の利用者も許可されていることを確認します。
 
-同じ作業の最後に、2件のWeb戻り先、公開証明書と期限、OIDCの委任アクセス許可、既存APIの`Gateway.Invoke`、管理者同意、受入利用者の割当を保存後の画面で再確認します。構築担当へはDirectory tenant ID・新PortalのApplication client IDと、この確認が完了した結果を引き継ぎます。登録だけをPortalログインや工程4の実接続の成功に数えません。
-
-### 操作画面を取得する
-
-アプリ内ブラウザの表示領域そのものを**1920×1080ピクセル（フルHD）**にして撮影します。ページ全体の縦長画像や、撮影後に拡大縮小した画像を代用せず、撮影APIが返す原寸JPEG（`.jpg`）を保存して、実寸と原寸表示での文字・設定値の可読性を確認します。PNGが必要な場合は、原本を残して解像度を変えずに変換します。各画面は実際の作成・設定・保存後確認に合わせて取得します。
-
-文字の輪郭と設定値を原寸で読み取れる画像を採用します。手順書で画像を縮小表示する場合は、原寸の画像を開ける導線も用意します。文字がぼやけて読めない画像は撮り直し、撮影後の拡大や形式変換を画質改善の代わりにしません。
-
-エラー通知が写った場合は、該当画面を開き直して通常の操作での再現性と保存済みの設定を確認し、正常に表示された画面を撮り直します。確認結果と採用画像は保護台帳に残します。
-
-撮影前に不要なメニューを畳み、一覧の列幅・表示位置を調整して、戻り先や設定値が省略されず読めることを確認します。設定値そのものは撮影のために変更しません。撮影後は表示領域の撮影用設定を元に戻します。
-
-| 操作 | 取得する画面 |
-| --- | --- |
-| 新規登録 | 名前・Single tenant・Web戻り先を入力した画面と、作成後の概要 |
-| 認証 | 2件のWeb戻り先と、Implicit grant／Public client flowsの保存後の状態 |
-| 証明書 | 公開`.cer`の選択・登録操作と、保存後の証明書一覧・thumbprint・期限 |
-| APIのアクセス許可 | OIDC委任権限、既存APIの`Gateway.Invoke`を選択する画面と、追加後の一覧 |
-| 管理者同意・利用者割当 | 同意操作と保存後の状態。利用者割当が必要な場合は割当後の確認 |
-
-原本と操作記録は`.local/<environment>/evidence/`へ所有者限定で保存します。サインイン・MFA・認証コード・秘密値が表示される画面は撮影しません。公開手順へ画像を追加する前には[公開情報の混入検査](../public-data-guard.md)とルートの[AGENTS.md](../../AGENTS.md)に従い、実情報の除去と内容確認を行います。画面の未取得・登録未実施・未確認を、撮影済み・登録成功として扱いません。
+同じ作業の最後に、2件のWeb戻り先、公開証明書と期限、OIDCの委任アクセス許可、APIの`Gateway.Invoke`、管理者同意、受入利用者の割当を保存後の画面で再確認します。構築担当へはDirectory tenant ID・新PortalのApplication client IDと、この確認が完了した結果を引き継ぎます。登録だけをPortalログインやPortalのAPI試用の成功に数えません。
 
 ## 登録情報をparamsに追加する
 

@@ -17,7 +17,7 @@ CoreはAPIMのDeveloper Portalを無効にします。基盤管理者はAzureポ
 
 標準資材は購読キーの共通リクエスト上限を設定しない。APIM製品に属する購読へ同じ上限を掛ける場合は、Azureポータルで対象製品の受信ポリシーに `rate-limit` を追加する。購読ごとに別の上限が必要なら、APIMのAPIまたは共通ポリシーで検証済みの `context.Subscription.Id` を使い、対象購読へ `rate-limit-by-key` を適用する。ProductスコープだけではAPIスコープ等の購読に適用されないため、実際の発行スコープで確認する。[rate-limit](https://learn.microsoft.com/ja-jp/azure/api-management/rate-limit-policy) · [rate-limit-by-key](https://learn.microsoft.com/ja-jp/azure/api-management/rate-limit-by-key-policy)
 
-Bearerの既定は、検証済みテナントIDとユーザーのObject IDの組を単位として、同じGateway上で60秒あたり1,000要求。対象のcancel・hangupなどには例外があり、標準ではトークン上限を適用しない。[設定一覧](../reference/config-options.md) · [利用量と検証](../testing/subscription-limits.md)
+Bearerの既定は、検証済みテナントIDとユーザーのObject IDの組を単位として、同じGateway上で60秒あたり1,000要求。対象のcancel・hangupなどには例外があり、標準ではトークン上限を適用しない。[設定一覧](../reference/configuration/config-options.md) · [利用量と検証](../testing/subscription-limits.md)
 
 ## 3. CMプールを増設し、定期ジョブを点検する
 
@@ -42,3 +42,7 @@ Azure Portalの**Container Apps Jobs**で対象環境の`caj-<stem>-recon`を選
 通常は既存の定期実行を観測する。実行中に重ねて開始せず、成功／失敗と、対象実行の集約件数・残件を確認する。同じジョブは60日未使用・解除待ち接続の回収も行い、ログインや有効セッションがあるだけでは未使用期間を延長しない。CM不存在とSQLの同一世代確認前に枠を手動で減らさない。
 
 ログは対象実行と狭い時間範囲で読む。到達待ち・取得不能を処理失敗と即断せず、ジョブ成功だけでも対象接続の削除完了と判断しない。件数増加や確認不能が続く場合は対象と時刻を保護記録へ残して調査へ引き継ぐ。この通常点検のために利用日時変更・削除故障・競合を注入する必要はない。
+
+## 本人接続のSQL台帳
+
+Brokerの本人対応とセッションはAzure SQL、下流OAuthトークンはCMが管理します。照合ジョブやSQLの障害・復元については[Credential Brokerの運用](credential-broker.md)を参照してください。

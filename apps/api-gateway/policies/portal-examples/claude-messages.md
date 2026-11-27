@@ -20,7 +20,7 @@ Azureポータルから、Coreと同じFoundryに配備したClaudeモデルをG
 ## Application GatewayとWAF
 
 1. **Application Gateway → Rules／URL path maps**で、Gateway用リスナーの`/models/claude/v1/messages`と追加した場合の`/models/claude/v1/messages/count_tokens`が、既存のAPIM向けHTTPSバックエンドで解決することを確認します。該当パスで現在のWAFポリシー、信頼済み入口の付与、Firewall検査経路を受け入れます。
-2. **WAF policy**で`Prevention`と現在の保護ルールを確認します。WAF・APIM・Foundryの受入上限と、監査中継のHTTP本文16 MiB、証跡の抽出結果1 MiBが適用されます。通常のJSON・`stream: true`と長い正規リクエストを試します。WAFで拒否された場合は時刻・公開パス・トランザクションIDから該当ルールとJSONフィールドを確認し、調整対象を限定します。パス専用WAFを関連付ける場合は元の保護と診断を揃えます。 [WAFの要求サイズ制限](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/application-gateway-waf-request-size-limits) · [監査中継の上限](../../../../docs/reference/request-body-audit.md)
+2. **WAF policy**で`Prevention`と現在の保護ルールを確認します。WAF・APIM・Foundryの受入上限と、監査中継のHTTP本文16 MiB、証跡の抽出結果1 MiBが適用されます。通常のJSON・`stream: true`と長い正規リクエストを試します。WAFで拒否された場合は時刻・公開パス・トランザクションIDから該当ルールとJSONフィールドを確認し、調整対象を限定します。パス専用WAFを関連付ける場合は元の保護と診断を揃えます。 [WAFの要求サイズ制限](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/application-gateway-waf-request-size-limits) · [監査中継の上限](../../../../docs/reference/audit/request-body-audit.md)
 3. APIMの`buffer-response="false"`、App Gatewayの応答バッファ無効化、該当バックエンドのタイムアウトを確認します。一定時間継続するSSEで最初のイベント、逐次到着、最終イベント、クライアント切断後の終了を確認します。 [Application GatewayのSSE](https://learn.microsoft.com/en-us/azure/application-gateway/use-server-sent-events) · [APIMのSSE](https://learn.microsoft.com/en-us/azure/api-management/how-to-server-sent-events)
 
 ## クライアントと公開確認
@@ -33,7 +33,7 @@ Azureポータルから、Coreと同じFoundryに配備したClaudeモデルをG
 クライアントの環境変数へ秘密を渡す場合は、承認済みの取得方法から対象セッションへだけ設定します。既定モデル、サブエージェントやバックグラウンド操作用のモデルも、使う場合は配備名を確認します。端末上の認証方法と送信先は対象版の`/status`およびGatewayの要求記録で照合します。 [Claude Codeの環境変数](https://code.claude.com/docs/en/env-vars) · [Claude CodeとFoundry](https://code.claude.com/docs/en/microsoft-foundry)
 
 - 専用キー、本人Bearer、JSON、SSEを順に確認します。未所属、期限切れ、scope不足、無効キーと有効Bearerを組み合わせた要求、別Productのキー、非公開操作を試し、拒否と下流未到達を確認します。
-- 受入では無害な合成入力を使用します。`apim-request-id`からAPIMの認証主体・操作、本文監査の入力と応答、Foundryの要求IDを照合します。通常JSON、SSEのテキスト再構成、資格情報の除去、保存できなかった場合の終了状態を確認します。Claude固有の使用量はFoundryで確認します。 [本文監査の対象と復元](../../../../docs/reference/request-body-audit.md)
+- 受入では無害な合成入力を使用します。`apim-request-id`からAPIMの認証主体・操作、本文監査の入力と応答、Foundryの要求IDを照合します。通常JSON、SSEのテキスト再構成、資格情報の除去、保存できなかった場合の終了状態を確認します。Claude固有の使用量はFoundryで確認します。 [本文監査の対象と復元](../../../../docs/reference/audit/request-body-audit.md)
 - 既存のWAF／Firewall設定と無関係な初期APIの受入結果も確認します。WAF関連付け、Product所属、作成したバックエンド、生成時の設定を記録し、更新時は同じ操作IDと保護設定で反映します。公開を停止するときは手動ProductからAPIを外し、購読と既存ストリームの状態を確認します。Productの公開状態は開発者ポータルの表示に使います。
 
 この手順のXMLは合成入力で生成確認しています。Azureの実接続、Claude Codeの対象版、Foundryモデルごとの機能、WAFとTLS検査は新規環境で受け入れます。

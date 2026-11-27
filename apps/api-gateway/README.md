@@ -6,7 +6,7 @@
 
 Credential BrokerのBackendと名前付きの値は、専用内部CAEの既定ドメインからHTTPS URLを生成します。本人接続・Graph OBOの公開前にはBrokerの所属CAEとHTTPS ingressを照合します。 [Credential Brokerの配備境界](../credential-broker/README.md)
 
-標準API正本を常用で解決します。公開params/configの`apiDefinitions`と`publishApis`は廃止し、旧入力は空配列やfalseでも拒否します。標準定義の接続先は構築結果から解決し、API配列や環境固有URLをparamsへ書き戻しません。既存の非標準入力は無断変換せず、[移行条件](../../docs/setup/07-params.md#既存入力の移行を確認する)を確認します。今回の入力整理のAzure反映・全環境再構築E2Eは未実施です。
+標準APIはAPI正本から解決します。標準定義の接続先は構築結果から取得し、環境別paramsの作成と検証は[第07章](../../docs/setup/07-params.md)で行います。
 
 配備CLIは、このBicepを一度コンパイルし、[要求の分割処理](deploy/publication_templates.py)で二つのARM要求へ分けます。最初の要求は既存APIMを参照するだけで、照合用の完成XMLと設定を生成します。次の要求はAPI等の資源を配備し、大きな照合用データの代わりに、その生成を特定する小さなIDを出力します。資源定義と生成式は同じ正本を使い、コメントや監査処理を削ってサイズを抑える方式にはしません。
 
@@ -35,13 +35,13 @@ Gateway配備は通常キー用の`released-apis`製品（`Released APIs`）を�
 | [model-capabilities.json](model-capabilities.json) | API・操作・モデル別の公表出力上限、確認元URL、確認日。不定・未対応・未確認を数値と区別する |
 | [deploy/](deploy/README.md) | Gatewayの統合配備とAPI登録 |
 
-登録方法は[Gatewayの更新手順](../../docs/operations.md#同じ環境を更新する)を参照してください。指定APIと関連資源の配備成功後、キーによる共通認可を全体ポリシーへ統合します。同じIDをGUIでも編集する場合は設定の競合を確認します。
+登録方法は[Gatewayの更新手順](../../docs/operations/deployment.md#同じ環境を更新する)を参照してください。指定APIと関連資源の配備成功後、キーによる共通認可を全体ポリシーへ統合します。同じIDをGUIでも編集する場合は設定の競合を確認します。
 
 WebSocket APIを登録すると、既存の監査用診断設定`core-audit`の接続ログも有効にします。送信先と他の収集設定を保持し、結果は`webSocketDiagnostics`に記録します。
 
 登録後は、初期サンプルの`echo-api`、`starter`／`unlimited`製品と、対象の製品・Echo APIだけに紐づく購読を整理します。既にない場合は何もしません。設定で明示した名前、接続先等を変更したEcho、業務APIやMCPが所属する製品は保持し、理由を`defaultSampleCleanup`へ記録します。通常の購読・全API用購読・マスター購読は削除しません。
 
-共通ポリシーは[policies/service.xml](policies/service.xml)です。All APIsへ登録する全体ポリシーと、各APIへ登録する[共有テンプレート3正本](policies/api-templates/README.md)を区別します。入口の保護設定は共通基盤を使い、CM関連の名前付きの値はGateway配備が用意します。各APIは`<base />`で共通ポリシーを継承します。本人接続が必要なAPIは[CM共通窓口](../../docs/reference/credential-manager-login.md)を利用します。
+共通ポリシーは[policies/service.xml](policies/service.xml)です。All APIsへ登録する全体ポリシーと、各APIへ登録する[共有テンプレート3正本](policies/api-templates/README.md)を区別します。入口の保護設定は共通基盤を使い、CM関連の名前付きの値はGateway配備が用意します。各APIは`<base />`で共通ポリシーを継承します。本人接続が必要なAPIは[CM共通窓口](../../docs/reference/identity/credential-manager-login.md)を利用します。
 
 標準APIの追加・変更は[定義ファイルの管理方法](apis/README.md)を参照してください。APIファイルにモデルの配備やCMプロバイダーの設定を混在させず、モデルとCM共通定義はconfig、環境固有IDとアプリ登録・秘密参照はparamsで管理します。標準Graphは双方の`credentialProviders.graphDelegated`、追加providerは定義／登録の`additional[]`を論理名で照合します。
 
@@ -51,6 +51,6 @@ Voice Liveのモデル・API版の既定値は`public-bindings.json`にまとめ
 
 WebSocket確立後のフレームやWebRTCメディアはAPIMのHTTPポリシーでは検査しません。Realtimeの`initialOutputTokens`は開始時の初期値です。Voice Liveはモデル最大32,768と、数値指定のAPI上限4,096を区別し、モデル最大を明示選択した場合だけ公式の`inf`を使用します。
 
-標準APIの適用順とモデル・音声・CMの接合は[APIMポリシー一覧](../../docs/reference/apim-policy-catalog.md)、公開APIと採用モデルの対応は[API・Operation定義](../../docs/reference/api-design-proposal.md)を参照してください。配備対象は実施時のAPI定義とconfigを正とします。
+標準APIの適用順とモデル・音声・CMの接合は[APIMポリシー一覧](../../docs/reference/gateway/apim-policy-catalog.md)、公開APIと採用モデルの対応は[API・Operation定義](../../docs/reference/gateway/api-contracts.md)を参照してください。配備対象は実施時のAPI定義とconfigを正とします。
 
-文書の文字認識・表や段落の解析は[Document Intelligence契約](../../docs/reference/document-analysis.md)を参照してください。既存Foundryを再利用し、Gatewayの配備で公開APIと完全パス用WAFを設定します。
+文書の文字認識・表や段落の解析は[Document Intelligence契約](../../docs/reference/gateway/document-analysis.md)を参照してください。既存Foundryを再利用し、Gatewayの配備で公開APIと完全パス用WAFを設定します。

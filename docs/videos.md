@@ -28,4 +28,4 @@ AIで実現したい仕事の体験から、それを支えるAzure上のAIゲ�
 | 第10回 | [Private EndpointのNSG設定](https://youtu.be/DrLPaGZDrw8) |
 | 第11回 | [ACAのNSG設定](https://youtu.be/UwFfmDfaSW0) |
 
-導入・構築は[リポジトリREADME](../README.md)、API・認証・接続の仕様は[参照資料](reference/platform.md)を参照してください。
+導入・構築は[リポジトリREADME](../README.md)、API・認証・接続の仕様は[参照資料](reference/architecture/platform.md)を参照してください。

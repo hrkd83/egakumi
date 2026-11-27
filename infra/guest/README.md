@@ -8,4 +8,4 @@
 | [initialize-management-serial.py](initialize-management-serial.py) | 管理VMの初期シリアル接続を準備 | [シリアル初期化](../modules/management/management-serial-initialization.bicep) |
 | [prepare-management-client.sh](prepare-management-client.sh) | 管理VM用保守クライアントと参照する資源一覧の配置 | [保守クライアントの準備](../modules/management/management-maintenance-client.bicep) |
 
-証明書ワーカーは [証明書Jobのイメージ構築処理](../../scripts/deployment/helpers/certificate_image.py) が組み込みます。管理VM用スクリプトはBicepに埋め込まれ、Managed Run Commandで実行されます。操作と認可は [管理VMの保守手順](../../docs/operations.md#管理vmから保守データを取得する) を参照してください。
+証明書ワーカーは [証明書Jobのイメージ構築処理](../../scripts/deployment/helpers/certificate_image.py) が組み込みます。管理VM用スクリプトはBicepに埋め込まれ、Managed Run Commandで実行されます。操作と認可は [管理VMの保守手順](../../docs/operations/management-client.md#管理vmから保守データを取得する) を参照してください。

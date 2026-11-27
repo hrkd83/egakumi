@@ -38,7 +38,7 @@ python3 -B scripts/deployment/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --
 
 公開URLは `https://portal.<domain>` です。App GatewayでTLSを終端し、WAFで検査してからFirewallを経由してACAへHTTPSで転送します。ブラウザー向けの戻り先、Secure Cookie、Origin検査は公開URLを基準にします。
 
-PortalのサインインはOIDCを使います。Gateway向けのアクセストークンは本人の同意済み `Gateway.Invoke` を使って別に取得します。PortalはKey Vaultにある非エクスポート鍵でEntraのクライアントアサーションへ署名します。専用DBに利用者とログインセッションを保存し、試用資格情報は専用のKey Vault鍵で暗号化してサーバー内に保持します。文書・音声などの業務本文はPortal DBへ保存しません。[基盤の本文監査](../reference/apim-policy-catalog.md)を参照してください。
+PortalのサインインはOIDCを使います。Gateway向けのアクセストークンは本人の同意済み `Gateway.Invoke` を使って別に取得します。PortalはKey Vaultにある非エクスポート鍵でEntraのクライアントアサーションへ署名します。専用DBに利用者とログインセッションを保存し、試用資格情報は専用のKey Vault鍵で暗号化してサーバー内に保持します。文書・音声などの業務本文はPortal DBへ保存しません。[基盤の本文監査](../reference/audit/request-body-audit.md)を参照してください。
 
 ## GitHub Actions
 

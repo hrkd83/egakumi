@@ -84,7 +84,7 @@ EXEC sys.sp_executesql @grant;
 COMMIT TRANSACTION;
 ```
 
-付与後、担当者は管理VMで本人のAzure CLIセッションを用意し、管理クライアントの `sql-query` を本人のEntra IDで実行します。最初の接続で `SELECT DB_NAME(), USER_NAME();` を実行し、対象DB名と作業用SQLユーザー名を確認します。テーブルの読み取り権限は `SELECT TOP (0)` で照合できます。許可したテーブルへの読み取りが成功し、承認外のテーブルへの同じ操作は拒否されることを確認します。他方の構築DBへの権限も付与していない場合は、そちらへの接続拒否を確認します。 [管理クライアントの引数と保護ファイル](../operations.md#保護入出力とsqlを含む8種類の操作)
+付与後、担当者は管理VMで本人のAzure CLIセッションを用意し、管理クライアントの `sql-query` を本人のEntra IDで実行します。最初の接続で `SELECT DB_NAME(), USER_NAME();` を実行し、対象DB名と作業用SQLユーザー名を確認します。テーブルの読み取り権限は `SELECT TOP (0)` で照合できます。許可したテーブルへの読み取りが成功し、承認外のテーブルへの同じ操作は拒否されることを確認します。他方の構築DBへの権限も付与していない場合は、そちらへの接続拒否を確認します。 [管理クライアントの引数と保護ファイル](management-client.md#保護入出力とsqlを含む8種類の操作)
 
 ## 回収して再接続の拒否を確認する
 
@@ -117,5 +117,3 @@ COMMIT TRANSACTION;
 ```
 
 DBAは対象DBに作業用ユーザーと残存セッションがないことを確認します。担当者が閉じられなかった接続が残る場合は、接続先DBと本人のセッションをDBAが確認して、該当セッションだけを終了します。VMログインを回収する前に、回収後の新規SQL接続が拒否されることを確認します。スキーマジョブ用IDを一時的に切り替えた場合は、復元後に正規のスキーマジョブが使えることも検証します。実施時刻と結果は保護された運用記録に残します。[Azure SQLのアクティブセッション終了手順](https://learn.microsoft.com/en-us/azure/azure-sql/database/ransomware-recovery-contain?view=azuresql#action-2-revoke-all-active-sessions-for-suspicious-accounts)
-
-旧資材で管理VMの恒常的なSQLユーザーを作成した環境は、構築済みの各DBとVM IDを照合し、既存環境の切り替え作業としてDBAが回収します。今回の新規構築では同ユーザーを作成しません。[Azure SQLの構築と復旧](../setup/11-deploy-gateway.md)

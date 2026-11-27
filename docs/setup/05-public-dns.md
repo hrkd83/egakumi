@@ -21,7 +21,7 @@ Gateway・Portalの公開名を管理するAzure Public DNSゾーンと、証明
 | `<ACME_CONTACT_EMAIL>` | 証明書を管理する連絡先 | `certificate.contactEmail` |
 | DNS担当者 | 委任・ゾーン・ID・権限の管理者 | 事前準備と継続運用 |
 
-証明書のDNS名はGateway・Portalの正確な公開名2件から生成します。今回の初期入力では、別SANやワイルドカードを独立選択する欄を設けません。公開入口はGateway／PortalのHTTPSです。gRPC専用TCP入口は構成しません。
+証明書のDNS名はGateway・Portalの正確な公開名2件から生成します。GatewayとPortalの公開名をHTTPSの入口に使います。
 
 ## 2. Azureの公開ゾーンを用意し、NSを委任する
 
@@ -79,7 +79,7 @@ CM用Entraアプリのclient secretが必要な構成では、その秘密入力
 
 Core完了後は公開DNS、ブラウザーからのTLS接続、証明書のSAN・期限、公開TLS Jobの実行履歴を確認します。Portalの画面とヘルスは本体配備後に確認します。 [初回構築の受入](13-verify-deployment.md)
 
-標準configは12時間ごとに確認し、残日数30日以内で更新します。UAMIの存続、公開TLS Jobへの関連付け、DNS権限、専用ACA環境からDNS API・Key Vaultへの接続を維持してください。証明書の更新と、AppGWが公開ホストごとに返す証明書の反映は別々に確認します。 [運用手順](../operations.md#dns用マネージドidと権限を更新する)
+標準configは12時間ごとに確認し、残日数30日以内で更新します。UAMIの存続、公開TLS Jobへの関連付け、DNS権限、専用ACA環境からDNS API・Key Vaultへの接続を維持してください。証明書の更新と、AppGWが公開ホストごとに返す証明書の反映は別々に確認します。 [運用手順](../operations/secrets-and-certificates.md#dns用マネージドidと権限を更新する)
 
 ## このページの完了状態
 
@@ -88,5 +88,3 @@ Core完了後は公開DNS、ブラウザーからのTLS接続、証明書のSAN�
 - DNS用UAMI、DNS側のロール、構築実行者のID割り当て・Aレコード編集権限を準備した。
 - DNS側Subscription IDとUAMIのリソースIDを、構築前に環境別paramsへ設定できる。
 - 公開ゾーン・DNS用IDをCoreの`azd down`後も保持する方針を確認した。
-
-今回の公開入力整理に伴うAzure一括反映と全環境再構築E2Eは未実施です。既存の非標準SAN・DNS設定・権限は無断変換せず、[入力配置と移行条件](07-params.md#既存入力の移行を確認する)に従って影響と復旧を確認します。

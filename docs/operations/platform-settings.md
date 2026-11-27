@@ -66,9 +66,9 @@ ETag競合・未完了時も、ポリシーやAppGWを削除して再作成し�
 
 ## AppGW後段のTLS検査を検証する
 
-新規構築では [Firewallの中間CAとApp Gatewayの公開ルート](../reference/config-options.md#firewallのtls検査を準備する) を準備します。App Gatewayの両方のプローブがHTTPS443を使用することを確認します。Portalのプローブ確認は本体配備後に行います。
+新規構築では [Firewallの中間CAとApp Gatewayの公開ルート](../reference/configuration/config-options.md#firewallのtls検査を準備する) を準備します。App Gatewayの両方のプローブがHTTPS443を使用することを確認します。Portalのプローブ確認は本体配備後に行います。
 
-既存のHTTP後段をこの構成へ変更する場合は、App Gateway、FirewallのSKU・中間CA、NSG、APIM／ACAの受信、プローブと診断設定を一つの切替計画で扱います。構築CLIは既存バックエンドが検査用ルートとHTTPSプローブに一致しない場合に停止します。切替前に対象の設定を保護領域へ保存し、受入と切戻しの順序を確定してください。
+App Gatewayのバックエンド、Firewallの中間CA、NSG、APIM／ACAの受信設定を同じ経路として照合します。運用時にその経路やCAを変更する場合は、対象設定を保護領域へ保存し、確認と切戻しの順序を決めてください。
 
 Azure反映後は、通常API、SSE、WebSocket、MCPと、Portalのヘルス・サインインをテスト環境で確認します。Firewall処理の対象FQDN、TLS検査、IDPSの結果、およびTLS検査用ログのURL列が除去されることを読み戻します。
 
@@ -79,7 +79,7 @@ Azure反映後は、通常API、SSE、WebSocket、MCPと、Portalのヘルス・
 HTTPS／443・FQDN許可を既存Firewall規則へ追加する。
 任意サブネット、任意ポート、全インターネットを許可する入口ではない。
 
-初期FWの追加規則4配列と追加FQDN2配列は公開config／paramsから廃止しました。APIの`backendUrl`・操作別override・本人情報取得設定を正本にし、同じ設定から初期宛先を再生成します。`allow-apim-approved-services`は、既存証明書規則と同じAPIM送信元・HTTPS443・TLS終端なしの`oneocsp.microsoft.com`を基底に常設します。この基底は既存許可の重複で、生成先0を理由に規則を省略したり空宛先を送信したりしません。
+許可先はAPIの`backendUrl`・操作別の下流設定・本人情報取得設定から生成します。`allow-apim-approved-services` は、APIM送信元・HTTPS443・TLS終端なしで、証明書検証用の `oneocsp.microsoft.com` と生成した宛先に適用します。
 
 1. 許可されたバックエンドのFQDN、APIパス、操作、認証方式、正常応答を決める。
    `backendService: external`・`backendUrl`等を既存のAPI定義契約に合わせる。
@@ -89,10 +89,8 @@ HTTPS／443・FQDN許可を既存Firewall規則へ追加する。
    新しい認証方式やAPIの実装を、この通信許可の作業だけで追加できると扱わない。
 3. 対象Firewallの`rcg-egress` → `allow-apim-egress` →
    `allow-apim-approved-services`と、元の許可先・送信元・HTTPS／443、他の規則を保存する。
-   公開処理は既知の旧名`apim-approved-services`も照合し、通信境界を確認して新名へ移行する。
-   旧名と新名の同時存在は停止し、基盤再配備の宛先保持処理は両名を読取り対象にする。
-   再配備ではGETのみで通信境界を厳密に検証し、企業が構築後に加えた宛先も生成ARM入力へ
-   casefold重複除去で保持する。業務API由来の初期集合を優先し、公開paramsへは転記しない。
+   基盤再配備の準備では通信境界を検証し、構築後に加えた宛先も生成ARM入力へ
+   大文字・小文字を区別せず重複を除いて保持する。公開paramsへは転記しない。
    管理VM、Portal、DNS、他用途の許可を変更対象へ含めない。
 4. [Gの計画・実行](common.md#計画してから個別に反映する)を行う。
    計画内の追加FQDNとAPI一覧を確認する。GはBroker・CM・SQL等も扱うため、
@@ -111,86 +109,6 @@ API公開へ進む。途中で失敗しても追加許可が既に反映され�
 今回の追加FQDNを他のAPIが使っていないことを確認した後、Azure Portalの
 対象Firewall Policy → Rule collection groupsで、そのFQDNだけを取り除く。
 現行の他の宛先・規則を保持し、旧バックエンドと既存APIの正常要求を再確認する。
-
-### 外部サービスの準備が不要な追加例
-
-公開クラウドのmetadataを、購読必須の`GET /ops/metadata/v1`として一時登録する。
-下流はMicrosoft共通の公開GETであり、追加のサーバー・キー・Entra権限は作らない。
-ここでは[Microsoft公式SDKの既定URL](https://github.com/Azure/azure-sdk-for-python/blob/main/sdk/ml/azure-ai-ml/azure/ai/ml/constants/_common.py)
-に合わせ、`api-version=2019-05-01`を固定する。
-[同SDKの取得処理](https://github.com/Azure/azure-sdk-for-python/blob/main/sdk/ml/azure-ai-ml/azure/ai/ml/_azure_environments.py)
-も資格情報なしのGETを使用する。この例はVMのIMDSや、管理トークンを発行するAPIではない。
-
-公開API正本へ追加する**独立した1 APIファイル**の内容は次のとおり。
-購読キーヘッダーは資材固定の`api-key`を使う。公開paramsによるAPI配列置換は行わない。
-
-```json
-{
-  "name": "ops-metadata-v1",
-  "displayName": "Operations metadata",
-  "path": "ops/metadata",
-  "apiType": "http",
-  "backendService": "external",
-  "backendUrl": "https://management.azure.com",
-  "backendAudience": "https://management.azure.com",
-  "backendAuthentication": { "mode": "none" },
-  "productId": "connection-users",
-  "released": true,
-  "subscriptionKeyHeader": "api-key",
-  "operations": [{
-    "name": "read-metadata",
-    "displayName": "Read public cloud metadata",
-    "method": "GET",
-    "urlTemplate": "/v1",
-    "backendUrlTemplate": "/metadata/endpoints?api-version=2019-05-01",
-    "templateParameters": []
-  }],
-  "authorization": {
-    "mode": "subscriptionKey",
-    "operationConstraints": {
-      "read-metadata": {
-        "kind": "registeredOperation",
-        "bodyFormat": "none",
-        "maxRequestBytes": 1024
-      }
-    }
-  }
-}
-```
-
-1. 変更前のparamsと、Gの正常な計画を保護保存する。既定の計画保存先は
-   `state/gateway-plan.json`である。API定義を変える前に保存し、後続の計画で上書きしない。
-2. [API正本](../../apps/api-gateway/apis/)の現在のファイル集合とrevisionを保護記録へ控える。
-   計画の`parameters.configuration.apiDefinitions`は生成済み内部配列であり、paramsへ
-   コピーしない。公開`apiDefinitions`・`publishApis`は空やfalseでも拒否する。
-   API正本へ実環境のURL・ID・secretを転記せず、上記の公式共通URLを使う追加だけを扱う。
-3. API正本へ`ops-metadata-v1.json`として上記1件を追加する。既存ファイルを変更せず、
-   既存のname・path・operations・Product・認証・
-   profile制約が変更前と一致し、同名API／backend／Named Valueが未使用であることを確認する。
-   共用する`connection-users`と`released-apis`の既存購読を削除・再発行しない。
-4. Gの計画と実行を行う。計画の外部FQDNに`management.azure.com`が入ること、
-   実Firewallの送信元・HTTPS／443・他の宛先が保たれることを確認する。
-   通常のBroker構成ではこのFQDNは既に必要な許可であるため、変更なしでも正常である。
-   新規FQDN追加を実測するために既存の管理通信許可を外さない。
-5. 実APIで購読必須・GET一操作・固定の下流URL／query・`none`認証を読む。
-   生成ポリシーが入口の購読キー・Authorization・L7内部認証ヘッダーを削除し、
-   このAPIにMI認証・CM接続・下流キーを追加していないことを確認する。
-   固定rewriteは未登録のqueryを転送しない。外部へsecretを送る検証要求は作らない。
-6. `released-apis`に属する有効な専用キーで、本文なしのGETを一度実行し、
-   200と、`name`・`resourceManager`・`authentication`を持つ公開クラウドmetadataの
-   JSON構造を確認する。配列の場合はその要素を確認する。同じURIのキーなし要求は401、
-   未登録の操作・パスは拒否され、既存APIの代表要求は継続することを確認する。
-   実応答全体を公開資料へ貼らず、必要な状態・構造の判定だけを保護記録へ残す。
-
-回収は今回追加した`ops-metadata-v1.json`だけをAPI正本から除き、変更前のファイル集合と
-契約が維持されることをGの計画・実行で確認する。paramsをAPI配列の保存先にしない。
-Incremental配備は省いた資源を自動削除しないため、Azure Portalの対象APIMで
-`ops-metadata-v1`のProduct所属とAPIを回収し、他APIから参照されていない
-専用backend `ops-metadata-v1-backend`と、非秘密のNamed Value
-`ops-metadata-v1-backend-audience`だけを削除する。既存Product・購読・共通Named Valueは残す。
-API Centerへの同期登録がある場合も残存を確認し、今回の専用APIに対応する分だけを回収する。
-`management.azure.com`の既存許可は回収しない。最後に専用APIの不存在と、
-元のAPI定義・既存購読・代表要求の保持を確認する。
 
 ## 監視通知先・条件を更新し、ログを点検する
 
@@ -243,7 +161,7 @@ AGWAccessLogs
 | summarize Rows=count(), Latest=max(TimeGenerated)
 ```
 
-0件・照会失敗・取り込み待ちを区別し、設定の読戻しだけでログ到達を合格にしない。
+0件・照会失敗・取り込み待ちを区別する。監査Storageへの到達は、診断設定に加えてLAW変換、exportとStorageの各経路で確認する。企業の共通監査はその所有者と経路を確認する。 [ログの保存経路と受入](../testing/log-privacy.md)
 WAF／API／Portalの代表要求を共用し、ログ生成のために大量の障害要求を送らない。
 通知の試験と、監視クエリの評価は別に記録する。
 
@@ -285,3 +203,15 @@ AppGWのautoscaleとContainer Appのrevision変更は、
 監視ログ点検、変更対象外の代表要求は、同じ要求を実施票へ対応付けて共用できる。
 待機中は読取と記録を進め、同じ環境への更新を並行実行しない。
 各業務のために環境を再構築せず、試験用の設定変更は最後にまとめて確認・回収する。
+
+## API Centerのカタログ管理
+
+API Center本体とAPIM同期はCoreで管理します。運用担当者はAzure Portalで同期元・API説明・仕様・認証条件・公開URLを確認し、`authorization.catalogReaders`で指定した閲覧者のAzure RBACを照合します。API Center Portalを独自に公開する場合は、そのクライアント登録と閲覧権限を別途設計します。
+
+API Centerで利用する機能と同期上限を確認し、Azureポータルの **Overview → Manage plan** のプランと`services.apiCenterSkuName`を合わせます。 [Portal設定](https://learn.microsoft.com/en-us/azure/api-center/set-up-api-center-portal) · [料金プラン](https://learn.microsoft.com/en-us/azure/api-center/overview#standard-plan-benefit-when-api-center-linked-to-api-management)
+
+API説明はAPIMの公開契約から生成し、API Centerへ同期します。区分、Productと購読要件、公開URL、操作・上限・モデル、CMの接続条件を示し、内部URL・主体ID・秘密は掲載しません。説明は1,000文字までです。同期は最大24時間かかり得ます。公開ApiSources APIに強制同期actionはなく、再PUTによる即時同期も保証しません。説明・仕様Download・実runtime URIを別々に確認します。[APIM同期](https://learn.microsoft.com/en-us/azure/api-center/synchronize-api-management-apis)
+
+公開接続には、APIの説明とruntime URIに記載された`https://`／`wss://`を使います。購読キーとCM接続セッションはTLSで保護された公開URLへ送信してください。
+
+MCPは、標準同期でAPIの説明・接続先が掲載されても、仕様Downloadが提供されるとは限りません。実tool定義は認証後の`tools/list`で確認します。RESTのOpenAPIが取得できたことを、MCPの仕様ファイルも取得できるという意味には扱いません。
