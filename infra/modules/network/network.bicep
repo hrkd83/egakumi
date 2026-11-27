@@ -39,16 +39,17 @@ param auditEvidenceEnabled bool = false
 // route-table,private-dns-zone,azure-firewall,firewall-policy}.
 // Portal, Credential Broker and certificate jobs use separate delegated ACA subnets.
 var nsgPriorities = loadJsonContent('nsg/core-rules.json')
+var subnetNames = loadJsonContent('subnet-names.json')
 
-var addressSpaces = config.?addressSpaces ?? ['10.40.0.0/24', '10.40.1.0/24', '10.40.2.0/24', '10.40.3.0/24']
+var addressSpaces = config.?addressSpaces ?? ['10.40.0.0/24', '10.40.1.0/24', '10.40.2.0/24', '10.40.3.0/24', '10.40.4.0/24']
 var subnetPrefixes = config.?subnetPrefixes ?? {
   agw: '10.40.0.0/24'
   pep: '10.40.1.0/24'
   firewall: '10.40.2.0/26'
   apim: '10.40.2.64/26'
-  management: '10.40.2.128/26'
-  aca: '10.40.2.192/26'
-  broker: '10.40.3.128/25'
+  management: '10.40.3.192/26'
+  portal: '10.40.2.128/26'
+  broker: '10.40.3.0/25'
 }
 // The separated certificate subnet is supplied by the validated Core input.
 var certificateEnabled = contains(subnetPrefixes, 'certificate')
@@ -116,19 +117,19 @@ var nsgDefinitions = [
     ]
   }
   {
-    key: 'aca'
-    suffix: 'aca'
+    key: 'portal'
+    suffix: 'portal'
     rules: [
-      allowRule('allow-firewall-https-ingress', nsgPriorities.groups.aca.rules['allow-firewall-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.firewall], [subnetPrefixes.aca], ['443', '31443'])
-      allowRule('allow-azure-load-balancer-ingress', nsgPriorities.groups.aca.rules['allow-azure-load-balancer-ingress'].priority, 'Inbound', 'Tcp', ['AzureLoadBalancer'], [subnetPrefixes.aca], ['30000-32767'])
-      allowRule('allow-aca-internal-ingress', nsgPriorities.groups.aca.rules['allow-aca-internal-ingress'].priority, 'Inbound', '*', [subnetPrefixes.aca], [subnetPrefixes.aca], ['*'])
-      allowRule('allow-aca-internal-egress', nsgPriorities.groups.aca.rules['allow-aca-internal-egress'].priority, 'Outbound', '*', [subnetPrefixes.aca], [subnetPrefixes.aca], ['*'])
-      allowRule('allow-entra-egress', nsgPriorities.groups.aca.rules['allow-entra-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureActiveDirectory'], ['443'])
-      allowRule('allow-monitor-egress', nsgPriorities.groups.aca.rules['allow-monitor-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureMonitor'], ['443'])
-      allowRule('allow-mcr-egress', nsgPriorities.groups.aca.rules['allow-mcr-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['MicrosoftContainerRegistry'], ['443'])
-      allowRule('allow-afd-first-party-egress', nsgPriorities.groups.aca.rules['allow-afd-first-party-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureFrontDoor.FirstParty'], ['443'])
+      allowRule('allow-firewall-https-ingress', nsgPriorities.groups.portal.rules['allow-firewall-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.firewall], [subnetPrefixes.portal], ['443', '31443'])
+      allowRule('allow-azure-load-balancer-ingress', nsgPriorities.groups.portal.rules['allow-azure-load-balancer-ingress'].priority, 'Inbound', 'Tcp', ['AzureLoadBalancer'], [subnetPrefixes.portal], ['30000-32767'])
+      allowRule('allow-aca-internal-ingress', nsgPriorities.groups.portal.rules['allow-aca-internal-ingress'].priority, 'Inbound', '*', [subnetPrefixes.portal], [subnetPrefixes.portal], ['*'])
+      allowRule('allow-aca-internal-egress', nsgPriorities.groups.portal.rules['allow-aca-internal-egress'].priority, 'Outbound', '*', [subnetPrefixes.portal], [subnetPrefixes.portal], ['*'])
+      allowRule('allow-entra-egress', nsgPriorities.groups.portal.rules['allow-entra-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.portal], ['AzureActiveDirectory'], ['443'])
+      allowRule('allow-monitor-egress', nsgPriorities.groups.portal.rules['allow-monitor-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.portal], ['AzureMonitor'], ['443'])
+      allowRule('allow-mcr-egress', nsgPriorities.groups.portal.rules['allow-mcr-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.portal], ['MicrosoftContainerRegistry'], ['443'])
+      allowRule('allow-afd-first-party-egress', nsgPriorities.groups.portal.rules['allow-afd-first-party-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.portal], ['AzureFrontDoor.FirstParty'], ['443'])
       // CNIの配布先には安定した個別タグがないため、公開HTTPSをFirewallのFQDN規則へ渡します。
-      allowRule('allow-firewall-routed-public-https-egress', nsgPriorities.groups.aca.rules['allow-firewall-routed-public-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['Internet'], ['443'])
+      allowRule('allow-firewall-routed-public-https-egress', nsgPriorities.groups.portal.rules['allow-firewall-routed-public-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.portal], ['Internet'], ['443'])
     ]
   }
   {
@@ -223,12 +224,12 @@ resource routeTables 'Microsoft.Network/routeTables@2025-01-01' = [for table in 
 }]
 
 resource portalRouteTable 'Microsoft.Network/routeTables@2025-01-01' = {
-  name: 'rt-${resourcePrefix}-aca'
+  name: 'rt-${resourcePrefix}-portal'
   location: location
   tags: tags
   properties: {
     disableBgpRoutePropagation: true
-    routes: existingRouteTableRoutes[?'rt-${resourcePrefix}-aca'] ?? []
+    routes: existingRouteTableRoutes[?'rt-${resourcePrefix}-portal'] ?? []
   }
 }
 resource portalRoutes 'Microsoft.Network/routeTables/routes@2025-01-01' = [for route in [
@@ -255,7 +256,7 @@ resource certificateRoute 'Microsoft.Network/routeTables/routes@2025-01-01' = if
   properties: { addressPrefix: '0.0.0.0/0', nextHopType: 'VirtualAppliance', nextHopIpAddress: firewall.properties.ipConfigurations[0].properties.privateIPAddress }
 }
 
-// 証明書処理には共用ACAとは別の委任サブネットを用意します。
+// Portal、Broker、証明書Job、監査実行環境ごとに委任サブネットを用意します。
 resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
   name: 'vnet-${resourcePrefix}'
   location: location
@@ -267,7 +268,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
     dhcpOptions: { dnsServers: dnsServers }
     subnets: concat([
       {
-        name: 'snet-${resourcePrefix}-agw'
+        name: subnetNames.agw
         properties: {
           addressPrefix: subnetPrefixes.agw
           networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', nsgResourceNames[0]) }
@@ -276,13 +277,13 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
         }
       }
       {
-        name: 'AzureFirewallSubnet'
+        name: subnetNames.firewall
         properties: {
           addressPrefix: subnetPrefixes.firewall
         }
       }
       {
-        name: 'snet-${resourcePrefix}-apim'
+        name: subnetNames.apim
         properties: {
           addressPrefix: subnetPrefixes.apim
           networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', nsgResourceNames[1]) }
@@ -291,7 +292,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
         }
       }
       {
-        name: 'snet-${resourcePrefix}-pep'
+        name: subnetNames.pep
         properties: {
           addressPrefix: subnetPrefixes.pep
           networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', nsgResourceNames[2]) }
@@ -300,7 +301,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
         }
       }
       {
-        name: 'snet-${resourcePrefix}-vm'
+        name: subnetNames.management
         properties: {
           addressPrefix: subnetPrefixes.management
           networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', nsgResourceNames[3]) }
@@ -311,9 +312,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
 
     ], [
       {
-        name: 'snet-${resourcePrefix}-aca'
+        name: subnetNames.portal
         properties: {
-          addressPrefix: subnetPrefixes.aca
+          addressPrefix: subnetPrefixes.portal
           networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', nsgResourceNames[4]) }
           routeTable: { id: portalRouteTable.id }
           delegations: [{ name: 'containerapps', properties: { serviceName: 'Microsoft.App/environments' } }]
@@ -321,7 +322,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
         }
       }
       {
-        name: 'snet-${resourcePrefix}-broker'
+        name: subnetNames.broker
         properties: {
           addressPrefix: subnetPrefixes.broker
           networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', nsgResourceNames[5]) }
@@ -331,7 +332,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
         }
       }
     ], auditEvidenceEnabled ? [{
-      name: 'snet-${resourcePrefix}-audit'
+      name: subnetNames.audit
       properties: {
         addressPrefix: subnetPrefixes.audit
         networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-${resourcePrefix}-audit') }
@@ -340,7 +341,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
         defaultOutboundAccess: false
       }
     }] : [], certificateEnabled ? [{
-      name: 'snet-${resourcePrefix}-certificate'
+      name: subnetNames.certificate
       properties: {
         addressPrefix: subnetPrefixes.certificate
         networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-${resourcePrefix}-certificate') }
@@ -706,7 +707,7 @@ resource firewall 'Microsoft.Network/azureFirewalls@2025-01-01' = {
     ipConfigurations: [{
       name: 'fwipcfg'
       properties: {
-        subnet: { id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'AzureFirewallSubnet') }
+        subnet: { id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.firewall) }
         publicIPAddress: { id: firewallPublicIp.id }
       }
     }]
@@ -740,16 +741,16 @@ resource routes 'Microsoft.Network/routeTables/routes@2025-01-01' = [for route i
 
 output vnetId string = vnet.id
 output subnetIds object = union({
-  agw: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-agw')
-  firewall: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'AzureFirewallSubnet')
-  apim: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-apim')
-  pep: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-pep')
-  management: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-vm')
-  aca: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-aca')
-  broker: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-broker')
-}, auditEvidenceEnabled ? { audit: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-audit') } : {}, certificateEnabled ? { certificate: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-certificate') } : {})
+  agw: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.agw)
+  firewall: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.firewall)
+  apim: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.apim)
+  pep: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.pep)
+  management: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.management)
+  portal: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.portal)
+  broker: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.broker)
+}, auditEvidenceEnabled ? { audit: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.audit) } : {}, certificateEnabled ? { certificate: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.certificate) } : {})
 output subnetPrefixes object = subnetPrefixes
-output nsgNames object = union({ agw: nsgResourceNames[0], apim: nsgResourceNames[1], pep: nsgResourceNames[2], management: nsgResourceNames[3], aca: nsgResourceNames[4], broker: nsgResourceNames[5] }, auditEvidenceEnabled ? { audit: nsgResourceNames[6] } : {}, certificateEnabled ? { certificate: 'nsg-${resourcePrefix}-certificate' } : {})
+output nsgNames object = union({ agw: nsgResourceNames[0], apim: nsgResourceNames[1], pep: nsgResourceNames[2], management: nsgResourceNames[3], portal: nsgResourceNames[4], broker: nsgResourceNames[5] }, auditEvidenceEnabled ? { audit: nsgResourceNames[6] } : {}, certificateEnabled ? { certificate: 'nsg-${resourcePrefix}-certificate' } : {})
 output routeTableNames object = union({ agw: routeTables[0].name, apim: routeTables[1].name, management: routeTables[2].name, broker: routeTables[3].name }, auditEvidenceEnabled ? { audit: routeTables[4].name } : {}, certificateEnabled ? { certificate: certificateRouteTable!.name } : {})
 output privateDnsZoneIds object = {
   foundryCognitive: privateDnsZones[0].id

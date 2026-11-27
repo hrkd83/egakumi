@@ -39,10 +39,10 @@ class ApplicationTeardownTests(CleanupFixture, unittest.TestCase):
         self.job_ids = [prefix + "jobs/caj-" + stem + suffix
                         for suffix in ("-psql", "-schema", "-recon")]
         self.child_ids = [self.portal_id, self.broker_id, *self.job_ids]
-        self.subnet_id = (cleanup._rg_id(self.configuration, "nw")
-                          + "/providers/Microsoft.Network/virtualNetworks/vnet-" + stem
-                          + "/subnets/snet-" + stem + "-aca")
-        self.broker_subnet_id = self.subnet_id.removesuffix("-aca") + "-broker"
+        subnet_prefix = (cleanup._rg_id(self.configuration, "nw")
+                         + "/providers/Microsoft.Network/virtualNetworks/vnet-" + stem + "/subnets/")
+        self.subnet_id = subnet_prefix + "PortalSubnet"
+        self.broker_subnet_id = subnet_prefix + "CredentialBrokerSubnet"
         self.environment_children = {
             self.environment_id: [self.portal_id, self.job_ids[0]],
             self.broker_environment_id: [self.broker_id, *self.job_ids[1:]],

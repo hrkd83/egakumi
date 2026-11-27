@@ -24,7 +24,7 @@ def fixture():
         'services': {'apimInstanceId': 'abc123'},
         'resourceGroupNames': {'svc': 'rg-test-sample-svc', 'id': 'rg-test-sample-id', 'nw': 'rg-test-sample-nw',
                                'maint': 'rg-test-sample-maint', 'monitor': 'rg-test-sample-monitor'},
-        'network': {'subnetPrefixes': {'aca': '192.0.2.0/26', 'apim': '192.0.2.64/26'}},
+        'network': {'subnetPrefixes': {'portal': '192.0.2.0/26', 'apim': '192.0.2.64/26'}},
         'entraTenantId': '44444444-4444-4444-8444-444444444444',
         'tags': {}, 'productName': 'sample', 'environmentName': 'test',
         'portalAuthentication': {},
@@ -139,7 +139,7 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertEqual(values['publicOrigin'], 'https://portal.example.com')
         self.assertEqual(values['gatewayOrigin'], 'https://gateway.example.com')
         self.assertEqual(values['networkResourceGroup'], 'rg-test-sample-nw')
-        self.assertEqual(values['acaPrefix'], config['network']['subnetPrefixes']['aca'])
+        self.assertEqual(values['portalPrefix'], config['network']['subnetPrefixes']['portal'])
         self.assertFalse(values['deployApplication'])
         self.assertEqual(values['tenantId'], config['credentialProviders'][0]['oauthTenantId'])
         self.assertEqual(state, original)

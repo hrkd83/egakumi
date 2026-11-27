@@ -45,17 +45,17 @@ Azureの設定確認では実行結果と資源の設定を読み戻す。通信
 
 ## 実環境の受入確認
 
-標準のテスト・本番設定では本文監査を有効にする。配備した機能の設定と通信を、以下の観点で確認する。
+本文監査を含む標準のテスト・本番構成を確認する。配備した機能の設定と通信を、以下の観点で確認する。
 
 | 確認 | 通信・設定との対応 | 合格条件と限界 |
 | --- | --- | --- |
-| NSG全件読戻し | 基本構成と証明書用ACAの規則、本文監査有効時の追加規則 | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが正本に一致する。各ACAの専用サブネット・NSG関連付け、両方向の終端Deny、Azure既定規則、PEのNSGポリシー、管理VM／APIMの時刻通信を確認する。 |
+| NSG全件読戻し | 基本構成と証明書用ACAの規則、本文監査用ACAの規則 | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが正本に一致する。各ACAの専用サブネット・NSG関連付け、両方向の終端Deny、Azure既定規則、PEのNSGポリシー、管理VM／APIMの時刻通信を確認する。 |
 | FW全件読戻し | 初期構成、証明書Job、本文監査のRCGとcollection | 優先度、action、種別、送信元・宛先、プロトコル・ポート、TLS検査対象が資材と一致する。APIMのUDP123許可とPremiumのIDPSモードも照合する。 |
 | 公開入口 | CLIENT、APPGW-APIM、APPGW-ACA | 公開TLS、HTTPリダイレクト、APIM正常API、Portalのhealthと画面、L7入口保護を確認。両バックエンドのHTTPSプローブとFirewallのTLS検査・非対象経路の拒否も確認。healthだけを全APIの認可確認にしない |
 | PortalとGateway | ACA-APIM、ACA-SQL | Portalの試用は公開Gatewayを経由する。Portal用実行IDのAPIM管理API呼出しが拒否されることも確認 |
 | Broker分離 | APIM-BROKER、ACA-KV、ACA-SQL、ACA-ACR、ACA-ARM、ACA-ENTRA | APIMからBrokerへの許可、Portal用ACA・AppGW・管理VMからの拒否、Brokerの起動・SQL・CM・OBO・監査、PortalとBrokerが別々のACA環境を使うことを確認する。 |
 | 本文監査の分離 | APIMから専用中継、専用ACAからEvent Hubs・本文Blob・チェックポイントBlob | 中継へのAPIM以外からの接続と未許可IDを拒否し、保存ワーカーに入口がないことを確認する。Private DNSと実効NSG、各実行IDの権限、JSON／SSEの受領確認、Event Hubs障害時の応答、Blobへの保存を合成データで確認する。 [本文監査の受入条件](../reference/audit/request-body-audit.md) |
-| PE接続 | APIM/ACA/管理VMとFoundry/KV/SQL/ACR/監査Blob、本文監査用の3 PE | DNS回答とPE全IP、往復制御、サービスTLSと認可を照合する。本文監査が有効な場合はEvent Hubs・本文Blob・チェックポイントBlobの三つを個別に確認する。 |
+| PE接続 | APIM/ACA/管理VMとFoundry/KV/SQL/ACR/監査Blob、本文監査用の3 PE | DNS回答とPE全IP、往復制御、サービスTLSと認可を照合する。Event Hubs・本文Blob・チェックポイントBlobの三つを個別に確認する。 |
 | Vault分離と証明書 | APPGW-KV、APIM-KV、ACA-KV、MGMT-KV | 2つのPrivate EndpointとDNS回答、Vaultのネットワーク設定、対象オブジェクトの実効RBACを照合。公開証明書の初回発行・自動更新・実配信、APIMのNamed Value解決、必要のない接続とsecret読取の拒否を確認 |
 | ACAの現構成依存 | イメージ取得、App/Job起動、標準DNS、管理ID、監視、リビジョン切替、再起動、スケール | 構築ACRと公開MCRの用途を区別する。Portal、Broker、本文監査それぞれのPE接続と起動・更新・復旧を確認する。 |
 | 監査Blob・保存ログ | MGMT-AUDIT-JAPAN/FOUNDRY、MGMT-MONITOR | 担当者本人の作業権限で構築コンテナーとWorkspaceを読み、付与前・回収後は拒否される。監査Blobへの書込み・削除権限は付けない |

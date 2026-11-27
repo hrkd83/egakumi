@@ -16,7 +16,7 @@
 | Private DNS | ローカルゾーンを維持するか、中央管理ゾーンへ統合するか |
 | 経路伝搬 | ExpressRoute／VPN経路を使うサブネットと、除外時に必要な社内・DNS宛経路 |
 
-既存のCoreにはAppGW・PE・Firewall・APIM・管理VMに加え、Portal、Broker、証明書JobのACA用サブネットがあります。本文監査を有効にしている場合は監査用ACAの区画も確認します。各区画のCIDRは`network.subnetPrefixes`とCoreの実出力で照合し、PEと`AzureFirewallSubnet`以外に対応するルートテーブルを確認します。利用者設定`network.bgpRoutePropagation`の`agw`・`apim`・`management`は既定で伝搬を許可します。企業接続時は、各ACA環境のDNSと内部VIPに対して、正規経路と拒否される経路の実効ルートを確認します。
+既存のCoreにはAppGW・PE・Firewall・APIM・管理VMに加え、Portal、Broker、証明書Job、本文監査の4つのACA用サブネットがあります。各区画のCIDRは`network.subnetPrefixes`とCoreの実出力で照合し、PEと`AzureFirewallSubnet`以外に対応するルートテーブルを確認します。利用者設定`network.bgpRoutePropagation`の`agw`・`apim`・`management`は既定で伝搬を許可します。企業接続時は、各ACA環境のDNSと内部VIPに対して、正規経路と拒否される経路の実効ルートを確認します。
 
 ## デフォルトルートを変える
 

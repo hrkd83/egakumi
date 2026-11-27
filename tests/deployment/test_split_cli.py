@@ -40,7 +40,8 @@ class SplitCliTests(unittest.TestCase):
         shutil.copytree(SCRIPTS, self.root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copytree(CORE / "apps/api-gateway", self.root / "apps/api-gateway",
                         ignore=shutil.ignore_patterns("__pycache__"))
-        for relative in ("infra/modules/monitoring/log-privacy.json", "infra/modules/network/nsg/core-rules.json"):
+        for relative in ("infra/modules/monitoring/log-privacy.json", "infra/modules/network/nsg/core-rules.json",
+                         "infra/modules/network/subnet-names.json"):
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(CORE / relative, target)

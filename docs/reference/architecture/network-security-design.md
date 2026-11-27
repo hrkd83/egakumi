@@ -2,7 +2,7 @@
 
 [通信要件](network-communication-requirements.md) · [Firewall設計](firewall-policy-design.md) · [実証方法と検証結果の管理](../../testing/network-security-validation.md) · [NSG運用一覧](../../operations/network-security-groups.md) · [NSGにしない基盤通信](platform-communications.md)
 
-本書は初期構築に採用したNSGの通信対応と判断を記録する。定義の正本は[infra/modules/network/nsg/core-rules.json](../../../infra/modules/network/nsg/core-rules.json)のcatalog v5である。本文監査の規則は有効時に別の正本から作成し、証明書用ACAの規則は専用資材で定める。`AzureFirewallSubnet`にはNSGを関連付けない。
+本書は初期構築に採用したNSGの通信対応と判断を記録する。定義の正本は[infra/modules/network/nsg/core-rules.json](../../../infra/modules/network/nsg/core-rules.json)のcatalog v5である。本文監査の規則は別の正本から作成し、証明書用ACAの規則は専用資材で定める。`AzureFirewallSubnet`にはNSGを関連付けない。
 
 `FLOW-...`は通信要件の識別子、`POLICY-...`は拒否・既定規則の設計判断の識別子、規則の設計IDは資材の`designRecordId`である。同じ接続の送信・受信に同じFLOW IDを付ける。拒否規則や既定規則は通信の件数として加算しない。
 
@@ -22,11 +22,11 @@
 
 | 参照 | 資材へ組み込む情報 | 依存・範囲 |
 | --- | --- | --- |
-| `subnet:agw`／`subnet:firewall`／`subnet:apim`／`subnet:aca`／`subnet:management`／`subnet:broker` | 各サブネットCIDR | `network.subnetPrefixes`の対応キー。構築するVNet内資源の範囲を表す。 |
+| `subnet:agw`／`subnet:firewall`／`subnet:apim`／`subnet:portal`／`subnet:management`／`subnet:broker` | 各サブネットCIDR | `network.subnetPrefixes`の対応キー。構築するVNet内資源の範囲を表す。 |
 | `ip:firewallPublic` | Firewall公開IP | 構築FirewallのPublic IP出力を`/32`化。企業FirewallのIPを受ける公開入力ではない。 |
 | `ip:appGatewayPublic` | AppGW公開IP | 構築AppGWのPublic IP出力を`/32`化。 |
 | `ip:apim` | APIM内部VIP | 構築APIMのprivate VIP出力を`/32`化。 |
-| `ip:aca` | Portal用のACA内部VIP | Portal用環境の`staticIp`出力を`/32`化。 |
+| `ip:portal` | Portal用のACA内部VIP | Portal用環境の`staticIp`出力を`/32`化。 |
 | `ip:broker` | Broker用のACA内部VIP | Broker専用環境の`staticIp`出力を`/32`化。 |
 | `ip:management` | 管理VM primary private IP | 構築NICの割当IP出力を`/32`化。 |
 | `ips:keyVault`／`ips:foundry`／`ips:sql`／`ips:registry` | 対応サービスのPE NIC全IP | 構築PE NICの全IPを重複除去して`/32`化。ACRはregistry／data endpointを漏らさない。 |
@@ -60,7 +60,7 @@
 | 優先度 | 規則名／設計ID | 送信元 → 宛先 | プロトコル／宛先ポート | 通信・判断ID | 用途・採用理由 | 構築情報への依存 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-apim-https-egress`<br>`N-AGW-OUT-01` | `subnet:agw` → `ip:apim` | TCP／443 | [FLOW-APPGW-APIM](network-communication-requirements.md#flow-appgw-apim) | 通常APIとバックエンドprobeをAPIM内部VIPのHTTPS443へ送る。AppGWからFirewallでTLSを検査し、APIMへHTTPSで再接続する。 | `subnet:agw`, `ip:apim` |
-| 121 | `allow-aca-https-egress`<br>`N-AGW-OUT-03` | `subnet:agw` → `ip:aca` | TCP／443 | [FLOW-APPGW-ACA](network-communication-requirements.md#flow-appgw-aca) | PortalとprobeをACA共有VIPのHTTPS443へ送る。AppGWが再暗号化し、FirewallのTLS検査を経由してACAのHTTPS入口へ接続する。 | `subnet:agw`, `ip:aca` |
+| 121 | `allow-aca-https-egress`<br>`N-AGW-OUT-03` | `subnet:agw` → `ip:portal` | TCP／443 | [FLOW-APPGW-ACA](network-communication-requirements.md#flow-appgw-aca) | PortalとprobeをACA共有VIPのHTTPS443へ送る。AppGWが再暗号化し、FirewallのTLS検査を経由してACAのHTTPS入口へ接続する。 | `subnet:agw`, `ip:portal` |
 | 220 | `allow-key-vault-https-egress`<br>`N-AGW-OUT-04` | `subnet:agw` → `ips:keyVault` | TCP／443 | [FLOW-APPGW-KV](network-communication-requirements.md#flow-appgw-kv) | 業務用Vault PEへのネットワーク許可。公開リスナー証明書は証明書専用規則と専用VaultのRBACで扱う。 | `subnet:agw`, `ips:keyVault` |
 
 ### APIM（`apim`）
@@ -106,12 +106,12 @@
 | 120 | `allow-apim-foundry-https-ingress`<br>`B-PE-05` | `subnet:apim` → `ips:foundry` | TCP／443 | [FLOW-APIM-FOUNDRY](network-communication-requirements.md#flow-apim-foundry) | APIMからFoundry PEへ到達する業務HTTPS。送信側規則と同じ構築PE全IPを宛先に使う。 | `subnet:apim`, `ips:foundry` |
 | 220 | `allow-appgw-key-vault-https-ingress`<br>`B-PE-01` | `subnet:agw` → `ips:keyVault` | TCP／443 | [FLOW-APPGW-KV](network-communication-requirements.md#flow-appgw-kv) | AppGWから業務用Vault PEへのネットワーク許可。公開TLS用Vaultは証明書専用規則で許可する。 | `subnet:agw`, `ips:keyVault` |
 | 221 | `allow-apim-key-vault-https-ingress`<br>`B-PE-02` | `subnet:apim` → `ips:keyVault` | TCP／443 | [FLOW-APIM-KV](network-communication-requirements.md#flow-apim-kv) | APIMから業務用Key Vault PEへの参照。AzureKeyVaultタグへの基盤依存とは異なるprivate接続を許可する。 | `subnet:apim`, `ips:keyVault` |
-| 222 | `allow-aca-key-vault-https-ingress`<br>`B-PE-03` | `subnet:aca`, `subnet:broker` → `ips:keyVault` | TCP／443 | [FLOW-ACA-KV](network-communication-requirements.md#flow-aca-kv) | Credential Broker等のACAワークロードから業務用Key Vault PEへのHTTPS。VNet直接経路の受信許可である。 | `subnet:aca`, `subnet:broker`, `ips:keyVault` |
+| 222 | `allow-aca-key-vault-https-ingress`<br>`B-PE-03` | `subnet:portal`, `subnet:broker` → `ips:keyVault` | TCP／443 | [FLOW-ACA-KV](network-communication-requirements.md#flow-aca-kv) | Credential Broker等のACAワークロードから業務用Key Vault PEへのHTTPS。VNet直接経路の受信許可である。 | `subnet:portal`, `subnet:broker`, `ips:keyVault` |
 | 223 | `allow-mgmt-vm-key-vault-https-ingress`<br>`B-PE-04` | `ip:management` → `ips:keyVault` | TCP／443 | [FLOW-MGMT-KV](network-communication-requirements.md#flow-mgmt-kv) | 管理VMから業務用Key Vaultを保守するためのHTTPS。担当者のデータ面の権限は別途付与する。 | `ip:management`, `ips:keyVault` |
 | 224 | `allow-mgmt-vm-foundry-https-ingress`<br>`B-PE-06` | `ip:management` → `ips:foundry` | TCP／443 | [FLOW-MGMT-FOUNDRY](network-communication-requirements.md#flow-mgmt-foundry) | 管理VMからFoundryを保守・確認するprivate HTTPS。APIM業務接続と実行主体を分ける。 | `ip:management`, `ips:foundry` |
 | 225 | `allow-mgmt-vm-sql-1433-ingress`<br>`N-PE-IN-MGMT-SQL` | `ip:management` → `ips:sql` | TCP／1433 | [FLOW-MGMT-SQL](network-communication-requirements.md#flow-mgmt-sql) | 管理VMから構築したGateway／Portal DBを直接保守するSQL接続。保守者本人のEntra認証、対象DB内の権限、保守clientを使う。 | `ip:management`, `ips:sql` |
-| 226 | `allow-aca-sql-1433-ingress`<br>`B-PE-07` | `subnet:aca`, `subnet:broker` → `ips:sql` | TCP／1433 | [FLOW-ACA-SQL](network-communication-requirements.md#flow-aca-sql) | Broker／Portal／資材が作成するJobから共有SQL PEへの接続。SQL connection policyとDB認可を別に満たす。 | `subnet:aca`, `subnet:broker`, `ips:sql` |
-| 227 | `allow-aca-acr-https-ingress`<br>`B-PE-08` | `subnet:aca`, `subnet:broker` → `ips:registry` | TCP／443 | [FLOW-ACA-ACR](network-communication-requirements.md#flow-aca-acr) | ACAのimage取得に使うACR PEへのHTTPS。registryとdata endpointを含むPE NICの全IPを使う。 | `subnet:aca`, `subnet:broker`, `ips:registry` |
+| 226 | `allow-aca-sql-1433-ingress`<br>`B-PE-07` | `subnet:portal`, `subnet:broker` → `ips:sql` | TCP／1433 | [FLOW-ACA-SQL](network-communication-requirements.md#flow-aca-sql) | Broker／Portal／資材が作成するJobから共有SQL PEへの接続。SQL connection policyとDB認可を別に満たす。 | `subnet:portal`, `subnet:broker`, `ips:sql` |
+| 227 | `allow-aca-acr-https-ingress`<br>`B-PE-08` | `subnet:portal`, `subnet:broker` → `ips:registry` | TCP／443 | [FLOW-ACA-ACR](network-communication-requirements.md#flow-aca-acr) | ACAのimage取得に使うACR PEへのHTTPS。registryとdata endpointを含むPE NICの全IPを使う。 | `subnet:portal`, `subnet:broker`, `ips:registry` |
 | 228 | `allow-mgmt-vm-acr-https-ingress`<br>`B-PE-09` | `ip:management` → `ips:registry` | TCP／443 | [FLOW-MGMT-ACR](network-communication-requirements.md#flow-mgmt-acr) | 管理VMのACR保守・image取得／送信。構築管理VM IPとACR PE全IPに限定する。 | `ip:management`, `ips:registry` |
 | 229 | `allow-mgmt-vm-audit-storage-platform-https-ingress`<br>`N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS` | `ip:management` → `ips:auditStorageJapan` | TCP／443 | [FLOW-MGMT-AUDIT-JAPAN](network-communication-requirements.md#flow-mgmt-audit-japan) | 管理VMから基盤監査Storage（`collectJapan`）のBlob PE全IPへのHTTPS。 | `ip:management`, `ips:auditStorageJapan` |
 | 230 | `allow-mgmt-vm-audit-storage-foundry-https-ingress`<br>`N-PEP-IN-MGMT-AUDIT-STORAGE-FOUNDRY-HTTPS` | `ip:management` → `ips:auditStorageFoundry` | TCP／443 | [FLOW-MGMT-AUDIT-FOUNDRY](network-communication-requirements.md#flow-mgmt-audit-foundry) | 管理VMからcollectFoundry監査コンテナーのBlob PEを読むHTTPS。Foundry API接続とは別の監査データ閲覧である。 | `ip:management`, `ips:auditStorageFoundry` |
@@ -138,7 +138,7 @@
 | 222 | `allow-apim-https-egress`<br>`B-MGMT-18` | `ip:management` → `subnet:apim` | TCP／443 | [FLOW-MGMT-APIM](network-communication-requirements.md#flow-mgmt-apim) | APIM private gatewayのHTTPS保守。gRPCは廃止し、残すHTTPS通信を名称にも反映する。 | `ip:management`, `subnet:apim` |
 | 223 | `allow-foundry-https-egress`<br>`B-MGMT-21` | `ip:management` → `ips:foundry` | TCP／443 | [FLOW-MGMT-FOUNDRY](network-communication-requirements.md#flow-mgmt-foundry) | Foundryのprivate API保守。管理VMを全資源の保守拠点とするためAPIM以外の実行主体を許可する。 | `ip:management`, `ips:foundry` |
 | 224 | `allow-sql-1433-egress`<br>`N-MGMT-OUT-SQL` | `ip:management` → `ips:sql` | TCP／1433 | [FLOW-MGMT-SQL](network-communication-requirements.md#flow-mgmt-sql) | 保守者が管理VMからGateway／Portalの構築DBへ到達する経路。DB側で保守者本人の権限を確認する。 | `ip:management`, `ips:sql` |
-| 226 | `allow-aca-https-egress`<br>`N-MGMT-OUT-ACA-HTTPS` | `ip:management` → `ip:aca` | TCP／443 | [FLOW-MGMT-ACA-HTTPS](network-communication-requirements.md#flow-mgmt-aca-https) | ACA private ingressのHTTPS確認・保守。リージョン共用Dev APIへのログ／exec通信とは別宛先である。 | `ip:management`, `ip:aca` |
+| 226 | `allow-aca-https-egress`<br>`N-MGMT-OUT-ACA-HTTPS` | `ip:management` → `ip:portal` | TCP／443 | [FLOW-MGMT-ACA-HTTPS](network-communication-requirements.md#flow-mgmt-aca-https) | ACA private ingressのHTTPS確認・保守。リージョン共用Dev APIへのログ／exec通信とは別宛先である。 | `ip:management`, `ip:portal` |
 | 227 | `allow-audit-storage-platform-https-egress`<br>`N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS` | `ip:management` → `ips:auditStorageJapan` | TCP／443 | [FLOW-MGMT-AUDIT-JAPAN](network-communication-requirements.md#flow-mgmt-audit-japan) | 基盤監査Storage（`collectJapan`）のBlobを、対象コンテナーの読取権限を付与された保守者本人が閲覧する。 | `ip:management`, `ips:auditStorageJapan` |
 | 228 | `allow-audit-storage-foundry-https-egress`<br>`N-MGMT-OUT-AUDIT-STORAGE-FOUNDRY-HTTPS` | `ip:management` → `ips:auditStorageFoundry` | TCP／443 | [FLOW-MGMT-AUDIT-FOUNDRY](network-communication-requirements.md#flow-mgmt-audit-foundry) | collectFoundry監査Blobのprivate閲覧。Foundry API通信と分け、構築Blob PE全IPへ許可する。 | `ip:management`, `ips:auditStorageFoundry` |
 | 320 | `allow-azure-resource-manager-egress`<br>`B-MGMT-06` | `subnet:management` → `tag:AzureResourceManager` | TCP／443 | [FLOW-MGMT-ARM](network-communication-requirements.md#flow-mgmt-arm) | 資源情報取得・更新、保守token／diagnostics取得等のARM操作。到達許可と操作ごとのRBACを分ける。 | `subnet:management` |
@@ -148,7 +148,7 @@
 | 324 | `allow-internet-egress`<br>`B-MGMT-10` | `subnet:management` → `tag:Internet` | TCP／80, 443 | [FLOW-MGMT-INTERNET](network-communication-requirements.md#flow-mgmt-internet) | client準備、証明書、承認済み宛先、ACA Dev API等の外部HTTP／HTTPS。Firewallで用途別FQDNを制限するためのNSG到達許可である。 | `subnet:management` |
 | 4096 | `deny-any-egress`<br>`B-MGMT-20` | Any → Any | Any／Any | `POLICY-MGMT-OUT-DENY` | 列挙した管理VM新規送信以外を拒否する。Azure提供DNS・IMDS等の基盤例外はこのAny拒否だけでは遮断されない。 | 固定literal／Azureタグのみ |
 
-### ACA（`aca`）
+### Portal用ACA（`portal`）
 
 Portal用の内部環境のサブネットに、次の規則を適用する。
 
@@ -156,26 +156,26 @@ Portal用の内部環境のサブネットに、次の規則を適用する。
 
 | 優先度 | 規則名／設計ID | 送信元 → 宛先 | プロトコル／宛先ポート | 通信・判断ID | 用途・採用理由 | 構築情報への依存 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 120 | `allow-firewall-https-ingress`<br>`B-ACA-03` | `subnet:firewall` → `subnet:aca` | TCP／443, 31443 | [FLOW-APPGW-ACA](network-communication-requirements.md#flow-appgw-aca) | FirewallからPortalのHTTPS ingressと基盤node portへ到達する。 | `subnet:firewall`, `subnet:aca` |
-| 222 | `allow-mgmt-vm-https-ingress`<br>`N-ACA-IN-MGMT-HTTPS` | `ip:management` → `subnet:aca` | TCP／443, 31443 | [FLOW-MGMT-ACA-HTTPS](network-communication-requirements.md#flow-mgmt-aca-https) | 管理VMからACA private HTTPS ingressを確認・保守する。Dev API gatewayへの外部HTTPSとは別通信である。 | `ip:management`, `subnet:aca` |
-| 320 | `allow-azure-load-balancer-ingress`<br>`B-ACA-05` | `tag:AzureLoadBalancer` → `subnet:aca` | TCP／30000-32767 | [FLOW-ACA-LOAD-BALANCER](network-communication-requirements.md#flow-aca-load-balancer) | ACA基盤のLoad Balancer probe。ACAの公開仕様に沿ってTCP node port範囲を許可し、AppGW／APIMのAny判断を横展開しない。 | `subnet:aca` |
-| 321 | `allow-aca-internal-ingress`<br>`B-ACA-INTERNAL-IN` | `subnet:aca` → `subnet:aca` | Any／Any | [FLOW-ACA-INTERNAL](network-communication-requirements.md#flow-aca-internal) | managed基盤の同一サブネット内通信を許可する。 | `subnet:aca` |
+| 120 | `allow-firewall-https-ingress`<br>`B-ACA-03` | `subnet:firewall` → `subnet:portal` | TCP／443, 31443 | [FLOW-APPGW-ACA](network-communication-requirements.md#flow-appgw-aca) | FirewallからPortalのHTTPS ingressと基盤node portへ到達する。 | `subnet:firewall`, `subnet:portal` |
+| 222 | `allow-mgmt-vm-https-ingress`<br>`N-ACA-IN-MGMT-HTTPS` | `ip:management` → `subnet:portal` | TCP／443, 31443 | [FLOW-MGMT-ACA-HTTPS](network-communication-requirements.md#flow-mgmt-aca-https) | 管理VMからACA private HTTPS ingressを確認・保守する。Dev API gatewayへの外部HTTPSとは別通信である。 | `ip:management`, `subnet:portal` |
+| 320 | `allow-azure-load-balancer-ingress`<br>`B-ACA-05` | `tag:AzureLoadBalancer` → `subnet:portal` | TCP／30000-32767 | [FLOW-ACA-LOAD-BALANCER](network-communication-requirements.md#flow-aca-load-balancer) | ACA基盤のLoad Balancer probe。ACAの公開仕様に沿ってTCP node port範囲を許可し、AppGW／APIMのAny判断を横展開しない。 | `subnet:portal` |
+| 321 | `allow-aca-internal-ingress`<br>`B-ACA-INTERNAL-IN` | `subnet:portal` → `subnet:portal` | Any／Any | [FLOW-ACA-INTERNAL](network-communication-requirements.md#flow-aca-internal) | managed基盤の同一サブネット内通信を許可する。 | `subnet:portal` |
 | 4096 | `deny-any-ingress`<br>`N-ACA-IN-TERMINAL` | Any → Any | Any／Any | `POLICY-ACA-IN-DENY` | 明示許可以外の新規受信を拒否する。 | 固定literalのみ |
 
 #### Outbound
 
 | 優先度 | 規則名／設計ID | 送信元 → 宛先 | プロトコル／宛先ポート | 通信・判断ID | 用途・採用理由 | 構築情報への依存 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 120 | `allow-appgw-https-egress`<br>`B-ACA-11` | `subnet:aca` → `ip:appGatewayPublic` | TCP／443 | [FLOW-ACA-APPGW](network-communication-requirements.md#flow-aca-appgw) | Portal等のACAワークロードから公開AppGW経由でAPI入口へ到達するHTTPS。構築AppGW公開IPだけを指定する。 | `subnet:aca`, `ip:appGatewayPublic` |
-| 220 | `allow-key-vault-https-egress`<br>`B-ACA-06` | `subnet:aca` → `ips:keyVault` | TCP／443 | [FLOW-ACA-KV](network-communication-requirements.md#flow-aca-kv) | Portal用環境のアプリが業務用Key Vault PEへ接続するHTTPS。private DNS、経路、認可と組み合わせる。 | `subnet:aca`, `ips:keyVault` |
-| 221 | `allow-sql-1433-egress`<br>`B-ACA-07` | `subnet:aca` → `ips:sql` | TCP／1433 | [FLOW-ACA-SQL](network-communication-requirements.md#flow-aca-sql) | Portal用環境のAppとJobから共有SQL PEへ接続するTCP1433。現在のVNet直接経路を記録する。 | `subnet:aca`, `ips:sql` |
-| 222 | `allow-acr-https-egress`<br>`B-ACA-08` | `subnet:aca` → `ips:registry` | TCP／443 | [FLOW-ACA-ACR](network-communication-requirements.md#flow-aca-acr) | 構築ACRからimageを取得するHTTPS。PE NICのregistry／data用全IPを許可する。 | `subnet:aca`, `ips:registry` |
-| 320 | `allow-aca-internal-egress`<br>`B-ACA-02` | `subnet:aca` → `subnet:aca` | Any／Any | [FLOW-ACA-INTERNAL](network-communication-requirements.md#flow-aca-internal) | ACAサブネット内の基盤通信。内部portの完全な固定契約を推測せず、同サブネット宛Anyを明示する。 | `subnet:aca` |
-| 321 | `allow-entra-egress`<br>`B-ACA-12` | `subnet:aca` → `tag:AzureActiveDirectory` | TCP／443 | [FLOW-ACA-ENTRA](network-communication-requirements.md#flow-aca-entra) | Entraへの上流HTTPS依存。ACAが供給するローカルIDENTITY_ENDPOINTの取得処理とは分ける。 | `subnet:aca` |
-| 322 | `allow-monitor-egress`<br>`B-ACA-14` | `subnet:aca` → `tag:AzureMonitor` | TCP／443 | [FLOW-ACA-MONITOR](network-communication-requirements.md#flow-aca-monitor) | ACAのログ／監視基盤へのHTTPS送信。NSG Allowだけでログ本文の収集成功とは判定しない。 | `subnet:aca` |
-| 323 | `allow-mcr-egress`<br>`B-ACA-15` | `subnet:aca` → `tag:MicrosoftContainerRegistry` | TCP／443 | [FLOW-ACA-MCR](network-communication-requirements.md#flow-aca-mcr) | Microsoft Container Registryの基盤image／artifact取得。構築ACR PEからの取得とは別通信である。 | `subnet:aca` |
-| 324 | `allow-afd-first-party-egress`<br>`B-ACA-16` | `subnet:aca` → `tag:AzureFrontDoor.FirstParty` | TCP／443 | [FLOW-ACA-PLATFORM-PACKAGES](network-communication-requirements.md#flow-aca-platform-packages) | Azure Front Door FirstParty経由の基盤配布・パッケージ依存。MCR等の配布依存とあわせて仕様を参照する。 | `subnet:aca` |
-| 325 | `allow-firewall-routed-public-https-egress`<br>`B-ACA-21` | `subnet:aca` → `tag:Internet` | TCP／443 | [FLOW-ACA-PLATFORM-PACKAGES](network-communication-requirements.md#flow-aca-platform-packages) | CDNを含む公開HTTPSを固定UDRでFirewallへ転送し、許可済みの宛先に絞る。 | `subnet:aca`、構築Firewallへ向かう固定UDR |
+| 120 | `allow-appgw-https-egress`<br>`B-ACA-11` | `subnet:portal` → `ip:appGatewayPublic` | TCP／443 | [FLOW-ACA-APPGW](network-communication-requirements.md#flow-aca-appgw) | Portal等のACAワークロードから公開AppGW経由でAPI入口へ到達するHTTPS。構築AppGW公開IPだけを指定する。 | `subnet:portal`, `ip:appGatewayPublic` |
+| 220 | `allow-key-vault-https-egress`<br>`B-ACA-06` | `subnet:portal` → `ips:keyVault` | TCP／443 | [FLOW-ACA-KV](network-communication-requirements.md#flow-aca-kv) | Portal用環境のアプリが業務用Key Vault PEへ接続するHTTPS。private DNS、経路、認可と組み合わせる。 | `subnet:portal`, `ips:keyVault` |
+| 221 | `allow-sql-1433-egress`<br>`B-ACA-07` | `subnet:portal` → `ips:sql` | TCP／1433 | [FLOW-ACA-SQL](network-communication-requirements.md#flow-aca-sql) | Portal用環境のAppとJobから共有SQL PEへ接続するTCP1433。現在のVNet直接経路を記録する。 | `subnet:portal`, `ips:sql` |
+| 222 | `allow-acr-https-egress`<br>`B-ACA-08` | `subnet:portal` → `ips:registry` | TCP／443 | [FLOW-ACA-ACR](network-communication-requirements.md#flow-aca-acr) | 構築ACRからimageを取得するHTTPS。PE NICのregistry／data用全IPを許可する。 | `subnet:portal`, `ips:registry` |
+| 320 | `allow-aca-internal-egress`<br>`B-ACA-02` | `subnet:portal` → `subnet:portal` | Any／Any | [FLOW-ACA-INTERNAL](network-communication-requirements.md#flow-aca-internal) | ACAサブネット内の基盤通信。内部portの完全な固定契約を推測せず、同サブネット宛Anyを明示する。 | `subnet:portal` |
+| 321 | `allow-entra-egress`<br>`B-ACA-12` | `subnet:portal` → `tag:AzureActiveDirectory` | TCP／443 | [FLOW-ACA-ENTRA](network-communication-requirements.md#flow-aca-entra) | Entraへの上流HTTPS依存。ACAが供給するローカルIDENTITY_ENDPOINTの取得処理とは分ける。 | `subnet:portal` |
+| 322 | `allow-monitor-egress`<br>`B-ACA-14` | `subnet:portal` → `tag:AzureMonitor` | TCP／443 | [FLOW-ACA-MONITOR](network-communication-requirements.md#flow-aca-monitor) | ACAのログ／監視基盤へのHTTPS送信。NSG Allowだけでログ本文の収集成功とは判定しない。 | `subnet:portal` |
+| 323 | `allow-mcr-egress`<br>`B-ACA-15` | `subnet:portal` → `tag:MicrosoftContainerRegistry` | TCP／443 | [FLOW-ACA-MCR](network-communication-requirements.md#flow-aca-mcr) | Microsoft Container Registryの基盤image／artifact取得。構築ACR PEからの取得とは別通信である。 | `subnet:portal` |
+| 324 | `allow-afd-first-party-egress`<br>`B-ACA-16` | `subnet:portal` → `tag:AzureFrontDoor.FirstParty` | TCP／443 | [FLOW-ACA-PLATFORM-PACKAGES](network-communication-requirements.md#flow-aca-platform-packages) | Azure Front Door FirstParty経由の基盤配布・パッケージ依存。MCR等の配布依存とあわせて仕様を参照する。 | `subnet:portal` |
+| 325 | `allow-firewall-routed-public-https-egress`<br>`B-ACA-21` | `subnet:portal` → `tag:Internet` | TCP／443 | [FLOW-ACA-PLATFORM-PACKAGES](network-communication-requirements.md#flow-aca-platform-packages) | CDNを含む公開HTTPSを固定UDRでFirewallへ転送し、許可済みの宛先に絞る。 | `subnet:portal`、構築Firewallへ向かう固定UDR |
 | 4096 | `deny-any-egress`<br>`N-ACA-OUT-TERMINAL` | Any → Any | Any／Any | `POLICY-ACA-OUT-DENY` | 明示した送信許可以外の新規接続を拒否する。 | 固定literal／Azureタグのみ |
 
 ### Broker専用ACA（`broker`）

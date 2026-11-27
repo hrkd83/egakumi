@@ -41,7 +41,7 @@ def fixture():
         'brokerEnvironmentId': credential_broker_lifecycle.broker_environment_id(config),
         'brokerEnvironmentDomain': 'synthetic-broker.fixture.' + 'azurecontainerapps.io',
         'brokerSubnetId': '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + groups['nw']
-                          + '/providers/Microsoft.Network/virtualNetworks/vnet-' + stem + '/subnets/snet-' + stem + '-broker',
+                          + '/providers/Microsoft.Network/virtualNetworks/vnet-' + stem + '/subnets/CredentialBrokerSubnet',
         'registryName': 'acr' + stem.replace('-', ''),
     }
     host = config['gateway']['publicHostName']
@@ -175,6 +175,16 @@ class GatewayDeploymentTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"update the Core"): gateway.main(arguments)
                 for boundary in ("source_bundle","run_json","transport","build_image","deploy_release","publication_plan"):
                     observed[boundary].assert_not_called()
+
+    def test_missing_audit_foundation_stops_before_build_publication_or_azure_requests(self):
+        config, state = fixture()
+        config["publishApis"] = True
+        config["auditEvidence"] = {"enabled": True}
+        with self.isolated_cli(config, state) as (arguments, observed):
+            with self.assertRaisesRegex(ValueError, "Provision Core audit evidence infrastructure"):
+                gateway.main(arguments)
+            for boundary in ("source_bundle", "run_json", "transport", "build_image", "deploy_release", "publication_plan"):
+                observed[boundary].assert_not_called()
 
     def test_cli_refuses_public_or_other_environment_paths_before_building(self):
         """引数で別環境を指定しても、計画・build・Azure要求へ進めない。"""

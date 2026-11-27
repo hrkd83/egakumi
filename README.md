@@ -52,7 +52,7 @@ PortalはEntraサインインと本人のBearerによるAPI試用を提供しま
 
 Core完了からPortal本体の配備までは、App GatewayでPortalバックエンドが異常表示でも進めます。Portalの `/api/health` が HTTP 200 を返すことは、第12章の配備後に確認します。
 
-Azure基盤は `azureTenantId`、ユーザー認証は `entraTenantId` で指定します。本文監査を有効にする標準構成では、Azure基盤と認証先に同じテナントを使います。 [テナントの設定](docs/setup/07-params.md#同一テナントと別テナントの指定)
+Azure基盤は `azureTenantId`、ユーザー認証は `entraTenantId` で指定します。本文監査は常に有効で、Azure基盤と認証先には同じテナントを指定します。 [テナントの設定](docs/setup/07-params.md#azureとentraのテナント指定)
 
 構築・配備には、同じ環境の保護paramsとstateを使います。途中で停止した場合は、作成済みの基盤と記録を保持し、失敗した工程を再実行します。GitHub Actionsや管理端末上のDockerは標準手順の前提に含まれません。 [更新・再試行の手順](docs/operations/deployment.md#同じ環境を更新する)
 
@@ -91,7 +91,7 @@ RGと共通基盤用マネージドIDは`azd up`が作成します。[管理ポ�
 | --- | --- |
 | ネットワーク・入口 | Application Gateway、Firewall、Public IP、Private Endpoint、Private DNS、通信処理・転送量 |
 | API・AI | APIM、Foundryで採用するモデル・PII・文書解析・音声等の利用量、採用するAPI Centerのプラン |
-| Portal・Broker・本文監査 | Portal用とBroker用のContainer Apps環境、各アプリのレプリカとCPU・メモリー、SQL初期化・定期ジョブ、非公開ACRとイメージ保存、採用する本文監査のACA・Event Hubs・監査Storage |
+| Portal・Broker・本文監査 | Portal用とBroker用のContainer Apps環境、各アプリのレプリカとCPU・メモリー、SQL初期化・定期ジョブ、非公開ACRとイメージ保存、本文監査のACA・Event Hubs・監査Storage |
 | 永続化・運用 | 共用SQLサーバー内のPortal／credentials DB、管理VMとディスク、Key Vault、LAW／App Insights、ログexport、監査Storageと保持・複製、アラート・通知 |
 | Core外の共有資源 | 公開DNS・ドメイン、企業ハブ・ExpressRoute／VPN・中央DNS等、採用する共有資源 |
 

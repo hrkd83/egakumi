@@ -226,9 +226,9 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 | `versionUpgradeOption` | NoAutoUpgrade | 自動版更新を行わない。 |
 | `quotaUsageName` | 各モデルの実metadataに対応する値を明記 | 同じ利用枠プールの配備は合算して検査。 |
 
-## API本文監査を選ぶ
+## API本文監査の設定
 
-本文監査は開発・テストでEvent Hubs Standard、本番でPremiumを使用します。保管期間、WORM、同一テナントの条件と現在の採取範囲を[本文監査の構築条件と仕様](../audit/request-body-audit.md)で確認します。
+本文監査は有効固定です。標準configの `auditEvidence` はEvent HubsのSKU、本文の保持日数、不変保管の設定を指定します。開発・テストでEvent Hubs Standard、本番でPremiumを使用します。保管期間、WORM、同一テナントの条件と現在の採取範囲を[本文監査の構築条件と仕様](../audit/request-body-audit.md)で確認します。
 
 ## FirewallのTLS検査を準備する
 

@@ -135,7 +135,7 @@ class TenantConfigurationTests(unittest.TestCase):
                 self.assertNotIn('entraTenantId', schema['required'])
                 self.assertNotIn('tenantId', schema['properties'])
                 jsonschema.Draft202012Validator.check_schema(schema)
-                sample = public_fixture()[0] if name == 'params' else fixture()
+                sample = public_fixture()[0] if name == 'params' else fixture(audit_evidence=True)
                 for tenant in (None, ENTRA):
                     value = copy.deepcopy(sample)
                     if tenant is not None:

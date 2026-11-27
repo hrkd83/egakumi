@@ -304,7 +304,8 @@ class PortableFileReferenceTests(unittest.TestCase):
             filename = destination / "config.json"
             filename.write_text(json.dumps(saved))
             reloaded = configuration.load_configuration_source(filename)
-            self.assertEqual(reloaded, configuration._resolve_file_references(original, source))
+            self.assertEqual(reloaded, {**configuration._resolve_file_references(original, source),
+                                       "auditEvidence": {"enabled": True}})
 
     def test_saved_references_follow_a_repository_copied_to_another_location(self):
         import shutil
@@ -343,8 +344,8 @@ class ConfigurationTests(unittest.TestCase):
         prefixes = raw["network"]["subnetPrefixes"]
         prefixes.pop("certificate", None)
         derived = self.normalize(raw)["network"]["subnetPrefixes"]["certificate"]
-        self.assertEqual(derived, "10.40.3.0/27")
-        for prefix in ("10.40.3.0/28", prefixes["aca"], "192.0.2.0/27"):
+        self.assertEqual(derived, "10.40.2.192/27")
+        for prefix in ("10.40.3.0/28", prefixes["portal"], "192.0.2.0/27"):
             prefixes["certificate"] = prefix
             with self.subTest(prefix=prefix), self.assertRaisesRegex(configuration.ConfigurationError, "subnetPrefixes"):
                 self.normalize(raw)
@@ -361,7 +362,7 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaises(configuration.ConfigurationError):
             self.normalize(raw)
         self.assertEqual(set(self.normalize()["network"]["subnetPrefixes"]),
-                         {"agw", "firewall", "apim", "pep", "management", "aca", "broker", "certificate"})
+                         {"agw", "firewall", "apim", "pep", "management", "portal", "broker", "certificate"})
 
     def test_names_are_derived_for_exact_five_groups(self):
         actual = self.normalize()
@@ -427,19 +428,20 @@ class ConfigurationTests(unittest.TestCase):
         network = raw["network"]
         network["subnetPrefixes"].pop("broker", None)
         reserved = dict(network["subnetPrefixes"])
-        spare = ipaddress.ip_network(network["addressSpaces"][-1])
-        certificate = ipaddress.ip_network(reserved["certificate"])
-        remaining = next(subnet for subnet in spare.subnets(new_prefix=26) if not subnet.overlaps(certificate))
+        spare = ipaddress.ip_network(network["addressSpaces"][2])
+        allocated = tuple(map(ipaddress.ip_network, reserved.values()))
+        remaining = next(subnet for subnet in spare.subnets(new_prefix=26)
+                         if not any(subnet.overlaps(block) for block in allocated))
         self.assertEqual(self.normalize(raw)["network"]["subnetPrefixes"], {
             **reserved, "broker": str(remaining),
         })
         only_broker = next(remaining.subnets(new_prefix=27))
-        network["addressSpaces"][-1:] = [str(certificate), str(only_broker)]
+        network["addressSpaces"] = [*reserved.values(), str(only_broker)]
         self.assertEqual(self.normalize(raw)["network"]["subnetPrefixes"]["broker"], str(only_broker))
         network["addressSpaces"].pop()
         with self.assertRaisesRegex(configuration.ConfigurationError, r"subnetPrefixes\.broker"):
             self.normalize(raw)
-        network["subnetPrefixes"]["broker"] = reserved["aca"]
+        network["subnetPrefixes"]["broker"] = reserved["portal"]
         with self.assertRaisesRegex(configuration.ConfigurationError, "overlap"):
             self.normalize(raw)
 
@@ -501,7 +503,7 @@ class ConfigurationTests(unittest.TestCase):
                          {"certificatePublicProbeEnabled": True},
                          {"clientAddressPrefixes": ["0.0.0.0/0"],
                           "certificatePublicProbeEnabled": False}):
-            raw = fixture()
+            raw = fixture(audit_evidence=True)
             raw["network"].update(settings)
             raw["management"]["sshPublicKeyFile"] = "fixture-management-key.pub"
             with self.subTest(settings=settings), tempfile.TemporaryDirectory() as temporary:

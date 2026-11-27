@@ -1,7 +1,7 @@
 // Portalのサーバー処理が、選択した環境の公開GatewayだけをHTTPSで呼べるようにします。
 targetScope = 'resourceGroup'
 param stem string
-param acaPrefix string
+param portalPrefix string
 param gatewayOrigin string
 
 resource policy 'Microsoft.Network/firewallPolicies@2025-01-01' existing = {
@@ -21,7 +21,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
       rules: [{
         name: 'allow-aca-appgw-https'
         ruleType: 'ApplicationRule'
-        sourceAddresses: [acaPrefix]
+        sourceAddresses: [portalPrefix]
         protocols: [{ protocolType: 'Https', port: 443 }]
         targetFqdns: [split(gatewayOrigin, '/')[2]]
         terminateTLS: false

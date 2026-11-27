@@ -98,7 +98,7 @@ export DEPLOY_PORTAL_FQDN='<Portalの公開FQDN。httpsやパスを含めない>
 | 製品名・環境名 | 英小文字開始、英小文字・数字・内部ハイフン。製品名24字以下・環境名12字以下に加え、共通部分`<environment>-<product>`は17字以下。`ca-<stem>-credentials`の32字上限に合わせ、Key Vault・Storage等の名前も同時に収める |
 | リージョン | ネットワークとFoundryは別リージョンを指定可能。SKU・モデルの提供・クォータ・組織の配置制約を確認 |
 | 公開FQDN・公開ゾーン | GatewayとPortalの公開名を決め、両方を証明書SAN・公開DNS・EntraのWeb戻り先へ対応付ける |
-| IP計画 | VNetの/24×4と各サブネットを、既存VNet・オンプレミス・接続予定先と重複しない範囲へ決める。公開例を使用可能とは推測しない |
+| IP計画 | 公開例は使用4区画と予備1区画の `/24` をVNetに登録する。導入先のVNet、オンプレミス、接続予定先との重複は予備も含めて確認する。 [公開例の割り当て](../reference/configuration/parameters.md#公開例のvnet割り当て) |
 | 通知・証明書の連絡先 | APIM発行者、Azure Monitor通知、ACME連絡先を決める |
 | 利用範囲 | 通常のGateway・Portal一括構築か、企業接続を挟む段階構築かを決める。採用するモデル・APIと、利用者向けの購読キー・本人接続、下流向けのMIの役割を確認する |
 

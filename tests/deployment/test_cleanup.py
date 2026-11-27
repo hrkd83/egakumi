@@ -7,6 +7,7 @@ from __future__ import annotations
 import unittest
 
 from deployment.helpers import cleanup
+from deployment.helpers.audit_evidence import evidence_policy_id
 from deployment.helpers.configuration import load_configuration
 
 
@@ -17,6 +18,12 @@ from tests.support.cleanup_fixtures import (
 
 
 class CleanupTests(CleanupFixture, unittest.TestCase):
+    def assert_absent_body_policy(self, result):
+        policy_id = evidence_policy_id(self.configuration)
+        body_policy, = [item for item in result["policies"] if item["resourceId"] == policy_id]
+        self.assertEqual(body_policy, {"resourceId": policy_id, "status": "absent", "httpStatus": 404})
+        return [item for item in result["policies"] if item["resourceId"] != policy_id]
+
     def test_missing_or_other_apim_generation_rejects_state_before_read_or_delete(self):
         for value in (None, "def456"):
             with self.subTest(value=value):
@@ -34,7 +41,8 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         transport = FakeTransport({resource_id: self.policy(resource_id) for resource_id in self.policy_ids})
         result = self.pre(transport)
         self.assertEqual("ready-for-azd-down", result["status"])
-        self.assertEqual(["retention-removed"] * 2, [item["status"] for item in result["policies"]])
+        log_policies = self.assert_absent_body_policy(result)
+        self.assertEqual(["retention-removed"] * 2, [item["status"] for item in log_policies])
         self.assertTrue(all(call["headers"] == {"If-Match": '"version-1"'} for call in transport.mutations()))
 
     def test_deleted_zero_metadata_proceeds_without_delete_or_etag_and_is_not_404(self):
@@ -47,8 +55,9 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         result = self.pre(transport)
         self.assertEqual(result["status"], "ready-for-azd-down")
         self.assertFalse(transport.mutations())
-        self.assertEqual(result["policies"], [{"resourceId": resource_id, "status": "retention-removed", "httpStatus": 200,
-                                              "azureState": "Deleted"} for resource_id in self.policy_ids])
+        log_policies = self.assert_absent_body_policy(result)
+        self.assertEqual(log_policies, [{"resourceId": resource_id, "status": "retention-removed", "httpStatus": 200,
+                                         "azureState": "Deleted"} for resource_id in self.policy_ids])
 
     def test_deleted_zero_requires_own_id_exact_integer_and_known_state(self):
         for period in (None, 1, -1, False, 0.0, "0"):
@@ -80,8 +89,9 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         self.assertEqual(result["status"], "ready-for-azd-down")
         self.assertEqual(len(transport.mutations()), 2)
         self.assertTrue(all(call["headers"] == {"If-Match": '"version-1"'} for call in transport.mutations()))
+        log_policies = self.assert_absent_body_policy(result)
         self.assertTrue(all(item["status"] == "retention-removed" and item["httpStatus"] == 200 and item["azureState"] == "Deleted"
-                            for item in result["policies"]))
+                            for item in log_policies))
 
     def test_late_locked_policy_refuses_before_any_mutation(self):
         transport = FakeTransport({self.policy_ids[0]: self.policy(self.policy_ids[0]), self.policy_ids[1]: self.policy(self.policy_ids[1], "Locked")})

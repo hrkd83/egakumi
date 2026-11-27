@@ -239,7 +239,7 @@ class SplitConfigurationTests(unittest.TestCase):
         internal = {"network": {"addressSpaces": ["10.0.0.0/16"], "firewall": {"snatPrivateRanges": ["10.0.0.0/16"]}},
                     "monitoring": {"auditAllowedIpAddresses": ["198.51.100.1/32"]}}
         self.write(self.parameters, internal)
-        self.assertEqual(load_configuration_source(self.parameters), internal)
+        self.assertEqual(load_configuration_source(self.parameters), {**internal, "auditEvidence": {"enabled": True}})
 
     def test_fixed_network_fields_are_absent_from_normalized_configuration(self):
         normalized = normalize_configuration(fixture())
@@ -386,7 +386,7 @@ class SplitSchemaTests(unittest.TestCase):
             elif name == "options":
                 document = json.loads((CORE / "infra/config/test.json").read_text())
             else:
-                document = fixture()
+                document = fixture(audit_evidence=True)
             validator = local_schema_validator(schema)
             validator.validate(document)
             for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):

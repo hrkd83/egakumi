@@ -29,8 +29,6 @@ class EntraCoreAppsTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name).resolve()
         self.params, self.options = public_fixture()
-        self.options['auditEvidence']['enabled'] = False
-        self.params['entraTenantId'] = client('authentication-tenant')
         self.params['gateway']['authentication']['entra']['audience'] = client('api')
         self.params['credentialProviders']['graphDelegated']['clientId'] = client('tools')
         self.params['gateway']['authentication']['credentialLogin'] = {
@@ -46,7 +44,7 @@ class EntraCoreAppsTests(unittest.TestCase):
     def test_greenfield_core_accepts_three_registrations_then_validates_the_portal(self):
         config = self.configured()
         self.assertNotIn('codex', config)
-        self.assertNotEqual(config['entraTenantId'], config['azureTenantId'])
+        self.assertEqual(config['entraTenantId'], config['azureTenantId'])
         self.assertNotIn('authentication', config['portal'])
         projected = build_bicep_configuration(config)
         self.assertTrue(projected['entraRolloutEnabled'])

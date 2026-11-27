@@ -14,7 +14,7 @@ from deployment.helpers import fixed_nsg as nsg
 from deployment.helpers import management_host_time as host_time
 
 
-ACA_TERMINAL_STAGE_RULES = {
+PORTAL_TERMINAL_STAGE_RULES = {
     'allow-aca-internal-ingress',
     'allow-firewall-routed-public-https-egress',
     'deny-any-ingress',
@@ -29,13 +29,13 @@ def fixture_config():
             'resourceGroupNames': {k: 'rg-test-fixture-'+k for k in ('nw', 'svc', 'maint', 'monitor')},
             'network': {'subnetPrefixes': {'agw': '10.70.0.0/24', 'pep': '10.70.1.0/24',
                         'firewall': '10.70.2.0/26', 'apim': '10.70.2.64/26',
-                        'management': '10.70.2.128/26', 'aca': '10.70.2.192/26',
+                        'management': '10.70.2.128/26', 'portal': '10.70.2.192/26',
                         'broker': '203.0.113.0/26'}}}
 
 
 def fixture_bindings(config):
     return {'subnets': copy.deepcopy(config['network']['subnetPrefixes']),
-            'ips': {'apim': '10.70.2.68', 'aca': '10.70.2.196', 'management': '10.70.2.132',
+            'ips': {'apim': '10.70.2.68', 'portal': '10.70.2.196', 'management': '10.70.2.132',
                     'broker': str(ip_network(config['network']['subnetPrefixes']['broker'])[4]),
                     'firewallPublic': '192.0.2.10', 'appGatewayPublic': '198.51.100.10'},
             'ipSets': {'foundry': ['10.70.1.4', '10.70.1.5'], 'keyVault': ['10.70.1.6', '10.70.1.7'],
@@ -64,11 +64,15 @@ class MemoryTransport:
         self.tags = {'product': config['productName'], 'environment': config['environmentName'], 'azd-env-name': config['environmentName']}
         self.nw = self.groups['nw']+'/providers/Microsoft.Network/'
         self.vnet_id = self.nw+'virtualNetworks/vnet-'+self.stem
-        self.aca_route_table_id = self.nw + 'routeTables/rt-' + self.stem + '-aca'
+        self.portal_route_table_id = self.nw + 'routeTables/rt-' + self.stem + '-portal'
         self.firewall_id = self.nw + 'azureFirewalls/afw-' + self.stem
         self.firewall_ip = str(ipaddress.ip_network(self.prefixes['firewall'])[4])
-        self.subnets = {k: self.vnet_id+'/subnets/'+('AzureFirewallSubnet' if k=='firewall' else 'snet-'+self.stem+'-'+nsg.SUFFIXES[k])
-                        for k in (*nsg.GROUPS, 'firewall')}
+        subnet_names = {
+            'agw': 'AppGatewaySubnet', 'apim': 'ApiManagementSubnet', 'pep': 'PrivateEndpointSubnet',
+            'management': 'ManagementSubnet', 'portal': 'PortalSubnet', 'broker': 'CredentialBrokerSubnet',
+            'firewall': 'AzureFirewallSubnet',
+        }
+        self.subnets = {key: self.vnet_id + '/subnets/' + name for key, name in subnet_names.items()}
         for identity in self.groups.values():
             self.resources[identity] = {'id': identity, 'name': identity.rsplit('/', 1)[-1], 'tags': self.tags}
         subnet_properties = []
@@ -76,7 +80,7 @@ class MemoryTransport:
             properties = {'addressPrefix': self.prefixes[key]}
             if key == 'pep':
                 properties['privateEndpointNetworkPolicies'] = 'NetworkSecurityGroupEnabled'
-            if key in ('aca', 'broker'):
+            if key in ('portal', 'broker'):
                 route_table = self.nw + 'routeTables/rt-' + self.stem + '-' + key
                 properties.update(routeTable={'id': route_table}, defaultOutboundAccess=False)
             if key != 'firewall':
@@ -91,7 +95,7 @@ class MemoryTransport:
             'ipConfigurations': [{'properties': {
                 'privateIPAddress': self.firewall_ip, 'subnet': {'id': self.subnets['firewall']}}}],
         })
-        self.add(self.aca_route_table_id, 'Microsoft.Network/routeTables', {
+        self.add(self.portal_route_table_id, 'Microsoft.Network/routeTables', {
             'disableBgpRoutePropagation': True,
             'routes': [{'name': name, 'properties': {'addressPrefix': destination,
                         'nextHopType': 'VirtualAppliance', 'nextHopIpAddress': self.firewall_ip}}
@@ -111,7 +115,7 @@ class MemoryTransport:
         self.add(svc+'Microsoft.ApiManagement/service/apim-'+self.stem+'-abc123', 'Microsoft.ApiManagement/service',
                  {'privateIPAddresses': [self.bindings['ips']['apim']], 'virtualNetworkType': 'Internal',
                   'virtualNetworkConfiguration': {'subnetResourceId': self.subnets['apim']}})
-        for key, suffix in (('aca', ''), ('broker', '-broker')):
+        for key, suffix in (('portal', ''), ('broker', '-broker')):
             self.add(svc+'Microsoft.App/managedEnvironments/cae-'+self.stem+suffix, 'Microsoft.App/managedEnvironments',
                      {'staticIp': self.bindings['ips'][key], 'publicNetworkAccess': 'Disabled', 'vnetConfiguration': {
                          'internal': True, 'infrastructureSubnetId': self.subnets[key]}})
@@ -233,7 +237,7 @@ class FixedNsgValidationTests(unittest.TestCase):
             if issue == 'route-table':
                 subnet = next(item for item in transport.resources[transport.vnet_id]['properties']['subnets']
                               if item['id'] == transport.subnets['broker'])
-                subnet['properties']['routeTable']['id'] = transport.nw + 'routeTables/rt-' + transport.stem + '-aca'
+                subnet['properties']['routeTable']['id'] = transport.nw + 'routeTables/rt-' + transport.stem + '-portal'
                 expected = 'Broker subnet route table'
             else:
                 environment = transport.groups['svc'] + '/providers/Microsoft.App/managedEnvironments/cae-' + transport.stem + '-broker'
@@ -291,10 +295,10 @@ class FixedNsgValidationTests(unittest.TestCase):
             self.assertFalse(transport.mutations())
 
 
-    def test_aca_terminal_rule_with_a_modified_tuple_stops_before_writes(self):
+    def test_portal_terminal_rule_with_a_modified_tuple_stops_before_writes(self):
         transport = MemoryTransport(self.config)
-        aca = transport.resources[transport.nsg_id('aca')]
-        terminal = next(rule for rule in aca['properties']['securityRules'] if rule['name'] == 'deny-any-egress')
+        portal_nsg = transport.resources[transport.nsg_id('portal')]
+        terminal = next(rule for rule in portal_nsg['properties']['securityRules'] if rule['name'] == 'deny-any-egress')
         terminal['properties']['priority'] = 4095
         with self.assertRaises(nsg.FixedNsgError):
             nsg.verify_fixed_nsg_before_deployment(self.config, transport)
@@ -365,7 +369,7 @@ class FixedNsgValidationTests(unittest.TestCase):
         for group in nsg.GROUPS:
             parent = transport.resources[transport.nsg_id(group)]
             parent['properties']['securityRules'] = [child for child in parent['properties']['securityRules']
-                if not any(token.split(':', 1)[1] in ('aca', 'broker', 'registry', 'sql') and
+                if not any(token.split(':', 1)[1] in ('portal', 'broker', 'registry', 'sql') and
                            token.split(':', 1)[0] in ('ip', 'address', 'ips', 'addresses')
                            for token in manifest['groups'][group]['rules'][child['name']]['source'] +
                                         manifest['groups'][group]['rules'][child['name']]['destination'])]
@@ -426,14 +430,14 @@ class FixedNsgValidationTests(unittest.TestCase):
             self.assertFalse(transport.mutations())
 
 
-    def test_core_can_resume_before_audit_endpoints_and_aca_terminal_rules_exist(self):
+    def test_core_can_resume_before_audit_endpoints_and_portal_terminal_rules_exist(self):
         transport = MemoryTransport(self.config)
-        for group in ('management', 'pep', 'aca'):
+        for group in ('management', 'pep', 'portal'):
             parent = transport.resources[transport.nsg_id(group)]
             parent['properties']['securityRules'] = [
                 rule for rule in parent['properties']['securityRules']
                 if 'audit-storage-' not in rule['name']
-                and not (group == 'aca' and rule['name'] in ACA_TERMINAL_STAGE_RULES)]
+                and not (group == 'portal' and rule['name'] in PORTAL_TERMINAL_STAGE_RULES)]
         endpoints = {}
         for suffix in ('audit-japan-blob', 'audit-foundry-blob'):
             identity = transport.nw + 'privateEndpoints/pe-' + transport.stem + '-' + suffix

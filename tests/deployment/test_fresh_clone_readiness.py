@@ -105,7 +105,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         # 読む元を公開ソースの種類へ限定する。*.local.jsonやprivate領域を探索しない。
         patterns = ("scripts/**/*.py", "infra/config/*.json",
                     "params/*.example.json", "params/params.schema.json", "infra/modules/monitoring/log-privacy.json",
-                    "infra/modules/network/nsg/core-rules.json",
+                    "infra/modules/network/nsg/core-rules.json", "infra/modules/network/subnet-names.json",
                     "apps/api-gateway/waf-input-contracts.json", "apps/api-gateway/waf-data-exclusions.json",
                     "apps/api-gateway/apis/*.json", "apps/api-gateway/schemas/*.json", "apps/api-gateway/model-capabilities.json",
                     "apps/api-gateway/public-bindings.json")
@@ -198,7 +198,8 @@ class FreshCloneReadinessTests(unittest.TestCase):
         self.assertNotIn("codex", public)
         self.assertEqual(set(public["resourceGroupNames"]), {"id", "nw", "monitor", "svc", "maint"})
         self.assertTrue(public["auditEvidence"]["enabled"])
-        self.assertIn(public["network"]["subnetPrefixes"]["audit"], public["network"]["addressSpaces"])
+        for field in ("addressSpaces", "subnetPrefixes"):
+            self.assertEqual(public["network"][field], parameters["network"][field])
         self.assertNotIn("configFile", public)
         for field in ("sshPublicKeyFile", "pluginArgumentsFile", "clientSecretFile"):
             self.assertNotIn('"' + field + '"', arguments.read_text())

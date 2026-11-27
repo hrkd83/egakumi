@@ -118,7 +118,7 @@ def deployment_inputs(config, state, image_digest=None, *, workspace=None):
         # Core出力との一致を確認した公開ドメインを使い、共通購読キーは配備しません。
         'gatewayOrigin': gateway_origin,
         'networkResourceGroup': config['resourceGroupNames']['nw'],
-        'acaPrefix': config['network']['subnetPrefixes']['aca'],
+        'portalPrefix': config['network']['subnetPrefixes']['portal'],
         'expectedEgressIp': portal.get('expectedEgressIp', ''),
         'imageDigest': image_digest, 'deployApplication': False,
     }

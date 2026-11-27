@@ -10,14 +10,15 @@ from uuid import UUID
 
 from .aca_egress import validate_aca_route_snapshot
 from .apim_naming import apim_name
+from .subnet_names import SUBNET_NAMES, subnet_resource_id
 
 
 API = '2025-01-01'
 ROOT = Path(__file__).resolve().parents[3]
 CATALOG_DIRECTORY = ROOT / 'infra/modules/network/nsg'
 NSG_TYPE = 'Microsoft.Network/networkSecurityGroups'
-GROUPS = ('agw', 'apim', 'pep', 'management', 'aca', 'broker')
-SUFFIXES = {'agw': 'agw', 'apim': 'apim', 'pep': 'pep', 'management': 'vm', 'aca': 'aca', 'broker': 'broker', 'audit': 'audit'}
+GROUPS = ('agw', 'apim', 'pep', 'management', 'portal', 'broker')
+SUFFIXES = {'agw': 'agw', 'apim': 'apim', 'pep': 'pep', 'management': 'vm', 'portal': 'portal', 'broker': 'broker', 'audit': 'audit'}
 _PAIRS = (('sourcePortRange', 'sourcePortRanges'), ('destinationPortRange', 'destinationPortRanges'),
           ('sourceAddressPrefix', 'sourceAddressPrefixes'), ('destinationAddressPrefix', 'destinationAddressPrefixes'))
 
@@ -228,7 +229,7 @@ def _verify_certificate_egress_path(config, transport, subnet):
         raise FixedNsgError('The ACA subnet egress boundary does not match the fixed Firewall route')
     firewall = _read(config, transport, network + 'azureFirewalls/afw-' + stem,
                      'Microsoft.Network/azureFirewalls')['properties']
-    expected_subnet = network + 'virtualNetworks/vnet-' + stem + '/subnets/AzureFirewallSubnet'
+    expected_subnet = subnet_resource_id(config, 'firewall')
     ip_configs = firewall.get('ipConfigurations')
     if (not isinstance(ip_configs, list) or len(ip_configs) != 1 or not isinstance(ip_configs[0], dict)
             or not isinstance(ip_configs[0].get('properties'), dict)
@@ -248,13 +249,13 @@ def _verify_certificate_egress_path(config, transport, subnet):
         raise FixedNsgError('The ACA route table does not prove that public traffic uses the owned Firewall') from None
 
 
-def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False, permit_pending_audit_endpoints=False,
+def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=False, permit_pending_audit_endpoints=False,
                             _required_bindings=None):
     """Read and verify resource identities, subnet links, PE targets and all NIC IPs."""
-    if type(permit_unassociated_aca) is not bool or type(permit_pending_audit_endpoints) is not bool:
-        raise FixedNsgError('The internal ACA association phase is invalid')
+    if type(permit_unassociated_portal) is not bool or type(permit_pending_audit_endpoints) is not bool:
+        raise FixedNsgError('The internal Portal subnet association phase is invalid')
     nsg_groups = _active_groups(config)
-    allowed_bindings = {('ips', key) for key in ('firewallPublic', 'appGatewayPublic', 'apim', 'aca', 'broker', 'audit', 'management')}
+    allowed_bindings = {('ips', key) for key in ('firewallPublic', 'appGatewayPublic', 'apim', 'portal', 'broker', 'audit', 'management')}
     allowed_bindings.update(('ipSets', key) for key in
                             ('foundry', 'keyVault', 'registry', 'sql', 'auditStorageJapan', 'auditStorageFoundry',
                              'certificateVault', 'certificateBlob', 'evidenceEventHubs', 'evidenceBlob', 'evidenceCheckpoint'))
@@ -278,14 +279,14 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False,
     raw_subnets = vnet['properties'].get('subnets')
     if not isinstance(raw_subnets, list):
         raise FixedNsgError('The owned VNet subnet inventory differs')
-    certificate_name = 'snet-' + stem + '-certificate'
+    certificate_name = SUBNET_NAMES['certificate'].casefold()
     certificate_subnets = [subnet for subnet in raw_subnets if isinstance(subnet, dict)
-                           and str(subnet.get('name', '')).casefold() == certificate_name.casefold()]
+                           and str(subnet.get('name', '')).casefold() == certificate_name]
     parents = _parents(config, transport)
     found = {str(subnet.get('name', '')).casefold() for subnet in raw_subnets if isinstance(subnet, dict)}
     subnet_groups = tuple(key for key in nsg_groups
         if not (permit_pending_audit_endpoints and key in ('broker', 'audit')
-                and 'snet-' + stem.casefold() + '-' + key not in found
+                and SUBNET_NAMES[key].casefold() not in found
                 and not _inventory(parents[key])))
     if len(certificate_subnets) > 1 or len(raw_subnets) != len(subnet_groups) + 1 + len(certificate_subnets):
         raise FixedNsgError('The owned VNet subnet inventory differs')
@@ -295,22 +296,22 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False,
         certificate_nsg = nw + NSG_TYPE.removeprefix('Microsoft.Network/') + '/nsg-' + stem + '-certificate'
         certificate_route = nw + 'routeTables/rt-' + stem + '-certificate'
         if (not isinstance(p, dict) or 'certificate' not in prefixes
-                or _ref(certificate) != (vnet_id + '/subnets/' + certificate_name).casefold()
+                or _ref(certificate) != subnet_resource_id(config, 'certificate').casefold()
                 or (p.get('addressPrefixes') or [p.get('addressPrefix')]) != [prefixes['certificate']]
                 or _ref(p.get('networkSecurityGroup')) != certificate_nsg.casefold()
                 or _ref(p.get('routeTable')) != certificate_route.casefold()
                 or p.get('defaultOutboundAccess') is not False):
             raise FixedNsgError('The dedicated certificate subnet does not match the deployment scope')
-        if not permit_unassociated_aca:
+        if not permit_unassociated_portal:
             _verify_certificate_egress_path(config, transport, p)
     else:
         # The certificate subnet can be absent during initial provisioning.
         prefixes.pop('certificate', None)
     subnet_ids = {}
     for key in (*subnet_groups, 'firewall'):
-        name = 'AzureFirewallSubnet' if key == 'firewall' else 'snet-' + stem + '-' + SUFFIXES[key]
-        identity = vnet_id + '/subnets/' + name
-        matches = [s for s in raw_subnets if isinstance(s, dict) and str(s.get('name', '')).casefold() == name.casefold()]
+        name = SUBNET_NAMES[key].casefold()
+        identity = subnet_resource_id(config, key)
+        matches = [s for s in raw_subnets if isinstance(s, dict) and str(s.get('name', '')).casefold() == name]
         if len(matches) != 1 or _ref(matches[0]) != identity.casefold(): raise FixedNsgError('The owned subnet identity differs')
         p = matches[0].get('properties')
         if not isinstance(p, dict): raise FixedNsgError('The owned subnet properties are unavailable')
@@ -325,9 +326,9 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False,
             if associated: raise FixedNsgError('AzureFirewallSubnet must not have a customer NSG')
         else:
             parent = parents[key]
-            transitional = (key == 'aca' and permit_unassociated_aca and parent is not None
+            transitional = (key == 'portal' and permit_unassociated_portal and parent is not None
                             and not associated and parent['properties'].get('subnets') in (None, []))
-            if key == 'aca' and parent is None and not associated: pass
+            if key == 'portal' and parent is None and not associated: pass
             elif transitional: pass
             elif parent is None or associated != parent['id'].casefold(): raise FixedNsgError('The owned subnet NSG association differs')
             if parent:
@@ -353,8 +354,8 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False,
         checked = [_address(v, prefixes['apim']) for v in addresses]
         if len(set(checked)) != len(checked): raise FixedNsgError('The owned APIM address inventory is ambiguous')
         ips['apim'] = checked[0]
-    environments = [(key, '' if key == 'aca' else '-' + key)
-                    for key in ('aca', 'broker', 'audit') if key in subnet_groups]
+    environments = [(key, '' if key == 'portal' else '-' + key)
+                    for key in ('portal', 'broker', 'audit') if key in subnet_groups]
     for key, suffix in environments:
         if not required('ips', key): continue
         environment = _read(config, transport, service_prefix + 'Microsoft.App/managedEnvironments/cae-' + stem + suffix,
@@ -530,7 +531,7 @@ def verify_fixed_nsg_before_deployment(config, transport):
         verify_fixed_nsg_inventory(parents, {'subnets': prefixes, 'ips': {}, 'ipSets': {}})
         return
 
-    options = {'permit_unassociated_aca': True, 'permit_pending_audit_endpoints': True,
+    options = {'permit_unassociated_portal': True, 'permit_pending_audit_endpoints': True,
                '_required_bindings': frozenset(required_bindings)}
     bindings = read_fixed_nsg_bindings(config, transport, **options)
     verify_fixed_nsg_inventory(parents, bindings)

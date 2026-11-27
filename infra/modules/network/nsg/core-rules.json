@@ -134,7 +134,7 @@
             "subnet:agw"
           ],
           "destination": [
-            "ip:aca"
+            "ip:portal"
           ],
           "destinationPorts": [
             "443"
@@ -604,7 +604,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca",
+            "subnet:portal",
             "subnet:broker"
           ],
           "destination": [
@@ -673,7 +673,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca",
+            "subnet:portal",
             "subnet:broker"
           ],
           "destination": [
@@ -691,7 +691,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca",
+            "subnet:portal",
             "subnet:broker"
           ],
           "destination": [
@@ -887,7 +887,7 @@
             "ip:management"
           ],
           "destination": [
-            "ip:aca"
+            "ip:portal"
           ],
           "destinationPorts": [
             "443"
@@ -1032,8 +1032,8 @@
         }
       }
     },
-    "aca": {
-      "suffix": "aca",
+    "portal": {
+      "suffix": "portal",
       "rules": {
         "allow-firewall-https-ingress": {
           "designRecordId": "B-ACA-03",
@@ -1046,7 +1046,7 @@
             "subnet:firewall"
           ],
           "destination": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destinationPorts": [
             "443",
@@ -1064,7 +1064,7 @@
             "ip:management"
           ],
           "destination": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destinationPorts": [
             "443",
@@ -1082,7 +1082,7 @@
             "tag:AzureLoadBalancer"
           ],
           "destination": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destinationPorts": [
             "30000-32767"
@@ -1096,7 +1096,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
             "ip:appGatewayPublic"
@@ -1113,7 +1113,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
             "ips:keyVault"
@@ -1130,7 +1130,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
             "ips:sql"
@@ -1147,7 +1147,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
             "ips:registry"
@@ -1164,10 +1164,10 @@
           "protocol": "*",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destinationPorts": [
             "*"
@@ -1181,7 +1181,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
             "tag:AzureActiveDirectory"
@@ -1198,7 +1198,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
             "tag:AzureMonitor"
@@ -1215,7 +1215,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
             "tag:MicrosoftContainerRegistry"
@@ -1232,7 +1232,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
             "tag:AzureFrontDoor.FirstParty"
@@ -1249,10 +1249,10 @@
           "protocol": "*",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destinationPorts": [
             "*"
@@ -1266,7 +1266,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:aca"
+            "subnet:portal"
           ],
           "destination": [
             "tag:Internet"

@@ -19,8 +19,8 @@
     "auditEvidence": {
       "type": "object",
       "additionalProperties": false,
+      "description": "常時稼働する本文監査の保存方式と保持期間を指定します。",
       "properties": {
-        "enabled": { "type": "boolean", "default": false },
         "eventHubsSku": { "enum": ["Standard", "Premium"], "default": "Standard" },
         "payloadImmutabilityMode": { "enum": ["Disabled", "Locked"], "default": "Disabled" },
         "payloadRetentionDays": { "type": "integer", "minimum": 1, "maximum": 146000 }

@@ -24,7 +24,7 @@ azd本体の撤去も`infra/main.bicepparam`を評価するため、`predown`は
 | 段階 | 処理・完了確認 |
 | --- | --- |
 | 変更前 | stateと現物のID・種類・命名・region・所有タグ・接続先、全監査保持を照合し、ACA管理RGの実IDを保存する |
-| `predown` | モデル→CMの接続権限・接続・provider→APIM→Broker・全ジョブ→Portal CA→共有CAE→ACAサブネット解放→管理VM・残存する所有NICの順で回収する |
+| `predown` | モデル→CMの接続権限・接続・provider→APIM→Broker・全ジョブ→Portal CA→Portal用CAE→Portalサブネット解放→管理VM・残存する所有NICの順で回収する |
 | azd本体 | 所有5RGを削除する。専用DB・ACR／イメージ・Vault秘密・専用IDも所有RGと共に回収する |
 | `postdown` | 5RGと記録済みACA管理RGの404、対象3サービスの削除記録・保護による保持、API Centerの削除履歴を記録する |
 

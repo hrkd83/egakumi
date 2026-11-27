@@ -43,7 +43,7 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 ## 7-3. 環境の値を記入する
 
 1. `subscriptionId`・`azureTenantId`・`entraTenantId`・製品／環境名・3リージョンを確定する。
-2. `network.addressSpaces`と`network.subnetPrefixes`をIP計画へ合わせる。公開例のCIDRが未使用だと推測しない。
+2. `network.addressSpaces`と`network.subnetPrefixes`をIP計画へ合わせる。[公開例の割り当て](../reference/configuration/parameters.md#公開例のvnet割り当て)を参考に、導入先で使用可能な範囲を確認する。
 3. Gateway／Portalの公開FQDN、APIM発行者、監視通知先、ACME連絡先を記入する。証明書DNS名は公開FQDN2件から自動生成する。
 4. 第05章と第06章で確認したDNS側Subscription IDとUAMIの完全なResource IDを設定する。DNS-01プラグインは資材でAzureへ固定する。
 5. `management.adminUsername`とSSH公開鍵参照を設定する。保守時の本人権限は[管理VMの運用](../operations/management-vm-access.md)に従う。
@@ -61,9 +61,9 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 
 すべてのアプリでApplication (client) IDを使い、認証用`entraTenantId`に登録します。API試用はこの基盤構成で既定有効です。試用をメンテナンスで一時停止する場合は`portal.apiAuthentication.enabled`を`false`にしてPortalだけ再配備します。通常のOBO初回は保護stateの証明書を固定します。管理者が別版を発行・Entra登録済みの場合だけ、`gateway.authentication.entra.obo.keyId`と公開証明書DERのSHA-256の`certificateThumbprint`を組で指定します。
 
-### 同一テナントと別テナントの指定
+### AzureとEntraのテナント指定
 
-`azureTenantId`はAzure構築・RBAC先、`entraTenantId`は社員API認証、標準Graph OAuth、任意の接続窓口アプリの認証先です。本文監査を有効にする標準configでは2つのテナントを揃えます。`entraTenantId` を省略すると `azureTenantId` を使います。別テナントで構築する場合は、本文監査を無効にした個別構成でそれぞれのIDを指定します。標準Graphの`oauthTenantId`と接続窓口identityの`tenantId`は公開入力から導出し、独立した上書き欄を設けません。
+`azureTenantId`はAzure構築・RBAC先、`entraTenantId`は社員API認証、標準Graph OAuth、任意の接続窓口アプリの認証先です。監査中継を呼ぶAPIMのマネージドIDが、利用者向けのAPI登録をトークンの対象として使うため、2つのテナントを揃えます。`entraTenantId` を省略すると `azureTenantId` を使います。標準Graphの`oauthTenantId`と接続窓口identityの`tenantId`は公開入力から導出し、独立した上書き欄を設けません。 [監査中継の認証](../reference/audit/request-body-audit.md#初回構築)
 
 追加providerが別の認証テナントを使う場合は、`params.credentialProviders.additional[].oauthTenantId`を設定できます。管理VMに接続する担当者へは、保守時に [本人のAzure RBAC](../operations/management-vm-access.md) を付与して回収します。認証先の変更と、Azure配置先の変更は別の操作です。
 

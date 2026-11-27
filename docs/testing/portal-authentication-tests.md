@@ -33,7 +33,7 @@
 
 | 対象 | 合格条件 |
 | --- | --- |
-| ログイン | 固定認証tenantへ認証コードを交換し、公開HTTPS callback・Secure Cookie・署名済みtid/oidを維持。標準configではAzureと認証テナントを揃える。本文監査を無効にした別テナント構成を採用する場合は、そこでサインインを確認する |
+| ログイン | 固定認証tenantへ認証コードを交換し、公開HTTPS callback・Secure Cookie・署名済みtid/oidを維持。Azureと認証用Entraは同じテナントを使う |
 | Graph OBO | PortalのBearer試用から本人の `/me` が取得でき、別人・無効なトークンで取得できないことを確認 |
 | 署名権限 | 対象鍵scopeのみread/sign。誤ったID・鍵版・disabled鍵・KV不通で署名失敗を秘匿し、他方式へfallbackしない |
 | 更新準備 | 運用入口からPortal署名用のACA Jobを実行し、現行と異なる公開鍵・新しい鍵版を生成。公開`.cer`だけを出力し、現行参照を維持 |

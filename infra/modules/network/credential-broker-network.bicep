@@ -9,7 +9,7 @@ param sqlServerId string
 param vnetId string
 param pepSubnetId string
 param pepNsgName string
-param acaPrefix string
+param portalPrefix string
 param brokerPrefix string
 param brokerNsgName string
 param apimPrefix string
@@ -19,7 +19,7 @@ param firewallPolicyName string
 param managementPrefix string
 param managementPrivateIp string
 param managementNsgName string
-param acaNsgName string
+param portalNsgName string
 var nsgPriorities = loadJsonContent('nsg/core-rules.json')
 
 // NSGには固定の初期集合を登録し、構築資材のCIDR・割当IPだけを宛先に差し込みます。
@@ -56,12 +56,12 @@ var ips = union([], flatten(addresses.outputs.privateIpsByNic))
 resource pepNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: pepNsgName }
 resource apimNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: apimNsgName }
 resource managementNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: managementNsgName }
-resource acaNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: acaNsgName }
+resource portalNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: portalNsgName }
 resource brokerNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: brokerNsgName }
 resource sqlIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
   name: 'allow-aca-sql-1433-ingress'
-  properties: allowRule('allow-aca-sql-1433-ingress', nsgPriorities.groups.pep.rules['allow-aca-sql-1433-ingress'].priority, 'Inbound', 'Tcp', [acaPrefix, brokerPrefix], map(ips, ip => '${ip}/32'), ['1433']).properties
+  properties: allowRule('allow-aca-sql-1433-ingress', nsgPriorities.groups.pep.rules['allow-aca-sql-1433-ingress'].priority, 'Inbound', 'Tcp', [portalPrefix, brokerPrefix], map(ips, ip => '${ip}/32'), ['1433']).properties
 }
 resource managementSqlIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
@@ -74,10 +74,10 @@ resource brokerOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-0
   name: 'allow-broker-https-egress'
   properties: allowRule('allow-broker-https-egress', nsgPriorities.groups.apim.rules['allow-broker-https-egress'].priority, 'Outbound', 'Tcp', [apimPrefix], ['${brokerPrivateIp}/32'], ['443']).properties
 }
-resource acaSqlOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
-  parent: acaNsg
+resource portalSqlOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: portalNsg
   name: 'allow-sql-1433-egress'
-  properties: allowRule('allow-sql-1433-egress', nsgPriorities.groups.aca.rules['allow-sql-1433-egress'].priority, 'Outbound', 'Tcp', [acaPrefix], map(ips, ip => '${ip}/32'), ['1433']).properties
+  properties: allowRule('allow-sql-1433-egress', nsgPriorities.groups.portal.rules['allow-sql-1433-egress'].priority, 'Outbound', 'Tcp', [portalPrefix], map(ips, ip => '${ip}/32'), ['1433']).properties
 }
 resource brokerSqlOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: brokerNsg
@@ -99,7 +99,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
       // APIM→Broker、PortalとBroker→SQL/Key Vault PE は VNet 内の直接経路です。
       // Firewall を通過しないため、この規則群には登録せず各サブネットの NSG で許可します。
       { name: 'credential-broker-azure', priority: 200, ruleCollectionType: 'FirewallPolicyFilterRuleCollection', action: { type: 'Allow' }, rules: [
-        { name: 'allow-aca-entra-login', ruleType: 'ApplicationRule', sourceAddresses: [acaPrefix, brokerPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['login.microsoftonline.com'], terminateTLS: false }
+        { name: 'allow-aca-entra-login', ruleType: 'ApplicationRule', sourceAddresses: [portalPrefix, brokerPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['login.microsoftonline.com'], terminateTLS: false }
         { name: 'allow-broker-arm', ruleType: 'ApplicationRule', sourceAddresses: [brokerPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['management.azure.com'], terminateTLS: false }
         { name: 'allow-mgmt-vm-python-build', ruleType: 'ApplicationRule', sourceAddresses: [managementPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['pypi.org', 'files.pythonhosted.org', 'packages.microsoft.com', 'deb.debian.org', 'security.debian.org'], terminateTLS: false }
       ] }
@@ -108,24 +108,24 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
 }
 // ACR・Key Vault・基盤向けの許可は先行モジュールで用意済みです。
 // 両向きのSQL PE規則とFirewall許可を登録してから、ACAの末尾Denyを順に配置します。
-resource acaIngressDeny 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
-  parent: acaNsg
+resource portalIngressDeny 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: portalNsg
   name: 'deny-any-ingress'
-  properties: denyProperties('Inbound', nsgPriorities.groups.aca.rules['deny-any-ingress'].priority)
-  dependsOn: [acaSqlOut, sqlIn, rules]
+  properties: denyProperties('Inbound', nsgPriorities.groups.portal.rules['deny-any-ingress'].priority)
+  dependsOn: [portalSqlOut, sqlIn, rules]
 }
-resource acaEgressDeny 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
-  parent: acaNsg
+resource portalEgressDeny 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: portalNsg
   name: 'deny-any-egress'
-  properties: denyProperties('Outbound', nsgPriorities.groups.aca.rules['deny-any-egress'].priority)
-  dependsOn: [acaIngressDeny]
+  properties: denyProperties('Outbound', nsgPriorities.groups.portal.rules['deny-any-egress'].priority)
+  dependsOn: [portalIngressDeny]
 }
 
 resource brokerIngressDeny 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: brokerNsg
   name: 'deny-any-ingress'
   properties: denyProperties('Inbound', nsgPriorities.groups.broker.rules['deny-any-ingress'].priority)
-  dependsOn: [brokerSqlOut, sqlIn, rules, acaEgressDeny]
+  dependsOn: [brokerSqlOut, sqlIn, rules, portalEgressDeny]
 }
 resource brokerEgressDeny 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: brokerNsg

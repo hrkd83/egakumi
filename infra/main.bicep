@@ -60,8 +60,8 @@ var location = configuration.location
 var tags = union(configuration.tags, { product: product, environment: environmentName, 'azd-env-name': environmentName })
 var groupKinds = ['id', 'nw', 'monitor', 'svc', 'maint']
 var deployCore = phase == 'core'
+// 本文監査はCoreの常設構成です。標準設定は保存方式と保持期間だけを選びます。
 var auditEvidenceConfig = configuration.?auditEvidence ?? {}
-var deployAuditEvidence = deployCore && (auditEvidenceConfig.?enabled ?? false)
 var servicesConfig = configuration.services
 var managementConfig = configuration.management
 var monitoringConfig = configuration.monitoring
@@ -190,7 +190,7 @@ module network 'modules/network/network.bicep' = if (deployCore) {
     portalPublicHostName: portalConfig.publicHostName
     existingNetworkSecurityGroupNames: existingNetworkSecurityGroupNames
     existingRouteTableRoutes: existingRouteTableRoutes
-    auditEvidenceEnabled: deployAuditEvidence
+    auditEvidenceEnabled: true
   }
 }
 
@@ -488,8 +488,8 @@ module portalNetwork 'modules/network/portal-network.bicep' = if (deployCore) {
     managementPrefix: network!.outputs.subnetPrefixes.management
     managementNsgName: network!.outputs.nsgNames.management
     managementPrivateIp: management!.outputs.managementVm.privateIp
-    acaNsgName: network!.outputs.nsgNames.aca
-    acaPrefix: network!.outputs.subnetPrefixes.aca
+    portalNsgName: network!.outputs.nsgNames.portal
+    portalPrefix: network!.outputs.subnetPrefixes.portal
     brokerNsgName: network!.outputs.nsgNames.broker
     brokerPrefix: network!.outputs.subnetPrefixes.broker
     firewallPolicyName: network!.outputs.firewallPolicyName
@@ -507,7 +507,7 @@ module portal 'modules/container-apps/portal-platform.bicep' = if (deployCore) {
     stem: stem
     location: location
     tags: tags
-    subnetId: network!.outputs.subnetIds.aca
+    subnetId: network!.outputs.subnetIds.portal
     registryName: portalRegistry!.outputs.name
     pullIdentityId: portalPullIdentity!.outputs.id
   }
@@ -620,13 +620,13 @@ module credentialNetwork 'modules/network/credential-broker-network.bicep' = if 
     vnetId: network!.outputs.vnetId
     pepSubnetId: network!.outputs.subnetIds.pep
     pepNsgName: network!.outputs.nsgNames.pep
-    acaPrefix: network!.outputs.subnetPrefixes.aca
+    portalPrefix: network!.outputs.subnetPrefixes.portal
     apimPrefix: network!.outputs.subnetPrefixes.apim
     apimNsgName: network!.outputs.nsgNames.apim
     brokerPrivateIp: brokerEnvironment!.outputs.platform.privateIp
     firewallPolicyName: network!.outputs.firewallPolicyName
     managementPrefix: network!.outputs.subnetPrefixes.management
-    acaNsgName: network!.outputs.nsgNames.aca
+    portalNsgName: network!.outputs.nsgNames.portal
     brokerNsgName: network!.outputs.nsgNames.broker
     brokerPrefix: network!.outputs.subnetPrefixes.broker
     managementNsgName: network!.outputs.nsgNames.management
@@ -638,7 +638,7 @@ module credentialNetwork 'modules/network/credential-broker-network.bicep' = if 
 var auditRelayName = 'ca-${stem}-audit-relay'
 var auditWorkerName = 'ca-${stem}-audit-store'
 
-module auditEvidenceIdentities 'modules/audit-evidence/audit-evidence-identities.bicep' = if (deployAuditEvidence) {
+module auditEvidenceIdentities 'modules/audit-evidence/audit-evidence-identities.bicep' = if (deployCore) {
   name: '${stem}-audit-evidence-identities'
   scope: idGroup
   params: {
@@ -652,7 +652,7 @@ module auditEvidenceIdentities 'modules/audit-evidence/audit-evidence-identities
   dependsOn: [services]
 }
 
-module auditEvidenceData 'modules/audit-evidence/audit-evidence-data.bicep' = if (deployAuditEvidence) {
+module auditEvidenceData 'modules/audit-evidence/audit-evidence-data.bicep' = if (deployCore) {
   name: '${stem}-audit-evidence-data'
   scope: monitorGroup
   params: {
@@ -669,7 +669,7 @@ module auditEvidenceData 'modules/audit-evidence/audit-evidence-data.bicep' = if
   }
 }
 
-module auditEvidenceNetwork 'modules/audit-evidence/audit-evidence-network.bicep' = if (deployAuditEvidence) {
+module auditEvidenceNetwork 'modules/audit-evidence/audit-evidence-network.bicep' = if (deployCore) {
   name: '${stem}-audit-evidence-network'
   scope: nwGroup
   params: {
@@ -692,7 +692,7 @@ module auditEvidenceNetwork 'modules/audit-evidence/audit-evidence-network.bicep
   dependsOn: [credentialNetwork, auditPrivateDnsLink, certificateNetwork]
 }
 
-module auditEvidenceEnvironment 'modules/audit-evidence/audit-evidence-environment.bicep' = if (deployAuditEvidence) {
+module auditEvidenceEnvironment 'modules/audit-evidence/audit-evidence-environment.bicep' = if (deployCore) {
   name: '${stem}-audit-evidence-environment'
   scope: svcGroup
   params: {
@@ -705,7 +705,7 @@ module auditEvidenceEnvironment 'modules/audit-evidence/audit-evidence-environme
   dependsOn: [auditEvidenceNetwork]
 }
 
-module auditEvidenceIngress 'modules/audit-evidence/audit-evidence-ingress.bicep' = if (deployAuditEvidence) {
+module auditEvidenceIngress 'modules/audit-evidence/audit-evidence-ingress.bicep' = if (deployCore) {
   name: '${stem}-audit-evidence-ingress'
   scope: nwGroup
   params: {
@@ -804,7 +804,7 @@ output ingressMonitoringPlan object = deployCore ? {
   storage: monitoring.outputs.storage
   apimId: services!.outputs.serviceResourceIds.apim
   firewallId: network!.outputs.firewallId
-  auditEvidenceEventHubsId: deployAuditEvidence ? auditEvidenceData!.outputs.data.eventHubsNamespaceId : ''
+  auditEvidenceEventHubsId: deployCore ? auditEvidenceData!.outputs.data.eventHubsNamespaceId : ''
   networkResourceIds: network!.outputs.monitoredResourceIds
   resourceGroupIds: [idGroup.id, nwGroup.id, monitorGroup.id, svcGroup.id, maintGroup.id]
   enableLogAlerts: monitoringConfig.enableLogAlerts
@@ -971,7 +971,7 @@ output portal object = deployCore ? union(portal!.outputs.platform, {
 }) : {}
 
 output brokerPlatform object = deployCore ? brokerEnvironment!.outputs.platform : {}
-output auditEvidence object = deployAuditEvidence ? union(auditEvidenceEnvironment!.outputs.platform, auditEvidenceData!.outputs.data, {
+output auditEvidence object = deployCore ? union(auditEvidenceEnvironment!.outputs.platform, auditEvidenceData!.outputs.data, {
   location: location
   tags: tags
   infrastructureSubnetId: network!.outputs.subnetIds.audit

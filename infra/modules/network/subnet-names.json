@@ -1,0 +1,11 @@
+{
+  "agw": "AppGatewaySubnet",
+  "pep": "PrivateEndpointSubnet",
+  "firewall": "AzureFirewallSubnet",
+  "apim": "ApiManagementSubnet",
+  "portal": "PortalSubnet",
+  "audit": "AuditEvidenceSubnet",
+  "broker": "CredentialBrokerSubnet",
+  "certificate": "CertificateJobSubnet",
+  "management": "ManagementSubnet"
+}

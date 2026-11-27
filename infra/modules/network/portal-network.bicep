@@ -11,8 +11,8 @@ param pepSubnetId string
 param managementPrefix string
 param managementNsgName string
 param managementPrivateIp string
-param acaNsgName string
-param acaPrefix string
+param portalNsgName string
+param portalPrefix string
 param brokerPrefix string
 param brokerNsgName string
 param firewallPolicyName string
@@ -58,16 +58,16 @@ module registryAddresses 'private-endpoint-addresses.bicep' = {
 var registryPrivateIps = union([], flatten(registryAddresses.outputs.privateIpsByNic))
 resource pepNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: pepNsgName }
 resource managementNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: managementNsgName }
-resource acaNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: acaNsgName }
+resource portalNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: portalNsgName }
 resource brokerNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: brokerNsgName }
-resource acaRegistryIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+resource registryIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
   name: 'allow-aca-acr-https-ingress'
-  properties: allowRule('allow-aca-acr-https-ingress', nsgPriorities.groups.pep.rules['allow-aca-acr-https-ingress'].priority, 'Inbound', 'Tcp', [acaPrefix, brokerPrefix], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
+  properties: allowRule('allow-aca-acr-https-ingress', nsgPriorities.groups.pep.rules['allow-aca-acr-https-ingress'].priority, 'Inbound', 'Tcp', [portalPrefix, brokerPrefix], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
 }
 resource managementRegistryIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
-  dependsOn: [acaRegistryIn]
+  dependsOn: [registryIn]
   name: 'allow-mgmt-vm-acr-https-ingress'
   properties: allowRule('allow-mgmt-vm-acr-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-acr-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
 }
@@ -76,10 +76,10 @@ resource runnerRegistryAccess 'Microsoft.Network/networkSecurityGroups/securityR
   name: 'allow-acr-https-egress'
   properties: allowRule('allow-acr-https-egress', nsgPriorities.groups.management.rules['allow-acr-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
 }
-resource acaRegistryOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
-  parent: acaNsg
+resource portalRegistryOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: portalNsg
   name: 'allow-acr-https-egress'
-  properties: allowRule('allow-acr-https-egress', nsgPriorities.groups.aca.rules['allow-acr-https-egress'].priority, 'Outbound', 'Tcp', [acaPrefix], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
+  properties: allowRule('allow-acr-https-egress', nsgPriorities.groups.portal.rules['allow-acr-https-egress'].priority, 'Outbound', 'Tcp', [portalPrefix], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
 }
 resource brokerRegistryOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: brokerNsg
@@ -104,7 +104,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
           {
             name: 'allow-aca-monitor'
             ruleType: 'NetworkRule'
-            sourceAddresses: [acaPrefix, brokerPrefix]
+            sourceAddresses: [portalPrefix, brokerPrefix]
             destinationAddresses: ['AzureMonitor']
             destinationPorts: ['443']
             ipProtocols: ['TCP']
@@ -112,7 +112,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
           {
             name: 'allow-aca-entra'
             ruleType: 'NetworkRule'
-            sourceAddresses: [acaPrefix, brokerPrefix]
+            sourceAddresses: [portalPrefix, brokerPrefix]
             destinationAddresses: ['AzureActiveDirectory']
             destinationPorts: ['443']
             ipProtocols: ['TCP']
@@ -153,7 +153,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
           {
             name: 'allow-aca-mcr'
             ruleType: 'ApplicationRule'
-            sourceAddresses: [acaPrefix, brokerPrefix]
+            sourceAddresses: [portalPrefix, brokerPrefix]
             protocols: [{ protocolType: 'Https', port: 443 }]
             targetFqdns: ['mcr.microsoft.com', '*.data.mcr.microsoft.com']
             terminateTLS: false
@@ -161,7 +161,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
           {
             name: 'allow-aca-platform-packages'
             ruleType: 'ApplicationRule'
-            sourceAddresses: [acaPrefix, brokerPrefix]
+            sourceAddresses: [portalPrefix, brokerPrefix]
             protocols: [{ protocolType: 'Https', port: 443 }]
             targetFqdns: ['packages.aks.azure.com', 'acs-mirror.azureedge.net']
             terminateTLS: false
@@ -169,7 +169,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
           {
             name: 'allow-aca-managed-identity'
             ruleType: 'ApplicationRule'
-            sourceAddresses: [acaPrefix, brokerPrefix]
+            sourceAddresses: [portalPrefix, brokerPrefix]
             protocols: [{ protocolType: 'Https', port: 443 }]
             targetFqdns: [
               '*.identity.azure.net'
