@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""既存VM workerで証明書を更新し、参照同期と公開TLSを確認する。既定は計画。"""
+"""公開TLS証明書を確認・更新し、AppGWへの反映を確認する。既定は計画。"""
 from __future__ import annotations
 
 import os
@@ -42,12 +42,26 @@ def targets(ctx):
     prefix = f"/subscriptions/{ctx.config['subscriptionId']}/resourceGroups/"
     expected_vm = prefix + ctx.config['resourceGroupNames']['maint'] + '/providers/Microsoft.Compute/virtualMachines/vm-' + ctx.config['resourceStem'] + '-mgmt'
     expected_gateway = prefix + ctx.config['resourceGroupNames']['nw'] + '/providers/Microsoft.Network/applicationGateways/agw-' + ctx.config['resourceStem']
-    if vm.casefold() != expected_vm.casefold() or gateway.casefold() != expected_gateway.casefold():
+    if (not isinstance(vm, str) or vm.casefold() != expected_vm.casefold()
+            or not isinstance(gateway, str) or gateway.casefold() != expected_gateway.casefold()):
         raise OperationError('The recorded VM or Application Gateway differs from the selected environment')
-    bootstrap = outputs.get('certificateBootstrap')
-    vault = bootstrap['certificateVaultName'] if bootstrap else ctx.service_id('keyVault').rsplit('/', 1)[-1]
+
+    vault_id = ctx.service_id('certificateVault')
+    vault = checked_name('kvtls-' + ctx.config['resourceStem'])
+    expected_vault = prefix + ctx.config['resourceGroupNames']['svc'] + '/providers/Microsoft.KeyVault/vaults/' + vault
+    if vault_id.casefold() != expected_vault.casefold():
+        raise OperationError('The recorded public TLS vault differs from the selected environment')
+
     name = checked_name(ctx.config['certificate']['certificateName'])
-    checked_name(vault)
+    if 'certificateBootstrap' in outputs:
+        bootstrap = outputs['certificateBootstrap']
+        expected_secret = f'https://{vault}.vault.azure.net/secrets/{name}'
+        if (not isinstance(bootstrap, dict)
+                or not isinstance(bootstrap.get('certificateVaultId'), str)
+                or bootstrap['certificateVaultId'].casefold() != vault_id.casefold()
+                or bootstrap.get('certificateVaultName') != vault
+                or bootstrap.get('certificateSecretUri') not in (expected_secret, expected_secret + '/')):
+            raise OperationError('The recorded certificate job does not match the public TLS vault and certificate')
     return vm, gateway, vault, name
 
 
@@ -92,7 +106,15 @@ def remote_script(vault, name, *, renew=False, thumbprint=None):
     lines = ['#!/bin/bash', 'set -euo pipefail', 'set +x', 'umask 077',
              f"dir='{directory}'", f"unit='{unit}'",
              '[ ! -L "$dir" ] && [ ! -L "$dir/certificate.ps1" ] && [ ! -L "$dir/config.json" ]',
-             f"[ \"$(sha256sum \"$dir/certificate.ps1\" | cut -d' ' -f1)\" = '{expected}' ]"]
+             f"[ \"$(sha256sum \"$dir/certificate.ps1\" | cut -d' ' -f1)\" = '{expected}' ]",
+             f"python3 - \"$dir/config.json\" '{vault}' '{name}' <<'CERTIFICATE_CONFIG'",
+             'import json, sys',
+             'try:',
+             '    with open(sys.argv[1], encoding="utf-8") as stream: config = json.load(stream)',
+             '    if (config["keyVaultName"], config["certificateName"]) != tuple(sys.argv[2:]) or "credentialVaultName" in config: raise ValueError()',
+             'except (KeyError, OSError, TypeError, ValueError):',
+             '    raise SystemExit(1) from None',
+             'CERTIFICATE_CONFIG']
     if renew:
         lines += ['if systemctl is-active --quiet "$unit.service"; then exit 1; fi',
                   'command -v systemd-run >/dev/null 2>&1',
@@ -290,7 +312,7 @@ def operate(ctx, args):
     vm, gateway, vault, name = targets(ctx)
     if args.thumbprint and not re.fullmatch(r'[0-9A-Fa-f]{40}', args.thumbprint):
         raise OperationError('Planned rotation requires the current 40-character public leaf thumbprint')
-    job_backed = bool(ctx.state['outputs'].get('certificateBootstrap'))
+    job_backed = 'certificateBootstrap' in ctx.state['outputs']
     plan = {'stage': args.stage, 'status': 'planned', 'azureWrites': 0,
             'certificateConsumer': 'application-gateway', 'newJob': job_backed, 'pfxDownload': False,
             'publicTls': 'not-verified'}
@@ -332,7 +354,7 @@ def main(argv=None):
     parser.add_argument('--stage', choices=('check', 'renew', 'sync'), default='check')
     rotation = parser.add_mutually_exclusive_group()
     rotation.add_argument('--thumbprint')
-    rotation.add_argument('--rotate', action='store_true', help='VMで確認した現在の公開leafを期限前に一度だけ更新する')
+    rotation.add_argument('--rotate', action='store_true', help='確認した現在の公開leafを期限前に一度だけ更新する')
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args(argv)
     if (args.rotate or args.thumbprint) and args.stage != 'renew':

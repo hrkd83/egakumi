@@ -28,6 +28,11 @@ PREFIX = f'/subscriptions/{SUB}/resourceGroups/'
 VM = PREFIX + 'rg-test-maint/providers/Microsoft.Compute/virtualMachines/vm-test-fixture-mgmt'
 GATEWAY = PREFIX + 'rg-test-nw/providers/Microsoft.Network/applicationGateways/agw-test-fixture'
 APIM = PREFIX + 'rg-test-svc/providers/Microsoft.ApiManagement/service/apim-test-fixture-abc123'
+TLS_VAULT_NAME = 'kvtls-test-fixture'
+TLS_VAULT = PREFIX + 'rg-test-svc/providers/Microsoft.KeyVault/vaults/' + TLS_VAULT_NAME
+CREDENTIAL_VAULT = PREFIX + 'rg-test-svc/providers/Microsoft.KeyVault/vaults/kv-test-fixture'
+TLS_VAULT_HOST = f'{TLS_VAULT_NAME}.vault.azure.net'
+TLS_VAULT_URI = f'https://{TLS_VAULT_HOST}'
 THUMB = 'A' * 40
 
 
@@ -35,25 +40,37 @@ class Context:
     def __init__(self):
         self.config = {'subscriptionId': SUB, 'resourceStem': 'test-fixture', 'location': 'japaneast',
                        'productName': 'fixture', 'environmentName': 'test',
-                       'resourceGroupNames': {'maint': 'rg-test-maint', 'nw': 'rg-test-nw'},
+                       'resourceGroupNames': {'maint': 'rg-test-maint', 'nw': 'rg-test-nw', 'svc': 'rg-test-svc'},
                        'certificate': {'certificateName': 'public-gateway'},
                        'gateway': {'publicHostName': 'gateway.example.com'},
                        'portal': {'publicHostName': 'portal.example.com'}}
-        self.state = {'outputs': {'managementVm': {'id': VM}, 'gateway': {'id': GATEWAY}}}
+        self.state = {'outputs': {'managementVm': {'id': VM}, 'gateway': {'id': GATEWAY}},
+                      'serviceResourceIds': {'certificateVault': TLS_VAULT, 'keyVault': CREDENTIAL_VAULT}}
         self.calls, self.records = [], []
         self.transport = mock.Mock()
         self.gateway = {'id': GATEWAY, 'etag': '"etag-1"', 'tags': {'existing': 'keep'},
                         'properties': {'provisioningState': 'Succeeded', 'sslCertificates': [
-                            {'name': 'gateway-tls', 'properties': {'keyVaultSecretId': 'https://kv-test-fixture.vault.azure.net/secrets/public-gateway/'}}],
+                            {'name': 'gateway-tls', 'properties': {'keyVaultSecretId': TLS_VAULT_URI + '/secrets/public-gateway/'}}],
                             'httpListeners': [{'name': n, 'properties': {'protocol': 'Https', 'hostName': h,
                                 'sslCertificate': {'id': GATEWAY + '/sslCertificates/gateway-tls'}}}
                                 for n, h in [('listener-https', 'gateway.example.com'), ('portal-https', 'portal.example.com')]]}}
         self.apim = {'id': APIM, 'properties': {'hostnameConfigurations': [
-            {'type': 'Proxy', 'hostName': 'gateway.example.com', 'keyVaultId': 'https://kv-test-fixture.vault.azure.net/secrets/public-gateway'}]}}
+            {'type': 'Proxy', 'hostName': 'gateway.example.com', 'keyVaultId': TLS_VAULT_URI + '/secrets/public-gateway'}]}}
         self.patch_status = 200
 
+    def use_certificate_job(self):
+        bootstrap = {'certificateVaultId': TLS_VAULT, 'certificateVaultName': TLS_VAULT_NAME,
+                     'certificateSecretUri': TLS_VAULT_URI + '/secrets/public-gateway/'}
+        self.state['outputs']['certificateBootstrap'] = bootstrap
+        return bootstrap
+
     def service_id(self, name):
-        return APIM if name == 'apim' else PREFIX + 'rg-test-svc/providers/Microsoft.KeyVault/vaults/kv-test-fixture'
+        if name != 'certificateVault':
+            raise AssertionError('Certificate operations must select only the public TLS vault')
+        try:
+            return self.state['serviceResourceIds'][name]
+        except KeyError:
+            raise OperationError('The service is missing from Core state') from None
 
     def record(self, kind, value):
         self.records.append((kind, value))
@@ -73,8 +90,8 @@ class Context:
 
 
 def metadata():
-    return {'certificateId': 'https://kv-test-fixture.vault.azure.net/certificates/public-gateway/' + 'a' * 32,
-            'secretVersionUri': 'https://kv-test-fixture.vault.azure.net/secrets/public-gateway/' + 'a' * 32,
+    return {'certificateId': TLS_VAULT_URI + '/certificates/public-gateway/' + 'a' * 32,
+            'secretVersionUri': TLS_VAULT_URI + '/secrets/public-gateway/' + 'a' * 32,
             'enabled': True, 'expires': int(time.time()) + 86400, 'thumbprint': THUMB, 'timerEnabled': True}
 
 
@@ -83,22 +100,83 @@ class CertificateTests(unittest.TestCase):
         self.ctx = Context()
 
     def test_plan_has_no_arm_vm_or_public_network_activity(self):
-        with mock.patch.object(cert, 'run_worker') as worker, mock.patch.object(cert, 'tls_leaf') as tls:
+        self.ctx.use_certificate_job()
+        with mock.patch.object(cert, 'job_metadata') as job, mock.patch.object(cert, 'tls_leaf') as tls:
             result = cert.operate(self.ctx, SimpleNamespace(stage='renew', execute=False, thumbprint=None))
         self.assertEqual(result['status'], 'planned')
         self.assertEqual(result['certificateConsumer'], 'application-gateway')
+        self.assertTrue(result['newJob'])
         self.assertEqual(self.ctx.calls, [])
-        worker.assert_not_called()
+        job.assert_not_called()
         tls.assert_not_called()
 
     def test_foreign_output_and_invalid_thumbprint_stop_before_writes(self):
-        self.ctx.state['outputs']['managementVm']['id'] += '-foreign'
-        with self.assertRaises(OperationError):
+        for foreign_vm, thumbprint in ((True, None), (False, 'not-a-thumbprint')):
+            ctx = Context()
+            if foreign_vm:
+                ctx.state['outputs']['managementVm']['id'] += '-foreign'
+            with self.subTest(foreign_vm=foreign_vm), mock.patch.object(ctx, 'verify_resource') as verify, \
+                    self.assertRaises(OperationError):
+                cert.operate(ctx, SimpleNamespace(stage='renew', execute=True, thumbprint=thumbprint))
+            verify.assert_not_called()
+            self.assertEqual(ctx.calls, [])
+
+    def test_credential_vault_state_is_rejected_before_any_operations(self):
+        self.ctx.state['serviceResourceIds']['certificateVault'] = CREDENTIAL_VAULT
+        with self.assertRaisesRegex(OperationError, 'recorded public TLS vault differs'):
             cert.operate(self.ctx, SimpleNamespace(stage='renew', execute=True, thumbprint=None))
         self.assertEqual(self.ctx.calls, [])
 
+    def test_bootstrap_mismatch_never_starts_a_certificate_job_or_vm_worker(self):
+        for field, unsafe_value in [('certificateVaultId', CREDENTIAL_VAULT),
+                                    ('certificateVaultName', 'kv-test-fixture'),
+                                    ('certificateSecretUri', TLS_VAULT_URI + '/secrets/public-gateway/' + 'a' * 32)]:
+            ctx = Context()
+            ctx.use_certificate_job()[field] = unsafe_value
+            with self.subTest(field=field), mock.patch.object(cert, 'job_metadata') as job, \
+                    mock.patch.object(cert, 'run_worker') as worker, mock.patch.object(ctx, 'verify_resource') as verify, \
+                    self.assertRaisesRegex(OperationError, 'recorded certificate job'):
+                cert.operate(ctx, SimpleNamespace(stage='check', execute=True, thumbprint=None))
+            job.assert_not_called()
+            worker.assert_not_called()
+            verify.assert_not_called()
+            self.assertEqual(ctx.calls, [])
+
+    def test_record_without_dedicated_vault_cannot_fall_back_to_credentials(self):
+        self.ctx.state['serviceResourceIds'].pop('certificateVault')
+        with mock.patch.object(cert, 'run_worker') as worker, self.assertRaises(OperationError):
+            cert.operate(self.ctx, SimpleNamespace(stage='renew', execute=True, thumbprint=None))
+        worker.assert_not_called()
+        self.assertEqual(self.ctx.calls, [])
+
+    def test_certificate_job_checks_renews_and_synchronizes_owned_public_leaves(self):
+        for stage in ('check', 'renew', 'sync'):
+            ctx = Context()
+            ctx.use_certificate_job()
+            changed = {**metadata(), 'thumbprint': 'B' * 40}
+            sequence = [metadata(), changed] if stage == 'renew' else [metadata()]
+            thumbprint = sequence[-1]['thumbprint']
+            with self.subTest(stage=stage), mock.patch.object(cert, 'job_metadata', side_effect=sequence) as job, \
+                    mock.patch.object(cert, 'run_worker') as worker, \
+                    mock.patch.object(ctx, 'verify_resource', wraps=ctx.verify_resource) as verify, \
+                    mock.patch.object(cert, 'tls_leaf', side_effect=lambda host, port: {
+                        'host': host, 'port': port, 'thumbprint': thumbprint, 'trustedAndHostnameVerified': True,
+                    }) as tls:
+                args = SimpleNamespace(stage=stage, execute=True, thumbprint=THUMB if stage == 'renew' else None)
+                result = cert.operate(ctx, args)
+            self.assertEqual(result['status'], 'public-tls-verified')
+            expected = [mock.call(ctx)]
+            if stage == 'renew':
+                expected.append(mock.call(ctx, renew=True, thumbprint=THUMB))
+            self.assertEqual(job.call_args_list, expected)
+            worker.assert_not_called()
+            self.assertIn(mock.call(GATEWAY, cert.NETWORK_API, 'Microsoft.Network/applicationGateways'), verify.call_args_list)
+            self.assertTrue(all(call.args[0] == GATEWAY for call in verify.call_args_list))
+            self.assertEqual(tls.call_args_list, [mock.call('gateway.example.com', 443), mock.call('portal.example.com', 443)])
+            self.assertEqual([call[0] for call in ctx.calls].count('PATCH'), 0 if stage == 'check' else 2)
+
     def test_remote_script_uses_existing_worker_and_never_reads_secret_endpoint(self):
-        text = cert.remote_script('kv-test-fixture', 'public-gateway', renew=True, thumbprint=THUMB)
+        text = cert.remote_script(TLS_VAULT_NAME, 'public-gateway', renew=True, thumbprint=THUMB)
         self.assertIn('-Action Renew', text)
         self.assertNotIn('-Action Install', text)
         self.assertIn('-RotateFromThumbprint ' + THUMB, text)
@@ -106,7 +184,7 @@ class CertificateTests(unittest.TestCase):
         self.assertIn('/certificates/public-gateway?', text)
         self.assertNotIn('/secrets/', text)
         self.assertNotIn('az login', text)
-        program = cert.metadata_program('kv-test-fixture', 'public-gateway', 'unit')
+        program = cert.metadata_program(TLS_VAULT_NAME, 'public-gateway', 'unit')
         ast.parse(program)
 
     def metadata_transport(self, redirect=None):
@@ -138,11 +216,11 @@ class CertificateTests(unittest.TestCase):
                 contextlib.redirect_stdout(output):
             if redirect:
                 with self.assertRaises(SystemExit) as stopped:
-                    exec(compile(cert.metadata_program('kv-test-fixture', 'public-gateway', 'unit'),
+                    exec(compile(cert.metadata_program(TLS_VAULT_NAME, 'public-gateway', 'unit'),
                                  '<synthetic-certificate-metadata>', 'exec'), {})
                 self.assertEqual(stopped.exception.code, 1)
             else:
-                exec(compile(cert.metadata_program('kv-test-fixture', 'public-gateway', 'unit'),
+                exec(compile(cert.metadata_program(TLS_VAULT_NAME, 'public-gateway', 'unit'),
                              '<synthetic-certificate-metadata>', 'exec'), {})
         return requests, output.getvalue()
 
@@ -155,7 +233,7 @@ class CertificateTests(unittest.TestCase):
                          'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net')
         self.assertNotIn('Authorization', requests[0]['headers'])
         self.assertEqual((requests[1]['host'], requests[1]['tunnelHost']),
-                         ('untrusted-proxy.invalid:8888', 'kv-test-fixture.vault.azure.net'))
+                         ('untrusted-proxy.invalid:8888', TLS_VAULT_HOST))
         self.assertEqual(requests[1]['headers']['Authorization'], 'Bearer placeholder')
         self.assertIn('/certificates/public-gateway?', requests[1]['url'])
         self.assertNotIn('/secrets/', requests[1]['url'])
@@ -173,25 +251,25 @@ class CertificateTests(unittest.TestCase):
 
     def test_only_current_public_metadata_is_accepted(self):
         raw = cert.MARKER + json.dumps(metadata())
-        self.assertEqual(cert.public_metadata(raw, 'kv-test-fixture', 'public-gateway')['thumbprint'], THUMB)
+        self.assertEqual(cert.public_metadata(raw, TLS_VAULT_NAME, 'public-gateway')['thumbprint'], THUMB)
         for field, value in [('enabled', False), ('timerEnabled', False), ('expires', 0),
                              ('certificateId', 'https://foreign.example.com/certificates/public-gateway/' + 'a' * 32)]:
             bad = metadata(); bad[field] = value
             with self.subTest(field=field), self.assertRaises(OperationError):
-                cert.public_metadata(cert.MARKER + json.dumps(bad), 'kv-test-fixture', 'public-gateway')
+                cert.public_metadata(cert.MARKER + json.dumps(bad), TLS_VAULT_NAME, 'public-gateway')
         with self.assertRaises(OperationError):
-            cert.public_metadata(raw + '\n' + raw, 'kv-test-fixture', 'public-gateway')
+            cert.public_metadata(raw + '\n' + raw, TLS_VAULT_NAME, 'public-gateway')
 
     def test_existing_version_pinned_reference_is_not_silently_rewritten(self):
         self.ctx.gateway['properties']['sslCertificates'][0]['properties']['keyVaultSecretId'] += 'a' * 32
         with self.assertRaises(OperationError):
-            cert.verify_references(self.ctx, GATEWAY, 'kv-test-fixture', 'public-gateway')
+            cert.verify_references(self.ctx, GATEWAY, TLS_VAULT_NAME, 'public-gateway')
         self.assertEqual(self.ctx.calls, [])
 
     def test_public_hosts_must_match_the_owned_certificate_listeners(self):
         self.ctx.gateway['properties']['httpListeners'][0]['properties']['hostName'] = 'other.example.com'
         with self.assertRaises(OperationError):
-            cert.verify_references(self.ctx, GATEWAY, 'kv-test-fixture', 'public-gateway')
+            cert.verify_references(self.ctx, GATEWAY, TLS_VAULT_NAME, 'public-gateway')
         self.assertEqual(self.ctx.calls, [])
 
 
@@ -262,7 +340,7 @@ class CertificateTests(unittest.TestCase):
                     'trustedAndHostnameVerified': True}) as tls:
             result = cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
         self.assertEqual(result['status'], 'public-tls-verified')
-        worker.assert_called_once_with(self.ctx, VM, 'kv-test-fixture', 'public-gateway')
+        worker.assert_called_once_with(self.ctx, VM, TLS_VAULT_NAME, 'public-gateway')
         self.assertEqual(tls.call_args_list, [mock.call('gateway.example.com', 443), mock.call('portal.example.com', 443)])
         self.assertFalse(any(call[0] == 'POST' or call[1].startswith(APIM) for call in self.ctx.calls))
         self.assertEqual(len([call for call in self.ctx.calls if call[0] == 'PATCH']), 2)
@@ -286,10 +364,14 @@ class CertificateTests(unittest.TestCase):
 
     def test_sync_retains_versionless_appgw_reference_validation(self):
         self.ctx.gateway['properties']['sslCertificates'][0]['properties']['keyVaultSecretId'] += 'a' * 32
-        with mock.patch.object(cert, 'run_worker') as worker:
-            with self.assertRaises(OperationError):
+        for job_backed in (False, True):
+            if job_backed:
+                self.ctx.use_certificate_job()
+            with self.subTest(job_backed=job_backed), mock.patch.object(cert, 'run_worker') as worker, \
+                    mock.patch.object(cert, 'job_metadata') as job, self.assertRaises(OperationError):
                 cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
-        worker.assert_not_called()
+            worker.assert_not_called()
+            job.assert_not_called()
         self.assertEqual(self.ctx.calls, [])
 
     def test_sync_is_not_success_when_gateway_or_public_tls_work_fails(self):
@@ -322,7 +404,7 @@ class CertificateTests(unittest.TestCase):
         self.ctx.run_cli = mock.Mock(side_effect=lambda args: json.dumps({
             'id': self.ctx.calls[0][1], 'properties': {'instanceView': {'executionState': 'Running'}}}))
         with self.assertRaises(OperationError):
-            cert.run_worker(self.ctx, VM, 'kv-test-fixture', 'public-gateway', timeout=1,
+            cert.run_worker(self.ctx, VM, TLS_VAULT_NAME, 'public-gateway', timeout=1,
                             clock=mock.Mock(side_effect=[0, 0, 0, 2]), sleep=lambda _: None)
         self.assertEqual([v[0] for v in self.ctx.calls], ['PUT'])
         self.assertIn('--instance-view', self.ctx.run_cli.call_args.args[0])
@@ -335,7 +417,7 @@ class CertificateTests(unittest.TestCase):
         self.ctx.request = request
         self.ctx.run_cli = lambda args: json.dumps({'id': calls[0][1], 'properties': {'instanceView': {
             'executionState': 'Succeeded', 'exitCode': 0, 'output': cert.MARKER + json.dumps(metadata())}}})
-        result = cert.run_worker(self.ctx, VM, 'kv-test-fixture', 'public-gateway')
+        result = cert.run_worker(self.ctx, VM, TLS_VAULT_NAME, 'public-gateway')
         self.assertEqual(result['thumbprint'], THUMB)
         self.assertEqual([c[0] for c in calls], ['PUT', 'DELETE', 'GET'])
         self.assertEqual(len({c[1] for c in calls}), 1)
@@ -361,7 +443,7 @@ class CertificateTests(unittest.TestCase):
                 'executionState': 'Succeeded', 'exitCode': 0,
                 'output': cert.MARKER + json.dumps(metadata())}})
         self.ctx.request, self.ctx.run_cli = request, show
-        result = cert.run_worker(self.ctx, VM, 'kv-test-fixture', 'public-gateway')
+        result = cert.run_worker(self.ctx, VM, TLS_VAULT_NAME, 'public-gateway')
         self.assertEqual(result['thumbprint'], THUMB)
         self.assertEqual(len(cli_calls), 1)
         self.assertEqual([method for method, _ in calls], ['PUT', 'DELETE', 'GET'])
@@ -435,15 +517,15 @@ else: raise AssertionError('Unexpected fixture command')
             worker = '# synthetic certificate worker\n'
             (root / 'infra/guest/certificate.ps1').write_text(worker)
             (root / 'state/certificate.ps1').write_text(worker)
-            (root / 'state/config.json').write_text('{}')
+            (root / 'state/config.json').write_text(json.dumps({'keyVaultName': TLS_VAULT_NAME, 'certificateName': 'public-gateway'}))
             for command in ('systemctl', 'systemd-run', 'pwsh'):
                 executable = root / 'bin' / command
                 executable.write_text('#!' + sys.executable + '\n' + fake)
                 executable.chmod(0o700)
             with mock.patch.object(cert, 'ROOT', root), mock.patch.object(
                     cert, 'metadata_program', return_value="print('SYNTHETIC_METADATA_REACHED')"):
-                source = cert.remote_script('kv-test-fixture', 'public-gateway', renew=True, thumbprint=THUMB)
-            source = source.replace('/var/lib/egakumi-certificates/kv-test-fixture-public-gateway', str(root / 'state'))
+                source = cert.remote_script(TLS_VAULT_NAME, 'public-gateway', renew=True, thumbprint=THUMB)
+            source = source.replace(f'/var/lib/egakumi-certificates/{TLS_VAULT_NAME}-public-gateway', str(root / 'state'))
             source = source.replace('/usr/bin/pwsh', str(root / 'bin/pwsh'))
             script = root / 'run.sh'; script.write_text(source)
             environment = {**os.environ, 'PATH': str(root / 'bin') + os.pathsep + os.environ['PATH'],

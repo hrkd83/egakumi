@@ -2,7 +2,7 @@
 
 Portal専用EntraアプリはKV内の非exportable自己署名鍵によるclient assertionを使います。HTTPS証明書・CM client secret・Cookie署名鍵とは別用途です。初期生成は構築時の専用ACA Jobで実行し、更新は[Portal認証の運用](portal-authentication.md)の専用スクリプトを使います。
 
-[共通手順](common.md) · [Entra準備](../setup/02-entra.md) · [運用テスト](../testing/operations-tests.md)
+[共通手順](common.md) · [Entra準備](../../README.md#新規クローンから構築する) · [運用テスト](../testing/operations-tests.md)
 
 構築済み環境の通常更新に使う。共通手順で同じparams・state・資源IDを照合する。
 以下のスクリプトは既定では計画だけを保護記録へ保存する。内容を確認してから
@@ -84,7 +84,7 @@ ARM配備、Gの配備記録とジョブを読み、実行中・完了・失敗�
 
 ## TLS証明書を更新し、公開HTTPSまで確認する
 
-入口は[certificate.py](../../scripts/operations/certificate.py)です。構築済みの公開TLS Job、AppGW、版なしのKey Vault参照、公開ホストを照合します。
+入口は[certificate.py](../../scripts/operations/certificate.py)です。Coreの保護stateに記録された公開TLS用Key Vaultと、構築済みの公開TLS Job、AppGWの版なし参照、公開ホストを照合します。コマンドは既定で計画を表示します。内容を確認して実際に操作する場合は、同じコマンドに`--execute`を付けます。
 専用ACA Jobの結果には公開証明書の情報だけを含めます。 [証明書用Job](certificate-jobs.md)
 
 1. まず次を計画・反映する。実行時は専用ACA Jobで公開証明書の情報を
