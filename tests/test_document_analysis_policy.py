@@ -468,7 +468,7 @@ class DocumentAnalysisPolicyTests(unittest.TestCase):
             'ACCEPTED': (START, './outbound/set-variable[@name="documentAccepted"]', 'value'),
             'START_STATUS': (START, './outbound/set-variable[@name="documentStatus"]', 'value'),
             'START_RETRY': (START, './outbound/set-variable[@name="documentRetryAfter"]', 'value'),
-            'START_BODY': (START, './outbound/return-response/set-body', None),
+            'START_BODY': (START, './outbound/set-variable[@name="documentPublicResponse"]', 'value'),
             'START_REASON': (START, './outbound/return-response/set-status', 'reason'),
             'START_PROCESSING_ERROR': (start_processing_error, '.', 'condition'),
             'START_PROCESSING_AUDIT_STATUS': (start_processing_error, './set-variable[@name="gatewayAuditStatus"]', 'value'),
@@ -930,7 +930,7 @@ class DocumentAnalysisPublicationTests(unittest.TestCase):
                  'operation': next(operation for operation in self.api['operations'] if operation['name'] == operation_name),
                  'constraint': copy.deepcopy(self.api['authorization']['operationConstraints'][operation_name])}
         return PolicyExpression(self.policy['properties']['value'], self.template['variables'],
-            cache={'operationEntries': [entry]}, functions=self.template['functions']).evaluate({'entraAuthentication': {}})
+            cache={'operationEntries': [entry]}, functions=self.template['functions']).evaluate({'entraAuthentication': {}, 'auditRelay': {}})
 
     def test_generated_submit_policy_retains_query_copy_version_override_and_index_default(self):
         """生成XMLの配線を検証する。APIM標準コピーの実転送はAzureで別途確認する。"""

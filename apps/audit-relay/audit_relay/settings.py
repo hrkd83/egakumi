@@ -7,7 +7,20 @@ from uuid import UUID
 
 
 ROUTES = {"/chat/completions": "chat-completions", "/responses": "responses-create"}
+CLAUDE_ROUTES = {
+    "/anthropic/v1/messages": "claude-messages",
+    "/anthropic/v1/messages/count_tokens": "claude-count-tokens",
+}
 FOUNDRY_SCOPE = "https://cognitiveservices.azure.com/.default"
+FOUNDRY_MESSAGES_SCOPE = "https://ai.azure.com/.default"
+FOUNDRY_OPENAI_DOMAIN = "openai.azure.com"
+FOUNDRY_MESSAGES_DOMAIN = "services.ai.azure.com"
+HTTP_EVIDENCE_OPERATION = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}/[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}")
+
+
+def valid_evidence_operation(value):
+    return isinstance(value, str) and (value in ROUTES.values() or value in CLAUDE_ROUTES.values()
+                                       or HTTP_EVIDENCE_OPERATION.fullmatch(value) is not None)
 
 
 def required(name):
@@ -60,11 +73,15 @@ class RelaySettings:
     max_capture_bytes: int = 1024 * 1024
     publish_timeout: float = 4.0
 
+    @property
+    def messages_endpoint(self):
+        return self.endpoint.removesuffix(FOUNDRY_OPENAI_DOMAIN) + FOUNDRY_MESSAGES_DOMAIN
+
     @classmethod
     def load(cls):
         return cls(EventHubSettings.load(), identifier("AUDIT_TENANT_ID"),
             identifier("AUDIT_TOKEN_AUDIENCE"), identifier("AUDIT_APIM_PRINCIPAL_ID"),
-            origin("AUDIT_FOUNDRY_OPENAI_ENDPOINT", "openai.azure.com"))
+            origin("AUDIT_FOUNDRY_OPENAI_ENDPOINT", FOUNDRY_OPENAI_DOMAIN))
 
 
 @dataclass(frozen=True)

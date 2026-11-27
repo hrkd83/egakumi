@@ -1,9 +1,9 @@
 {
   "apiId": "manual-claude-messages",
   "keyProductId": "manual-model-users",
-  "backendId": "manual-claude-foundry",
+  "backendId": "core-audit-relay",
   "backendService": "foundry",
-  "backendAuthentication": {"mode": "managedIdentity", "resource": "https://ai.azure.com"},
+  "backendAuthentication": {"mode": "auditRelay"},
   "responseTransport": "sse",
   "keyFallbackRate": {"calls": 60, "renewalPeriodSeconds": 60},
   "operations": [

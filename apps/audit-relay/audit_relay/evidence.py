@@ -62,13 +62,13 @@ class Publisher:
 
 
 class Capture:
-    def __init__(self, request_id, operation, publisher, max_capture_bytes):
+    def __init__(self, request_id, operation, publisher, max_capture_bytes, *, capture_id=None, sequence=0):
         self.request_id = request_id
         self.operation = operation
         self.publisher = publisher
         self.max_capture_bytes = max_capture_bytes
-        self.capture_id = str(uuid4())
-        self.sequence = 0
+        self.capture_id = capture_id or str(uuid4())
+        self.sequence = sequence
 
     async def save(self, kind, document):
         payload = json_bytes(document).decode('ascii')

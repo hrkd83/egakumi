@@ -42,6 +42,7 @@
         <set-body>@("")</set-body>
       </when>
     </choose>
+    __HTTP_EVIDENCE_REQUEST_XML__
     <!-- === -->
   </inbound>
   <backend><base /></backend>
@@ -59,13 +60,15 @@
         <include-fragment fragment-id="core-gateway-telemetry" />
       </when>
     </choose>
+    <set-variable name="documentPublicResponse" value="@((string)JObject.Parse((string)context.Variables[&quot;documentPollEvaluation&quot;])[&quot;result&quot;])" />
+    __HTTP_EVIDENCE_RESPONSE_XML__
     <return-response>
       <set-status code="@((int)JObject.Parse((string)context.Variables[&quot;documentPollEvaluation&quot;])[&quot;status&quot;])" reason="Document analysis status" />
       <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
       <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
       <set-header name="Retry-After" exists-action="override"><value>@((string)JObject.Parse((string)context.Variables["documentPollEvaluation"])["retryAfter"])</value></set-header>
       <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
-      <set-body>@((string)JObject.Parse((string)context.Variables["documentPollEvaluation"])["result"])</set-body>
+      <set-body>@((string)context.Variables["documentPublicResponse"])</set-body>
     </return-response>
   </outbound>
   <on-error>

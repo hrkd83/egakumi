@@ -1,6 +1,7 @@
 """APIM-only relay. Broker acknowledgement is required before forwarding."""
 from contextlib import asynccontextmanager
 import asyncio
+import base64
 from dataclasses import dataclass
 import json
 import logging
@@ -12,9 +13,10 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 import httpx
 import jwt
 
-from .evidence import AuditUnavailable, Capture, EvidenceLimit, Publisher, json_bytes
-from .projection import project_request, project_response
-from .settings import FOUNDRY_SCOPE, ROUTES, RelaySettings
+from .claude import project_claude_request, project_claude_response
+from .evidence import AuditUnavailable, Capture, EvidenceLimit, PART_CHARACTERS, Publisher, json_bytes
+from .projection import evidence_media_type, project_http_evidence, project_request, project_response
+from .settings import CLAUDE_ROUTES, FOUNDRY_MESSAGES_SCOPE, FOUNDRY_SCOPE, HTTP_EVIDENCE_OPERATION, ROUTES, RelaySettings
 from .sse import StreamError, StreamWindow, frames, stream_projection
 
 
@@ -24,6 +26,11 @@ _RESPONSE_HEADERS = frozenset(('content-type', 'cache-control', 'retry-after', '
     'openai-processing-ms', 'openai-version', 'x-ratelimit-limit-requests', 'x-ratelimit-limit-tokens',
     'x-ratelimit-remaining-requests', 'x-ratelimit-remaining-tokens', 'x-ratelimit-reset-requests',
     'x-ratelimit-reset-tokens'))
+_ANTHROPIC_RESPONSE_HEADERS = frozenset({'request-id'} | {
+    f'anthropic-ratelimit-{subject}-{attribute}'
+    for subject in ('requests', 'tokens', 'input-tokens', 'output-tokens')
+    for attribute in ('limit', 'remaining', 'reset')
+})
 
 
 class InvalidRequest(ValueError):
@@ -70,6 +77,32 @@ def request_identifier(request):
         raise InvalidRequest('Invalid APIM request ID') from None
 
 
+def evidence_header(request, name, *, default=None):
+    values = request.headers.getlist(name)
+    if not values and default is not None:
+        return default
+    if len(values) != 1 or not 1 <= len(values[0]) <= 512:
+        raise InvalidRequest('Invalid evidence header')
+    return values[0]
+
+
+def continuation(request, max_capture_bytes):
+    identifier = evidence_header(request, 'x-core-audit-capture-id')
+    capture = UUID(identifier)
+    if capture.version != 4 or str(capture) != identifier:
+        raise InvalidRequest('Invalid capture ID')
+    sequence = evidence_header(request, 'x-core-audit-next-sequence')
+    if not sequence.isascii() or not sequence.isdecimal() or len(sequence) > 8:
+        raise InvalidRequest('Invalid evidence sequence')
+    sequence = int(sequence)
+    if not 1 <= sequence <= (max_capture_bytes + PART_CHARACTERS - 1) // PART_CHARACTERS:
+        raise InvalidRequest('Invalid evidence sequence')
+    status = evidence_header(request, 'x-core-audit-status')
+    if len(status) != 3 or not status.isascii() or not status.isdecimal() or not 200 <= int(status) <= 599:
+        raise InvalidRequest('Invalid response status')
+    return identifier, sequence, int(status)
+
+
 async def bounded_bytes(chunks, capacity):
     content = bytearray()
     async for chunk in chunks:
@@ -93,8 +126,9 @@ def media_type(header):
     return header.split(';', 1)[0].strip().lower()
 
 
-def headers_for(upstream):
-    return {name: value for name, value in upstream.headers.items() if name in _RESPONSE_HEADERS}
+def headers_for(upstream, *, claude=False):
+    allowed = _RESPONSE_HEADERS | _ANTHROPIC_RESPONSE_HEADERS if claude else _RESPONSE_HEADERS
+    return {name: value for name, value in upstream.headers.items() if name in allowed}
 
 
 async def failure(capture, reason):
@@ -144,16 +178,78 @@ class Relay:
     credential: ManagedIdentityCredential
     provider: httpx.AsyncClient
 
-    async def forward(self, request, operation):
+    async def record(self, request):
         if not await self.auth.accepts(request.headers):
             return problem(403, 'AuditCallerDenied')
         if request.headers.get('content-encoding', 'identity').lower() != 'identity':
             return problem(400, 'AuditRequestUnsupported')
         try:
             request_id = request_identifier(request)
+            operation = (evidence_header(request, 'x-core-audit-api') + '/'
+                         + evidence_header(request, 'x-core-audit-operation'))
+            direction = evidence_header(request, 'x-core-audit-direction')
+            if not HTTP_EVIDENCE_OPERATION.fullmatch(operation) or direction not in ('request', 'response'):
+                raise InvalidRequest('Invalid evidence scope')
+            content_type = evidence_header(request, 'content-type', default='')
+            encoding = evidence_header(request, 'x-core-audit-content-encoding', default='').lower()
+            transfer = evidence_header(request, 'x-core-audit-body-transfer-encoding', default='raw')
+            omission = evidence_header(request, 'x-core-audit-body-omission', default='')
+            if omission not in ('', 'transport-size', 'streaming') or transfer not in ('raw', 'base64'):
+                raise InvalidRequest('Invalid evidence omission')
+            capture_args = {}
+            document = {}
+            if direction == 'response':
+                capture_id, sequence, status = continuation(request, self.settings.max_capture_bytes)
+                capture_args = {'capture_id': capture_id, 'sequence': sequence}
+                document['httpStatus'] = status
+        except ValueError:
+            return problem(400, 'AuditRequestInvalid')
+
+        try:
+            maximum = self.settings.max_http_bytes
+            wire_limit = ((maximum + 2) // 3) * 4 if transfer == 'base64' else maximum
+            try:
+                raw = await bounded_bytes(request.stream(), wire_limit)
+                if transfer == 'base64':
+                    raw = base64.b64decode(raw, validate=True)
+                    if len(raw) > maximum:
+                        raise EvidenceLimit('Decoded body exceeds the audit route limit')
+            except EvidenceLimit:
+                raw = b''
+                omission = 'transport-size'
+            if omission and raw:
+                raise InvalidRequest('An omitted body must be empty')
+            projection = project_http_evidence(raw, content_type, encoding)
+            if omission:
+                projection = {'bodyOmitted': omission}
+                if media := evidence_media_type(content_type):
+                    projection['mediaType'] = media
+            capture = Capture(request_id, operation, self.publisher, self.settings.max_capture_bytes, **capture_args)
+            try:
+                await capture.save(direction, document | projection)
+            except EvidenceLimit:
+                await capture.save(direction, document | {'bodyOmitted': 'projection-size', 'bodyBytes': len(raw)})
+        except (ValueError, RecursionError):
+            return problem(400, 'AuditRequestInvalid')
+        except AuditUnavailable:
+            LOGGER.warning('audit_%s_unavailable requestId=%s operation=%s', direction, request_id, operation)
+            return problem(503, 'AuditUnavailable')
+        if direction == 'response':
+            return Response(status_code=204)
+        return JSONResponse({'captureId': capture.capture_id, 'nextSequence': capture.sequence},
+                            status_code=201, headers={'cache-control': 'no-store'})
+
+    async def forward(self, request, operation):
+        if not await self.auth.accepts(request.headers):
+            return problem(403, 'AuditCallerDenied')
+        if request.headers.get('content-encoding', 'identity').lower() != 'identity':
+            return problem(400, 'AuditRequestUnsupported')
+        claude = operation in CLAUDE_ROUTES.values()
+        try:
+            request_id = request_identifier(request)
             raw = await bounded_bytes(request.stream(), self.settings.max_http_bytes)
             incoming = object_body(raw)
-            selected_input = project_request(operation, incoming)
+            selected_input = project_claude_request(incoming) if claude else project_request(operation, incoming)
             capture = Capture(request_id, operation, self.publisher, self.settings.max_capture_bytes)
             await capture.save('request', selected_input)
         except EvidenceLimit:
@@ -166,13 +262,16 @@ class Relay:
 
         try:
             async with asyncio.timeout(5):
-                token = await self.credential.get_token(FOUNDRY_SCOPE)
-            provider_url = httpx.URL(self.settings.endpoint + '/openai/v1' + request.url.path).copy_with(
-                query=request.scope.get('query_string') or None)
-            outbound = self.provider.build_request('POST', provider_url,
-                content=raw, headers={'authorization': 'Bearer ' + token.token,
-                    'content-type': 'application/json', 'accept': 'application/json, text/event-stream',
-                    'accept-encoding': 'identity', 'x-ms-client-request-id': request_id})
+                token = await self.credential.get_token(FOUNDRY_MESSAGES_SCOPE if claude else FOUNDRY_SCOPE)
+            origin = self.settings.messages_endpoint if claude else self.settings.endpoint + '/openai/v1'
+            provider_url = httpx.URL(origin + request.url.path).copy_with(query=request.scope.get('query_string') or None)
+            headers = [('authorization', 'Bearer ' + token.token), ('content-type', 'application/json'),
+                       ('accept', 'application/json, text/event-stream'), ('accept-encoding', 'identity'),
+                       ('x-ms-client-request-id', request_id)]
+            if claude:
+                for name in ('anthropic-version', 'anthropic-beta'):
+                    headers.extend((name, value) for value in request.headers.getlist(name))
+            outbound = self.provider.build_request('POST', provider_url, content=raw, headers=headers)
             upstream = await self.provider.send(outbound, stream=True)
         except Exception:
             await failure(capture, 'provider_unavailable')
@@ -188,16 +287,18 @@ class Relay:
                 await capture.save('stream-start', {'httpStatus': upstream.status_code})
                 is_streaming = True
                 return StreamingResponse(audited_sse(upstream, capture), status_code=upstream.status_code,
-                    headers=headers_for(upstream))
+                    headers=headers_for(upstream, claude=claude))
             output = await bounded_bytes(upstream.aiter_raw(), self.settings.max_http_bytes)
             if content_type == 'application/json' or content_type.endswith('+json') or not content_type:
-                selected = project_response(operation, object_body(output), upstream.status_code)
+                body = object_body(output)
+                selected = (project_claude_response(body, upstream.status_code) if claude
+                            else project_response(operation, body, upstream.status_code))
             elif upstream.status_code >= 400:
                 selected = {'httpStatus': upstream.status_code, 'bodyOmitted': 'non-json-error'}
             else:
                 raise InvalidRequest('Unexpected provider media type')
             await capture.save('response', {'httpStatus': upstream.status_code, 'body': selected})
-            return Response(output, status_code=upstream.status_code, headers=headers_for(upstream))
+            return Response(output, status_code=upstream.status_code, headers=headers_for(upstream, claude=claude))
         except AuditUnavailable:
             LOGGER.warning('audit_output_unavailable requestId=%s operation=%s', request_id, operation)
             return problem(503, 'AuditUnavailable')
@@ -246,6 +347,18 @@ def create_relay_app(settings=None):
     async def responses(request: Request):
         return await request.app.state.relay.forward(request, ROUTES['/responses'])
 
+    async def record(request: Request):
+        return await request.app.state.relay.record(request)
+
+    async def claude_messages(request: Request):
+        return await request.app.state.relay.forward(request, CLAUDE_ROUTES['/anthropic/v1/messages'])
+
+    async def claude_count_tokens(request: Request):
+        return await request.app.state.relay.forward(request, CLAUDE_ROUTES['/anthropic/v1/messages/count_tokens'])
+
     app.add_api_route('/chat/completions', chat_completions, methods=['POST'])
     app.add_api_route('/responses', responses, methods=['POST'])
+    app.add_api_route('/v1/evidence', record, methods=['POST'])
+    app.add_api_route('/anthropic/v1/messages', claude_messages, methods=['POST'])
+    app.add_api_route('/anthropic/v1/messages/count_tokens', claude_count_tokens, methods=['POST'])
     return app

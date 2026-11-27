@@ -54,6 +54,7 @@
     </when></choose>
     <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
     <rewrite-uri template="/language/:analyze-text?api-version=2025-11-01" copy-unmatched-params="false" />
+    __HTTP_EVIDENCE_REQUEST_XML__
   </inbound>
   <!-- 裏側への転送段階。親の転送方針や HTTP 版を引き継ぎ、上で許可した要求だけを送ります。 -->
   <backend><base /></backend>
@@ -98,6 +99,7 @@
     <set-body>@{
       __PII_OUTPUT_CSHARP__
     }</set-body>
+    __HTTP_EVIDENCE_RESPONSE_XML__
   </outbound>
   <!-- 認証・接続・ポリシー実行が例外になった経路。秘密を含む下流の生エラーを監査へ流しません。 -->
   <on-error>

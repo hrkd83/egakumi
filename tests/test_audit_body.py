@@ -39,3 +39,10 @@ class AuditBodyTests(unittest.TestCase):
             self.assertFalse(incomplete['complete'])
             self.assertTrue(incomplete['sequenceGap'])
             self.assertEqual(incomplete['incompleteGroups'], [1])
+
+            (root / '000000003.json').unlink()
+            write(1, 'response', '{"httpStatus":200,"bodyOmitted":"projection-size"}')
+            omitted = recover(root, lambda path: path)
+            self.assertTrue(omitted['complete'])
+            self.assertEqual(omitted['bodyOmissions'], [
+                {'sequence': 1, 'kind': 'response', 'reason': 'projection-size'}])

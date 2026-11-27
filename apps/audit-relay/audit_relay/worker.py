@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.responses import Response
 
 from .evidence import MAX_EVENT_BYTES, RECORD_KINDS, json_bytes
-from .settings import ROUTES, WorkerSettings
+from .settings import WorkerSettings, valid_evidence_operation
 
 
 LOGGER = logging.getLogger('audit-worker')
@@ -38,7 +38,7 @@ def read_record(event):
         raise ValueError('Audit event is too large')
     record = json.loads(value)
     if (not isinstance(record, dict) or set(record) != _EVENT_FIELDS or record['version'] != 1
-            or record['operationId'] not in ROUTES.values() or record['kind'] not in RECORD_KINDS
+            or not valid_evidence_operation(record['operationId']) or record['kind'] not in RECORD_KINDS
             or not valid_id(record['requestId']) or not valid_id(record['captureId'])
             or not (type(record['sequence']) is int and 0 <= record['sequence'] < 10**9)
             or not (type(record['parts']) is int and type(record['part']) is int and 0 <= record['part'] < record['parts'] < 10**4)
