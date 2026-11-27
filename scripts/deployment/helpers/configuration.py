@@ -52,6 +52,7 @@ class DnsProviderMismatchError(ConfigurationError):
 
 
 RG_KINDS = ("id", "nw", "monitor", "svc", "maint")
+RFC1918_CIDRS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 SUBNET_KINDS = ("agw", "firewall", "apim", "pep", "management", "aca")
 # 観測対象の操作・受付へ付けるラベルです。サービスやモデルの種類を列挙しません。
 QUERY_OBSERVATION_ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
@@ -1780,10 +1781,9 @@ def _reject_ignored_material_overrides(configuration: dict) -> None:
         reject("network.firewall.bypassTrafficSettings")
     spaces = network.get("addressSpaces", [])
     snat = ["IANAPrivateRanges"]
-    idps = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
     for key, accepted in (
         ("snatPrivateRanges", (snat, [*snat, *spaces])),
-        ("idpsPrivateRanges", ([], idps, [*idps, *spaces])),
+        ("idpsPrivateRanges", ([], RFC1918_CIDRS, [*RFC1918_CIDRS, *spaces])),
     ):
         if key not in firewall:
             continue
@@ -1794,6 +1794,23 @@ def _reject_ignored_material_overrides(configuration: dict) -> None:
             reject("network.firewall." + key)
 
 
+def _idps_private_ranges(network: dict) -> list[str]:
+    """App GatewayのアドレスだけをIDPSの内部分類から外す。"""
+    app_gateway = ipaddress.IPv4Network(network["subnetPrefixes"]["agw"])
+    internal_ranges = ipaddress.collapse_addresses(
+        ipaddress.IPv4Network(cidr) for cidr in (*RFC1918_CIDRS, *network["addressSpaces"])
+    )
+    remaining = []
+    for prefix in internal_ranges:
+        if prefix.subnet_of(app_gateway):
+            continue
+        if app_gateway.subnet_of(prefix):
+            remaining.extend(prefix.address_exclude(app_gateway))
+        else:
+            remaining.append(prefix)
+    return [str(prefix) for prefix in ipaddress.collapse_addresses(remaining)]
+
+
 def build_bicep_configuration(configuration: dict) -> dict:
     """Bicepへ渡す公開設定を作り、秘密ファイルの参照先を取り除く。
 
@@ -1802,6 +1819,10 @@ def build_bicep_configuration(configuration: dict) -> dict:
     """
     _reject_ignored_material_overrides(configuration)
     result = copy.deepcopy(configuration)
+    network = result["network"]
+    network["firewall"].pop("idpsPrivateRanges", None)
+    if network["firewall"]["sku"] == "Premium":
+        network["generatedIdpsPrivateRanges"] = _idps_private_ranges(network)
     result["apiDefinitions"] = with_catalog_descriptions(configuration)
     # 標準APIの接続先はGateway配備時に解決する。基盤は公開経路と本文形式だけを
     # 先に受け取り、空の公開API配列でも適切なWAF・監査設定を準備する。

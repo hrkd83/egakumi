@@ -6,6 +6,7 @@
 from bicep_helpers import compile_bicep
 
 import copy
+from ipaddress import collapse_addresses, ip_network
 import json
 from pathlib import Path
 import sys
@@ -21,6 +22,7 @@ CORE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CORE / "scripts"))
 from deployment.helpers.configuration import (ConfigurationError, build_bicep_configuration,
                            load_configuration_source, normalize_configuration)
+from deployment.lifecycle import parameters as arm_parameters
 
 
 NETWORK_INPUTS = {
@@ -125,6 +127,7 @@ class ParameterIpOwnershipTests(unittest.TestCase):
 
     def test_parameter_network_rejects_unknown_and_platform_only_fields(self):
         cases = [("network", "addressSpace"), ("network", "bgpRoutePropagation"),
+                 ("network", "generatedIdpsPrivateRanges"),
                  ("network", "firewall", "sku"), ("network", "firewall", "dnsServer"),
                  ("monitoring", "auditAllowdIpAddresses")]
         for path in cases:
@@ -157,8 +160,6 @@ class ParameterIpOwnershipTests(unittest.TestCase):
             self.assertNotIn(key, result["network"])
         firewall = result["network"]["firewall"]
         self.assertEqual(firewall["snatPrivateRanges"], ["IANAPrivateRanges", *parameters["network"]["addressSpaces"]])
-        self.assertEqual(firewall["idpsPrivateRanges"], ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-                                                      *parameters["network"]["addressSpaces"]])
         self.assertEqual(firewall["bypassTrafficSettings"], [])
         for key in ("sku", "idpsMode", "zones"):
             self.assertEqual(firewall[key], options["network"]["firewall"][key])
@@ -171,6 +172,31 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                 self.assertEqual(result["gateway"]["rateLimits"][kind][key], value)
         for kind in ("subscriptionKey", "application"):
             self.assertEqual(result["gateway"]["rateLimits"][kind]["overrides"], [])
+
+    def test_generated_idps_ranges_subtract_only_the_gateway(self):
+        options, parameters = custom_documents()
+        network = parameters["network"]
+        extra_internal_space = "192.0.2.0/24"
+        original_gateway = network["subnetPrefixes"]["agw"]
+        network["addressSpaces"].append(extra_internal_space)
+        original = list(collapse_addresses(map(ip_network, (
+            "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", *network["addressSpaces"],
+        ))))
+        for gateway in (original_gateway, extra_internal_space):
+            with self.subTest(gateway=gateway):
+                network["subnetPrefixes"]["agw"] = gateway
+                normalized = normalize_configuration(load_documents(options, parameters))
+                result = arm_parameters(normalized, "core")["parameters"]["configuration"]["value"]
+                actual = list(map(ip_network, result["network"]["generatedIdpsPrivateRanges"]))
+                app_gateway = ip_network(gateway)
+                self.assertTrue(all(not block.overlaps(app_gateway) for block in actual))
+                self.assertTrue(all(any(block.subnet_of(old) for old in original) for block in actual))
+                self.assertEqual(actual, list(collapse_addresses(actual)))
+                self.assertEqual(sum(block.num_addresses for block in actual) + app_gateway.num_addresses,
+                                 sum(block.num_addresses for block in original))
+                for kind in ("apim", "aca"):
+                    subnet = ip_network(network["subnetPrefixes"][kind])
+                    self.assertTrue(any(subnet.subnet_of(block) for block in actual), kind)
 
     def test_fixed_audit_and_firewall_public_inputs_are_rejected_even_when_empty(self):
         paths = [("network", "firewall", key) for key in FIREWALL_INPUTS]
@@ -636,7 +662,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(firewall["dnsSettings"]["servers"], [])
         self.assertEqual(firewall["snat"]["privateRanges"], ["IANAPrivateRanges", *config["network"]["addressSpaces"]])
         self.assertEqual(firewall["intrusionDetection"]["configuration"]["privateRanges"],
-                         ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", *config["network"]["addressSpaces"]])
+                         config["network"]["generatedIdpsPrivateRanges"])
         self.assertEqual(firewall["intrusionDetection"]["configuration"]["bypassTrafficSettings"], config["network"]["firewall"]["bypassTrafficSettings"])
         for resource in ("platformRules", "egressRules"):
             collections = expression.resolve(resources[resource]["properties"], parameters)["ruleCollections"]

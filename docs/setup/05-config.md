@@ -73,7 +73,7 @@ AppGWと公開IPのゾーン指定は両方同じ値にします。[]はゾー�
 
 規則の作成有無・任意追加規則・追加FQDNは公開設定にしません。廃止した`apimAdditionalNetworkRules`・`managementAdditionalNetworkRules`・`apimAdditionalApplicationRules`・`managementAdditionalApplicationRules`・`apimAllowedFqdns`・`managementAllowedFqdns`は、config／paramsの空値も拒否します。[固定初期集合と内部宛先生成](04-params.md#ネットワーク監査の接続設定)を確認してください。
 
-APIMの承認済み証明書到達性と正規API宛先、管理VMの固定配布先と業務ACME／構築ホストを常設規則へ組み込みます。API生成先0でもAPIM規則を空宛先で送信せず、既存証明書規則と重複する基底を維持します。証明書directory、API正本、アプリ登録と以下のSKU／IDPSモード等は維持します。独立した`snatPrivateRanges`・`idpsPrivateRanges`・`bypassTrafficSettings`入力は空値でも拒否します。SNAT除外は`IANAPrivateRanges`と構築VNetのaddressSpaces、Premium IDPSのprivate判定はRFC1918と構築VNet範囲の重複排除から生成し、初期bypassは空に固定します。
+APIMの承認済み証明書到達性と正規API宛先、管理VMの固定配布先と業務ACME／構築ホストを常設規則へ組み込みます。API生成先0でもAPIM規則を空宛先で送信せず、既存証明書規則と重複する基底を維持します。証明書directory、API正本、アプリ登録と以下のSKU／IDPSモード等は維持します。独立した`snatPrivateRanges`・`idpsPrivateRanges`・`bypassTrafficSettings`入力は空値でも拒否します。ネットワーク規則のSNAT除外は`IANAPrivateRanges`と構築VNetの`addressSpaces`です。Premium IDPSの内部分類はRFC1918と構築VNetのCIDRからAppGWサブネットを除いて生成し、初期bypassは空に固定します。
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |

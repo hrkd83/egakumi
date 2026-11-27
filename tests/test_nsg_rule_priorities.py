@@ -324,7 +324,8 @@ class NsgRulePriorityTests(unittest.TestCase):
         self.assertEqual(self.resolve('network', "[variables('newNsgResourceNames')]", p), [])
         self.assertEqual(network['resources']['createdNsgs']['properties'], {})
         self.assertEqual(network['resources']['nsgTagUpdates']['type'], 'Microsoft.Resources/tags')
-        p['config'].update(dnsServers=['192.0.2.53'], firewall={'dnsServers': ['192.0.2.54']})
+        p['config'].update(dnsServers=['192.0.2.53'], firewall={'dnsServers': ['192.0.2.54']},
+                           generatedIdpsPrivateRanges=['192.0.2.0/24'])
         self.assertEqual(self.resolve('network', network['resources']['vnet']['properties']['dhcpOptions'], p), {'dnsServers': []})
         firewall = self.resolve('network', network['resources']['firewallPolicy']['properties'], p)
         self.assertEqual(firewall['dnsSettings'], {'enableProxy': True, 'servers': []})
