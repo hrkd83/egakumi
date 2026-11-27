@@ -52,6 +52,7 @@ def recover(directory, checked):
 
     documents = []
     incomplete = []
+    omissions = []
     stream_text = defaultdict(list)
     for start, items in sorted(grouped.items()):
         first = items[0]
@@ -62,6 +63,8 @@ def recover(directory, checked):
             continue
         payload = json.loads(''.join(item['data'] for item in items))
         documents.append({'sequence': start, 'kind': first['kind'], 'timeUtc': first['timeUtc'], 'payload': payload})
+        if isinstance(payload, dict) and 'bodyOmitted' in payload:
+            omissions.append({'sequence': start, 'kind': first['kind'], 'reason': payload['bodyOmitted']})
         if first['kind'] == 'stream-segment':
             for channel, value in payload.get('text', {}).items():
                 stream_text[channel].append(value)
@@ -71,6 +74,7 @@ def recover(directory, checked):
                      (documents[-1]['kind'] != 'stream-end' or documents[-1]['payload'].get('state') == 'complete'))
     return {'requestId': request_id, 'captureId': capture_id, 'operationId': operation,
             'complete': completed, 'sequenceGap': gap, 'incompleteGroups': incomplete,
+            'bodyOmissions': omissions,
             'documents': documents, 'streamText': {key: ''.join(values) for key, values in stream_text.items()}}
 
 

@@ -20,6 +20,7 @@
     <set-query-parameter name="stringIndexType" exists-action="skip"><value>unicodeCodePoint</value></set-query-parameter>
     <!-- 新規解析では既存の結果取得用チケットを使わず、削除して続行します。受付後に新しいチケットを発行します。 -->
     <set-header name="X-Core-Document-Ticket" exists-action="delete" />
+    __HTTP_EVIDENCE_REQUEST_XML__
     <!-- === -->
   </inbound>
   <backend><base /></backend>
@@ -46,13 +47,22 @@
     <set-variable name="documentRetryAfter" value="@{
       __DOCUMENT_ANALYSIS_RETRY_AFTER_CSHARP__
     }" />
+    <set-variable name="documentPublicResponse" value="@{
+      var status = (int)context.Variables[&quot;documentStatus&quot;];
+      if (status == 202) {
+        return (string)context.Variables[&quot;documentAccepted&quot;];
+      }
+      var code = status == 413 ? &quot;DocumentInputTooLarge&quot; : status == 429 ? &quot;DocumentAnalysisThrottled&quot; : status == 422 ? &quot;DocumentRejected&quot; : &quot;DocumentAnalysisUnavailable&quot;;
+      return new JObject(new JProperty(&quot;error&quot;, new JObject(new JProperty(&quot;code&quot;, code))), new JProperty(&quot;requestId&quot;, context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    __HTTP_EVIDENCE_RESPONSE_XML__
     <return-response>
       <set-status code="@((int)context.Variables[&quot;documentStatus&quot;])" reason="@((int)context.Variables[&quot;documentStatus&quot;] == 500 ? &quot;Document analysis unavailable&quot; : &quot;Document analysis acceptance&quot;)" />
       <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
       <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
       <set-header name="Retry-After" exists-action="override"><value>@(((int)context.Variables["documentRetryAfter"]).ToString())</value></set-header>
       <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
-      <set-body>@((int)context.Variables["documentStatus"] == 202 ? (string)context.Variables["documentAccepted"] : new JObject(new JProperty("error", new JObject(new JProperty("code", (int)context.Variables["documentStatus"] == 413 ? "DocumentInputTooLarge" : (int)context.Variables["documentStatus"] == 429 ? "DocumentAnalysisThrottled" : (int)context.Variables["documentStatus"] == 422 ? "DocumentRejected" : "DocumentAnalysisUnavailable"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body>
+      <set-body>@((string)context.Variables["documentPublicResponse"])</set-body>
     </return-response>
   </outbound>
   <on-error>

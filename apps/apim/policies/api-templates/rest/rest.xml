@@ -226,6 +226,7 @@
       </when>
     </choose>
     <!-- === -->
+    __HTTP_EVIDENCE_SNAPSHOT_XML__
     <!-- 選択済みの操作制約は制御用設定へ戻し、監査メタデータへ混ぜません。
          本文からのモデル名取得は通常HTTPに限定します。 -->
     <set-variable name="gatewayControlSettings" value="@{

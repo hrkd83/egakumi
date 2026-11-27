@@ -3,6 +3,9 @@ from dataclasses import dataclass
 import json
 import re
 
+from .claude import (
+    MESSAGE_FIELDS, OPAQUE_CONTENT_TYPES, TOOL_RESULT_TYPES, TOOL_TYPES, project_claude_tool_result, select_citation,
+)
 from .projection import (_PEM_END, _PEM_START, _SECRET_LABEL, fields, sanitize, scrub_text)
 
 
@@ -89,6 +92,8 @@ def stream_projection(operation, data):
         return Projection({'type': 'error', 'error': sanitize(fields(value.get('error', value), ('code', 'type')))}, {}, 'upstream-error')
     if operation == 'chat-completions':
         return chat_projection(value)
+    if operation == 'claude-messages':
+        return claude_projection(value)
     return responses_projection(value)
 
 
@@ -137,6 +142,64 @@ def responses_projection(value):
     if kind.startswith('response.function_call_arguments.'):
         info['toolArgumentsOmitted'] = True
     return Projection(info, {})
+
+
+def claude_projection(value):
+    kind = value.get('type')
+    if kind == 'message_start':
+        return Projection({'type': kind, 'message': sanitize(fields(value.get('message'), MESSAGE_FIELDS))}, {})
+    if kind == 'message_delta':
+        info = fields(value.get('delta'), ('stop_reason', 'stop_sequence')) | fields(value, ('usage',))
+        return Projection({'type': kind} | sanitize(info), {})
+    if kind == 'message_stop':
+        return Projection({'type': kind}, {}, 'complete')
+    if kind == 'ping':
+        return Projection({'type': kind}, {})
+    if kind not in ('content_block_start', 'content_block_delta', 'content_block_stop'):
+        return Projection({'type': 'unrecognized'}, {})
+
+    block_index = value.get('index')
+    if type(block_index) is not int or not 0 <= block_index < 100000:
+        return Projection({'type': kind, 'bodyOmitted': 'invalid-block-index'}, {})
+    info = {'type': kind, 'index': block_index}
+    if kind == 'content_block_stop':
+        return Projection(info, {})
+    if kind == 'content_block_start':
+        block = value.get('content_block')
+        if not isinstance(block, dict):
+            return Projection(info | {'bodyOmitted': 'unsupported-content'}, {})
+        block_type = block.get('type')
+        if not isinstance(block_type, str):
+            return Projection(info | {'bodyOmitted': 'unsupported-content'}, {})
+        if block_type in TOOL_TYPES:
+            info.update(sanitize(fields(block, ('id', 'name', 'server_name'))))
+            return Projection(info | {'contentType': block_type, 'toolArgumentsOmitted': True}, {})
+        if block_type in TOOL_RESULT_TYPES:
+            return Projection(info | {'toolResult': project_claude_tool_result(block)}, {})
+        if block_type in OPAQUE_CONTENT_TYPES:
+            return Projection(info | {'contentType': block_type, 'bodyOmitted': 'opaque-content'}, {})
+        if block_type in ('text', 'thinking'):
+            content = block.get(block_type)
+            return Projection(info | {'contentType': block_type},
+                              {f'content.{block_index}.{block_type}': content} if isinstance(content, str) else {})
+        return Projection(info | {'bodyOmitted': 'unsupported-content'}, {})
+
+    delta = value.get('delta')
+    if not isinstance(delta, dict):
+        return Projection(info | {'bodyOmitted': 'unsupported-content'}, {})
+    delta_type = delta.get('type')
+    if delta_type == 'input_json_delta':
+        # Redaction cannot safely interpret partial strings from a JSON argument stream.
+        return Projection(info | {'toolArgumentsOmitted': True}, {})
+    if delta_type == 'signature_delta':
+        return Projection(info | {'signatureOmitted': True}, {})
+    if delta_type == 'citations_delta':
+        return Projection(info | {'citation': sanitize(select_citation(delta.get('citation')))}, {})
+    if delta_type in ('text_delta', 'thinking_delta'):
+        field = delta_type.removesuffix('_delta')
+        content = delta.get(field)
+        return Projection(info, {f'content.{block_index}.{field}': content} if isinstance(content, str) else {})
+    return Projection(info | {'bodyOmitted': 'unsupported-content'}, {})
 
 
 class StreamWindow:

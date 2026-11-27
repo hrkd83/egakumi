@@ -1328,6 +1328,15 @@ def _verify_published_audit_route(plan, source, transport):
         "/namedValues/core-audit-relay-audience": {"displayName": "core-audit-relay-audience", "secret": False,
                                                   "value": relay["audience"]},
     }
+    fragment_suffix = "/policyFragments/core-http-body-evidence"
+    body_fragments = [entry for entry in source["policies"] if entry.get("suffix") == fragment_suffix]
+    if body_fragments:
+        if len(body_fragments) != 1:
+            raise ValueError("The HTTP body audit publication source must represent one shared fragment")
+        expected_resources["/namedValues/core-audit-relay-url"] = {
+            "displayName": "core-audit-relay-url", "secret": False, "value": relay["url"]}
+        observed = entra_publication._read(transport, plan["apimId"] + fragment_suffix, {}, raw=True)
+        entra_publication._same_xml(observed.get("properties", {}).get("value"), body_fragments[0]["value"], fragment=True)
     for suffix, expected in expected_resources.items():
         resource_id = plan["apimId"] + suffix
         observed = entra_publication._read(transport, resource_id, {})

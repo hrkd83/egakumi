@@ -89,6 +89,8 @@
     <set-query-parameter name="x-api-key" exists-action="delete" />
     <set-backend-service backend-id="__BACKEND_ID__" />
     __BACKEND_AUTH_XML__
+    __BODY_AUDIT_SNAPSHOT_XML__
+    __BODY_AUDIT_REQUEST_XML__
     <set-variable name="gatewayAuditPhase" value="accepted" />
     <set-variable name="gatewayAuditCode" value="GATEWAY_ALLOWED" />
     <set-variable name="gatewayAuditStatus" value="@(0)" />
@@ -100,6 +102,7 @@
   <outbound>
     <include-fragment fragment-id="core-backend-audit" />
     <base />
+    __BODY_AUDIT_RESPONSE_XML__
     <set-variable name="gatewayAuditPhase" value="backend-response" />
     <set-variable name="gatewayAuditCode" value="BACKEND_RESPONSE" />
     <set-variable name="gatewayAuditStatus" value="@(context.Response.StatusCode)" />

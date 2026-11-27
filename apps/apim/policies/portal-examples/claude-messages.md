@@ -1,12 +1,12 @@
 # Claude Code向けにFoundryのClaudeを公開する
 
-Azureポータルから、Foundryに配備したClaudeモデルをGatewayのAnthropic Messages APIとして公開する例です。Egakumi Portalの試用カタログには初期構築のAPI定義を使います。`manual-claude-messages`、`manual-claude-foundry`、`models/claude`は公開用の例です。この例のIDと上限を使う場合は、[貼り付け用のXML](claude-messages.xml)を開き、全文をコピーして使えます。
+Azureポータルから、Coreと同じFoundryに配備したClaudeモデルをGatewayのAnthropic Messages APIとして公開する例です。事前にGatewayの本文監査を配備します。Egakumi Portalの試用カタログには初期構築のAPI定義を使います。`manual-claude-messages`と`models/claude`は公開用の例です。この例のIDと上限を使う場合は、[貼り付け用のXML](claude-messages.xml)を開き、全文をコピーして使えます。
 
 ## FoundryとAPIMバックエンド
 
 1. **Microsoft Foundry → Model catalog**で対象Claudeを選び、提供リージョン、購入条件、割当、ネットワーク、使う機能を確認して配備します。配備名と表示されるターゲットURIを控えます。Messagesの標準形は`https://<FOUNDRY_RESOURCE>.services.ai.azure.com/anthropic/v1/messages`です。 [FoundryでClaudeを配備する](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude)
-2. APIMのシステム割り当てマネージドIDへ、対象のFoundry資源で使う推論権限を割り当てます。`Cognitive Services User`または組織で承認した推論用カスタムロールを資源スコープで使います。APIMは`https://ai.azure.com`を対象とするEntraトークンで接続します。 [FoundryのEntra認証と権限](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/configure-entra-id) · [APIMのマネージドID](https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy)
-3. **API Management → Backends → Add**で、ID`manual-claude-foundry`、URL`https://<FOUNDRY_RESOURCE>.services.ai.azure.com`を登録します。URLには`/anthropic/v1/messages`を含めず、TLSの名前・証明書検証を有効にします。APIMから解決したホストが対象のプライベートエンドポイントつきの宛先へ到達することを確認します。別Foundry資源を選んだときはPrivate DNS・既定ルート・NSG・該当時のFirewallルールをそれぞれ確認し、経路の変更を台帳へ記録します。
+2. **Foundry → アクセス制御（IAM）**で、監査中継のContainer Appに割り当てられたマネージドIDへ推論権限を付与します。対象のFoundry資源のスコープで `Cognitive Services User` または組織が承認したMaaS推論用ロールを使います。中継は `https://ai.azure.com` 宛てのトークンを取得します。本文監査の初期構築だけで使うOpenAI推論権限と区別します。 [FoundryのEntra認証と権限](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/configure-entra-id)
+3. **API Management → Backends**で、Gateway配備済みの `core-audit-relay` が内部Container AppのHTTPSを指すことを確認します。**Named values**の `core-audit-relay-audience` を、APIMから中継へのマネージドID認証に使います。中継からCoreのFoundryの `.services.ai.azure.com` がPrivate Endpointへ解決し、到達できることを受入で確認します。 [APIMのマネージドID](https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy)
 
 ## API、操作、Product
 
@@ -15,12 +15,12 @@ Azureポータルから、Foundryに配備したClaudeモデルをGatewayのAnth
 3. 利用するClaude Codeと配備モデルで必要性・対応を確認した場合は、Operation ID`count-tokens`で`POST /v1/messages/count_tokens`を登録し、JSONにも`method`を`POST`、`backendPath`を`/anthropic/v1/messages/count_tokens`とする別操作を追加してXMLを再生成します。実応答と監査を確認してから利用者へ案内します。 [FoundryのClaude機能一覧](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models)
 4. **Products**でキー用`manual-model-users`を購読必須・公開にし、手動APIを追加して専用購読を発行します。本人Bearerを使う場合は公開の購読不要Product`manual-entra-users`へ追加し、対象クライアントに組織のEntra設定で`Gateway.Invoke`の委任許可・同意を用意します。両方のProductのポリシーは共通処理を`<base />`で継承します。共通Entraの変更が反映されたことを実効ポリシーで確認します。 [共通のProduct設定](README.md#apiとproductを設定する)
 
-入口で受け取った購読ヘッダー、`x-api-key`、Gateway用`Authorization`、内部制御用のヘッダーは下流へ渡す前に除去します。Foundry側のマネージドID認証はその後に付けます。対象Foundryの許可モデルを分離する場合は、公開対象のモデルだけを持つFoundry資源へ固定します。
+入口で受け取った購読ヘッダー、`x-api-key`、Gateway用`Authorization`、内部制御用のヘッダーは中継へ渡す前に除去します。中継が自分のマネージドIDでCoreのFoundryへ接続します。別のFoundry資源を公開する場合は、その資源専用の固定経路と権限を設計します。
 
 ## Application GatewayとWAF
 
 1. **Application Gateway → Rules／URL path maps**で、Gateway用リスナーの`/models/claude/v1/messages`と追加した場合の`/models/claude/v1/messages/count_tokens`が、既存のAPIM向けHTTPSバックエンドで解決することを確認します。該当パスで現在のWAFポリシー、信頼済み入口の付与、Firewall検査経路を受け入れます。
-2. **WAF policy**で`Prevention`と現在の保護ルールが有効なことを確認します。JSON本文の受入上限は、実効WAFポリシー、APIM、Foundry側の各上限のうち最も小さい値です。通常のJSON・`stream: true`および長い正規リクエストを試します。WAFで拒否された場合は時刻・公開パスとWAFのトランザクションIDから該当ルールとJSONフィールドを調べ、調整対象を限定します。パス専用WAFを関連付ける場合は元の保護と診断が揃っていることを確認します。 [Application GatewayのWAFポリシー](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/policy-overview) · [WAFの要求サイズ制限](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/application-gateway-waf-request-size-limits)
+2. **WAF policy**で`Prevention`と現在の保護ルールを確認します。WAF・APIM・Foundryの受入上限と、監査中継のHTTP本文16 MiB、証跡の抽出結果1 MiBが適用されます。通常のJSON・`stream: true`と長い正規リクエストを試します。WAFで拒否された場合は時刻・公開パス・トランザクションIDから該当ルールとJSONフィールドを確認し、調整対象を限定します。パス専用WAFを関連付ける場合は元の保護と診断を揃えます。 [WAFの要求サイズ制限](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/application-gateway-waf-request-size-limits) · [監査中継の上限](../../../../docs/reference/request-body-audit.md)
 3. APIMの`buffer-response="false"`、App Gatewayの応答バッファ無効化、該当バックエンドのタイムアウトを確認します。一定時間継続するSSEで最初のイベント、逐次到着、最終イベント、クライアント切断後の終了を確認します。 [Application GatewayのSSE](https://learn.microsoft.com/en-us/azure/application-gateway/use-server-sent-events) · [APIMのSSE](https://learn.microsoft.com/en-us/azure/api-management/how-to-server-sent-events)
 
 ## クライアントと公開確認
@@ -33,7 +33,7 @@ Azureポータルから、Foundryに配備したClaudeモデルをGatewayのAnth
 クライアントの環境変数へ秘密を渡す場合は、承認済みの取得方法から対象セッションへだけ設定します。既定モデル、サブエージェントやバックグラウンド操作用のモデルも、使う場合は配備名を確認します。端末上の認証方法と送信先は対象版の`/status`およびGatewayの要求記録で照合します。 [Claude Codeの環境変数](https://code.claude.com/docs/en/env-vars) · [Claude CodeとFoundry](https://code.claude.com/docs/en/microsoft-foundry)
 
 - 専用キー、本人Bearer、JSON、SSEを順に確認します。未所属、期限切れ、scope不足、無効キーと有効Bearerを組み合わせた要求、別Productのキー、非公開操作を試し、拒否と下流未到達を確認します。
-- 受入では無害な合成入力を使用します。`apim-request-id`、APIMの認証方式とAPI・操作、バックエンドの要求ID、Foundryの実モデル・利用量を照合します。Claude固有の使用量はFoundryのログやメトリクスで確認します。回数枠の429とFoundry側の429を区別します。
+- 受入では無害な合成入力を使用します。`apim-request-id`からAPIMの認証主体・操作、本文監査の入力と応答、Foundryの要求IDを照合します。通常JSON、SSEのテキスト再構成、資格情報の除去、保存できなかった場合の終了状態を確認します。Claude固有の使用量はFoundryで確認します。 [本文監査の対象と復元](../../../../docs/reference/request-body-audit.md)
 - 既存のWAF／Firewall設定と無関係な初期APIの受入結果も確認します。WAF関連付け、Product所属、作成したバックエンド、生成時の設定を記録し、更新時は同じ操作IDと保護設定で反映します。公開を停止するときは手動ProductからAPIを外し、購読と既存ストリームの状態を確認します。Productの公開状態は開発者ポータルの表示に使います。
 
 この手順のXMLは合成入力で生成確認しています。Azureの実接続、Claude Codeの対象版、Foundryモデルごとの機能、WAFとTLS検査は新規環境で受け入れます。

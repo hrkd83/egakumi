@@ -5,6 +5,7 @@
   "backendService": "external",
   "backendAuthentication": {"mode": "none"},
   "responseTransport": "rest",
+  "bodyAudit": true,
   "keyFallbackRate": {"calls": 60, "renewalPeriodSeconds": 60},
   "operations": [
     {
