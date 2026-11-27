@@ -27,6 +27,12 @@ GROUPS = ('agw', 'apim', 'pep', 'management', 'aca')
 SUFFIXES = {'agw': 'agw', 'apim': 'apim', 'pep': 'pep', 'management': 'vm', 'aca': 'aca'}
 _PAIRS = (('sourcePortRange', 'sourcePortRanges'), ('destinationPortRange', 'destinationPortRanges'),
           ('sourceAddressPrefix', 'sourceAddressPrefixes'), ('destinationAddressPrefix', 'destinationAddressPrefixes'))
+_PREVIOUS_RULE_NAMES = {
+    'management': {'allow-audit-storage-platform-https-egress': 'allow-audit-storage-japan-https-egress'},
+    'pep': {'allow-mgmt-vm-audit-storage-platform-https-ingress': 'allow-mgmt-vm-audit-storage-japan-https-ingress'},
+}
+# Keep the original legacy rules' staging priorities stable across retries.
+_RENAME_STAGING_PRIORITY = 1500
 
 
 class FixedNsgError(RuntimeError):
@@ -384,15 +390,30 @@ def _temporary_priorities(group):
     return result
 
 
-def _classify(parents, bindings, *, require_complete=False):
+def _classify(parents, bindings, *, require_complete=False, accept_previous_names=False):
     fixed = _catalog('nsg-rule-priorities.json'); legacy = _catalog('nsg-legacy-rule-definitions.json')
     plan = []
     for key in GROUPS:
         current = _inventory(parents[key]); desired = fixed['groups'][key]['rules']
         older = legacy['groups'].get(key, {'rules': {}}); temporary = _temporary_priorities(older)
+        renamed = {previous: name for name, previous in _PREVIOUS_RULE_NAMES.get(key, {}).items()}
+        matching = set()
         for name, child in current.items():
             actual = _properties(child)
-            if name in desired and actual == _definition(desired[name], bindings): continue
+            if name in desired and actual == _definition(desired[name], bindings):
+                matching.add(name)
+                continue
+            if name in renamed:
+                target = renamed[name]
+                expected = _definition(desired[target], bindings)
+                if accept_previous_names and target not in current and actual == expected:
+                    matching.add(target)
+                    continue
+                if actual not in (expected, {**expected, 'priority': _RENAME_STAGING_PRIORITY}):
+                    raise FixedNsgError('An NSG child differs from the exact previous rule definition')
+                plan.append({'group': key, 'name': name, 'child': child, 'originalPriority': expected['priority'],
+                             'temporaryPriority': _RENAME_STAGING_PRIORITY, 'properties': actual})
+                continue
             old = older['rules'].get(name)
             if old is None: raise FixedNsgError('An NSG has an unknown, manually modified or conflicting child rule')
             candidates = [old] + [{**old, **alternative} for alternative in old.get('alternatives', [])]
@@ -400,9 +421,8 @@ def _classify(parents, bindings, *, require_complete=False):
             if matched is None: raise FixedNsgError('An NSG child differs from the exact owned legacy definition')
             plan.append({'group': key, 'name': name, 'child': child, 'originalPriority': old['priority'],
                          'temporaryPriority': temporary[name], 'properties': actual})
-        if require_complete:
-            if parents[key] is None or any(name not in current or _properties(current[name]) != _definition(rule, bindings) for name, rule in desired.items()):
-                raise FixedNsgError('The complete fixed NSG rule set has not been deployed and verified')
+        if require_complete and (parents[key] is None or matching != desired.keys()):
+            raise FixedNsgError('The complete fixed NSG rule set has not been deployed and verified')
     return sorted(plan, key=lambda row: (GROUPS.index(row['group']), row['properties']['direction'], -row['originalPriority'], row['name']))
 
 
@@ -474,7 +494,7 @@ def verify_fixed_nsg_upgrade_what_if(config, document, bindings):
     expected = {groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-' + SUFFIXES[key]
                 + '/securityRules/' + name: _definition(rule, bindings)
                 for key in GROUPS for name, rule in catalog['groups'][key]['rules'].items()}
-    if len(expected) != 75: raise FixedNsgError('The NSG-only manifest must contain exactly 75 children')
+    if len(expected) != 73: raise FixedNsgError('The NSG-only manifest must contain exactly 73 children')
     expected = {identity.casefold(): value for identity, value in expected.items()}
     aca = (groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-aca').casefold()
     observed = set()
@@ -521,7 +541,7 @@ def verify_fixed_nsg_upgrade_what_if(config, document, bindings):
         elif action not in ('Ignore', 'NoChange'):
             raise FixedNsgError('NSG-only what-if would write an unrelated resource or an existing parent')
     if observed != set(expected): raise FixedNsgError('NSG-only what-if did not expand all fixed children')
-    return {'fixedChildrenVerified': 75, 'expansionDiagnostics': 0, 'unrelatedWrites': 0}
+    return {'fixedChildrenVerified': 73, 'expansionDiagnostics': 0, 'unrelatedWrites': 0}
 
 
 def _subnet_reference(value):

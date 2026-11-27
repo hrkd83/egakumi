@@ -205,7 +205,8 @@ class FreshCloneReadinessTests(unittest.TestCase):
                 self.assertEqual(report["modelNames"], [item["name"] for item in standard["services"]["modelDeployments"]])
                 self.assertEqual(report["apiNames"], [])
                 self.assertTrue(public["publishApis"])
-                self.assertEqual(public["network"]["firewall"]["sku"], "Standard" if profile == "test" else "Premium")
+                self.assertEqual(public["network"]["firewall"]["sku"], "Premium")
+                self.assertEqual(public["network"]["firewall"]["idpsMode"], "Deny")
 
     def test_generated_internal_api_definitions_preserve_registration_and_shared_models(self):
         """内部生成API配列は保持し、企業登録と標準モデルは公開params/configから合成する。"""

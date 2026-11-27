@@ -114,6 +114,7 @@ class SsmlWafTests(unittest.TestCase):
             subnetId="/fixture-subnet", publicIpId="/fixture-public-ip", apimPrivateIp="10.40.2.68",
             apimHostName="apim-fixture.azure-api.net", publicHostName="api.example.com",
             keyVaultCertificateSecretId="https://kv-fixture.vault.azure.net/secrets/tls",
+            firewallRootCaData="synthetic-public-der",
             certificateIdentityId="/fixture-mi", workspaceId="/fixture-workspace", auditStorageId="/fixture-audit",
             speechRawBodyPaths=["/models/azure-speech/v1/recognize", "/models/azure-speech/v1/synthesize"],
             l7IngressSecret="SYNTHETIC_PRIVATE_INPUT",
@@ -155,14 +156,19 @@ class SsmlWafTests(unittest.TestCase):
         self.assertEqual(pool["properties"]["backendAddresses"], [{"ipAddress": "10.40.2.200"}])
         backend = next(item for item in enabled["backendHttpSettingsCollection"] if item["name"] == "behttp-portal")
         self.assertEqual(backend["properties"]["hostName"], "portal.fixture.azurecontainerapps.io")
-        self.assertEqual(backend["properties"]["protocol"], "Http")
-        self.assertEqual(backend['properties']['port'], 80)
+        self.assertEqual(backend["properties"]["protocol"], "Https")
+        self.assertEqual(backend['properties']['port'], 443)
+        trusted, = enabled['trustedRootCertificates']
+        self.assertEqual(trusted['properties']['data'], 'synthetic-public-der')
+        for item in enabled['backendHttpSettingsCollection']:
+            reference, = item['properties']['trustedRootCertificates']
+            self.assertTrue(reference['id'].endswith('/trustedRootCertificates/firewall-inspection-root'))
         probe = next(item for item in enabled["probes"] if item["name"] == "probe-portal")
         self.assertEqual(probe["properties"]["path"], "/api/health")
         self.assertEqual(probe["properties"]["host"], "portal.fixture.azurecontainerapps.io")
         self.assertEqual(probe["properties"]["match"]["statusCodes"], ["200"])
-        self.assertEqual(probe['properties']['protocol'], 'Http')
-        self.assertEqual(probe['properties']['port'], 80)
+        self.assertEqual(probe['properties']['protocol'], 'Https')
+        self.assertEqual(probe['properties']['port'], 443)
         self.assertEqual(len(enabled["httpListeners"]), 4)
         self.assertEqual(len(enabled["backendAddressPools"]), 2)
         self.protocol_path_rules(enabled)
@@ -246,7 +252,7 @@ class SsmlWafTests(unittest.TestCase):
         self.assertTrue(properties["firewallPolicy"]["id"].endswith("wafpol-g-base-abc123"))
         self.assertEqual(properties["requestRoutingRules"][1]["properties"]["ruleType"], "PathBasedRouting")
         self.assertEqual(properties["backendAddressPools"][0]["properties"]["backendAddresses"], [{"ipAddress": "10.40.2.68"}])
-        self.assertEqual(properties["backendHttpSettingsCollection"][0]["properties"]["port"], 80)
+        self.assertEqual(properties["backendHttpSettingsCollection"][0]["properties"]["port"], 443)
         self.assertIn("redirectConfiguration", properties["requestRoutingRules"][0]["properties"])
         self.assertEqual(rule["rewriteRuleSet"], pathmap["defaultRewriteRuleSet"])
         self.assertTrue(rule['rewriteRuleSet']['id'].endswith('/rewriteRuleSets/trusted-l7-ingress'))

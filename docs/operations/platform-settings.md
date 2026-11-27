@@ -105,7 +105,7 @@ python3 -B scripts/operations/nsg_dns.py --config "$DEPLOY_PARAMS_FILE" --execut
 
 `scripts/operations/nsg_appgw_egress.py`は旧名`allow-apim-http`、`allow-apim-grpc`、
 `allow-key-vault`の3子規則だけを扱う互換入口である。現在のAppGWは通信設計の記録として
-APIM／ACAへのHTTP80、Key VaultへのHTTPS443を別のFIX名・割当IPで明示する。
+APIM／ACAとKey VaultへのHTTPS443を別のFIX名・割当IPで明示する。
 既定Outbound許可も維持するため、明示Allowだけで送信範囲を限定したとは解釈しない。
 
 通常Coreでは全72件を検証して旧子を回収する固定NSG移行を使用し、この旧3子CLIを重ねない。
@@ -113,26 +113,13 @@ APIM／ACAへのHTTP80、Key VaultへのHTTPS443を別のFIX名・割当IPで明
 対象3子だけを回収する。他NSG、UDR、DNS、Firewall、現在のFIX名ルールを削除しない。
 変更前・試行・結果は保護した`state/operations/`へ保存する。
 
-## Portal後段をHTTP80へ移行する
+## AppGW後段のTLS検査を検証する
 
-新規構築ではBicepがACA HTTP受付、AppGW HTTP80後段・HTTP80 probe、Firewall80許可を固定する。
-既存HTTPS後段へ最終Coreを先に適用すると通信断の恐れがあるため、次の段階移行を使う。
-Azure CLI・Entra認証と以下の配備処理はWindows側で実行する。WSLはローカル検証に使用する。
+新規構築では [Firewallの中間CAとApp Gatewayの公開ルート](../setup/05-config.md#firewallのtls検査を準備する) を準備します。App Gatewayの両方のプローブがHTTPS443を使用することを確認します。Portalのプローブ確認は本体配備後に行います。
 
-1. `scripts/operations/portal_backend_http.py status --config "$DEPLOY_PARAMS_FILE"`で現在の
-   AppGW backend／probe、内部ACA、Firewall80／443を読む。
-2. 同CLIの`prepare`で80追加の計画を記録し、`--execute`で所有Firewall規則へ80だけを追加する。
-   既存443と他ルールを保持し、ETagと変更前記録、readbackを確認する。
-3. 正式なPortal個別配備を行う。公開originとSecure Cookieを維持する対応imageを使用し、
-   期待image／revision、ACAのHTTP受付とHTTP readinessを確認した後、AppGW backendとprobeを
-   同じPUTでHTTP80へ切り替える。変更前Gateway記録の保存が失敗すればPUTしない。
-4. 新規接続で公開health、ログイン・callback、通常Portal操作を確認する。正常HTTP80後段と
-   Firewall80許可が成立した場合だけCore gateを通し、最終固定資材を反映して旧443を回収する。
-5. 切戻しが必要なら同CLIの`rollback`で計画し、443許可の確保・readbackを先に行ってから
-   AppGW backend／probeをHTTPS443へ戻す。アプリ・秘密・データや別経路のAPIM→ACA443を削除しない。
+既存のHTTP後段をこの構成へ変更する場合は、App Gateway、FirewallのSKU・中間CA、NSG、APIM／ACAの受信、プローブと診断設定を一つの切替計画で扱います。構築CLIは既存バックエンドが検査用ルートとHTTPSプローブに一致しない場合に停止します。切替前に対象の設定を保護領域へ保存し、受入と切戻しの順序を確定してください。
 
-応答不明・競合・未完了は停止し、原本と現在状態を確認する。image／revisionの成立、Portalの公開TLS、
-ログイン成功を、ARMのSucceededだけで代用しない。Firewall Policy全体の棚卸しは別工程として残す。
+Azure反映後は、通常API、SSE、WebSocket、MCPと、Portalのヘルス・サインインをテスト環境で確認します。Firewall処理の対象FQDN、TLS検査、IDPSの結果、およびTLS検査用ログのURL列が除去されることを読み戻します。
 
 ## APIバックエンドに必要な外向き許可を追加する
 

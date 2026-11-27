@@ -11,7 +11,7 @@
 | 設計判断 | 通信要件、NSG/FWへの対応、採否、例外、変更入力の範囲 | 資材への実装と実環境動作 |
 | 資材実装 | 固定集合、構築IPのbinding、初期構築工程、限定更新工程 | 実際の配備成功とパケット到達 |
 | 合成検証 | 架空入力でのBicep展開、tuple・経路・生成・境界・競合処理の一致 | Azure側の動作、実DNS回答、サービス内部の全通信 |
-| Azure限定反映・読戻し | 所有する対象の設定一致、既存設定保持、処理完了 | 全75 NSG規則・全35 FW規則の個別パケット実証と管理VMの現在の時刻精度 |
+| Azure限定反映・読戻し | 所有する対象の設定一致、既存設定保持、処理完了 | 全73 NSG規則・全35 FW規則の個別パケット実証と管理VMの現在の時刻精度 |
 | 実操作 | 新規接続での業務・保守操作、認可、結果取得、失敗時の復旧 | 将来の全scale/基盤更新/障害復旧と、任意の企業接続 |
 | 新規再構築E2E | 新しい環境の初期工程から同じ機能が成立すること | 既存環境の限定反映や合成試験だけではこの段階を完了にしない |
 
@@ -23,16 +23,16 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 試験 | 確認する内容 |
 | --- | --- |
-| [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py) | catalog v3の75 NSG定義の展開一致、複数PE IP、priority、Firewallの基盤用途分割、直接経路向けFW規則の除去、ACA Dev宛先の固定生成 |
+| [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py) | catalog v4の73 NSG定義の展開一致、複数PE IP、priority、Firewallの基盤用途分割、直接経路向けFW規則の除去、ACA Dev宛先の固定生成 |
 | [test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py) | 構築サブネット・IPの所有境界、5 NSGとFirewallサブネットの非関連付け |
 | [test_dns_nsg.py](../../tests/test_dns_nsg.py) | 廃止DNS用規則の対象限定、未知の手動規則保持、競合・応答不明時の扱い |
 | [test_grpc_fixed_infrastructure.py](../../tests/test_grpc_fixed_infrastructure.py) | gRPC専用設備の撤去、HTTPS保守保持、AppGW/API入口の構成 |
 | [test_grpc_fixed_configuration.py](../../tests/test_grpc_fixed_configuration.py) | 旧gRPC設定の拒否と生成設定の境界 |
 | [test_credential_broker_initial_deployment.py](../../tests/test_credential_broker_initial_deployment.py) | Broker初期build/配備、source bundle、所有資源、再試行とcleanupの境界 |
 | [test_audit_storage_network.py](../../tests/test_audit_storage_network.py) | 監査Blob PEの全IP、DNS zone/group/linkとレコード照合、構築順序 |
-| [test_portal_backend_http.py](../../tests/test_portal_backend_http.py) | Portal向けHTTP80切替、限定変更、競合検出、切戻し |
+| [test_portal_gateway.py](../../tests/test_portal_gateway.py) | APIMとPortalのHTTPSプローブと検査用ルート照合 |
 
-旧外部NTP構成での上記8スイートの再実行結果は **102試験PASS、失敗0、エラー0、スキップ0**。当時の独立した文書照合でもNSG76規則のtupleに欠落・重複はなく、Firewallは6 RCG・11 collection・36規則（Network17、Application19）の名前集合が合成展開と一致した。全FW規則はAllow、全Application規則は`terminateTLS: false`であった。この過去記録は旧catalog v2の条件として保持し、管理VMのPHC化後のcatalog v3／75 NSG（Allow69、Deny6）／35 FW（Network16、Application19）や新しい同期確認のPASSへ転用しない。今回のAzure反映・実VM同期は未実施である。
+旧外部NTP構成での上記8スイートの再実行結果は **102試験PASS、失敗0、エラー0、スキップ0**。当時の独立した文書照合でもNSG76規則のtupleに欠落・重複はなく、Firewallは6 RCG・11 collection・36規則（Network17、Application19）の名前集合が合成展開と一致した。全FW規則はAllow、全Application規則は`terminateTLS: false`であった。この過去記録は旧catalog v2の条件として保持し、管理VMのPHC化後のcatalog v4／75 NSG（Allow67、Deny6）／35 FW（Network14、Application21）や新しい同期確認のPASSへ転用しない。今回のAzure反映・実VM同期は未実施である。
 
 試験はWSLのローカルBicep/Pythonを使用し、Azureログイン・CLIによる実環境操作を行わない。Azureへの人間Entra認証を要する操作はWindows側で行う。この結果は公開資材・合成入力の確認であり、実環境の疎通・認可結果は下記の保護実施票で別に管理する。
 
@@ -47,7 +47,7 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | 既存NTP規則の限定撤去と削除前gate | [固定NSG移行](../../tests/test_fixed_nsg_migration.py)、[NSG限定配備](../../tests/test_fixed_nsg_upgrade.py) |
 | guest埋込とCore配備の依存関係 | [guest payload](../../tests/test_guest_deployment_payloads.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
 
-合成VM IDの記述を独立生成値へ調整した後、移行／限定配備の2スイート39試験も再確認し、全件成功した（11.706秒、失敗・エラー・スキップ0）。別実行の件数を112へ加算しない。文書のNSG2表は正本75件の名称と優先度に一致し、FW表は35件に一致した。今回のAzure反映、実VMでのPHC同期・時刻精度、再構築E2Eは未実施である。
+合成VM IDの記述を独立生成値へ調整した後、移行／限定配備の2スイート39試験も再確認し、全件成功した（11.706秒、失敗・エラー・スキップ0）。別実行の件数を112へ加算しない。当時の文書のNSG2表は正本75件の名称と優先度に一致し、FW表は35件に一致した。今回のAzure反映、実VMでのPHC同期・時刻精度、再構築E2Eは未実施である。
 
 関連する保守機能の実装・合成検証は次のとおり。以下の一覧に載せることと、今回の文書更新で全試験を再実行することは別である。
 
@@ -86,9 +86,11 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 確認 | 通信・設定との対応 | 合格条件と限界 |
 | --- | --- | --- |
-| NSG全件読戻し | catalog v3の5 NSG・75カスタム規則と既定規則、PE policy | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが一致。管理VM325の旧UDP123規則が残らずAPIM328が維持される。既定規則を再作成せず、例外区画の既定許可も確認 |
-| FW全件読戻し | 6 RCG、11 collection、35規則。`rcg-platform`は12規則 | priority、action、種別、全source/destination、protocol/port、TLS inspectionが資材と一致。管理VM NTP規則が残らずAPIM NTPが維持され、直接経路用の不要規則が混ざらない |
+| NSG全件読戻し | catalog v4の5 NSG・73カスタム規則と既定規則、PE policy | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが一致。管理VM325の旧UDP123規則が残らずAPIM328が維持される。既定規則を再作成せず、例外区画の既定許可も確認 |
+| FW全件読戻し | 6 RCG、10 collection、35規則。`rcg-platform`は12規則 | priority、action、種別、全source/destination、protocol/port、TLS inspectionが資材と一致。管理VM NTP規則が残らずAPIM NTPが維持され、直接経路用の不要規則が混ざらない |
 | 公開入口 | CLIENT、APPGW-APIM、APPGW-ACA | 公開TLS、HTTPリダイレクト、APIM正常API、Portalのhealthと画面、L7入口保護を確認。healthだけを全APIの認可確認にしない |
+| 入口のTLS検査 | APPGW-APIM、APPGW-ACA | AppGW両バックエンドのSNIと証明書チェーン、`HTTPS:443`のApplication Ruleの一致、TLS検査・IDPSのログを合成トラフィックで照合。Portalの実認証前にFirewall診断の[クエリ保護](../testing/log-privacy.md#firewallのtls検査ログ)を確認する |
+| 長時間応答と接続 | SSE、WebSocketと通常の非ストリーミングAPI | 120秒を超えるSSEとWebSocketで継続受信を確認し、必要な無通信時間を含むセッションを試す。先頭データが遅い通常応答も確認し、切断位置と継続時間を記録する。[Firewall TLS検査のタイムアウト](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#azure-firewall-limits) |
 | PE接続 | APIM/ACA/管理VMとFoundry/KV/SQL/ACR/監査Blob | DNS回答とPE全IP、往復制御、サービスTLSと認可を照合。FWログが無いことだけで直接経路成功としない |
 | ACAの現構成依存 | イメージ取得、App/Job起動、標準DNS、管理ID、監視 | 構築ACRと公開MCRの用途を区別。現在アプリのStorage非依存を将来の全アプリへ一般化しない |
 | 監査Blob・保存ログ | MGMT-AUDIT-JAPAN/FOUNDRY、MGMT-MONITOR | VMのMIで構築コンテナー/Workspaceを読み、取得が完了。監査Blobへの書込み・削除権限は付けない |

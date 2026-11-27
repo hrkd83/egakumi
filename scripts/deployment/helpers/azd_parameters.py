@@ -18,6 +18,7 @@ ARM_PARAMETER_DEFAULTS = {
     "sshPublicKey": "",
     "managementInitialSerialGeneration": "",
     "dnsPluginArgumentsJson": "",
+    "firewallTlsInspection": {},
     "credentialProviderSecrets": {},
     "l7IngressSecret": "",
     "realtimeTicketKey": "",

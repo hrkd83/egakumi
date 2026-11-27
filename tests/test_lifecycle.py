@@ -495,11 +495,11 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(request["body"]["properties"]["parameters"]["existingNetworkSecurityGroupNames"]["value"], [])
         self.assertEqual(request["body"]["properties"]["parameters"]["existingRouteTableRoutes"]["value"], {})
         self.assertEqual(outputs["resourceGroups"], self.config["resourceGroupNames"])
-        self.portal_http_gate.assert_not_called()
+        self.backend_tls_gate.assert_not_called()
         self.prepare_nsg.assert_not_called()
         self.complete_nsg.assert_not_called()
 
-    def test_new_build_and_http_reup_check_portal_before_staging_and_core_inputs(self):
+    def test_new_build_and_https_reup_check_portal_before_staging_and_core_inputs(self):
         for existing in (False, True):
             events = []
             if existing:
@@ -507,7 +507,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             else:
                 (self.paths.state / 'latest.json').unlink(missing_ok=True)
             transport = ScriptedTransport([{'statusCode': 404, 'body': None}] * 13)
-            self.portal_http_gate.side_effect = lambda *a: events.append('portal-gate') or {
+            self.backend_tls_gate.side_effect = lambda *a, **kw: events.append('portal-gate') or {
                 'newGateway': not existing, 'httpBackendVerified': existing}
             self.prepare_nsg.side_effect = lambda *a, **k: events.append('nsg-stage') or {'azureWrites': 0}
             original_write = lifecycle.write_arm_parameters
@@ -524,6 +524,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                  mock.patch.object(lifecycle, 'deploy_phase', side_effect=lambda *a, **k: events.append('monitoring') or self.outputs()), \
                  mock.patch.object(lifecycle, 'lock_and_verify_policies'), \
                  mock.patch.object(lifecycle, 'configure_app_insights_cap'), \
+                 mock.patch.object(lifecycle, 'discover_existing_apim_egress_fqdns', return_value=[]), \
                  mock.patch.object(lifecycle, 'write_arm_parameters', side_effect=write_core), \
                  contextlib.redirect_stdout(io.StringIO()):
                 lifecycle.preprovision(self.config)
@@ -532,10 +533,10 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             self.assertEqual(json.loads(self.paths.parameters.read_text(encoding="utf-8"))['parameters']['phase']['value'], 'core')
             self.assertFalse(transport.mutations())
 
-    def test_old_https_preprovision_stops_before_secret_preparation_monitoring_and_nsg_changes(self):
+    def test_old_http_preprovision_stops_before_secret_preparation_monitoring_and_nsg_changes(self):
         lifecycle.protected_json(self.paths.parameters, {'old': 'PRIVATE_INPUT_FIXTURE'})
         prior = lifecycle._save_deployment_state(self.config, self.outputs())
-        self.portal_http_gate.side_effect = ValueError('Migrate the existing Portal HTTPS backend first')
+        self.backend_tls_gate.side_effect = ValueError('Migrate the existing HTTP backend to inspected HTTPS first')
         with mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
              mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport'), \
              mock.patch.object(lifecycle, 'load_secret_inputs') as secrets, \
@@ -548,9 +549,9 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertFalse(self.paths.parameters.exists())
         self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8")), prior)
 
-    def test_old_https_preup_stops_before_azd_environment_or_ingress_mutation(self):
+    def test_old_http_preup_stops_before_azd_environment_or_ingress_mutation(self):
         lifecycle.protected_json(self.paths.params, {})
-        self.portal_http_gate.side_effect = ValueError('Migrate the existing Portal HTTPS backend first')
+        self.backend_tls_gate.side_effect = ValueError('Migrate the existing HTTP backend to inspected HTTPS first')
         with mock.patch.object(lifecycle, 'load_configuration', return_value=self.config), \
              mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
              mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport'), \
@@ -566,7 +567,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         lifecycle.protected_json(self.paths.params, {})
         for existing in (False, True):
             events = []
-            self.portal_http_gate.side_effect = lambda *a: events.append('portal-gate') or {'newGateway': not existing}
+            self.backend_tls_gate.side_effect = lambda *a, **kw: events.append('portal-gate') or {'newGateway': not existing}
             names = ['nsg-' + self.config['resourceStem'] + '-' + suffix
                      for suffix in ('agw', 'apim', 'pep', 'vm', 'aca')] if existing else []
             def environment(arguments, **kwargs):
@@ -636,7 +637,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         ])
         existing_names = ['nsg-' + self.config['resourceStem'] + '-' + suffix
                           for suffix in ('agw', 'apim', 'pep', 'vm', 'aca')]
-        self.portal_http_gate.side_effect = lambda *a: events.append('portal-gate') or {'httpBackendVerified': True}
+        self.backend_tls_gate.side_effect = lambda *a, **kw: events.append('portal-gate') or {'httpBackendVerified': True}
         self.prepare_nsg.side_effect = lambda *a, **k: events.append('nsg-stage') or {'azureWrites': 0}
         original_save = lifecycle._save_deployment_state
         def save(*args):

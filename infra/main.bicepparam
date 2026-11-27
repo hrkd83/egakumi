@@ -11,6 +11,7 @@ param phase = input.parameters.?phase.?value ?? 'core'
 param sshPublicKey = input.parameters.?sshPublicKey.?value ?? ''
 param managementInitialSerialGeneration = input.parameters.?managementInitialSerialGeneration.?value ?? ''
 param dnsPluginArgumentsJson = input.parameters.?dnsPluginArgumentsJson.?value ?? ''
+param firewallTlsInspection = input.parameters.?firewallTlsInspection.?value ?? {}
 param credentialProviderSecrets = input.parameters.?credentialProviderSecrets.?value ?? {}
 param l7IngressSecret = input.parameters.?l7IngressSecret.?value ?? ''
 param realtimeTicketKey = input.parameters.?realtimeTicketKey.?value ?? ''

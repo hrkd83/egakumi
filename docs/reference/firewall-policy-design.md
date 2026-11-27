@@ -4,7 +4,7 @@
 
 本書は、初期構築のAzure Firewallを実際に通過する通信と、構築資材の許可規則を対応付ける。NSGで許可するVNet内通信のすべてがFirewallを通る設計ではない。送信元、宛先、プロトコル、ポートだけでなく、[通信要件](network-communication-requirements.md)の経路と併せて読む。
 
-初期集合は **6 Rule Collection Group（RCG）・11 collection・35 Allow規則（Network16、Application19）**。RCG、collection、規則の作成有無を公開params／configで切り替える入力は設けない。構築サブネットCIDR、割当IP、公開Host、リージョンと、検証済みの業務接続設定だけを該当するアドレスへ差し込む。資材・合成検証・実環境への適用・実通信の確認は別の段階として扱う。
+初期集合は **6 Rule Collection Group（RCG）・10 collection・35 Allow規則（Network14、Application21）**。RCG、collection、規則の作成有無を公開params／configで切り替える入力は設けない。構築サブネットCIDR、割当IP、公開Host、リージョンと、検証済みの業務接続設定だけを該当するアドレスへ差し込む。資材・合成検証・実環境への適用・実通信の確認は別の段階として扱う。
 
 ## 設計前提と評価順序
 
@@ -12,7 +12,7 @@
 - AppGW→APIM内部VIP、AppGW→ACA共有VIPには、構築後に判明する各VIP `/32` を対象とするUDRを設定する。AppGWのInternet向けdefault route全体をFirewallへ変更しない。
 - APIM、管理VM、ACAのInternet向け送信は既存のUDRでFirewallへ送る。ACA→AppGWサブネットのreturn routeもFirewallへ送る。
 - APIM→ACA、ACA→SQL／Key Vault PE、管理VM→PEなど、同一VNet内のより具体的な直接経路にはFirewall規則を置かない。PE側のNSG評価は[NSG設計](network-security-design.md)で記録する。
-- 全Application Ruleは `terminateTLS: false`。Network RuleはTCP／UDPを許可し、TLS inspectionを行う規則ではない。TLSが暗号化した本文をIDPSが常に検査できるという前提を置かない。
+- AppGWからAPIMとPortalに向かう2規則でTLSを検査する。その他のApplication Ruleは `terminateTLS: false` を維持する。
 - 独自のAny宛Internet Network Ruleや、独自の末尾Deny collectionは追加しない。許可されない通信にはFirewallの暗黙Denyが適用される。
 
 Firewallは規則種別を含む評価順序を持ち、Network RuleがApplication Ruleに先行する。小さいRCG／collection優先度は同種の評価順を整理するものであり、NSGの優先度とは独立している。各規則にNSGのような個別priorityはない。同じ通信がサービスタグのNetwork RuleとFQDNのApplication Ruleの両方に一致する場合、後段のFQDN規則へ必ずhitするとは記録しない。[公式の規則処理](https://learn.microsoft.com/en-us/azure/firewall/rule-processing)
@@ -23,9 +23,9 @@ NSGの `allow-internet-egress` がTCP80／443を許可していても、Firewall
 
 | RCG | 優先度 | collection（優先度） | 規則数 | 正本 |
 | --- | ---: | --- | ---: | --- |
-| `rcg-ingress` | 200 | `allow-agw-to-apim`（200） | 1 | [network-bindings.bicep](../../infra/modules/network-bindings.bicep) |
+| `rcg-ingress` | 200 | `allow-agw-to-backends`（200） | 2 | [portal-network-bindings.bicep](../../infra/modules/portal-network-bindings.bicep) |
 | `rcg-platform` | 300 | `allow-apim-platform`（200）、`allow-vm-platform`（210） | 12 | [network.bicep](../../infra/modules/network.bicep) |
-| `rcg-portal` | 350 | `portal-ingress`（100）、`portal-azure-monitor`（150）、`portal-platform-and-probe`（200）、`portal-runner`（300） | 7 | [portal-network.bicep](../../infra/modules/portal-network.bicep) |
+| `rcg-portal` | 350 | `portal-azure-monitor`（150）、`portal-platform-and-probe`（200）、`portal-runner`（300） | 6 | [portal-network.bicep](../../infra/modules/portal-network.bicep) |
 | `rcg-credential-broker` | 360 | `credential-broker-azure`（200） | 3 | [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) |
 | `rcg-portal-gateway` | 370 | `portal-gateway`（100） | 1 | [gateway-egress.bicep](../../apps/portal/deploy/gateway-egress.bicep) |
 | `rcg-egress` | 400 | `allow-apim-egress`（200）、`allow-vm-egress`（210） | 11 | [network.bicep](../../infra/modules/network.bicep) |
@@ -34,15 +34,16 @@ NSGの `allow-internet-egress` がTCP80／443を許可していても、Firewall
 
 ## ルールと通信要件の対応
 
-以下は実装された全規則。`N` はNetwork Rule、`A` はApplication Ruleで、actionは全件Allow。Application RuleのTLS inspectionは全件無効である。送信元は構築された各サブネットのCIDRとし、管理VMの個別 `/32` 許可は対向のNSGで扱う。表のNSG名は規則名であり、Azureの実資源名ではない。
+以下は実装された全規則。 `N` はNetwork Rule、 `A` はApplication Ruleを示す。AppGWの2規則でTLS検査を有効にする。
 
-### rcg-ingress / allow-agw-to-apim
+### rcg-ingress / allow-agw-to-backends
 
 | 規則名 | 種別・通信 | 送信元 → 宛先 | 通信ID・用途 | 対応NSG・採用理由 |
 | --- | --- | --- | --- | --- |
-| `allow-appgw-apim-http` | N・TCP80 | AppGW → 構築APIM内部VIP単IP | [`FLOW-APPGW-APIM`](network-communication-requirements.md#flow-appgw-apim)。通常API、SSE、WebSocket等の入口とbackend probe | AppGW `allow-apim-http-egress`、APIM `allow-appgw-http-ingress`。AppGWでTLSを終端し、内部HTTP80をFW経由で中継する既FIXの経路を維持 |
+| `allow-appgw-apim-https` | A・HTTPS443、TLS検査 | AppGW → 構築APIMの既定Gateway FQDN | [`FLOW-APPGW-APIM`](network-communication-requirements.md#flow-appgw-apim)。通常API、SSE、WebSocket等とプローブ | AppGW `allow-apim-https-egress`、APIM `allow-firewall-https-ingress` |
+| `allow-appgw-portal-https` | A・HTTPS443、TLS検査 | AppGW → Portal ACAのアプリFQDN | [`FLOW-APPGW-ACA`](network-communication-requirements.md#flow-appgw-aca)。Portalとヘルスプローブ | AppGW `allow-aca-https-egress`、ACA `allow-firewall-https-ingress` |
 
-宛先はAPIMの構築出力から取得する。AppGW→APIMの暗号化しない内部区間と、外部利用者→AppGWのHTTPS区間を区別する。gRPC／TCP8443の許可は含めない。
+宛先はAPIMとPortalの構築出力から取得し、Private DNSで内部VIPへ解決する。
 
 ### rcg-platform / allow-apim-platform
 
@@ -74,7 +75,6 @@ NSGの `allow-internet-egress` がTCP80／443を許可していても、Firewall
 
 | collection（優先度） | 規則名 | 種別・通信 | 送信元 → 宛先 | 通信ID・用途 | 対応NSG・採用理由 |
 | --- | --- | --- | --- | --- | --- |
-| `portal-ingress`（100） | `allow-appgw-aca-http` | N・TCP80 | AppGW → ACAサブネット | [`FLOW-APPGW-ACA`](network-communication-requirements.md#flow-appgw-aca)。PortalのHTTP backendとprobe | AppGW `allow-aca-http-egress`、ACA `allow-appgw-http-ingress`。経路はACA共有VIP `/32` UDR、FW宛先は既存のACA CIDRを維持 |
 | `portal-azure-monitor`（150） | `allow-aca-monitor` | N・TCP443 | ACA → `AzureMonitor`タグ | [`FLOW-ACA-MONITOR`](network-communication-requirements.md#flow-aca-monitor)。ACAの監視依存 | ACA `allow-monitor-egress`。他のAzureタグ用途と名前を分離 |
 | `portal-azure-monitor`（150） | `allow-aca-entra` | N・TCP443 | ACA → `AzureActiveDirectory`タグ | [`FLOW-ACA-ENTRA`](network-communication-requirements.md#flow-aca-entra)。ACAの認証基盤依存 | ACA `allow-entra-egress`。Monitor許可と同じportでも別規則にする |
 | `portal-platform-and-probe`（200） | `allow-aca-mcr` | A・HTTPS443 | ACA → `MCR`宛先群 | [`FLOW-ACA-MCR`](network-communication-requirements.md#flow-aca-mcr)。Microsoft Container Registryのimage取得 | ACA `allow-mcr-egress`。構築したACR PEへの接続と区別 |
@@ -100,7 +100,7 @@ Brokerは初期構築の常設構成要素とし、`credentialProfiles`が空で
 | --- | --- | --- | --- | --- |
 | `allow-aca-appgw-https` | A・HTTPS443 | ACA → 構築Gatewayの公開Host | [`FLOW-ACA-APPGW`](network-communication-requirements.md#flow-aca-appgw)。Portalのサーバー処理による公開Gateway API呼出し | ACA `allow-appgw-https-egress`、AppGW `allow-firewall-public-https-ingress`。外向きFW経由・公開IPへのSNATを含む公開入口経路 |
 
-宛先は同じ構築のGateway originからhostnameだけを取得する。任意の利用者指定Hostを許可する入力ではない。AppGWのbackend用HTTP80と、Portalから公開Gatewayへ接続するHTTPS443は別の区間である。
+宛先は同じ構築のGateway originからhostnameだけを取得する。任意の利用者指定Hostを許可する入力ではない。AppGWの検査付きbackend用HTTPS443と、Portalから公開Gatewayへ接続するHTTPS443は別の区間である。
 
 ### rcg-egress / allow-apim-egress
 
@@ -153,7 +153,8 @@ ACME directoryは業務の証明書発行設定と共有する。productionで�
 | 入力・出力 | 規則に影響する範囲 | 固定する範囲 |
 | --- | --- | --- |
 | `network.subnetPrefixes` | AppGW／APIM／管理VM／ACAの送信元、ACA宛先CIDR | RCG／collection／規則の存在、プロトコル・ポート |
-| APIM構築出力 | `allow-appgw-apim-http`の宛先単IPと対応UDR `/32` | TCP80、Allow、規則名 |
+| `allow-appgw-apim-https` | A・HTTPS443、TLS検査 | AppGW → 構築APIMの既定Gateway FQDN | [`FLOW-APPGW-APIM`](network-communication-requirements.md#flow-appgw-apim)。通常API、SSE、WebSocket等とプローブ | AppGW `allow-apim-https-egress`、APIM `allow-firewall-https-ingress` |
+| `allow-appgw-portal-https` | A・HTTPS443、TLS検査 | AppGW → Portal ACAのアプリFQDN | [`FLOW-APPGW-ACA`](network-communication-requirements.md#flow-appgw-aca)。Portalとヘルスプローブ | AppGW `allow-aca-https-egress`、ACA `allow-firewall-https-ingress` |
 | 構築Gateway／Portal公開Host | Portal→公開Gateway、管理VM保守確認の宛先 | HTTPS443、Allow、常設規則 |
 | 構築リージョン | 管理VM ACA Dev gatewayの単一FQDN | HTTPS443、TLS inspection無効、常設規則 |
 | 証明書ACME directory | 管理VMのproduction／staging公式CA Host | 証明書確認7宛先、CA許可規則の存在 |
@@ -163,7 +164,7 @@ ACME directoryは業務の証明書発行設定と共有する。productionで�
 
 公開入力の `network.firewall.apimAllowedFqdns`、`network.firewall.managementAllowedFqdns`、`network.firewall.dnsServers`等の旧自由入力は廃止し、空でも検査で拒否する。初期の標準DNS、APIM NTP、管理VMのホスト時刻同期、Broker常設、gRPC撤去に関する作成有無の入力を再導入しない。
 
-StandardにはIDPS自体を送信せず、Premiumでのみ構成する。標準のtest構成はIDPSなし、production構成は採用したPremium IDPSを使用する。IDPS private ranges、SNAT private ranges、bypass／signature設定の役割を混同しない。TLS inspection無効のまま、IDPSがHTTPS本文まで見えるという検証結果は作らない。
+Firewallとポリシーは全環境でPremiumを使う。IDPSはDeny（Alert and Deny）で開始し、テスト環境で通常通信と誤検知を確認する。中間CAと専用IDの準備は [セットアップ](../setup/05-config.md#firewallのtls検査を準備する) を参照する。
 
 Premiumでは、構築CLIがRFC1918と構築VNetのCIDRからAppGWサブネットだけを差し引く。Firewallを経由するAppGWから内部APIMなどへの通信を受信方向のシグネチャの対象にする。ネットワーク規則のSNAT用範囲、IDPSモード、許可経路は従来の設定を維持する。 [AppGWをFirewallの前段に置く構成のIDPS設計](https://learn.microsoft.com/en-us/azure/architecture/example-scenario/gateway/firewall-application-gateway#application-gateway-in-front-of-azure-firewall)
 
@@ -174,13 +175,13 @@ Premiumでは、構築CLIがRFC1918と構築VNetのCIDRからAppGWサブネッ�
 | `FW-D01` | Firewallを通過する通信だけを登録する。将来の経路変更用やNSG通信の記録目的だけではFW許可を作らない | APIM→ACA、ACA→SQL／KV PEの旧内部FW規則を撤去。必要NSGと直接経路は保持 |
 | `FW-D02` | 全RCG／collection／規則は初期常設にする | Broker profiles、任意機能の利用有無で初期集合を変えない。内部配備段階と公開作成フラグを区別 |
 | `FW-D03` | Portal GatewayのRCGを370にする | Broker360との同順位を解消し、350→360→370→400の順を明示。許可範囲は維持 |
-| `FW-D04` | AppGW→APIM／ACAはHTTP80をFW経由で許可 | 外部HTTPSはAppGW終端。通常API・Portal・probeの経路を維持し、gRPC許可を撤去 |
+| `FW-D04` | AppGWからAPIM／ACAへTLS検査付きHTTPS443 | Firewallは検査後に再暗号化し、対向NSGはFirewallの送信元を許可する |
 | `FW-D05` | APIM NTPはAPIMサブネット・UDP123・宛先`*`を維持し、管理VMはホストPHCを使う | APIMはDNS回答差を回避するNSG328と組み合わせる。管理VMのPHC／VMBusは非IPなので旧FW NTPを撤去し、UDP123／319／320を追加しない。guest同期の先行成立と現在状態の確認は分ける |
 | `FW-D06` | 同じHTTPSでもEntra／ARM／Monitor／build等の用途を規則名で分離する | 同じタグやNetwork RuleとApplication Ruleの重複を明記し、特定の後段規則hitは保証しない |
 | `FW-D07` | 証明書確認7宛先を維持する | 基盤互換到達性を失わない。全宛先の毎回利用、将来の証明書購入方式とは区別 |
 | `FW-D08` | 管理VM ACA Dev gatewayを単一構築リージョンに常設許可する | 管理VMからのログ・exec等の保守経路を成立させる。対象操作はMI／RBACで認可 |
 | `FW-D09` | 任意Internet Network Rule、自由なFW宛先配列、ipify probeを作らない | 必要な固定FQDN・生成済み業務宛先と暗黙Denyで管理 |
-| `FW-D10` | 全Application RuleでTLS inspectionを無効とする | 既存SDK、証明書、配布、ACA Dev APIのTLS契約を維持。本文検査の有無をIDPSの有無と分離 |
+| `FW-D10` | AppGW専用の2規則でTLS検査 | 外向きと保守の既存TLS契約を維持し、検査ログはURLを除去して保存する |
 
 ### 規則を作成しない直接通信
 
@@ -193,7 +194,7 @@ Premiumでは、構築CLIがRFC1918と構築VNetのCIDRからAppGWサブネッ�
 | [`FLOW-APIM-FOUNDRY`](network-communication-requirements.md#flow-apim-foundry)、[`FLOW-APIM-KV`](network-communication-requirements.md#flow-apim-kv)、[`FLOW-APPGW-KV`](network-communication-requirements.md#flow-appgw-kv) | APIM／AppGW → 構築Foundry／Vault PE | PEの直接到達。サービス・タグの基盤許可と自PE接続を区別 |
 | [`FLOW-MGMT-KV`](network-communication-requirements.md#flow-mgmt-kv)、[`FLOW-MGMT-FOUNDRY`](network-communication-requirements.md#flow-mgmt-foundry)、[`FLOW-MGMT-ACR`](network-communication-requirements.md#flow-mgmt-acr)、[`FLOW-MGMT-SQL`](network-communication-requirements.md#flow-mgmt-sql) | 管理VM → 各構築PE | VNet内保守。送受信NSGと用途別MI／RBAC・DB権限で制御 |
 | [`FLOW-MGMT-AUDIT-JAPAN`](network-communication-requirements.md#flow-mgmt-audit-japan)、[`FLOW-MGMT-AUDIT-FOUNDRY`](network-communication-requirements.md#flow-mgmt-audit-foundry) | 管理VM → 構築監査Blob PE | 監査閲覧の直接到達。外部Storageタグ依存とは別 |
-| [`FLOW-MGMT-APIM`](network-communication-requirements.md#flow-mgmt-apim)、[`FLOW-MGMT-ACA-HTTP`](network-communication-requirements.md#flow-mgmt-aca-http)、[`FLOW-MGMT-ACA-HTTPS`](network-communication-requirements.md#flow-mgmt-aca-https) | 管理VM → APIM／ACA内部endpoint | VNet内保守の直接経路。外部Dev gateway接続とは別 |
+| [`FLOW-MGMT-APIM`](network-communication-requirements.md#flow-mgmt-apim)、[`FLOW-MGMT-ACA-HTTPS`](network-communication-requirements.md#flow-mgmt-aca-https) | 管理VM → APIM／ACA内部endpoint | VNet内保守の直接経路。外部Dev gateway接続とは別 |
 
 将来ハブ＆スポークへ手動変更するときは、実経路がFirewall通過へ変わる通信を特定してから、企業のDNS・UDR・SNAT・NSG・FWを一緒に見直す。本書の直接通信表を、将来用の未使用FW許可として初期投入しない。構築後に資材を再実行しない契約の手動変更は、初期資材の再適用で維持されるとは保証しない。
 

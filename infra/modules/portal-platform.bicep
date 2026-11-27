@@ -28,7 +28,7 @@ resource environment 'Microsoft.App/managedEnvironments@2025-01-01' = {
 }
 // CA 自体は基盤構築時に用意します。初回は Azure CLI も使う Microsoft の
 // 初期イメージで起動し、Portal 本体を配置するときに同じ CA のイメージを更新します。
-// 初期画面までの疎通を確認できるよう、Ingress を初期イメージの HTTP:80 へ向けます。
+// ACAのHTTPS ingressが初期イメージのコンテナー内のHTTP:80へ送ります。
 // 本体の配備時には apps/portal/deploy/application.bicep が同じ CA の接続ポートを 3000 へ更新します。
 // 既存 CA は hook が確認し、このリソースへの PUT を省いて配置済みアプリを保持します。
 resource app 'Microsoft.App/containerApps@2025-01-01' = if (!existingPortalApp) {
@@ -41,8 +41,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = if (!existingPortalApp) 
     workloadProfileName: 'Consumption'
     configuration: {
       activeRevisionsMode: 'Single'
-      // 公開HTTPSはAppGWで終端します。閉域の後段HTTP80を初回から受け付けます。
-      ingress: { external: true, targetPort: 80, transport: 'http', allowInsecure: true }
+      ingress: { external: true, targetPort: 80, transport: 'http', allowInsecure: false }
       registries: [{ server: registry.properties.loginServer, identity: pullIdentityId }]
     }
     template: {

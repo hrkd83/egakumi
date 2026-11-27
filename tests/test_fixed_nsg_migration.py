@@ -190,6 +190,18 @@ class MemoryTransport:
                 parent['properties']['securityRules'] = [r for r in parent['properties']['securityRules'] if r['name']!=name]
                 parent['properties']['securityRules'].append(self.child(identity, name, nsg._definition(rule, self.bindings)))
 
+    def use_previous_platform_audit_rule_names(self):
+        previous = []
+        for group, name in (('management', 'allow-audit-storage-platform-https-egress'),
+                            ('pep', 'allow-mgmt-vm-audit-storage-platform-https-ingress')):
+            child = next(rule for rule in self.resources[self.nsg_id(group)]['properties']['securityRules']
+                         if rule['name'] == name)
+            old_name = name.replace('storage-platform', 'storage-japan')
+            child['id'] = self.nsg_id(group) + '/securityRules/' + old_name
+            child['name'] = old_name
+            previous.append(child)
+        return previous
+
 
 class FixedNsgMigrationTests(unittest.TestCase):
     def setUp(self):
@@ -354,7 +366,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
         discovered = nsg.read_fixed_nsg_bindings(self.config, transport)
         self.assertEqual(discovered, transport.bindings)
         manifest = nsg._catalog('nsg-rule-priorities.json')
-        for key, suffix in (('auditStorageJapan', 'japan'), ('auditStorageFoundry', 'foundry')):
+        for key, suffix in (('auditStorageJapan', 'platform'), ('auditStorageFoundry', 'foundry')):
             allowed = [ip + '/32' for ip in discovered['ipSets'][key]]
             for group, name in (('management', 'allow-audit-storage-' + suffix + '-https-egress'),
                                 ('pep', 'allow-mgmt-vm-audit-storage-' + suffix + '-https-ingress')):
@@ -397,7 +409,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
                     rule for rule in parent['properties']['securityRules'] if 'audit-storage-' not in rule['name']]
             if not legacy:
                 self.assertEqual(sum(len(nsg._inventory(transport.resources[transport.nsg_id(group)]))
-                                     for group in nsg.GROUPS), 72)
+                                     for group in nsg.GROUPS), 70)
             saved_endpoints = {}
             for suffix in ('audit-japan-blob', 'audit-foundry-blob'):
                 identity = transport.nw + 'privateEndpoints/pe-' + transport.stem + '-' + suffix
@@ -418,7 +430,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
                 completed = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
                 self.assertEqual(completed['azureWrites'], expected_moves)
                 self.assertEqual(sum(len(nsg._inventory(transport.resources[transport.nsg_id(group)]))
-                                     for group in nsg.GROUPS), 75)
+                                     for group in nsg.GROUPS), 73)
 
     def test_pending_audit_phase_cannot_ignore_a_rule_whose_binding_is_missing(self):
         transport = MemoryTransport(self.config)
@@ -450,7 +462,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
         transport.deploy_fixed()
         completed = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
         self.assertEqual(completed['azureWrites'], 45)
-        self.assertEqual(sum(len(transport.resources[transport.nsg_id(g)]['properties']['securityRules']) for g in nsg.GROUPS), 75)
+        self.assertEqual(sum(len(transport.resources[transport.nsg_id(g)]['properties']['securityRules']) for g in nsg.GROUPS), 73)
         self.assertEqual(nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)['azureWrites'], 0)
         self.assertTrue(all('/securityRules/' in c['path'] and c['headers']['If-Match']!='*' for c in transport.mutations()))
 
@@ -481,9 +493,9 @@ class FixedNsgMigrationTests(unittest.TestCase):
         self.assertFalse(transport.mutations())
 
     def test_missing_audit_blob_allow_stops_legacy_retirement_before_any_delete(self):
-        for group, name in (('management', 'allow-audit-storage-japan-https-egress'),
+        for group, name in (('management', 'allow-audit-storage-platform-https-egress'),
                             ('management', 'allow-audit-storage-foundry-https-egress'),
-                            ('pep', 'allow-mgmt-vm-audit-storage-japan-https-ingress'),
+                            ('pep', 'allow-mgmt-vm-audit-storage-platform-https-ingress'),
                             ('pep', 'allow-mgmt-vm-audit-storage-foundry-https-ingress')):
             transport = MemoryTransport(self.config, legacy=True)
             nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
@@ -494,6 +506,42 @@ class FixedNsgMigrationTests(unittest.TestCase):
             with self.subTest(group=group, name=name), self.assertRaises(nsg.FixedNsgError):
                 nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
             self.assertFalse(transport.mutations())
+
+    def test_platform_audit_rename_keeps_owned_allows_until_new_rules_are_verified(self):
+        transport = MemoryTransport(self.config)
+        before = {group: nsg._snapshot(transport.resources[transport.nsg_id(group)]) for group in nsg.GROUPS}
+        old_rules = transport.use_previous_platform_audit_rule_names()
+        expected = {rule['id']: nsg._properties(rule) for rule in old_rules}
+        plan = nsg.prepare_fixed_nsg_rules(self.config, transport)
+        self.assertEqual((plan['plannedMoves'], plan['azureWrites']), (2, 0))
+        prepared = nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        self.assertEqual(prepared['azureWrites'], 2)
+        for rule in old_rules:
+            original = expected[rule['id']]
+            actual = nsg._properties(rule)
+            self.assertGreater(actual['priority'], original['priority'])
+            self.assertLess(actual['priority'], 4096)
+            self.assertEqual({**actual, 'priority': original['priority']}, original)
+        with self.assertRaisesRegex(nsg.FixedNsgError, 'complete fixed NSG rule set'):
+            nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        self.assertEqual(nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record,
+                                                     wait_seconds=0)['azureWrites'], 0)
+        transport.deploy_fixed()
+        completed = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        self.assertEqual(completed['azureWrites'], 2)
+        for group, original in before.items():
+            self.assertEqual(nsg._snapshot(transport.resources[transport.nsg_id(group)]), original)
+        mutations = transport.mutations()
+        self.assertEqual([call['method'] for call in mutations], ['PUT', 'PUT', 'DELETE', 'DELETE'])
+        self.assertEqual({call['path'].split('?')[0] for call in mutations}, expected.keys())
+
+    def test_platform_audit_rename_rejects_a_modified_previous_rule(self):
+        transport = MemoryTransport(self.config)
+        previous, _ = transport.use_previous_platform_audit_rule_names()
+        previous['properties']['destinationPortRange'] = '80'
+        with self.assertRaisesRegex(nsg.FixedNsgError, 'exact previous rule definition'):
+            nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        self.assertFalse(transport.mutations())
 
     def test_dropped_put_response_is_not_retried_and_can_resume_after_readback(self):
         transport = MemoryTransport(self.config, legacy=True); transport.fail_after_put=True

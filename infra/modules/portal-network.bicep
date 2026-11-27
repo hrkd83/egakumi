@@ -11,7 +11,6 @@ param managementNsgName string
 param managementPrivateIp string
 param acaNsgName string
 param acaPrefix string
-param agwPrefix string
 param firewallPolicyName string
 param pepNsgName string
 // 環境の認証URLからホスト部分を取り出して、Firewallの宛先に使います。
@@ -156,20 +155,6 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
             '*.r2.cloudflarestorage.com'
           ]
           terminateTLS: false
-        }]
-      }
-      {
-        name: 'portal-ingress'
-        priority: 100
-        ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
-        action: { type: 'Allow' }
-        rules: [{
-          name: 'allow-appgw-aca-http'
-          ruleType: 'NetworkRule'
-          sourceAddresses: [agwPrefix]
-          destinationAddresses: [acaPrefix]
-          destinationPorts: ['80']
-          ipProtocols: ['TCP']
         }]
       }
       {

@@ -256,7 +256,7 @@ class LifecycleOperatorAccessTests(LifecycleFixture, unittest.TestCase):
             lifecycle.deploy_phase(self.config, "monitoring")
         self.prepare_nsg.assert_not_called()
         self.complete_nsg.assert_not_called()
-        self.portal_http_gate.assert_not_called()
+        self.backend_tls_gate.assert_not_called()
 
     def test_native_preprovision_checks_fixed_rules_before_core_inputs_and_stops_on_failure(self):
         self.prepare_nsg.side_effect = lifecycle.FixedNsgError("Unverified operator rule")

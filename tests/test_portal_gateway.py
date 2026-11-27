@@ -1,4 +1,4 @@
-"""Portalの認証不要ヘルスAPIへの切替で、他のGateway設定を変えないことを検証する。"""
+"""App GatewayのHTTPS後段と、WAF更新で使用する安全な書込形式の試験。"""
 import copy
 from pathlib import Path
 import sys
@@ -6,7 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from deployment.helpers.portal_gateway import configure_portal_probe, gateway_id, _writable, _etag
+from deployment.helpers.portal_gateway import require_appgw_backend_tls_ready, gateway_id, _writable, _etag
 
 
 CONFIG = {"subscriptionId": "11111111-1111-4111-8111-111111111111", "resourceStem": "test-fixture",
@@ -46,35 +46,49 @@ class Transport:
 
 
 class PortalGatewayTests(unittest.TestCase):
-    def test_backend_and_probe_http_cutover_preserves_unrelated_settings_and_removes_readonly_metadata(self):
-        current = fixture()
-        original = copy.deepcopy(current)
-        desired = fixture(["200"], "/api/health", 'Http', 80)
-        transport = Transport([{"statusCode": 200, "body": current}, {"statusCode": 202, "body": None},
-                               {"statusCode": 200, "body": desired}])
-        records = []
-        result = configure_portal_probe(CONFIG, transport, sleep=lambda _: None, record=lambda e, v: records.append((e, v)))
-        self.assertTrue(result["updated"])
-        self.assertEqual(current, original)
-        request = transport.calls[1]
-        expected = _writable(original)
-        expected["properties"]["probes"][1]["properties"]["path"] = "/api/health"
-        expected["properties"]["probes"][1]["properties"]["match"]["statusCodes"] = ["200"]
-        expected['properties']['probes'][1]['properties'].update(protocol='Http', port=80)
-        expected['properties']['backendHttpSettingsCollection'][0]['properties'].update(protocol='Http', port=80)
-        self.assertEqual(request["body"], expected)
-        self.assertEqual(request["headers"], {"If-Match": '"v1"'})
-        self.assertEqual(request["body"]["properties"]["requestRoutingRules"], original["properties"]["requestRoutingRules"])
-        self.assertNotIn("backendHttpSettings", request["body"]["properties"]["probes"][1]["properties"])
-        self.assertNotIn("publicCertData", request["body"]["properties"]["sslCertificates"][0]["properties"])
-        self.assertEqual(records[0][0], 'gateway-before')
-        self.assertEqual(records[0][1]['configuration'], _writable(original))
-        self.assertEqual(records[1][0], 'gateway-after')
+    def tls_fixture(self):
+        body = fixture(path="/api/health")
+        properties = body["properties"]
+        target = gateway_id(CONFIG)
+        root_name = "firewall-inspection-root"
+        properties["trustedRootCertificates"] = [{"name": root_name}]
+        properties["backendHttpSettingsCollection"].append({
+            "name": "behttp-apim", "properties": {"protocol": "Https", "port": 443,
+                "hostName": "apim.example.com", "probe": {"id": target + "/probes/probe-apim"}}})
+        for setting in properties["backendHttpSettingsCollection"]:
+            setting["properties"]["trustedRootCertificates"] = [{"id": target + "/trustedRootCertificates/" + root_name}]
+        properties["probes"][0]["properties"].update(
+            path="/status-0123456789abcdef", protocol="Https", port=443, host="apim.example.com")
+        properties["probes"][1]["properties"]["host"] = properties["backendHttpSettingsCollection"][0]["properties"]["hostName"]
+        return body
 
-    def test_already_configured_has_no_write(self):
-        transport = Transport([{"statusCode": 200, "body": fixture(["200"], "/api/health", 'Http', 80)}])
-        self.assertFalse(configure_portal_probe(CONFIG, transport)["updated"])
+    def test_https_settings_are_verified_without_write(self):
+        transport = Transport([{"statusCode": 200, "body": self.tls_fixture()}])
+        self.assertEqual(require_appgw_backend_tls_ready(CONFIG, transport), {
+            "newGateway": False, "protocol": "Https", "port": 443, "portalProbe": "/api/health"})
         self.assertEqual([item["method"] for item in transport.calls], ["GET"])
+
+    def test_only_an_explicitly_new_gateway_may_be_missing(self):
+        self.assertEqual(require_appgw_backend_tls_ready(CONFIG, Transport([{"statusCode": 404}]), allow_new=True),
+                         {"newGateway": True})
+        with self.assertRaisesRegex(ValueError, "HTTP 404"):
+            require_appgw_backend_tls_ready(CONFIG, Transport([{"statusCode": 404}]))
+
+    def test_legacy_or_untrusted_backend_does_not_pass(self):
+        for issue in ("certificate", "protocol", "probe-host"):
+            body = self.tls_fixture()
+            properties = body["properties"]
+            backend = properties["backendHttpSettingsCollection"][0]["properties"]
+            if issue == "certificate":
+                backend["trustedRootCertificates"] = []
+            elif issue == "protocol":
+                backend.update(protocol="Http", port=80)
+            else:
+                properties["probes"][1]["properties"]["host"] = "different.example.com"
+            transport = Transport([{"statusCode": 200, "body": body}])
+            with self.subTest(issue=issue), self.assertRaisesRegex(ValueError, "requires a separate migration"):
+                require_appgw_backend_tls_ready(CONFIG, transport, allow_new=True)
+            self.assertEqual([item["method"] for item in transport.calls], ["GET"])
 
     def test_get_reverse_references_are_removed_only_at_documented_collection_positions(self):
         current = fixture()
@@ -121,74 +135,11 @@ class PortalGatewayTests(unittest.TestCase):
                 _writable(current)
             self.assertEqual(current, original)
 
-    def test_root_redirect_probe_switches_to_health_api(self):
-        transport = Transport([{"statusCode": 200, "body": fixture(["200-399"])},
-                               {"statusCode": 202, "body": None},
-                               {"statusCode": 200, "body": fixture(["200"], "/api/health", 'Http', 80)}])
-        receipt = configure_portal_probe(CONFIG, transport, sleep=lambda _: None, record=lambda *_: None)
-        self.assertEqual(receipt["path"], "/api/health")
-        self.assertEqual(receipt["statusCodes"], ["200"])
-        self.assertTrue(receipt["updated"])
-
-    def test_unexpected_target_or_binding_stops_before_write(self):
-        for issue in ("id", "name", "type", "path", "binding", "codes", "state", "etag", "backend-port", "probe-protocol"):
-            body = fixture()
-            if issue in ("id", "name", "type"):
-                body[issue] = "another"
-            elif issue == "path":
-                body["properties"]["probes"][1]["properties"]["path"] = "/other"
-            elif issue == "binding":
-                body["properties"]["backendHttpSettingsCollection"][0]["properties"]["probe"]["id"] += "-other"
-            elif issue == "codes":
-                body["properties"]["probes"][1]["properties"]["match"]["statusCodes"] = ["200-599"]
-            elif issue == "state":
-                body["properties"]["provisioningState"] = "Updating"
-            elif issue == 'backend-port':
-                body['properties']['backendHttpSettingsCollection'][0]['properties']['port'] = 444
-            elif issue == 'probe-protocol':
-                body['properties']['probes'][1]['properties']['protocol'] = 'Http'
-            else:
-                body.pop("etag")
-            transport = Transport([{"statusCode": 200, "body": body}])
-            with self.subTest(issue=issue), self.assertRaises(ValueError):
-                configure_portal_probe(CONFIG, transport)
-            self.assertEqual([item["method"] for item in transport.calls], ["GET"])
-
-    def test_failed_or_stale_update_is_not_reported_as_success(self):
-        current, failed = fixture(), fixture(["200"], "/api/health", 'Http', 80)
-        failed["properties"]["provisioningState"] = "Failed"
-        transport = Transport([{"statusCode": 200, "body": current}, {"statusCode": 202, "body": {}},
-                               {"statusCode": 200, "body": failed}])
-        with self.assertRaisesRegex(ValueError, "did not succeed"):
-            configure_portal_probe(CONFIG, transport, record=lambda *_: None)
-
-    def test_existing_health_path_still_requires_the_https_backend_to_migrate(self):
-        current = fixture(['200'], '/api/health')
-        desired = fixture(['200'], '/api/health', 'Http', 80)
-        transport = Transport([{'statusCode': 200, 'body': current}, {'statusCode': 202, 'body': None},
-                               {'statusCode': 200, 'body': desired}])
-        result = configure_portal_probe(CONFIG, transport, sleep=lambda _: None, record=lambda *_: None)
-        self.assertTrue(result['updated'])
-        self.assertEqual(result['port'], 80)
-        self.assertEqual(transport.calls[1]['body']['properties']['backendHttpSettingsCollection'][0]['properties']['hostName'],
-                         current['properties']['backendHttpSettingsCollection'][0]['properties']['hostName'])
-
-    def test_missing_prechange_record_stops_before_gateway_write(self):
-        for recorder in (None, False, True, {}, [], 'recorder'):
-            transport = Transport([{'statusCode': 200, 'body': fixture()}])
-            with self.subTest(recorder=recorder), self.assertRaisesRegex(ValueError, 'protected pre-change record'):
-                configure_portal_probe(CONFIG, transport, record=recorder)
-            self.assertEqual([call['method'] for call in transport.calls], ['GET'])
-
     def test_only_one_concrete_etag_can_be_used_for_a_gateway_update(self):
         for etag in ('*', '"*"', 'W/"*"', '""', 'W/""', '"one", "two"',
                      'one,two', '"bad\x7f"', '"bad\n"', '"' + 'a' * 513 + '"', True):
-            current = fixture()
-            current['etag'] = etag
-            transport = Transport([{'statusCode': 200, 'body': current}])
             with self.subTest(etag=etag), self.assertRaisesRegex(ValueError, 'ETag'):
-                configure_portal_probe(CONFIG, transport, record=lambda *_: None)
-            self.assertEqual([call['method'] for call in transport.calls], ['GET'])
+                _etag({'body': {'etag': etag}})
         for etag in ('"owned-version"', 'W/"owned-version"', 'owned-version'):
             self.assertEqual(_etag({'body': {'etag': etag}}), etag)
         self.assertEqual(_etag({'body': {}, 'headers': {'ETag': '"header-version"'}}), '"header-version"')

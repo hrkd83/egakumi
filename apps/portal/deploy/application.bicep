@@ -60,8 +60,8 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
     workloadProfileName: 'Consumption'
     configuration: {
       activeRevisionsMode: 'Single'
-      // 公開originはHTTPSのまま、AppGWからの閉域HTTP80をACAで受け付けます。
-      ingress: { external: true, targetPort: 3000, transport: 'http', allowInsecure: true }
+      // Firewallから内部LBのHTTPS443で受け付けます。
+      ingress: { external: true, targetPort: 3000, transport: 'http', allowInsecure: false }
       registries: [{ server: registry.properties.loginServer, identity: runtimeIdentity.id }]
       secrets: concat([
         { name: 'auth-signing-secret', keyVaultUrl: signingSecretUri, identity: runtimeIdentity.id }

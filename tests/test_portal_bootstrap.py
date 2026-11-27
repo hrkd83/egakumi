@@ -190,7 +190,7 @@ class PortalBootstrapBicepTests(unittest.TestCase):
         self.assertEqual(app["properties"]["template"]["containers"][0]["image"], "mcr.microsoft.com/k8se/quickstart:latest")
         self.assertEqual(app["properties"]["template"]["scale"], {"minReplicas": 1, "maxReplicas": 1})
         ingress = app["properties"]["configuration"]["ingress"]
-        self.assertEqual(ingress, {"external": True, "targetPort": 80, "transport": "http", "allowInsecure": True})
+        self.assertEqual(ingress, {"external": True, "targetPort": 80, "transport": "http", "allowInsecure": False})
         self.assertEqual(app["identity"]["type"], "UserAssigned")
         self.assertEqual(template["outputs"]["platform"]["value"]["applicationName"], "[variables('applicationName')]")
 
@@ -231,7 +231,7 @@ class PortalBootstrapBicepTests(unittest.TestCase):
         self.assertEqual(app["name"], "[format('ca-{0}-portal', parameters('stem'))]")
         self.assertEqual(app["tags"], "[parameters('tags')]")
         self.assertEqual(app["properties"]["configuration"]["ingress"]["targetPort"], 3000)
-        self.assertIs(app['properties']['configuration']['ingress']['allowInsecure'], True)
+        self.assertIs(app['properties']['configuration']['ingress']['allowInsecure'], False)
         container = app["properties"]["template"]["containers"][0]
         self.assertIn("/api/health", json.dumps(container))
         self.assertIn("Readiness", json.dumps(container))

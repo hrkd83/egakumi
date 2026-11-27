@@ -1,4 +1,4 @@
-"""Portalの認証不要ヘルスAPIを、既存App Gatewayのヘルス判定へ設定する。"""
+"""App GatewayのHTTPSバックエンドを確認し、Portal用WAFを管理する。"""
 from __future__ import annotations
 
 import copy
@@ -32,8 +32,44 @@ def _ok(response, operation, allowed=(200,), *, require_body=True):
     return body
 
 
+def require_appgw_backend_tls_ready(config, transport, *, allow_new=False):
+    """許可された初回と、HTTPSプローブを構築済みのApp Gatewayだけを受け付ける。"""
+    expected = gateway_id(config)
+    response = transport.request("GET", expected + "?api-version=" + NETWORK_API)
+    if allow_new and response.get("statusCode") == 404:
+        return {"newGateway": True}
+    body = _ok(response, "read backend TLS configuration")
+    properties = body.get("properties", {})
+    if (str(body.get("id", "")).casefold() != expected.casefold()
+            or str(body.get("type", "")).casefold() != "microsoft.network/applicationgateways"
+            or properties.get("provisioningState") != "Succeeded"):
+        raise ValueError("App Gateway ownership or successful provisioning could not be verified")
+    certificate_name = "firewall-inspection-root"
+    certificate_id = (expected + "/trustedRootCertificates/" + certificate_name).casefold()
+    if sum(item.get("name") == certificate_name for item in properties.get("trustedRootCertificates", [])) != 1:
+        raise ValueError("Existing App Gateway requires a separate migration to the Firewall TLS inspection root")
+    for backend, probe_path, statuses in (("apim", "/status-0123456789abcdef", ["200-399"]),
+                                          ("portal", "/api/health", ["200"])):
+        settings = [item["properties"] for item in properties.get("backendHttpSettingsCollection", [])
+                    if item.get("name") == "behttp-" + backend]
+        probes = [item["properties"] for item in properties.get("probes", []) if item.get("name") == "probe-" + backend]
+        if len(settings) != 1 or len(probes) != 1:
+            raise ValueError("App Gateway HTTPS backend or probe binding is missing or ambiguous")
+        setting, probe = settings[0], probes[0]
+        expected_probe = (expected + "/probes/probe-" + backend).casefold()
+        if ((setting.get("protocol"), setting.get("port")) != ("Https", 443)
+                or not setting.get("hostName") or setting["hostName"] != probe.get("host")
+                or setting.get("pickHostNameFromBackendAddress", False) is not False
+                or str(setting.get("probe", {}).get("id", "")).casefold() != expected_probe
+                or [str(item.get("id", "")).casefold() for item in setting.get("trustedRootCertificates", [])] != [certificate_id]
+                or (probe.get("protocol"), probe.get("port"), probe.get("path")) != ("Https", 443, probe_path)
+                or probe.get("match", {}).get("statusCodes") != statuses):
+            raise ValueError("Existing App Gateway requires a separate migration to the inspected HTTPS backend contract")
+    return {"newGateway": False, "protocol": "Https", "port": 443, "portalProbe": "/api/health"}
+
+
 def _probe(body, expected):
-    """名前・リソースID・既存の紐付けを確認し、変更対象のプローブだけを返す。"""
+    """名前・リソースID・既存の紐付けを確認し、WAF更新前にPortalのプローブを照合する。"""
     if (str(body.get("id", "")).casefold() != expected.casefold()
             or body.get("name") != expected.rsplit("/", 1)[-1]
             or str(body.get("type", "")).casefold() != "microsoft.network/applicationgateways"):
@@ -115,85 +151,6 @@ def _writable(body):
         if isinstance(identity.get("userAssignedIdentities"), dict):
             identity["userAssignedIdentities"] = {key: {} for key in identity["userAssignedIdentities"]}
     return result
-
-
-def _portal_backend(body, expected):
-    """所有プローブの結び付けと、移行対象のHTTP(S)後段だけを照合する。"""
-    probe = _probe(body, expected)
-    backend = next(item for item in body['properties']['backendHttpSettingsCollection']
-                   if item.get('name') == 'behttp-portal')
-    properties = backend.get('properties', {})
-    protocol, port = properties.get('protocol'), properties.get('port')
-    if (protocol, port) not in (('Https', 443), ('Http', 80)):
-        raise ValueError('Portal gateway has an unexpected backend protocol or port')
-    probe_properties = probe['properties']
-    if (probe_properties.get('protocol') != protocol
-            or probe_properties.get('port', port) != port):
-        raise ValueError('Portal gateway probe protocol or port differs from its backend')
-    return backend, probe
-
-
-def portal_http_configured(body, expected):
-    """後段・プローブ・ヘルスAPIが初期HTTP80契約に一致するかを返す。"""
-    backend, probe = _portal_backend(body, expected)
-    return (backend['properties']['protocol'] == 'Http'
-            and backend['properties']['port'] == 80
-            and probe['properties']['protocol'] == 'Http'
-            and probe['properties'].get('port') == 80
-            and probe['properties']['path'] == '/api/health'
-            and probe['properties']['match']['statusCodes'] == ['200'])
-
-
-def configure_portal_probe(config, transport, *, record=None, timeout=1200, sleep=time.sleep, monotonic=time.monotonic, progress=print):
-    """準備済みPortalへの後段とプローブを同一PUTでHTTP80へ揃える。
-
-    呼出前にFW80と、今回配備した期待image/revisionのHTTP受付を照合する。
-    listener・Host・証明書・他のAPI経路は現在値を保持する。
-    """
-    expected = gateway_id(config)
-    path = expected + "?api-version=" + NETWORK_API
-    response = transport.request("GET", path)
-    body = _ok(response, "read")
-    _portal_backend(body, expected)
-    if body.get("properties", {}).get("provisioningState") != "Succeeded":
-        raise ValueError("Portal gateway is not ready; inspect its current operation before retrying")
-    receipt = {"resourceId": expected, "probe": "probe-portal", "path": "/api/health", "statusCodes": ["200"],
-               "protocol": "Http", "port": 80, "updated": False}
-    if portal_http_configured(body, expected):
-        return receipt
-    etag = _etag(response)
-    update = _writable(body)
-    target = next(item for item in update["properties"]["probes"] if item["name"] == "probe-portal")
-    target["properties"]["path"] = "/api/health"
-    target["properties"]["match"]["statusCodes"] = ["200"]
-    target["properties"]["protocol"] = 'Http'
-    target["properties"]["port"] = 80
-    backend = next(item for item in update['properties']['backendHttpSettingsCollection'] if item['name'] == 'behttp-portal')
-    backend['properties']['protocol'] = 'Http'
-    backend['properties']['port'] = 80
-    if not callable(record):
-        raise ValueError('Portal HTTP gateway cutover requires a protected pre-change record')
-    record('gateway-before', {'resourceId': expected, 'etag': etag,
-                              'configuration': _writable(body), 'plannedProtocol': 'Http', 'plannedPort': 80})
-    _ok(transport.request("PUT", path, update, headers={"If-Match": etag}), "update", (200, 201, 202), require_body=False)
-    deadline, notice = monotonic() + timeout, monotonic() + 45
-    while monotonic() < deadline:
-        current = _ok(transport.request("GET", path), "read update")
-        _portal_backend(current, expected)
-        status = current.get("properties", {}).get("provisioningState")
-        if status == "Succeeded" and portal_http_configured(current, expected):
-            if _writable(current) != update:
-                raise ValueError('Portal HTTP gateway readback differs from its planned update; inspect concurrent or normalized changes')
-            result = {**receipt, "updated": True}
-            record('gateway-after', result)
-            return result
-        if status in ("Failed", "Canceled", "Deleting"):
-            raise ValueError("Portal gateway update did not succeed; inspect its provisioning state")
-        if monotonic() >= notice:
-            progress("ポータル: App Gatewayのヘルス判定設定の反映を待っています。", flush=True)
-            notice = monotonic() + 45
-        sleep(10)
-    raise ValueError("Portal gateway update is still pending; inspect it before retrying")
 
 
 def _etag(response):

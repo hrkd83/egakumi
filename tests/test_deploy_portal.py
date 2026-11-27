@@ -123,6 +123,7 @@ class PortalDeploymentTests(unittest.TestCase):
                  mock.patch.object(portal, 'prepare_api_key_groups', return_value=config), \
                  mock.patch.object(portal, 'run_json', return_value={}), \
                  mock.patch.object(portal, 'verify_foundation'), \
+                 mock.patch.object(portal, 'require_appgw_backend_tls_ready'), \
                  mock.patch.object(portal, 'ArmTransport'), \
                  mock.patch.object(portal, 'source_bundle') as bundle, \
                  mock.patch.object(portal, 'build_image') as build, \
@@ -135,6 +136,35 @@ class PortalDeploymentTests(unittest.TestCase):
                                  '--image-digest', 'sha256:' + 'a' * 64, '--execute'])
             for operation in (bundle, build, signing, profile, release):
                 operation.assert_not_called()
+
+    def test_cli_records_verified_tls_after_portal_release(self):
+        config, state = fixture()
+        readiness = {"protocol": "Https", "port": 443, "portalProbe": "/api/health"}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            workspace = local_paths(config, root)
+            workspace.ensure()
+            state_file = workspace.state / "latest.json"
+            state_file.write_text(json.dumps(state), encoding="utf-8")
+            with mock.patch.object(portal, "REPOSITORY", root), \
+                 mock.patch.dict(os.environ, {"AZURE_ENV_NAME": config["environmentName"]}, clear=True), \
+                 mock.patch.object(portal, "load_configuration", return_value=config), \
+                 mock.patch.object(portal, "prepare_api_key_groups", return_value=config), \
+                 mock.patch.object(portal, "ArmTransport"), \
+                 mock.patch.object(portal, "require_appgw_backend_tls_ready") as verify_tls, \
+                 mock.patch.object(portal, "run_json", return_value={}), \
+                 mock.patch.object(portal, "verify_foundation"), \
+                 mock.patch.object(portal, "signing_secret"), \
+                 mock.patch.object(portal, "profile_secret"), \
+                 mock.patch.object(portal, "deploy_release", return_value={
+                     "backendTls": readiness, "callbackWaf": {}, "subscriptionProfiles": {}}), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(portal.main(["--config", str(workspace.params), "--state-file", str(state_file),
+                                              "--image-digest", "sha256:" + "a" * 64, "--execute"]), 0)
+            verify_tls.assert_called_once()
+            receipt = json.loads((workspace.state / "portal-deployment.json").read_text(encoding="utf-8"))
+            self.assertEqual(receipt["backendTls"], readiness)
+            self.assertTrue(receipt["publicHealthVerified"])
 
     def test_existing_core_output_is_usable_without_redeploying_core(self):
         config, state = fixture()
@@ -353,18 +383,17 @@ class PortalDeploymentTests(unittest.TestCase):
             phases.append('public')
             if public_failure:
                 raise ValueError('public failed')
-        def http_ready(*args, **kwargs):
-            phases.append('http-ready')
-            self.assertEqual(kwargs['expected_image_digest'], values['imageDigest'])
+        def tls_ready(*args, **kwargs):
+            phases.append('tls-ready')
             if readiness_failure:
                 raise ValueError('readiness failed')
+            return {'protocol': 'Https', 'port': 443}
         with mock.patch.object(portal, 'deploy_template', side_effect=deploy), \
              mock.patch.object(portal, 'wait_schema', side_effect=schema), \
-             mock.patch.object(portal, 'configure_portal_probe', side_effect=lambda *a, **k: phases.append('gateway')), \
              mock.patch.object(portal, 'configure_portal_callback_waf', side_effect=lambda *a: phases.append('callback-waf')), \
              mock.patch.object(portal, 'configure_data_waf', side_effect=lambda *a, **k: phases.append('data-waf')), \
              mock.patch.object(portal, 'wait_application', side_effect=lambda *a, **k: phases.append('ready')), \
-             mock.patch.object(portal, 'verify_portal_http_ready', side_effect=http_ready), \
+             mock.patch.object(portal, 'require_appgw_backend_tls_ready', side_effect=tls_ready), \
              mock.patch.object(portal, 'verify_public', side_effect=public), \
              mock.patch.object(portal, 'activate_profile_settings', side_effect=lambda *a: phases.append('profiles')), \
              contextlib.redirect_stdout(io.StringIO()):
@@ -373,7 +402,8 @@ class PortalDeploymentTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, error):
                     portal.deploy_release(config, values, {}, transport, state=state, client_prepare=lambda *a, **k: None)
             else:
-                portal.deploy_release(config, values, {}, transport, state=state, client_prepare=lambda *a, **k: None)
+                release = portal.deploy_release(config, values, {}, transport, state=state, client_prepare=lambda *a, **k: None)
+                self.assertEqual(release['backendTls'], {'protocol': 'Https', 'port': 443})
         transport.request.assert_called_once_with('POST', portal.group_scope(config)
             + '/providers/Microsoft.App/jobs/caj-' + config['resourceStem'] + '-psql/start?api-version=' + portal.APP_API, None)
         return phases
@@ -382,7 +412,7 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertEqual(self.release(schema_failure=True), ['database', 'sql'])
 
     def test_update_order_includes_public_verification(self):
-        self.assertEqual(self.release(), ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'http-ready', 'gateway', 'public', 'profiles'])
+        self.assertEqual(self.release(), ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'tls-ready', 'public', 'profiles'])
 
     def test_second_phase_reuses_existing_secret_versions(self):
         self.release()
@@ -394,36 +424,36 @@ class PortalDeploymentTests(unittest.TestCase):
 
     def test_public_failure_never_activates_subscription_profiles(self):
         self.assertEqual(self.release(public_failure=True),
-                         ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'http-ready', 'gateway', 'public'])
+                         ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'tls-ready', 'public'])
 
-    def test_http_readiness_failure_does_not_switch_gateway_or_activate_profiles(self):
+    def test_tls_readiness_failure_does_not_activate_profiles(self):
         self.assertEqual(self.release(readiness_failure=True),
-                         ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'http-ready'])
+                         ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'tls-ready'])
 
     def test_application_waits_for_expected_image_in_both_app_and_ready_revision(self):
         config, _ = fixture()
         digest = 'sha256:' + 'a' * 64
         expected = 'acrtestsample.azurecr.io/portal@' + digest
         revision = 'ca-test-sample-portal--expected'
-        def app(image):
+        def app(image, **ingress):
             return {'properties': {'provisioningState': 'Succeeded',
                 'latestRevisionName': revision, 'latestReadyRevisionName': revision,
-                'configuration': {'ingress': {'allowInsecure': True, 'targetPort': 3000}},
+                'configuration': {'ingress': {'targetPort': 3000, **ingress}},
                 'template': {'containers': [{'name': 'portal', 'image': image}]}}}
         def ready(image):
             return {'properties': {'healthState': 'Healthy', 'provisioningState': 'Provisioned',
                 'runningState': 'Running', 'template': {'containers': [{'name': 'portal', 'image': image}]}}}
         transport = mock.Mock()
         transport.request.side_effect = [{'statusCode': 200, 'body': body} for body in (
-            app('old-healthy-image'), app(expected), ready('old-healthy-image'), app(expected), ready(expected))]
+            app('old-healthy-image'), app(expected, allowInsecure=True), app(expected), ready('old-healthy-image'), app(expected), ready(expected))]
         ticks = [0]
         def sleep(seconds):
             ticks[0] += seconds
         result = portal.wait_application(config, transport, expected_image_digest=digest,
                                         timeout=45, sleep=sleep, monotonic=lambda: ticks[0])
         self.assertEqual(result, {'revision': revision, 'expectedImageVerified': True})
-        self.assertEqual(ticks[0], 20)
-        self.assertEqual(transport.request.call_count, 5)
+        self.assertEqual(ticks[0], 30)
+        self.assertEqual(transport.request.call_count, 6)
         self.assertTrue(all(call.args[0] == 'GET' for call in transport.request.call_args_list))
 
     def test_public_health_uses_explicit_protocol_headers_and_requires_no_store(self):

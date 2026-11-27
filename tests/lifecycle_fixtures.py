@@ -147,9 +147,15 @@ class LifecycleFixture:
         self.addCleanup(privacy_link.stop)
         # Tuple/ETag/所有境界は専用のfixed_nsg/Portal移行試験で検査します。
         # hook試験では実wrapperを通し、ゲート→stage→Core→completeの順を検査します。
-        portal_gate = mock.patch.object(lifecycle, "require_portal_http_core_ready",
+        host_time = mock.patch.object(lifecycle, "require_management_host_time_core_ready", return_value={})
+        host_time.start()
+        self.addCleanup(host_time.stop)
+        ca_loader = mock.patch.object(lifecycle, "load_firewall_tls_inspection", return_value={})
+        ca_loader.start()
+        self.addCleanup(ca_loader.stop)
+        portal_gate = mock.patch.object(lifecycle, "require_appgw_backend_tls_ready",
                                        return_value={"newGateway": True, "httpMigrationRequired": False})
-        self.portal_http_gate = portal_gate.start()
+        self.backend_tls_gate = portal_gate.start()
         self.addCleanup(portal_gate.stop)
         prepare_nsg = mock.patch.object(lifecycle, "prepare_fixed_nsg_rules",
                                         return_value={"status": "staged", "azureWrites": 0})

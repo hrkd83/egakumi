@@ -1,4 +1,4 @@
-// Firewall の通信許可・遮断を、検索用 LAW と既存の監査 Storage へ記録します。
+// FirewallのログをLAWへ記録し、URLを含まない分類は監査Storageへも直接送ります。
 // Firewall 本体や Policy を更新せず、作成済み Firewall へ診断設定だけを追加します。
 // 高負荷な Flow Trace / Fat Flow は通常運用の既定では有効にしません。
 
@@ -17,12 +17,20 @@ resource firewall 'Microsoft.Network/azureFirewalls@2025-01-01' existing = {
 }
 
 // カテゴリ名は Azure Firewall の構造化ログ仕様に合わせます。
-// IDPS を利用できない Standard では、そのログカテゴリを要求しません。
+// PremiumのIDPS署名は変換不要の診断設定で収集します。
 // https://learn.microsoft.com/azure/firewall/monitor-firewall-reference#supported-resource-logs-for-microsoftnetworkazurefirewalls
 resource logs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   scope: firewall
   name: 'diag-${resourceStem}-fw'
   properties: diagnosticSettingProperties['fw-logs']
+}
+
+// URLを含み得る分類は既存の直送設定から外した後、取り込み変換のあるLAWへ送ります。
+resource urlLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: firewall
+  name: 'diag-${resourceStem}-fw-url-logs'
+  properties: diagnosticSettingProperties['fw-url-logs']
+  dependsOn: [logs]
 }
 
 // 数値メトリクスを通信ログと分け、監査 Storage への不要な二重保存を避けます。

@@ -88,6 +88,27 @@ class LogPrivacyTests(unittest.TestCase):
             privacy.plan(self.config, self.transport)
         self.assertTrue(all(call[0] == "GET" for call in self.transport.calls))
 
+    def test_recognized_workspace_transform_adds_firewall_redaction_without_replacing_appgw(self):
+        ids = self.transport.ids
+        old = privacy.desired_dcr(self.config)
+        old["properties"]["dataFlows"] = old["properties"]["dataFlows"][:1]
+        self.transport.resources[ids["dcr"]] = {"id": ids["dcr"], **old}
+        self.transport.resources[ids["workspace"]]["properties"]["defaultDataCollectionRuleResourceId"] = ids["dcr"]
+        self.assertEqual(privacy.existing_workspace_link(self.config, self.transport), ids["dcr"])
+        transform, link = privacy.workspace_plan(self.config, self.transport)
+        self.assertTrue(transform["required"])
+        self.assertFalse(link["required"])
+        flows = transform["body"]["properties"]["dataFlows"]
+        self.assertEqual(flows[0], old["properties"]["dataFlows"][0])
+        self.assertEqual({(flow["streams"][0], flow["transformKql"]) for flow in flows[1:]}, {
+            ("Microsoft-Table-AZFWApplicationRule", "source | extend TargetUrl = ''"),
+            ("Microsoft-Table-AZFWThreatIntel", "source | extend TargetUrl = ''"),
+        })
+        old["properties"]["dataFlows"][0]["transformKql"] = "source | where false"
+        with self.assertRaisesRegex(privacy.LogPrivacyError, "different flows"):
+            privacy.existing_workspace_link(self.config, self.transport)
+        self.assertTrue(all(call[0] == "GET" for call in self.transport.calls))
+
     def test_stale_plan_and_unconfirmed_update_do_not_report_success(self):
         proposal = privacy.plan(self.config, self.transport)
         self.transport.resources[self.transport.ids["workspace"]]["properties"]["retentionInDays"] = 100

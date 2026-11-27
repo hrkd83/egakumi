@@ -320,7 +320,8 @@ class SplitConfigurationTests(unittest.TestCase):
                 self.assertFalse(set(FIREWALL_IP_KEYS) & set(options["network"]["firewall"]))
                 self.assertNotIn("dnsServers", options["network"]["firewall"])
                 self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
-                self.assertEqual(options["network"]["firewall"]["sku"], "Standard" if name == "test" else "Premium")
+                self.assertEqual(options["network"]["firewall"]["sku"], "Premium")
+                self.assertEqual(options["network"]["firewall"]["idpsMode"], "Deny")
                 self.assertNotIn("operatorPorts", options["network"])
                 self.assertIn("rateLimits", options["gateway"])
                 for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):

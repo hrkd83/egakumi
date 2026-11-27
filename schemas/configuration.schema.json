@@ -184,12 +184,8 @@
           "type": "object",
           "properties": {
             "sku": {
-              "type": "string",
-              "enum": [
-                "Standard",
-                "Premium"
-              ],
-              "description": "省略時はPremiumです。費用を抑える検証サンプルはStandardを明示します。IDPSはPremiumだけで使えます。"
+              "const": "Premium",
+              "description": "TLS検査とIDPSのため全環境でPremiumです。"
             },
             "threatIntelMode": {
               "type": "string",
@@ -203,11 +199,10 @@
             "idpsMode": {
               "enum": [
                 "Alert",
-                "Deny",
-                "Off",
-                null
+                "Deny"
               ],
-              "description": "PremiumではAlertまたはDeny。Standardでは省略・null・Offのみです。"
+              "default": "Deny",
+              "description": "IDPSは遮断付きのDenyで開始します。Alertは監視のみです。"
             },
             "zones": {
               "type": "array",
@@ -225,7 +220,7 @@
               },
               "uniqueItems": true,
               "default": [],
-              "description": "Premium IDPSが内部とみなすIP範囲。空配列は追加指定なし。Standardでは空配列にします。"
+              "description": "Premium IDPSが内部とみなすIP範囲。"
             },
             "snatPrivateRanges": {
               "type": "array",
@@ -255,61 +250,6 @@
               "description": "Premium IDPS検査を除外する通信。追加しない場合は空配列。"
             }
           },
-          "allOf": [
-            {
-              "if": {
-                "required": [
-                  "sku"
-                ],
-                "properties": {
-                  "sku": {
-                    "const": "Premium"
-                  }
-                }
-              },
-              "then": {
-                "properties": {
-                  "idpsMode": {
-                    "enum": [
-                      "Alert",
-                      "Deny"
-                    ]
-                  }
-                }
-              }
-            },
-            {
-              "if": {
-                "required": [
-                  "sku"
-                ],
-                "properties": {
-                  "sku": {
-                    "const": "Standard"
-                  }
-                }
-              },
-              "then": {
-                "properties": {
-                  "idpsMode": {
-                    "enum": [
-                      "Off",
-                      null
-                    ]
-                  },
-                  "idpsPrivateRanges": {
-                    "maxItems": 0
-                  },
-                  "signatureOverrides": {
-                    "maxItems": 0
-                  },
-                  "bypassTrafficSettings": {
-                    "maxItems": 0
-                  }
-                }
-              }
-            }
-          ],
           "additionalProperties": false
         },
         "dnsTtl": {
@@ -1599,6 +1539,30 @@
     },
     "portalApiKeys": {
       "$ref": "#/$defs/portalApiKeys"
+    },
+    "firewallTlsInspection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "managedIdentityResourceId",
+        "intermediateCaSecretId",
+        "rootCaCertificateFile"
+      ],
+      "description": "Firewall TLS検査の専用マネージドID、バージョン付き中間CA参照、App Gateway用ルート証明書。",
+      "properties": {
+        "managedIdentityResourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "intermediateCaSecretId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootCaCertificateFile": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   },
   "$defs": {

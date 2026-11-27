@@ -1,4 +1,4 @@
-"""アクセス監査のqueryをLAW取り込み前に除去する。計画作成はGETだけで行う。
+"""AppGWのqueryとFirewallの検査URLをLAW取り込み前に除去する。
 
 Core以外の診断設定・Workspace・DCRは変更しない。Storage直送は取り込み変換を
 経由しないため、アクセスログだけを変換後exportへ切り替え、WAF直送は保持する。
@@ -52,10 +52,13 @@ def _read(transport, identifier: str, version: str, missing=False) -> dict | Non
 
 def existing_workspace_link(config: dict, transport) -> str:
     """再配備前に実際の関連付けを読み、親Workspace PUTで消さない。"""
-    workspace = _read(transport, resource_ids(config)["workspace"], WORKSPACE_API, missing=True)
+    ids = resource_ids(config)
+    workspace = _read(transport, ids["workspace"], WORKSPACE_API, missing=True)
     link = workspace.get("properties", {}).get("defaultDataCollectionRuleResourceId", "") if workspace else ""
-    if link and link.casefold() != resource_ids(config)["dcr"].casefold():
+    if link and link.casefold() != ids["dcr"].casefold():
         raise LogPrivacyError("Workspace uses another transformation DCR; its owner must merge privacy before Core redeployment")
+    if workspace:
+        _validate_existing_dcr(_read(transport, ids["dcr"], DCR_API, missing=True), desired_dcr(config))
     return link
 
 
@@ -63,9 +66,11 @@ def desired_dcr(config: dict) -> dict:
     """Bicepと同じJSON正本から、Workspace専用変換の定義を作る。"""
     ids = resource_ids(config)
     tags = {**config.get("tags", {}), "product": config["productName"], "environment": config["environmentName"], "azd-env-name": config["environmentName"]}
+    transforms = [(PRIVACY["stream"], PRIVACY["transformKql"])]
+    transforms.extend(("Microsoft-Table-" + table, PRIVACY["firewallUrlTransformKql"]) for table in PRIVACY["firewallUrlTables"])
     return {"location": config["location"], "kind": "WorkspaceTransforms", "tags": tags, "properties": {
         "dataSources": {}, "destinations": {"logAnalytics": [{"name": "law-core", "workspaceResourceId": ids["workspace"]}]},
-        "dataFlows": [{"streams": [PRIVACY["stream"]], "destinations": ["law-core"], "transformKql": PRIVACY["transformKql"]}]}}
+        "dataFlows": [{"streams": [stream], "destinations": ["law-core"], "transformKql": query} for stream, query in transforms]}}
 
 
 def _contains(actual, expected) -> bool:
@@ -93,6 +98,17 @@ def _change(identifier, version, current, desired, label, stage, method="PUT"):
             "etag": (current or {}).get("etag")}
 
 
+def _validate_existing_dcr(current: dict | None, desired: dict) -> None:
+    """正確に一致する旧AppGW変換だけを、新しいFirewall変換を加える移行元として認める。"""
+    if current is None:
+        return
+    properties = desired["properties"]
+    previous = {**properties, "dataFlows": properties["dataFlows"][:1]}
+    if (current.get("kind") != "WorkspaceTransforms"
+            or not any(_contains(current.get("properties"), candidate) for candidate in (properties, previous))):
+        raise LogPrivacyError("Existing Core transformation has different flows; preserve it and review the merge")
+
+
 def workspace_plan(config: dict, transport) -> list[dict]:
     """他者DCRを置換せず、Core所有DCRとWorkspace関連付けの2項目を計画する。"""
     ids = resource_ids(config)
@@ -102,8 +118,7 @@ def workspace_plan(config: dict, transport) -> list[dict]:
         raise LogPrivacyError("Workspace already uses another transformation DCR; its owner must merge the privacy transformation")
     dcr = _read(transport, ids["dcr"], DCR_API, missing=True)
     desired = desired_dcr(config)
-    if dcr and (dcr.get("kind") != "WorkspaceTransforms" or not _contains(dcr.get("properties"), desired["properties"])):
-        raise LogPrivacyError("Existing Core transformation has different flows; preserve it and review the merge")
+    _validate_existing_dcr(dcr, desired)
     return [_change(ids["dcr"], DCR_API, dcr, desired, "workspace-transform", "prepare"),
             _change(ids["workspace"], WORKSPACE_API, workspace,
                     {"properties": {"defaultDataCollectionRuleResourceId": ids["dcr"]}}, "workspace-link", "prepare", "PATCH")]

@@ -24,8 +24,7 @@ from deployment.helpers.portal_authentication import prepare_secret
 from deployment.helpers.portal_auth_certificate import deployment_authentication
 from deployment.helpers.portal_resources import resource_names
 from deployment.helpers.portal_image import source_bundle, build_image, reusable_image, read_build_receipt
-from deployment.helpers.portal_gateway import configure_portal_probe, configure_portal_callback_waf
-from deployment.helpers.portal_backend_http import verify_portal_http_ready
+from deployment.helpers.portal_gateway import configure_portal_callback_waf, require_appgw_backend_tls_ready
 from deployment.helpers.public_health_http import read_public_json
 from deployment.helpers.portal_api_keys import prepare_api_key_groups, available_products, approved_product_catalog, verification_subscriptions
 from deployment.helpers.management_maintenance import management_maintenance_inputs
@@ -34,7 +33,7 @@ from deployment.helpers.management_sql_discovery import discover_management_sql_
 from deployment.helpers.grpc_lifecycle import _prepare_credential
 from deployment.helpers.subscription_profiles import SECRET_NAME, activate_profile_settings
 from deployment.helpers.credential_image import checked
-from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, state_from_outputs, upgrade_journal
+from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, state_from_outputs
 from waf_policy import reconcile as configure_data_waf
 from standard_apis import infrastructure_api_definitions
 
@@ -264,7 +263,7 @@ def wait_application(config, transport, *, expected_image_digest=None, timeout=9
         containers = properties.get('template', {}).get('containers', [])
         expected_app = (expected_image is None or (len(containers) == 1
                         and containers[0].get('name') == 'portal' and containers[0].get('image') == expected_image
-                        and ingress.get('allowInsecure') is True and ingress.get('targetPort') == 3000))
+                        and ingress.get('allowInsecure', False) is False and ingress.get('targetPort') == 3000))
         if (properties.get('provisioningState') == 'Succeeded' and expected_app
                 and isinstance(revision, str) and re.fullmatch(r'[a-z0-9-]+', revision)
                 and revision == properties.get('latestReadyRevisionName')):
@@ -301,7 +300,7 @@ def verify_public(origin, *, timeout=180, sleep=time.sleep, monotonic=time.monot
     raise ValueError('Portal revision is running but the public health check did not succeed')
 
 
-def deploy_release(config, values, template, transport, *, record=None, state=None,
+def deploy_release(config, values, template, transport, *, state=None,
                    client_prepare=update_management_client_assets):
     """SQLの準備が成功した場合だけ、新しいアプリを公開して疎通確認する。"""
     print('ポータル: DB・実行権限・SQL初期化ジョブを配備します。', flush=True)
@@ -322,14 +321,12 @@ def deploy_release(config, values, template, transport, *, record=None, state=No
     deployed = deploy_template(config, values, template, transport)
     client_prepare(config, state, deployed, transport, component='portal')
     wait_application(config, transport, expected_image_digest=values['imageDigest'])
-    http_readiness = verify_portal_http_ready(config, transport, expected_image_digest=values['imageDigest'])
-    print('ポータル: 準備済みHTTP80後段とヘルス監視へApp Gatewayを揃えます。', flush=True)
-    gateway_probe = configure_portal_probe(config, transport, record=record)
+    gateway_readiness = require_appgw_backend_tls_ready(config, transport)
     print('ポータル: 公開URLから起動状態を確認します。', flush=True)
     verify_public(values['publicOrigin'])
     apim_id = group_scope(config) + '/providers/Microsoft.ApiManagement/service/' + values['apimName']
     profiles = activate_profile_settings(apim_id, transport, infrastructure_api_definitions(config['apiDefinitions']))
-    return {'probe': gateway_probe, 'httpReadiness': http_readiness, 'callbackWaf': callback_waf,
+    return {'backendTls': gateway_readiness, 'callbackWaf': callback_waf,
             'dataWaf': data_waf, 'subscriptionProfiles': profiles}
 
 
@@ -366,6 +363,8 @@ def main(argv=None):
     data, source_hash = (None, None) if args.image_digest else source_bundle()
     build_record = workspace.state / 'portal-build.json'
     transport = ArmTransport(config) if args.execute else None
+    if transport is not None:
+        require_appgw_backend_tls_ready(config, transport)
     if not args.image_digest:
         values['imageDigest'] = reusable_image(config, state, source_hash, build_record, transport=transport)
     plan = {'status': 'planned', 'azureWrites': 0, 'azdUpRequired': False,
@@ -374,7 +373,7 @@ def main(argv=None):
         'imageReuseVerificationPending': not args.execute and not args.image_digest,
         'apiKeyGroupCount': len(values['apiKeyGroups']),
         'verificationSubscriptionCount': len(values['apiKeyVerificationSubscriptions']),
-        'steps': ['discover-management-sql-identity', 'build-and-push-image', 'prepare-database-and-permissions', 'prepare-apim-key-management-permission', 'initialize-sql', 'bootstrap-verification-subscriptions', 'configure-portal-auth-callback-waf', 'update-application', 'verify-expected-image-and-http-ingress', 'verify-firewall-http80', 'configure-portal-health-probe', 'schedule-group-observation', 'verify-public-health', 'enable-subscription-profiles']}
+        'steps': ['verify-gateway-backend-tls', 'discover-management-sql-identity', 'build-and-push-image', 'prepare-database-and-permissions', 'prepare-apim-key-management-permission', 'initialize-sql', 'bootstrap-verification-subscriptions', 'configure-portal-auth-callback-waf', 'update-application', 'verify-expected-image-and-https-ingress', 'schedule-group-observation', 'verify-public-health', 'enable-subscription-profiles']}
     protected_json(workspace.state / 'portal-plan.json', {**plan, 'parameters': values, 'sourceSha256': source_hash})
     if not args.execute:
         print(json.dumps(plan, ensure_ascii=False))
@@ -394,14 +393,13 @@ def main(argv=None):
             record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))
     values['signingSecret'] = signing_secret(config, values, transport)
     values['profileSecret'] = profile_secret(config, values, transport)
-    gateway_readiness = deploy_release(config, values, template, transport,
-                                      record=upgrade_journal(config, 'portal-http80'), state=state)
+    gateway_readiness = deploy_release(config, values, template, transport, state=state)
     result = {'status': 'deployed', 'database': plan['database'], 'application': plan['application'],
         'authentication': values['authentication'],
         'sqlInitialized': True, 'applicationReady': True, 'publicHealthVerified': True,
         'imageDigest': values['imageDigest'], 'publicUrl': values['publicOrigin'], 'azdUpExecuted': False,
-        'gatewayProbe': gateway_readiness['probe'], 'callbackWaf': gateway_readiness['callbackWaf'],
-        'httpReadiness': gateway_readiness['httpReadiness'],
+        'callbackWaf': gateway_readiness['callbackWaf'],
+        'backendTls': gateway_readiness['backendTls'],
         'subscriptionProfiles': gateway_readiness['subscriptionProfiles']}
     protected_json(workspace.state / 'portal-deployment.json', result)
     print(json.dumps(result, ensure_ascii=False))

@@ -25,7 +25,9 @@ import copy
 import ipaddress
 import json
 import re
+import ssl
 import stat
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -60,7 +62,7 @@ TOP_KEYS = {
     "$schema", "$comment",
     "schemaVersion", "productName", "environmentName", "subscriptionId",
     "azureTenantId", "entraTenantId", "location", "foundryLocation", "apiCenterLocation", "tags", "network",
-    "services", "gateway", "management", "monitoring", "certificate", "authorization",
+    "services", "gateway", "management", "monitoring", "certificate", "firewallTlsInspection", "authorization",
     "apiDefinitions", "publishApis", "credentialProviders", "portal", "credentialBroker", "portalAuthentication", "portalApiKeys",
 }
 NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
@@ -74,7 +76,7 @@ SECRET_VALUE_KEYS = {"adminPassword", "password", "pfxPassword", "cloudflareToke
 PARAMETER_KEYS = {
     "$schema", "$comment", "configFile", "schemaVersion", "productName",
     "environmentName", "subscriptionId", "azureTenantId", "entraTenantId", "services", "gateway",
-    "management", "monitoring", "certificate",
+    "management", "monitoring", "certificate", "firewallTlsInspection",
     "credentialProviders", "portal", "portalApiKeys", "network", "location", "foundryLocation", "apiCenterLocation", "tags",
 }
 # このVNet内で構築する資材のアドレスだけをNSGへ動的に渡します。
@@ -120,6 +122,7 @@ PARAMETER_OWNED_PATHS = (
     *(("network", "firewall", key) for key in PARAMETER_FIREWALL_KEYS),
     *((section, key) for section in ("services", "management", "monitoring", "certificate", "portal")
       for key in PARAMETER_SECTION_KEYS[section]),
+    ("firewallTlsInspection",),
     ("gateway", "publicHostName"),
     ("portal",),
     ("gateway", "authentication", "entra", "audience"),
@@ -408,18 +411,9 @@ def _network(raw: Any) -> dict:
         "sku", "idpsMode", "threatIntelMode", "zones", "idpsPrivateRanges", "signatureOverrides",
         "bypassTrafficSettings", "snatPrivateRanges",
     })
-    tier = _choice(f.setdefault("sku", "Premium"), "network.firewall.sku", ("Standard", "Premium"))
+    _choice(f.setdefault("sku", "Premium"), "network.firewall.sku", ("Premium",))
     _choice(f.setdefault("threatIntelMode", "Alert"), "network.firewall.threatIntelMode", ("Alert", "Deny", "Off"))
-    # IDPSはPremium専用。Standardで機能しない設定を黙って無視せず、
-    # Off/空の標準値だけを受け付け、有効なIDPS設定の混入はエラーにする。
-    if tier == "Premium":
-        _choice(f.setdefault("idpsMode", "Alert"), "network.firewall.idpsMode", ("Alert", "Deny"))
-    elif "idpsMode" in f and f["idpsMode"] not in (None, "Off"):
-        _fail("network.firewall.idpsMode", "Standard does not support IDPS; omit this setting")
-    else:
-        f.pop("idpsMode", None)
-    if tier == "Standard" and any(f.get(key) for key in ("idpsPrivateRanges", "signatureOverrides", "bypassTrafficSettings")):
-        _fail("network.firewall", "IDPS configuration requires Premium")
+    _choice(f.setdefault("idpsMode", "Deny"), "network.firewall.idpsMode", ("Alert", "Deny"))
     _strings(f.setdefault("zones", []), "network.firewall.zones")
     for key in ("idpsPrivateRanges", "signatureOverrides", "bypassTrafficSettings", "snatPrivateRanges"):
         if key in f:
@@ -1092,6 +1086,8 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     """
     c = copy.deepcopy(_object(raw, "configuration", TOP_KEYS))
     _no_secrets(c)
+    if "firewallTlsInspection" in c:
+        c["firewallTlsInspection"] = _firewall_tls_inspection(c["firewallTlsInspection"], Path(base_directory))
     c["portalAuthentication"] = _portal_authentication(c.get("portalAuthentication", {}))
     c["portalApiKeys"] = _portal_api_keys(c.get("portalApiKeys", {}))
     if "$schema" in c:
@@ -1538,6 +1534,7 @@ def _file_reference_fields(raw: dict):
     """設定でファイル入力と定めた欄だけを列挙する。URLやAzureのIDは含めない。"""
     for section, keys in (
         ("management", ("sshPublicKeyFile",)),
+        ("firewallTlsInspection", ("rootCaCertificateFile",)),
     ):
         settings = raw.get(section)
         if isinstance(settings, dict):
@@ -1833,6 +1830,7 @@ def build_bicep_configuration(configuration: dict) -> dict:
     result.pop("$schema", None)
     result.pop("$comment", None)
     result["management"].pop("sshPublicKeyFile", None)
+    result.pop("firewallTlsInspection", None)
     for provider in result["credentialProviders"]:
         provider.pop("clientSecretFile", None)
     identity = result.get("gateway", {}).get("authentication", {}).get("credentialLogin", {}).get("identity")
@@ -1922,13 +1920,66 @@ def validate_azure_dns_identity(certificate: dict, *, require_complete: bool = T
         _guid(certificate.get("azureDnsSubscriptionId"), "certificate.azureDnsSubscriptionId")
     if not require_complete and "azureDnsManagedIdentityResourceId" not in certificate:
         return
-    identity = _string(certificate.get("azureDnsManagedIdentityResourceId"),
-                       "certificate.azureDnsManagedIdentityResourceId", maximum=2048)
+    _user_assigned_identity_id(certificate.get("azureDnsManagedIdentityResourceId"),
+                              "certificate.azureDnsManagedIdentityResourceId")
+
+
+def _user_assigned_identity_id(value: Any, path: str) -> str:
+    identity = _string(value, path, maximum=2048)
     match = re.fullmatch(r"/subscriptions/([^/]+)/resourceGroups/([^/]+)/providers/"
                          r"Microsoft\.ManagedIdentity/userAssignedIdentities/([^/]+)", identity, re.IGNORECASE)
     if not match or not re.fullmatch(r"[\w().-]{1,90}", match[2]) or not re.fullmatch(r"[\w-]{3,128}", match[3]):
-        _fail("certificate.azureDnsManagedIdentityResourceId", "must identify an existing user-assigned managed identity")
-    _guid(match[1], "certificate.azureDnsManagedIdentityResourceId.subscriptionId")
+        _fail(path, "must identify an existing user-assigned managed identity")
+    _guid(match[1], path + ".subscriptionId")
+    return identity
+
+
+def _firewall_tls_inspection(value: Any, base: Path) -> dict:
+    label = "firewallTlsInspection"
+    settings = _object(value, label, {"managedIdentityResourceId", "intermediateCaSecretId", "rootCaCertificateFile"})
+    return {
+        "managedIdentityResourceId": _string(settings.get("managedIdentityResourceId"),
+                                             label + ".managedIdentityResourceId", maximum=2048),
+        "intermediateCaSecretId": _string(settings.get("intermediateCaSecretId"), label + ".intermediateCaSecretId"),
+        "rootCaCertificateFile": _secret_path(settings.get("rootCaCertificateFile"), label + ".rootCaCertificateFile", base),
+    }
+
+
+def load_firewall_tls_inspection(configuration: dict) -> dict:
+    """BicepへFirewallの参照と公開ルートCAを渡す。秘密鍵は読み込まない。"""
+    label = "firewallTlsInspection.rootCaCertificateFile"
+    settings = _firewall_tls_inspection(configuration.get("firewallTlsInspection"), Path.cwd())
+    _user_assigned_identity_id(settings["managedIdentityResourceId"], "firewallTlsInspection.managedIdentityResourceId")
+    secret = settings["intermediateCaSecretId"]
+    try:
+        uri = urlparse(secret)
+        valid = (uri.scheme == "https" and uri.geturl() == secret and not (uri.params or uri.query or uri.fragment)
+                 and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{1,22}[A-Za-z0-9]\.vault\.azure\.net", uri.netloc)
+                 and re.fullmatch(r"/secrets/[A-Za-z0-9-]{1,127}/[A-Fa-f0-9]{32}", uri.path))
+    except ValueError:
+        valid = False
+    if not valid:
+        _fail("firewallTlsInspection.intermediateCaSecretId", "must be a versioned Azure Key Vault secrets URI")
+    certificate = _read_protected_file(settings.pop("rootCaCertificateFile"), label, binary=True)
+    try:
+        if certificate.startswith(b"-----BEGIN CERTIFICATE-----"):
+            pem = certificate.decode("ascii").strip()
+            if not re.fullmatch(r"-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----", pem):
+                raise ValueError()
+            certificate = ssl.PEM_cert_to_DER_cert(pem)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.load_verify_locations(cadata=certificate)
+        authorities = context.get_ca_certs()
+        if len(authorities) != 1 or context.get_ca_certs(binary_form=True) != [certificate]:
+            raise ValueError()
+        authority = authorities[0]
+        if (authority["issuer"] != authority["subject"]
+                or not ssl.cert_time_to_seconds(authority["notBefore"]) <= time.time()
+                < ssl.cert_time_to_seconds(authority["notAfter"])):
+            raise ValueError()
+    except (ValueError, ssl.SSLError, KeyError):
+        _fail(label, "must contain one currently valid public root CA certificate in DER or PEM")
+    return {**settings, "rootCaData": base64.b64encode(certificate).decode("ascii")}
 
 
 def _validate_dns_provider_signature(plugin: str, arguments: dict) -> None:
@@ -2083,6 +2134,7 @@ def load_secret_inputs(configuration: dict) -> dict:
     validate_supported_certificate(configuration["certificate"])
     public_key = load_ssh_public_key(configuration["management"]["sshPublicKeyFile"])
     secrets: dict[str, Any] = {"sshPublicKey": public_key,
+        "firewallTlsInspection": load_firewall_tls_inspection(configuration),
         "credentialProviderSecrets": load_credential_provider_secrets(configuration)}
     # Azure DNS authenticates on the VM through its assigned identity. No
     # DNS credential file or caller-supplied PFX is read or forwarded.

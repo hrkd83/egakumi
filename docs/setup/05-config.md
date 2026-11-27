@@ -12,14 +12,14 @@ Portal認証証明書の初期設定は`portal.certificate`で、KV自己署名�
 
 | 正本 | 主な初期構成 | 選ぶときの確認 |
 | --- | --- | --- |
-| `config/test.json` | Firewall Standard、検証向けのSKU・保護設定 | 検証後の撤去を想定した費用・保持設定か |
-| `config/production.json` | Firewall Premium＋IDPS Alert、AppGW／Public IPの3ゾーン | 対象地域のSKU・ゾーン、可用性・監査保持・削除保護の運用に合うか |
+| `config/test.json` | Firewall Premium・IDPS Deny、検証向けのSKU・保護設定 | 検証後の撤去を想定した費用・保持設定か |
+| `config/production.json` | Firewall Premium・IDPS Deny（Alert and Deny）、AppGW／Public IPの3ゾーン | 対象地域のSKU・ゾーン、可用性・監査保持・削除保護の運用に合うか |
 
 第4章のparamsの`configFile`を、選ぶ正本への相対パスにします。`environmentName`を変えてもSKU・保持・保護は自動で切り替わりません。configのexampleやlocalコピーは作らず、必要な変更は選んだ正本へ記録します。
 
 ## 5-2. 必要な項目だけを調整する
 
-1. FirewallのSKU・IDPS、AppGW／APIM／VM等のSKUとゾーンを確認する。StandardでIDPSを有効にしない。
+1. FirewallのSKU・IDPS、AppGW／APIM／VM等のSKUとゾーンを確認する。Firewallの両環境はPremiumで、IDPSはDeny（Alert and Deny）から開始する。
 2. `services.modelDeployments`で配備するモデル・版・SKU・capacityを選ぶ。API正本の許可モデルと対応させる。
 3. 音声等の利用機能、WAF上限、回数制限、監査保持、削除保護、証明書更新の動作を確認する。通常HTTP／HTTPSの入口保護と、初期NSGの固定集合を確認する。
 4. 同じparamsでローカル検査し、整合を確認する。
@@ -77,10 +77,12 @@ APIMの承認済み証明書到達性と正規API宛先、管理VMの固定配�
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
-| `network.firewall.sku` | テスト：`"Standard"`／本番：`"Premium"` | Standard/Premium。IDPSはPremiumのみ。省略値はPremiumで、安価な検証はStandardを明示。 |
+| `network.firewall.sku` | 全環境：`"Premium"` | TLS検査とIDPSを有効にするためPremiumを使う。 |
 | `network.firewall.threatIntelMode` | `"Alert"` | 脅威情報のAlert=検知、Deny=遮断、Off=無効。 |
-| `network.firewall.idpsMode` | テスト：`"Off"`／本番：`"Alert"` | PremiumのIDPSはAlert/Deny。Standardの見本はOffを明記し、Bicepでは対応しないIDPS設定自体を作らない。 |
-| `network.firewall.zones` | テスト：`[]`／本番：`["1","2","3"]` | Firewallと公開IPの可用性ゾーン。 |
+| `network.firewall.idpsMode` | 全環境：`"Deny"` | PortalではAlert and Deny。検知した通信を遮断する。 |
+| `network.firewall.zones` | 全環境：`[]` | Firewallとその公開IPのゾーン指定を省略し、Azureに割り当てを任せる。明示指定する場合は両方に同じゾーンを渡す。 |
+
+Japan EastではFirewallの新規配備に物理ゾーン1の容量制約があります。Azureがバックエンドのゾーンを割り当て、Standard公開IPは対応リージョンで既定のゾーン冗長になります。 [Firewallの容量制約](https://learn.microsoft.com/en-us/troubleshoot/azure/firewall/firewall-known-issues#current-capacity-constraints) · [ゾーンの既定値とStandard公開IP](https://learn.microsoft.com/en-us/azure/firewall/deploy-availability-zone-powershell)
 | `network.firewall.signatureOverrides` | `[]` | Premium IDPSの署名ごとの設定。 |
 
 #### サービス（services）
@@ -147,7 +149,7 @@ APIMが参照するKVは、`publicNetworkAccess: Disabled`と`defaultAction: Den
 | `gateway.rateLimits.subscriptionKey.calls` | `60` | 有効化した場合のみ適用する期間内要求数、整数1〜1,000,000。 |
 | `gateway.rateLimits.subscriptionKey.renewalPeriodSeconds` | `60` | 有効化した場合のみ適用する計数期間、整数1〜300秒。 |
 
-gRPCは基盤の提供要件から廃止しました。`gateway.grpc`ブロック全体（公開ホスト名だけの指定や空オブジェクトも含む）と、APIの`apiType: "grpc"`・proto定義は入力検査で拒否します。AppGWのfrontend HTTP/2は維持し、内部APIM／ACAへはHTTP80で転送します。APIMの`Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2`は文字列`"false"`に固定します。
+gRPCは基盤の提供要件から廃止しました。`gateway.grpc`ブロック全体（公開ホスト名だけの指定や空オブジェクトも含む）と、APIの`apiType: "grpc"`・proto定義は入力検査で拒否します。AppGWのfrontend HTTP/2は維持し、内部APIM／ACAへはFirewallのTLS検査を経由してHTTPS443で転送します。APIMの`Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2`は文字列`"false"`に固定します。
 
 API公開前には、通常HTTP用の配備出力`ingressSecrets`と、常設L7入口証明のKey Vault参照・Named Value・AppGW rewrite・APIM検査が整合することを確認します。不一致の基盤へは公開せず、Coreの入口設備を先に揃えます。Realtime・文書ジョブの所有者署名鍵の準備条件は維持します。
 
@@ -239,6 +241,17 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 | `capacity` | GPT-6.1 Solは50、Lunaは5、他は1 | 初期割当。認定最小値ではなく、TPM／RPM換算もモデル・SKUごとに異なる。 |
 | `versionUpgradeOption` | NoAutoUpgrade | 自動版更新を行わない。 |
 | `quotaUsageName` | 各モデルの実metadataに対応する値を明記 | 同じ利用枠プールの配備は合算して検査。 |
+
+## FirewallのTLS検査を準備する
+
+1. Azure Portalの **Managed identities** で対象Azureテナントに専用のユーザー割り当てマネージドIDを作ります。DNSやアプリ用IDと共用せず、配備主体にこのIDをFirewall Policyへ割り当てる権限を付与します。
+2. **Key vaults** でこの中間CA専用のVaultを用意します。**Access configuration** ではVault access policyを選び、**Access policies** で専用IDにSecretのGet／Listを付与します。**Networking** では接続元を制限し、Azure Firewallの信頼済みサービス経由の取得を許可します。インポート作業に使う接続元は必要な時間だけ許可します。[Firewall PremiumのKey Vault要件](https://learn.microsoft.com/en-us/azure/firewall/premium-certificates#azure-key-vault)、[Key Vaultのネットワーク制御](https://learn.microsoft.com/en-us/azure/key-vault/general/network-security)
+3. 本番は組織PKI、テストは分離した検証用PKIで中間CAを準備します。公式例はRSA 4096ビット、エクスポート可能な鍵、クリティカルな`KeyUsage`の`keyCertSign`、クリティカルな`BasicConstraints`の`CA:TRUE`と`pathlen:1`を使います。有効期限まで1年以上ある中間CAを、当該中間証明書と秘密鍵だけを含むパスワードなしPFXにします。公開ルートで中間証明書を検証し、ルートの秘密鍵はPKI側で保護します。[中間CA要件とテスト用証明書の作成例](https://learn.microsoft.com/en-us/azure/firewall/premium-certificates#intermediate-ca-certificate-requirements)
+4. Vaultの **Certificates** で中間CAのPFXをインポートします。有効な証明書バージョンに対応する **Secret Identifier** を取得します。識別子が`/secrets/<name>/<version>`になっていることを確認します。**Certificate Identifier** を指定すると失敗します。
+5. `params.local.json`の`firewallTlsInspection`に専用IDの`managedIdentityResourceId`、バージョン付き`intermediateCaSecretId`、公開ルートへの`rootCaCertificateFile`を設定します。初期準備が生成した参照は`./secrets/firewall-root-ca.cer`です。ルートは単一のX.509公開証明書（DERまたはPEM）を保護ファイルに保存します。構築資材は参照と公開証明書を渡します。
+6. [新規テスト環境](06-deploy.md)で、Firewallが指定バージョンを取得し、APIMのApp Gatewayプローブが正常になり、Portal本体配備後にはPortalのプローブも正常になることを確認します。独立したテストでは、存在しないバージョン、無許可の専用ID、対応しない有効なルートを使った場合に検査が成立しないことを確認します。証明書検証を無効化せず、正しい参照へ戻して正常化を確認します。Portal認証の実試用前に監査ログの[クエリ保護](../testing/log-privacy.md#firewallのtls検査ログ)も確認します。[App GatewayのバックエンドTLS](https://learn.microsoft.com/en-us/azure/application-gateway/ssl-overview)
+
+中間CA更新時はKey Vaultの新しいバージョンを明示し、チェーンや発行元が変わる場合はApp Gatewayの信頼も含めて切替を計画します。プローブと業務通信、IDPSログをテスト環境で確認してから本番へ適用します。[既知のTLS検査制約](https://learn.microsoft.com/en-us/troubleshoot/azure/firewall/firewall-known-issues)
 
 ## 次へ進む前の確認
 

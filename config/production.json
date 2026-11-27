@@ -14,13 +14,9 @@
     ],
     "firewall": {
       "sku": "Premium",
-      "idpsMode": "Alert",
+      "idpsMode": "Deny",
       "threatIntelMode": "Alert",
-      "zones": [
-        "1",
-        "2",
-        "3"
-      ],
+      "zones": [],
       "signatureOverrides": []
     },
     "dnsTtl": 300
