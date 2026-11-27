@@ -98,6 +98,28 @@
   ],
   "literal_exceptions": [
     {
+      "rule": "nonpublic-ip",
+      "value": "10.40.3.160",
+      "reason": "Independently synthesized address in the public VNet allocation example; exact path/value only.",
+      "paths": [
+        "docs/reference/configuration/parameters.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.3.192",
+      "reason": "Independently synthesized address in the public VNet allocation example; exact path/value only.",
+      "paths": [
+        "docs/reference/configuration/parameters.md",
+        "infra/config/configuration.schema.json",
+        "infra/modules/network/network.bicep",
+        "params/params.schema.json",
+        "params/production.example.json",
+        "params/test.example.json",
+        "tests/network/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
       "rule": "nonpublic-host",
       "value": "management.core.windows.net",
       "reason": "Official Azure Resource Manager access token audience documented at https://learn.microsoft.com/en-us/entra/msal/msal-acquire-cache-tokens",
@@ -2283,7 +2305,8 @@
         "tests/test_parameter_ip_ownership.py",
         "tests/network/test_parameter_ip_ownership.py",
         "tests/test_split_configuration.py",
-        "tests/deployment/configuration/test_split_configuration.py"
+        "tests/deployment/configuration/test_split_configuration.py",
+        "docs/reference/configuration/parameters.md"
       ]
     },
     {
@@ -2413,7 +2436,8 @@
         "tests/test_parameter_ip_ownership.py",
         "tests/network/test_parameter_ip_ownership.py",
         "tests/test_split_configuration.py",
-        "tests/deployment/configuration/test_split_configuration.py"
+        "tests/deployment/configuration/test_split_configuration.py",
+        "docs/reference/configuration/parameters.md"
       ]
     },
     {
@@ -2465,7 +2489,8 @@
         "tests/test_portal_configuration.py",
         "tests/portal/test_portal_configuration.py",
         "tests/test_split_configuration.py",
-        "tests/deployment/configuration/test_split_configuration.py"
+        "tests/deployment/configuration/test_split_configuration.py",
+        "docs/reference/configuration/parameters.md"
       ]
     },
     {
@@ -2619,7 +2644,8 @@
         "tests/test_publish_apis.py",
         "tests/gateway/publication/test_publish_apis.py",
         "tests/test_split_configuration.py",
-        "tests/deployment/configuration/test_split_configuration.py"
+        "tests/deployment/configuration/test_split_configuration.py",
+        "docs/reference/configuration/parameters.md"
       ]
     },
     {
@@ -2694,13 +2720,24 @@
     {
       "rule": "nonpublic-ip",
       "value": "10.40.4.0",
-      "reason": "Independent synthetic audit evidence subnet in the public parameter examples and their validation tests",
-      "paths": ["params/production.example.json", "params/test.example.json", "tests/test_parameter_ip_ownership.py", "tests/network/test_parameter_ip_ownership.py", "tests/test_split_configuration.py", "tests/deployment/configuration/test_split_configuration.py"]
+      "reason": "Independent synthetic VNet address allocation in the public parameter examples and associated validation; exact path/value only.",
+      "paths": [
+        "params/production.example.json",
+        "params/test.example.json",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py",
+        "docs/reference/configuration/parameters.md",
+        "infra/config/configuration.schema.json",
+        "infra/modules/network/network.bicep",
+        "params/params.schema.json"
+      ]
     },
     {
       "rule": "nonpublic-ip",
       "value": "10.40.3.128",
-      "reason": "Independently synthesized Credential Broker subnet in public examples and their validation test; disjoint from the certificate worker subnet.",
+      "reason": "Independent synthetic address used in public ACA subnet allocation examples and associated validation; exact path/value only.",
       "paths": [
         "infra/modules/network.bicep",
         "infra/modules/network/network.bicep",
@@ -2711,7 +2748,8 @@
         "schemas/params.schema.json",
         "params/params.schema.json",
         "tests/test_parameter_ip_ownership.py",
-        "tests/network/test_parameter_ip_ownership.py"
+        "tests/network/test_parameter_ip_ownership.py",
+        "docs/reference/configuration/parameters.md"
       ]
     },
     {
@@ -4787,7 +4825,8 @@
       "value": "10.40.0.0",
       "reason": "Independent offline Portal HTTP migration fixture address from the existing synthetic gateway fixture family; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_portal_backend_http.py"
+        "tests/test_portal_backend_http.py",
+        "docs/reference/configuration/parameters.md"
       ]
     },
     {
@@ -4795,7 +4834,9 @@
       "value": "10.40.2.192",
       "reason": "Independent offline Portal HTTP migration fixture address from the existing synthetic gateway fixture family; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_portal_backend_http.py"
+        "tests/test_portal_backend_http.py",
+        "docs/reference/configuration/parameters.md",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -5316,7 +5357,8 @@
       "value": "10.40.3.0",
       "reason": "Independent malformed destination in the offline Portal migration test; rejected before any write. Exact source path and value only.",
       "paths": [
-        "tests/test_portal_backend_http.py"
+        "tests/test_portal_backend_http.py",
+        "docs/reference/configuration/parameters.md"
       ]
     },
     {

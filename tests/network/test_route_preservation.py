@@ -82,7 +82,7 @@ class RoutePreservationTests(unittest.TestCase):
             {},
             {"rt-test-egakumi-agw": [dynamic]},
             {"rt-test-egakumi-agw": [dynamic], "rt-test-egakumi-apim": [defaults, internet],
-             "rt-test-egakumi-vm": [defaults], "rt-test-egakumi-aca": [defaults],
+             "rt-test-egakumi-vm": [defaults], "rt-test-egakumi-portal": [defaults],
              "rt-test-egakumi-broker": [defaults]},
         ]
         for snapshot in snapshots:
@@ -93,15 +93,15 @@ class RoutePreservationTests(unittest.TestCase):
                                   "agw": propagation, "apim": propagation, "management": propagation}}}
                 tables = self.network['variables']['routeTableDefinitions']
                 portal_table = self.network['resources']['portalRouteTable']
-                for index, table in enumerate([*tables, {'key': 'aca', 'suffix': 'aca'}]):
+                for index, table in enumerate([*tables, {'key': 'portal', 'suffix': 'portal'}]):
                     name = f"rt-test-egakumi-{table['suffix']}"
                     with self.subTest(snapshot=list(snapshot), propagation=propagation, table=name):
-                        declared = portal_table if table['key'] == 'aca' else self.route_table
+                        declared = portal_table if table['key'] == 'portal' else self.route_table
                         properties = {key: self.evaluate_property(value, parameters, index)
                                       for key, value in declared['properties'].items()}
                         self.assertEqual(properties["routes"], snapshot.get(name, []))
                         self.assertIs(properties['disableBgpRoutePropagation'],
-                                      table['key'] in ('aca', 'broker') or not propagation)
+                                      table['key'] in ('portal', 'broker') or not propagation)
             self.assertEqual(snapshot, before)
 
 

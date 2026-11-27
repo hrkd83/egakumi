@@ -56,7 +56,7 @@ class DnsProviderMismatchError(ConfigurationError):
 
 
 RG_KINDS = ("id", "nw", "monitor", "svc", "maint")
-SUBNET_KINDS = ("agw", "firewall", "apim", "pep", "management", "aca", "broker")
+SUBNET_KINDS = ("agw", "firewall", "apim", "pep", "management", "portal", "broker")
 RFC1918_CIDRS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 # 観測対象の操作・受付へ付けるラベルです。サービスやモデルの種類を列挙しません。
 QUERY_OBSERVATION_ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
@@ -137,6 +137,7 @@ PARAMETER_OWNED_PATHS = (
 # 旧入力は空値でも受け付けず、値の意味を変える自動移行をしません。
 FIXED_INITIAL_PATHS = (
     ("authorization",), ("apiDefinitions",), ("publishApis",),
+    ("auditEvidence", "enabled"),
     ("management", "loginAssignments"),
     *(("network", "firewall", key) for key in ("snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings")),
     ("gateway", "existingWafPolicyId"),
@@ -392,7 +393,7 @@ def _network(raw: Any, *, audit_evidence_enabled: bool = False) -> dict:
     subnet_kinds = (*SUBNET_KINDS, "certificate", "audit")
     prefixes = _object(n.get("subnetPrefixes"), "network.subnetPrefixes", set(subnet_kinds))
     if not set(SUBNET_KINDS[:-1]) <= prefixes.keys():
-        _fail("network.subnetPrefixes", "must define agw, firewall, apim, pep, management and aca")
+        _fail("network.subnetPrefixes", "must define agw, firewall, apim, pep, management and portal")
     if audit_evidence_enabled and "audit" not in prefixes:
         _fail("network.subnetPrefixes.audit", "must specify a dedicated /27 or larger for audit evidence")
     # まずVNet内の住所の区切りを検査する。各サブネットが個別に正しいCIDRでも、
@@ -404,7 +405,7 @@ def _network(raw: Any, *, audit_evidence_enabled: bool = False) -> dict:
     for key in (kind for kind in subnet_kinds if kind in prefixes):
         item = _cidrs([prefixes[key]], "network.subnetPrefixes." + key, minimum=1)[0]
         subnet = ipaddress.ip_network(item)
-        maximum_prefix = {"agw": 24, "pep": 24, "aca": 27, "broker": 27, "certificate": 27, "audit": 27}.get(key, 26)
+        maximum_prefix = {"agw": 24, "pep": 24, "portal": 27, "broker": 27, "certificate": 27, "audit": 27}.get(key, 26)
         if subnet.prefixlen > maximum_prefix or not any(subnet.subnet_of(parent) for parent in networks):
             _fail("network.subnetPrefixes." + key, "must fit the address space and meet the designed subnet size")
         subnet_networks.append(subnet)
@@ -1092,6 +1093,8 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         "enabled", "eventHubsSku", "payloadImmutabilityMode", "payloadRetentionDays",
     })
     enabled = _bool(audit_evidence.setdefault("enabled", False), "auditEvidence.enabled")
+    if enabled and c["entraTenantId"] != c["azureTenantId"]:
+        _fail("entraTenantId", "audit evidence requires entraTenantId to match azureTenantId")
     _choice(audit_evidence.setdefault("eventHubsSku", "Standard"), "auditEvidence.eventHubsSku", ("Standard", "Premium"))
     immutability = _choice(audit_evidence.setdefault("payloadImmutabilityMode", "Disabled"),
                            "auditEvidence.payloadImmutabilityMode", ("Disabled", "Locked"))
@@ -1706,7 +1709,11 @@ def load_configuration_source(path: Path | str) -> dict:
 
 def _compose_configuration_source(source: Path, raw: dict) -> dict:
     if "configFile" not in raw:
-        return _resolve_file_references(raw, source.parent)
+        combined = _resolve_file_references(raw, source.parent)
+        audit_evidence = _object(combined.setdefault("auditEvidence", {}), "auditEvidence")
+        if audit_evidence.setdefault("enabled", True) is not True:
+            _fail("auditEvidence.enabled", "must be true for body audit deployment")
+        return combined
     _reject_fixed_initial_inputs(raw, "params")
     _object(raw, "parameters", PARAMETER_KEYS)
     for key in ("$schema", "$comment"):

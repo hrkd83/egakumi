@@ -28,6 +28,7 @@ from deployment.helpers.configuration import (
 )
 from deployment.helpers.paths import REPOSITORY, local_paths
 from deployment.helpers.private_permissions import check_private_permissions
+from deployment.helpers.subnet_names import subnet_resource_id
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.credential_image import (
     build_image, checked, read_build_receipt, reusable_image, source_bundle,
@@ -82,8 +83,7 @@ def foundation_inputs(config, state):
     for name, value in expected.items():
         if foundation.get(name) != value:
             raise ValueError('Core foundation differs from this environment: ' + name)
-    subnet_id = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['nw']}"
-                 f"/providers/Microsoft.Network/virtualNetworks/vnet-{stem}/subnets/snet-{stem}-broker")
+    subnet_id = subnet_resource_id(config, 'broker')
     for name, value in (('brokerEnvironmentId', broker_environment_id(config)), ('brokerSubnetId', subnet_id)):
         if str(foundation.get(name, '')).casefold() != value.casefold():
             raise ValueError('Core foundation differs from this environment: ' + name)

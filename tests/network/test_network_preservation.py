@@ -43,7 +43,7 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
         }}
 
     def test_first_partial_and_repeated_up_only_read_owned_nsgs(self):
-        suffixes = ("agw", "apim", "pep", "vm", "aca", "certificate", "broker")
+        suffixes = ("agw", "apim", "pep", "vm", "portal", "certificate", "broker")
         for present in ((), ("agw", "pep"), suffixes):
             responses = [self.nsg_response(suffix) if suffix in present else {"statusCode": 404, "body": None}
                          for suffix in suffixes]
@@ -156,7 +156,7 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
             lifecycle.preprovision(self.config)
         self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["existingNetworkSecurityGroupNames"]["value"], expected)
         self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["existingRouteTableRoutes"]["value"],
-                         {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "aca", "certificate", "broker")})
+                         {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "portal", "certificate", "broker")})
 
 
 class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
@@ -185,18 +185,18 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
             result["body"]["properties"]["routes"] = [{"name": "default-egress", "properties": {
                 "addressPrefix": "0.0.0.0/0", "nextHopType": "VirtualAppliance",
                 "nextHopIpAddress": "10.40.2.4", "hasBgpOverride": False}}]
-        if suffix == "aca":
+        if suffix == "portal":
             routes = result["body"]["properties"]["routes"]
             routes[1] = {"name": "default-egress", "properties": {
                 "addressPrefix": "0.0.0.0/0", "nextHopType": "VirtualAppliance",
                 "nextHopIpAddress": "10.40.2.4"}}
         return result
 
-    def test_aca_route_snapshot_rejects_public_bypasses_without_mutation(self):
+    def test_portal_route_snapshot_rejects_public_bypasses_without_mutation(self):
         prefix_responses = [{"statusCode": 404, "body": None}] * 3
         for prefix, hop in (("203.0.113.0/24", "Internet"), ("AzureCloud", "VnetLocal"),
                             ("0.0.0.0/0", "VirtualNetworkGateway")):
-            response = self.route_table_response("aca")
+            response = self.route_table_response("portal")
             response["body"]["properties"]["routes"].append({"name": "additional-route", "properties": {
                 "addressPrefix": prefix, "nextHopType": hop}})
             transport = ScriptedTransport(prefix_responses + [response])
@@ -204,16 +204,16 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
                 lifecycle.discover_existing_route_table_routes(self.config, transport)
             self.assertFalse(transport.mutations())
 
-        response = self.route_table_response("aca")
+        response = self.route_table_response("portal")
         response["body"]["properties"]["disableBgpRoutePropagation"] = False
         transport = ScriptedTransport(prefix_responses + [response])
         with self.assertRaisesRegex(lifecycle.DeploymentError, "BGP propagation"):
             lifecycle.discover_existing_route_table_routes(self.config, transport)
         self.assertFalse(transport.mutations())
 
-    def test_aca_route_snapshot_accepts_partial_creation_and_rejects_a_foreign_default_hop(self):
+    def test_portal_route_snapshot_accepts_partial_creation_and_rejects_a_foreign_default_hop(self):
         prefix_responses = [{"statusCode": 404, "body": None}] * 3
-        response = self.route_table_response("aca")
+        response = self.route_table_response("portal")
         routes = response["body"]["properties"]["routes"]
         default_route = routes.pop()
         transport = ScriptedTransport(prefix_responses + [response] + [{"statusCode": 404, "body": None}] * 2)
@@ -228,11 +228,11 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
             lifecycle.discover_existing_route_table_routes(self.config, transport)
         self.assertFalse(transport.mutations())
 
-    def test_aca_route_snapshot_preserves_the_owned_app_gateway_return_route(self):
+    def test_portal_route_snapshot_preserves_the_owned_app_gateway_return_route(self):
         config = copy.deepcopy(self.config)
         app_gateway_subnet = "198.51.100.0/24"
         config["network"]["subnetPrefixes"]["agw"] = app_gateway_subnet
-        response = self.route_table_response("aca")
+        response = self.route_table_response("portal")
         fields = {"addressPrefix": app_gateway_subnet, "nextHopType": "VirtualAppliance",
                   "nextHopIpAddress": "10.40.2.4"}
         response["body"]["properties"]["routes"].append({"name": "agw-return", "properties": fields})
@@ -249,7 +249,7 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
         self.assertFalse(transport.mutations())
 
     def test_first_partial_and_repeated_up_snapshot_only_owned_tables(self):
-        suffixes = ("agw", "apim", "vm", "aca", "certificate", "broker")
+        suffixes = ("agw", "apim", "vm", "portal", "certificate", "broker")
         for present in ((), ("agw",), suffixes):
             responses = [self.route_table_response(suffix) if suffix in present else {"statusCode": 404, "body": None}
                          for suffix in suffixes]

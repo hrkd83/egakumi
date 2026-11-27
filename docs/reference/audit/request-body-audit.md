@@ -17,7 +17,7 @@ PortalはAPIの試用画面として使う。接続の調査では、APIMの要�
 
 ## 初回構築
 
-開発・テストはEvent Hubs Standard、本番はPremiumを使う。Core配備で本文監査用の非公開ネットワーク、マネージドID、Event Hubs、専用Blobを作る。Gateway配備で同じイメージから中継と保存ワーカーを起動し、準備状態を照合してから監査対象のAPIを公開する。両方とも常駐するContainer Appで、保存ワーカーにIngressは設けない。イメージは管理VMでビルドして同じ非公開ACRへ登録する。
+本文監査は有効固定とする。開発・テストはEvent Hubs Standard、本番はPremiumを使う。Core配備で本文監査用の非公開ネットワーク、マネージドID、Event Hubs、専用Blobを作る。Gateway配備で同じイメージから中継と保存ワーカーを起動し、準備状態を照合してから監査対象のAPIを公開する。両方とも常駐するContainer Appで、保存ワーカーにIngressは設けない。イメージは管理VMでビルドして同じ非公開ACRへ登録する。
 
 APIMが付与する要求IDで、本文とAPIMのメタデータ監査を照合する。対象によって採取位置が異なる。
 
@@ -31,7 +31,9 @@ APIMが付与する要求IDで、本文とAPIMのメタデータ監査を照合�
 
 初回構築は標準HTTP 20操作のうち、OpenAI中継の2操作とAPIMが本文を提出する15操作が対象。残り3操作はRealtime／Liveの制御用である。APIMで停止した要求の本文は、認可後の本文送信より手前にあるためメタデータで確認する。外部MCPや独自ストリーミングAPIを追加する場合は、対応する業務本文の採取先と、セッション・逐次配信を維持する経路の確認を公開前に行う。 [MCPポリシーの制約](https://learn.microsoft.com/en-us/azure/api-management/export-rest-mcp-server#configure-policies-for-the-mcp-server)
 
-Gateway公開APIのEntraアプリ `egakumi-api` を使う。中継を有効にする場合、GatewayのEntra認証を有効にし、構築サブスクリプションと同じテナントでこのアプリのv2アクセストークンを発行する。テストと本番の標準設定では本文監査が有効で、別テナントの入力はCore開始前に拒否される。中継は自己のVNet内にある入口で、公開APIの委任トークンと区別し、APIMのマネージドIDのObject IDに限定する。テナントでアプリへの割当が必須の場合は、APIMのマネージドIDがapp-onlyトークンを取得できるよう、管理者がこのアプリのアプリケーション権限と割当を確認する。提供元・Event Hubs・Blobはそれぞれ中継または保存ワーカーのマネージドIDで認証する。
+監査中継の受信認証は、公開GatewayのシングルテナントEntraアプリ `egakumi-api` をトークンの対象として共用する。APIMはAzure構築先のテナントに所属するマネージドIDで、そのアプリ向けのアクセストークンを取得する。中継はv2トークンの署名・発行者・テナント・対象と、APIMのマネージドIDのObject IDを検証する。`egakumi-api` の登録先とAPIMのIDの所属先を揃える必要があるため、別テナントの入力はCore開始前に拒否する。 [APIMのマネージドID認証](https://learn.microsoft.com/en-us/azure/api-management/authentication-managed-identity-policy) · [マネージドIDのテナント境界](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/managed-identities-faq#can-i-use-a-managed-identity-to-access-a-resource-in-a-different-directorytenant)
+
+テナントでアプリへの割当が必須の場合は、APIMのマネージドIDがapp-onlyトークンを取得できるよう、管理者がこのアプリのアプリケーション権限と割当を確認する。提供元・Event Hubs・Blobはそれぞれ中継または保存ワーカーのマネージドIDで認証する。
 
 ## 保存と障害時の動作
 

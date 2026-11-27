@@ -31,6 +31,7 @@ from .ingress import apim_name_matches
 from .apim_naming import apim_instance_id, apim_name
 from .credential_pools import resource_names
 from .portal_resources import resource_names as portal_resource_names
+from .subnet_names import subnet_resource_id
 
 
 class CleanupError(RuntimeError):
@@ -910,7 +911,7 @@ def _management_preflight(configuration: dict, state: Mapping, transport: Transp
         "vmId": group + "/providers/Microsoft.Compute/virtualMachines/vm-" + stem + "-mgmt",
         "nicId": group + "/providers/Microsoft.Network/networkInterfaces/nic-" + stem + "-mgmt",
         "diskId": group + "/providers/Microsoft.Compute/disks/osdisk-" + stem + "-mgmt",
-        "subnetId": _rg_id(configuration, "nw") + "/providers/Microsoft.Network/virtualNetworks/vnet-" + stem + "/subnets/snet-" + stem + "-vm",
+        "subnetId": subnet_resource_id(configuration, "management"),
     }
     outputs = state.get("outputs", {})
     record = outputs.get("managementVm", {}) if isinstance(outputs, Mapping) else None
@@ -1103,7 +1104,7 @@ def _portal_preflight(configuration: dict, state: Mapping, transport: Transport)
     targets = {
         "applicationId": group + "/providers/Microsoft.App/containerApps/ca-" + stem + "-portal",
         "environmentId": group + "/providers/Microsoft.App/managedEnvironments/cae-" + stem,
-        "subnetId": _rg_id(configuration, "nw") + "/providers/Microsoft.Network/virtualNetworks/vnet-" + stem + "/subnets/snet-" + stem + "-aca",
+        "subnetId": subnet_resource_id(configuration, "portal"),
         "applicationInfrastructure": _application_infrastructure(configuration, state.get('applicationInfrastructure', [])),
     }
     outputs = state.get("outputs", {})
@@ -1150,7 +1151,7 @@ def _broker_preflight(configuration: dict, state: Mapping, portal: dict, transpo
     """専用CAEの固定ID・配備記録・実subnetを照合する。"""
     targets = {
         'environmentId': portal['environmentId'] + '-broker',
-        'subnetId': portal['subnetId'].removesuffix('-aca') + '-broker',
+        'subnetId': subnet_resource_id(configuration, 'broker'),
         'applicationInfrastructure': portal['applicationInfrastructure'],
     }
     outputs = state.get('outputs', {})
@@ -1464,7 +1465,7 @@ def _audit_preflight(configuration, state, portal, transport):
     stem = configuration['resourceStem']
     targets = {'environmentId': portal['environmentId'] + '-audit',
                'environmentApi': '2025-07-01',
-               'subnetId': portal['subnetId'].removesuffix('-aca') + '-audit',
+               'subnetId': subnet_resource_id(configuration, 'audit'),
                'applicationInfrastructure': portal['applicationInfrastructure'],
                'applicationIds': [_rg_id(configuration, 'svc') + '/providers/Microsoft.App/containerApps/ca-'
                                   + stem + '-audit-' + name for name in ('relay', 'store')]}
@@ -1564,8 +1565,7 @@ def _certificate_environment_preflight(configuration, state, transport):
         return None
     targets = {
         'environmentId': _rg_id(configuration, 'svc') + '/providers/Microsoft.App/managedEnvironments/cae-' + stem + '-certificate',
-        'subnetId': _rg_id(configuration, 'nw') + '/providers/Microsoft.Network/virtualNetworks/vnet-' + stem
-                    + '/subnets/snet-' + stem + '-certificate',
+        'subnetId': subnet_resource_id(configuration, 'certificate'),
         'applicationInfrastructure': _application_infrastructure(configuration, state.get('applicationInfrastructure', [])),
     }
     recorded = state.get('outputs', {}).get('certificateBootstrap')

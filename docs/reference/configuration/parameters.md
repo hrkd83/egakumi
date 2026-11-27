@@ -22,7 +22,7 @@
 | `network.subnetPrefixes.firewall` | VNet内IPv4 CIDR | AzureFirewallSubnet |
 | `network.subnetPrefixes.apim` | VNet内IPv4 CIDR | Internal APIM |
 | `network.subnetPrefixes.management` | VNet内IPv4 CIDR | 管理VM |
-| `network.subnetPrefixes.aca` | VNet内IPv4 CIDR | 共用ACA |
+| `network.subnetPrefixes.portal` | VNet内IPv4 CIDR | Portal用ACA |
 | `network.subnetPrefixes.broker` | VNet内IPv4 CIDR | Credential Broker専用ACA |
 | `network.subnetPrefixes.certificate` | VNet内IPv4 CIDR | 証明書Job専用ACA |
 | `network.subnetPrefixes.audit` | VNet内IPv4 CIDR | 本文監査専用ACA |
@@ -43,6 +43,40 @@
 | `portal.publicHostName` | `portal.example.com`の架空例 | Portal公開DNS名 |
 
 ## ネットワーク・監査の接続設定
+
+### 公開例のVNet割り当て
+
+テストと本番の公開例は、初回から5つの `/24` をVNetの `addressSpaces` に登録します。本文監査を含む9つのサブネットは最初の4区画に配置します。表のCIDRは独立した合成例です。導入先では予備を含む全区画を、接続済み・接続予定のアドレス範囲と照合します。
+
+| 区画 | paramsのキー | CIDRの公開例 | サブネット名 |
+| --- | --- | --- | --- |
+| 1 | `agw` | `10.40.0.0/24` | `AppGatewaySubnet` |
+| 2 | `pep` | `10.40.1.0/24` | `PrivateEndpointSubnet` |
+| 3 | `firewall` | `10.40.2.0/26` | `AzureFirewallSubnet` |
+| 3 | `apim` | `10.40.2.64/26` | `ApiManagementSubnet` |
+| 3 | `portal` | `10.40.2.128/26` | `PortalSubnet` |
+| 3 | `audit` | `10.40.2.192/26` | `AuditEvidenceSubnet` |
+| 4 | `broker` | `10.40.3.0/25` | `CredentialBrokerSubnet` |
+| 4 | `certificate` | `10.40.3.128/27` | `CertificateJobSubnet` |
+| 4 | `management` | `10.40.3.192/26` | `ManagementSubnet` |
+| 5 | 予備 | `10.40.4.0/24` | 割り当てなし |
+
+各サブネット名はVNet内で用途を表します。配備、再開時の照合、撤去は同じ[命名の正本](../../../infra/modules/network/subnet-names.json)を使います。
+
+標準構成の `azd up` は、次の内部ACA環境をそれぞれ専用の委任サブネットに作成します。`<stem>` は `<environmentName>-<productName>` です。
+
+| 用途 | ACA環境名 | サブネット名 |
+| --- | --- | --- |
+| Portal | `cae-<stem>` | `PortalSubnet` |
+| 本文監査 | `cae-<stem>-audit` | `AuditEvidenceSubnet` |
+| Credential Broker | `cae-<stem>-broker` | `CredentialBrokerSubnet` |
+| 証明書Job | `cae-<stem>-certificate` | `CertificateJobSubnet` |
+
+本文監査は有効固定です。入力に `network.subnetPrefixes.audit` が必要です。 [Coreの構成](../../../infra/main.bicep)
+
+管理VMの `/26` は64アドレス単位の境界に揃えるため、4つ目の末尾に配置します。その手前の `10.40.3.160/27` は未割り当てです。5つ目はVNetのアドレス空間に含まれるため、ピアリング先との重複確認にも含めます。 [VNetピアリング](https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-peering-overview)
+
+App Gateway v2の推奨 `/24`、Azure Firewallの必須 `/26` を確保し、APIM Classicの標準1ユニットは `/26` に収まります。ACAはWorkload profiles環境で、VNet統合の最小は `/27` です。レプリカ上限を引き上げる場合は、更新中の旧・新リビジョンを含めて容量を見積もります。 [VNetとサブネットの設計](https://learn.microsoft.com/en-us/azure/networking/design-guide/vnets-subnets) · [APIMのサブネット要件](https://learn.microsoft.com/en-us/azure/api-management/virtual-network-injection-resources?tabs=stv2) · [ACAのサブネット要件](https://learn.microsoft.com/en-us/azure/container-apps/custom-virtual-networks?tabs=workload-profiles-env)
 
 全サブネットをVNet範囲内へ重複なく割り当てます。SNAT・IDPS private範囲・bypass、監査公開IP、証明書DNS名を独立したparamsに追加しません。実効経路や適用範囲は[通信要件](../architecture/network-communication-requirements.md)、[NSG判断記録](../architecture/network-security-design.md)、[Firewall判断記録](../architecture/firewall-policy-design.md)、[ネットワーク受入](../../testing/network-security-validation.md)を参照してください。
 
@@ -100,4 +134,4 @@ SSH公開鍵は、利用者が明示した保護入力にある有効なRSA 2048
 
 identityは任意で、指定時はClient IDと保護秘密参照を両方設定します。tenantは`entraTenantId`から導出します。省略時の選択CM provider由来の本人確認は維持します。標準の構築手順では専用Credentialアプリを登録します。 [Entraアプリの役割](../identity/entra-apps.md)
 
-標準configは本文監査を有効にするため、`azureTenantId`と`entraTenantId`を揃えます。別の認証テナントを指定する構成では、本文監査を無効にします。 [本文監査の構築条件](../audit/request-body-audit.md#初回構築)
+本文監査の認証に使うため、`azureTenantId`と`entraTenantId`を揃えます。 [本文監査の構築条件](../audit/request-body-audit.md#初回構築)

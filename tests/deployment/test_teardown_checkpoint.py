@@ -114,7 +114,7 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
         new_group = self.inventory[0]['resourceGroupId'] + '-rebuilt'
         environment = self.inventory[0]['environmentId']
         subnet = (cleanup._rg_id(self.config, 'nw') + '/providers/Microsoft.Network/virtualNetworks/vnet-'
-                  + self.config['resourceStem'] + '/subnets/snet-' + self.config['resourceStem'] + '-aca')
+                  + self.config['resourceStem'] + '/subnets/PortalSubnet')
         remaining = FakeTransport({environment: {
             'id': environment, 'name': environment.rsplit('/', 1)[-1], 'type': 'Microsoft.App/managedEnvironments',
             'location': self.config['location'],

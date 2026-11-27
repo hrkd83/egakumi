@@ -75,7 +75,7 @@ class GatewayHttpsInfrastructureTests(unittest.TestCase):
     def test_nsg_bindings_allow_https_between_management_and_apim(self):
         template = self.templates["network"]
         parameters = self.defaults("network")
-        parameters.update(config={}, subnetPrefixes={"agw": "192.0.2.0/26", "apim": "198.51.100.0/26", "management": "203.0.113.0/26", "pep": "192.0.2.128/26", "aca": "198.51.100.128/26", "broker": "203.0.113.128/26"},
+        parameters.update(config={}, subnetPrefixes={"agw": "192.0.2.0/26", "apim": "198.51.100.0/26", "management": "203.0.113.0/26", "pep": "192.0.2.128/26", "portal": "198.51.100.128/26", "broker": "203.0.113.128/26"},
                           foundryPrivateIps=["192.0.2.132"], keyVaultPrivateIps=["192.0.2.133"],
                           publicTlsVaultPrivateIps=["192.0.2.134"],
                           managementPrivateIp="203.0.113.4", firewallPublicIpAddress="192.0.2.250", appGatewayPublicIpAddress="192.0.2.251", apimPrivateIp="198.51.100.4")

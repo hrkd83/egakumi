@@ -10,7 +10,9 @@ class ApplicationInfrastructureCleanupTests(CleanupFixture, unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.environment_id = self.svc_rg + "/providers/Microsoft.App/managedEnvironments/cae-test-egakumi"
-        self.subnet_id = cleanup._rg_id(self.configuration, "nw") + "/providers/Microsoft.Network/virtualNetworks/vnet-test-egakumi/subnets/snet-test-egakumi-aca"
+        self.subnet_prefix = (cleanup._rg_id(self.configuration, "nw")
+                              + "/providers/Microsoft.Network/virtualNetworks/vnet-test-egakumi/subnets/")
+        self.subnet_id = self.subnet_prefix + "PortalSubnet"
         self.managed_name = "ME-fixture-shared-applications"
         self.managed_group = "/subscriptions/" + self.configuration["subscriptionId"] + "/resourceGroups/" + self.managed_name
         self.inventory = [{"environmentId": self.environment_id, "resourceGroupId": self.managed_group}]
@@ -58,7 +60,7 @@ class ApplicationInfrastructureCleanupTests(CleanupFixture, unittest.TestCase):
     def test_broker_app_and_its_dedicated_environment_release_both_owned_subnets(self):
         transport = self.transport()
         broker_environment_id = self.environment_id + "-broker"
-        broker_subnet_id = self.subnet_id.removesuffix("-aca") + "-broker"
+        broker_subnet_id = self.subnet_prefix + "CredentialBrokerSubnet"
         broker_managed_group = self.managed_group + "-broker"
         broker_environment = copy.deepcopy(transport.resources[self.environment_id])
         broker_environment.update(id=broker_environment_id, name=broker_environment_id.rsplit("/", 1)[-1])
@@ -109,7 +111,7 @@ class ApplicationInfrastructureCleanupTests(CleanupFixture, unittest.TestCase):
     def test_body_audit_apps_are_deleted_before_their_environment(self):
         transport = self.transport()
         environment_id = self.environment_id + '-audit'
-        subnet_id = self.subnet_id.removesuffix('-aca') + '-audit'
+        subnet_id = self.subnet_prefix + 'AuditEvidenceSubnet'
         managed_group = self.managed_group + '-audit'
         environment = copy.deepcopy(transport.resources[self.environment_id])
         environment.update(id=environment_id, name=environment_id.rsplit('/', 1)[-1])
@@ -149,7 +151,7 @@ class ApplicationInfrastructureCleanupTests(CleanupFixture, unittest.TestCase):
         body_policy = cleanup.evidence_policy_id(self.configuration)
         self.state['outputs']['auditEvidence'] = {
             'environmentId': self.environment_id + '-audit',
-            'infrastructureSubnetId': self.subnet_id.removesuffix('-aca') + '-audit',
+            'infrastructureSubnetId': self.subnet_prefix + 'AuditEvidenceSubnet',
             'evidenceContainerId': cleanup.evidence_container_id(self.configuration),
             'payloadImmutability': {'policyId': body_policy, 'mode': 'Locked', 'retentionInDays': 2557},
         }

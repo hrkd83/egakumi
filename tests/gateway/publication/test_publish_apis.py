@@ -225,7 +225,7 @@ class PublicationTests(unittest.TestCase):
         self.inventory[identity_id] = ok({"id": identity_id, "tags": self.tags, "properties": {"clientId": client_id}})
         policy = self.plan["firewall"]["policyId"]
         self.inventory[policy] = ok({"id": policy, "tags": self.tags})
-        subnet = publish._scope(self.config, "nw") + "/providers/Microsoft.Network/virtualNetworks/vnet-test-fixture/subnets/snet-test-fixture-apim"
+        subnet = publish._scope(self.config, "nw") + "/providers/Microsoft.Network/virtualNetworks/vnet-test-fixture/subnets/ApiManagementSubnet"
         self.inventory[subnet] = ok({"id": subnet, "properties": {"addressPrefix": "10.40.2.64/26"}})
         self.inventory[self.plan["deploymentId"]] = ok({"fixtureApimId": ids["apim"], "properties": {
             "provisioningState": "Succeeded", "outputs": {"publishedApiResourceIds": {"value": [ids["apim"] + "/apis/model"]}}}})

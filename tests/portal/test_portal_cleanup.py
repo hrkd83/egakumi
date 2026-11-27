@@ -81,7 +81,7 @@ class PortalCleanupTests(unittest.TestCase):
         self.application_id = self.base.svc_rg + "/providers/Microsoft.App/containerApps/ca-test-egakumi-portal"
         self.environment_id = self.base.svc_rg + "/providers/Microsoft.App/managedEnvironments/cae-test-egakumi"
         self.nw_rg = f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/{self.config['resourceGroupNames']['nw']}"
-        self.subnet_id = self.nw_rg + "/providers/Microsoft.Network/virtualNetworks/vnet-test-egakumi/subnets/snet-test-egakumi-aca"
+        self.subnet_id = self.nw_rg + "/providers/Microsoft.Network/virtualNetworks/vnet-test-egakumi/subnets/PortalSubnet"
         self.managed_rg = f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/ME-fixture-portal"
         self.lb_ip_id = self.managed_rg + "/providers/Microsoft.Network/loadBalancers/fixture/frontendIPConfigurations/private-ip"
         self.state["outputs"]["portal"] = self.portal_output()
@@ -103,7 +103,7 @@ class PortalCleanupTests(unittest.TestCase):
                 "location": "japaneast", "tags": copy.deepcopy(own_tags),
                 "properties": {"vnetConfiguration": {"infrastructureSubnetId": self.subnet_id, "internal": True},
                                "infrastructureResourceGroup": "ME-fixture-portal", "provisioningState": "Succeeded"}},
-            self.subnet_id: {"id": self.subnet_id, "name": "snet-test-egakumi-aca", "type": "Microsoft.Network/virtualNetworks/subnets",
+            self.subnet_id: {"id": self.subnet_id, "name": "PortalSubnet", "type": "Microsoft.Network/virtualNetworks/subnets",
                 "properties": {"ipConfigurations": [{"id": self.lb_ip_id}],
                     "serviceAssociationLinks": [{"id": self.subnet_id + "/serviceAssociationLinks/fixture-app"}]}},
             self.managed_rg: {"id": self.managed_rg, "name": "ME-fixture-portal"},

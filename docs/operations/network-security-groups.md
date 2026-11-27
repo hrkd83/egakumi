@@ -2,8 +2,8 @@
 
 [共通確認](common.md) · [基盤設定](platform-settings.md) · [NSG設計・通信対応](../reference/architecture/network-security-design.md) · [非NSG通信](../reference/architecture/platform-communications.md)
 
-基本構成はAppGW、APIM、Private Endpoint、管理VM、Portal用ACA、Broker用ACAでそれぞれNSGを使う。証明書用ACAの通信は専用の資材で管理し、本文監査有効時は監査用NSGを追加する。AzureFirewallSubnetにはNSGを関連付けない。
-通信の用途を1ルールずつ名前と設計IDで記録する。`auditEvidence.enabled`で本文監査の固定集合を追加し、個別規則の作成有無は公開入力で切り替えない。
+基本構成はAppGW、APIM、Private Endpoint、管理VM、Portal用ACA、Broker用ACAでそれぞれNSGを使う。証明書用ACAの通信は専用の資材で管理し、本文監査用ACAにも専用のNSGを作成する。AzureFirewallSubnetにはNSGを関連付けない。
+通信の用途を1ルールずつ名前と設計IDで記録する。本文監査の規則は専用の正本から作成する。
 
 - 120から: クライアント要求から発生する通信。
 - 220から: この基盤の設計で追加した内部接続・保守通信。
@@ -166,7 +166,7 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 metadata返却先・replicaの`logStreamEndpoint`を照合し、TLS、ライブログ本文、execを個別に検証します。
 規則の作成・読戻しだけで、各保守操作の成功とは判定しません。
 
-## ACA（aca）
+## Portal用ACA（portal）
 
 APIM→ACAのHTTPS443、ACA→SQL PEのTCP1433、ACA→Key Vault PEのHTTPS443は、
 初期構成ではVNet内の直接経路を使います。ACA／APIMの既定の`0.0.0.0/0`経路より、
@@ -175,33 +175,33 @@ VNet・Private Endpointへの具体的な経路が優先されるため、Firewa
 将来の経路変更用の許可は含めません。
 
 Portal用のACA環境は、必要な受信と送信を明示して両方向の残りを拒否します。
-同じACAサブネット内の基盤通信は両方向で許可し、他サブネットとの接続は個別の規則で許可します。
+同じPortalサブネット内の基盤通信は両方向で許可し、他サブネットとの接続は個別の規則で許可します。
 [ACA基盤のNSG要件](https://learn.microsoft.com/en-us/azure/container-apps/firewall-integration#nsg-allow-rules)
 
 ### Inbound
 
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
-| 120 | `allow-firewall-https-ingress` | FirewallサブネットCIDR | ACAサブネットCIDR | TCP／443, 31443 | `B-ACA-03` |
-| 222 | `allow-mgmt-vm-https-ingress` | 管理VM private IP /32 | ACAサブネットCIDR | TCP／443, 31443 | `N-ACA-IN-MGMT-HTTPS` |
-| 320 | `allow-azure-load-balancer-ingress` | `AzureLoadBalancer`タグ | ACAサブネットCIDR | TCP／30000-32767 | `B-ACA-05` |
-| 321 | `allow-aca-internal-ingress` | ACAサブネットCIDR | ACAサブネットCIDR | Any／Any | `B-ACA-INTERNAL-IN` |
+| 120 | `allow-firewall-https-ingress` | FirewallサブネットCIDR | PortalサブネットCIDR | TCP／443, 31443 | `B-ACA-03` |
+| 222 | `allow-mgmt-vm-https-ingress` | 管理VM private IP /32 | PortalサブネットCIDR | TCP／443, 31443 | `N-ACA-IN-MGMT-HTTPS` |
+| 320 | `allow-azure-load-balancer-ingress` | `AzureLoadBalancer`タグ | PortalサブネットCIDR | TCP／30000-32767 | `B-ACA-05` |
+| 321 | `allow-aca-internal-ingress` | PortalサブネットCIDR | PortalサブネットCIDR | Any／Any | `B-ACA-INTERNAL-IN` |
 | 4096 | `deny-any-ingress` | Any | Any | Any／Any | `N-ACA-IN-TERMINAL` |
 
 ### Outbound
 
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
-| 120 | `allow-appgw-https-egress` | ACAサブネットCIDR | AppGW公開IP /32 | TCP／443 | `B-ACA-11` |
-| 220 | `allow-key-vault-https-egress` | ACAサブネットCIDR | 業務用Key Vault PE全IP /32 | TCP／443 | `B-ACA-06` |
-| 221 | `allow-sql-1433-egress` | ACAサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-ACA-07` |
-| 222 | `allow-acr-https-egress` | ACAサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-ACA-08` |
-| 320 | `allow-aca-internal-egress` | ACAサブネットCIDR | ACAサブネットCIDR | Any／Any | `B-ACA-02` |
-| 321 | `allow-entra-egress` | ACAサブネットCIDR | `AzureActiveDirectory`タグ | TCP／443 | `B-ACA-12` |
-| 322 | `allow-monitor-egress` | ACAサブネットCIDR | `AzureMonitor`タグ | TCP／443 | `B-ACA-14` |
-| 323 | `allow-mcr-egress` | ACAサブネットCIDR | `MicrosoftContainerRegistry`タグ | TCP／443 | `B-ACA-15` |
-| 324 | `allow-afd-first-party-egress` | ACAサブネットCIDR | `AzureFrontDoor.FirstParty`タグ | TCP／443 | `B-ACA-16` |
-| 325 | `allow-firewall-routed-public-https-egress` | ACAサブネットCIDR | `Internet`タグ | TCP／443 | `B-ACA-21` |
+| 120 | `allow-appgw-https-egress` | PortalサブネットCIDR | AppGW公開IP /32 | TCP／443 | `B-ACA-11` |
+| 220 | `allow-key-vault-https-egress` | PortalサブネットCIDR | 業務用Key Vault PE全IP /32 | TCP／443 | `B-ACA-06` |
+| 221 | `allow-sql-1433-egress` | PortalサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-ACA-07` |
+| 222 | `allow-acr-https-egress` | PortalサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-ACA-08` |
+| 320 | `allow-aca-internal-egress` | PortalサブネットCIDR | PortalサブネットCIDR | Any／Any | `B-ACA-02` |
+| 321 | `allow-entra-egress` | PortalサブネットCIDR | `AzureActiveDirectory`タグ | TCP／443 | `B-ACA-12` |
+| 322 | `allow-monitor-egress` | PortalサブネットCIDR | `AzureMonitor`タグ | TCP／443 | `B-ACA-14` |
+| 323 | `allow-mcr-egress` | PortalサブネットCIDR | `MicrosoftContainerRegistry`タグ | TCP／443 | `B-ACA-15` |
+| 324 | `allow-afd-first-party-egress` | PortalサブネットCIDR | `AzureFrontDoor.FirstParty`タグ | TCP／443 | `B-ACA-16` |
+| 325 | `allow-firewall-routed-public-https-egress` | PortalサブネットCIDR | `Internet`タグ | TCP／443 | `B-ACA-21` |
 | 4096 | `deny-any-egress` | Any | Any | Any／Any | `N-ACA-OUT-TERMINAL` |
 
 ## Broker専用ACA（`broker`）
@@ -232,7 +232,7 @@ Brokerの業務入口をAPIMのサブネットに限定する。専用環境の�
 | 324 | `allow-afd-first-party-egress` | BrokerサブネットCIDR | `AzureFrontDoor.FirstParty`タグ | TCP／443 | `N-BROKER-AFD-FIRST-PARTY-EGRESS` |
 | 4096 | `deny-any-egress` | Any | Any | Any／Any | `N-BROKER-DENY-ANY-EGRESS` |
 
-## 本文監査を有効にした場合の追加規則
+## 本文監査の規則
 
 | NSG | 追加件数 | 許可する通信と拒否 |
 | --- | --- | --- |

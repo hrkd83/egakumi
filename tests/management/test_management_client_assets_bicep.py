@@ -150,7 +150,7 @@ class ManagementClientBicepTests(unittest.TestCase):
         template = self.credential_network
         resource = template['resources']['rules']
         parameters = {'managementPrefix': '10.70.2.128/26',
-                      'acaPrefix': '10.70.2.192/26', 'apimPrefix': '10.70.2.64/26',
+                      'portalPrefix': '10.70.2.192/26', 'apimPrefix': '10.70.2.64/26',
                       'brokerPrefix': fixture_config()['network']['subnetPrefixes']['broker'],
                       'stem': 'test-fixture', 'privateEndpointNicIds': [], 'referencePrivateIps': ['10.70.1.10']}
         from tests.network.test_nsg_rule_priorities import FixedExpression

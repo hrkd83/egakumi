@@ -155,7 +155,7 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         resources = template["resources"]
         configuration = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "infra/config"))
         prefix = configuration["resourceStem"]
-        expected = {f"nsg-{prefix}-{suffix}" for suffix in ("agw", "apim", "pep", "vm", "aca", "broker", "certificate")}
+        expected = {f"nsg-{prefix}-{suffix}" for suffix in ("agw", "apim", "pep", "vm", "portal", "broker", "certificate")}
 
         for existing in (set(), expected, {f"nsg-{prefix}-agw", f"nsg-{prefix}-vm"}):
             with self.subTest(existing=sorted(existing)):

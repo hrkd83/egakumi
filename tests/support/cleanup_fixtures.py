@@ -244,7 +244,7 @@ class CleanupFixture:
         self.addCleanup(self.temp.cleanup)
         self.config_path = Path(self.temp.name) / "configuration.json"
         from tests.support.configuration_fixtures import fixture
-        self.raw = fixture()
+        self.raw = fixture(audit_evidence=True)
         self.write_configuration()
         sub = self.configuration["subscriptionId"]
         groups = self.configuration["resourceGroupNames"]
@@ -398,7 +398,7 @@ class CleanupFixture:
         vm_id = maint + "/providers/Microsoft.Compute/virtualMachines/vm-" + stem + "-mgmt"
         nic_id = maint + "/providers/Microsoft.Network/networkInterfaces/nic-" + stem + "-mgmt"
         disk_id = maint + "/providers/Microsoft.Compute/disks/osdisk-" + stem + "-mgmt"
-        subnet_id = cleanup._rg_id(self.configuration, "nw") + "/providers/Microsoft.Network/virtualNetworks/vnet-" + stem + "/subnets/snet-" + stem + "-vm"
+        subnet_id = cleanup._rg_id(self.configuration, "nw") + "/providers/Microsoft.Network/virtualNetworks/vnet-" + stem + "/subnets/ManagementSubnet"
         principal = "44444444-4444-4444-8444-444444444444"
         self.state["outputs"]["managementVm"] = {"id": vm_id, "name": vm_id.rsplit("/", 1)[-1],
             "nicId": nic_id, "osDiskId": disk_id, "principalId": principal}

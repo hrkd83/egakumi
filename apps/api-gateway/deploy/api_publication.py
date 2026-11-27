@@ -43,6 +43,7 @@ from deployment.helpers.credential_broker_lifecycle import broker_environment_id
 from deployment.helpers.credential_broker_lifecycle import uses_broker_environment as uses_aca_environment
 from deployment.helpers.apim_samples import cleanup_candidates, cleanup_default_samples
 from deployment.helpers.released_apis import RELEASED_PRODUCT_ID, selected_api_names, reconcile_unreleased_apis
+from deployment.helpers.subnet_names import subnet_resource_id
 from deployment.lifecycle import DeploymentError, PROJECT_NAME, ROOT, require_success, state_from_outputs
 import entra_publication
 from publication_templates import (
@@ -1533,7 +1534,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
     fw = plan["firewall"]
     policy = require_success(transport.request("GET", fw["policyId"] + "?api-version=" + NETWORK_API), "Read owned Firewall policy")
     _owned(policy, fw["policyId"], config, "Firewall policy")
-    subnet_id = _scope(config, "nw") + "/providers/Microsoft.Network/virtualNetworks/vnet-" + config["resourceStem"] + "/subnets/snet-" + config["resourceStem"] + "-apim"
+    subnet_id = subnet_resource_id(config, "apim")
     subnet = require_success(transport.request("GET", subnet_id + "?api-version=" + NETWORK_API), "Read APIM subnet")
     _assert_same(subnet.get("id"), subnet_id, "APIM subnet")
     if subnet.get("properties", {}).get("addressPrefix") != fw["sourcePrefix"]:

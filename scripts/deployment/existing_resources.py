@@ -28,7 +28,7 @@ def discover_existing_network_security_groups(config: dict, transport: ArmTransp
     expected_tags = {"product": config["productName"], "environment": config["environmentName"],
                      "azd-env-name": config["environmentName"]}
     existing = []
-    suffixes = ("agw", "apim", "pep", "vm", "aca", "certificate", "broker")
+    suffixes = ("agw", "apim", "pep", "vm", "portal", "certificate", "broker")
     if config.get("auditEvidence", {}).get("enabled") is True:
         suffixes += ("audit",)
     for suffix in suffixes:
@@ -65,7 +65,7 @@ def discover_existing_route_table_routes(config: dict, transport: ArmTransport) 
                      "azd-env-name": config["environmentName"]}
     route_properties = {"addressPrefix", "nextHopType", "nextHopIpAddress", "hasBgpOverride"}
     existing = {}
-    suffixes = ("agw", "apim", "vm", "aca", "certificate", "broker")
+    suffixes = ("agw", "apim", "vm", "portal", "certificate", "broker")
     if config.get("auditEvidence", {}).get("enabled") is True:
         suffixes += ("audit",)
     for suffix in suffixes:
@@ -113,7 +113,7 @@ def discover_existing_route_table_routes(config: dict, transport: ArmTransport) 
             # id/type/etag/進行状態は読取用。既存の全書込可能値だけを複写する。
             sanitized.append({"name": route_name, "properties": {
                 key: copy.deepcopy(value) for key, value in fields.items() if key in route_properties}})
-        if suffix in ("aca", "certificate", "broker", "audit"):
+        if suffix in ("portal", "certificate", "broker", "audit"):
             if properties.get("disableBgpRoutePropagation") is not True:
                 raise DeploymentError("ACA public HTTPS requires BGP propagation to be disabled")
             if suffix == "certificate" and any(route["name"] != "default-egress" for route in sanitized):

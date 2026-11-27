@@ -2,13 +2,13 @@
 
 前：[09. Core構築後のEntra登録](09-egakumi-portal.md) · [10. ハブ＆スポーク（任意）](10-hub-spoke.md) · [README](../../README.md) · 次：[12. Portalの個別配備](12-deploy-portal.md)
 
-CoreのAPIM、共通SQL、非公開ACR、ACA環境を使い、BrokerとCredential Managerの本人接続基盤を配備する。その後、APIMのAPI定義、バックエンド、ポリシー、製品を登録する。購読キーの例外発行は基盤管理者がAzureポータルで行う。本文監査が有効な環境では、中継と保存ワーカーも配備する。 [購読キーの運用](../operations/access-and-keys.md) · [本文監査の構成と受入条件](../reference/audit/request-body-audit.md)
+CoreのAPIM、共通SQL、非公開ACR、ACA環境を使い、BrokerとCredential Managerの本人接続基盤を配備する。その後、APIMのAPI定義、バックエンド、ポリシー、製品を登録する。購読キーの例外発行は基盤管理者がAzureポータルで行う。本文監査の中継と保存ワーカーも配備する。 [購読キーの運用](../operations/access-and-keys.md) · [本文監査の構成と受入条件](../reference/audit/request-body-audit.md)
 
 | `apps` 配下の資材 | Gateway個別配備での役割 |
 | --- | --- |
 | [api-gateway](../../apps/api-gateway/README.md) | 統合配備のBicep、Credential Manager設定、API定義、APIMポリシー、Gateway入口のWAF設定 |
 | [credential-broker](../../apps/credential-broker/README.md) | Broker本体、credentials DB、SQL初期化、定期照合ジョブ |
-| [audit-relay](../../apps/audit-relay/) | 本文監査が有効なときに起動する中継アプリと保存ワーカー。標準のテスト・本番設定では有効 |
+| [audit-relay](../../apps/audit-relay/) | 本文監査の中継アプリと保存ワーカー |
 
 対応表をAzure SQLで管理し、同じ本人には同じCM接続を再利用する。クライアントは論理名`graph-delegated`を指定し、基盤が設定されたプールから割当先を選ぶ。共通configの初期`pool.count=12`・`pool.capacity=8000`を使い、内部の物理名`graph-delegated-a`〜`graph-delegated-l`を保持する。UPNは表示と初期命名に使い、本人確認にはEntraのテナントID・オブジェクトIDを使う。
 
@@ -62,7 +62,7 @@ python3 scripts/deployment/deploy_gateway.py \
 
 1. 共通基盤の実IDを確認し、認証窓口の公開ソースだけを既存管理VMへ転送する。params・secrets・個人セッションはイメージへ含めない。
 2. 管理VMへACRスコープの組み込み`AcrPush`を一時付与し、イメージを作成して非公開ACRへ登録する。実際のdigestを取得し、そのビルドで作成した一時Run Commandと一時権限を回収する。
-3. 本文監査を有効にした環境では、Coreの監査基盤を使って中継・保存ワーカーを配備し、準備を確認する。
+3. Coreの監査基盤を使って中継・保存ワーカーを配備し、準備を確認する。
 4. credentials DB、認証窓口の実行用ID、CMプロバイダー・必要な組み込みロール、専用鍵とAPIMの名前付きの値・バックエンドを配備する。
 5. 同じdigestのSQL初期化ジョブを実行し、テーブル・プール台帳・実行用IDのSQL権限を準備する。初回はスキーマ版4まで適用する。同じ資材で再試行する場合は適用済みのスキーマ、本人対応、取引・セッション、CMプールを引き継ぐ。
 6. SQL初期化に成功してからContainer Appと定期照合ジョブを配備し、認証窓口の正常起動を確認する。Startup・Readiness・Liveness probeは`/health/gateway-caller-v1`でSQL版4とユーザー主体用の列を検査する。初期化に失敗した場合はアプリ更新とAPI登録を停止する。

@@ -91,7 +91,7 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
     def payload(template, expression, login_endpoint="https://login.microsoftonline.com/"):
         return PayloadExpression(expression, template.get("variables", {}), login_endpoint).evaluate(
             {"managementPrefix": "<MANAGEMENT_SUBNET_PREFIX>",
-             "acaPrefix": "<ACA_SUBNET_PREFIX>", "agwPrefix": "<APPGW_SUBNET_PREFIX>"}, 0)
+             "portalPrefix": "<PORTAL_SUBNET_PREFIX>", "agwPrefix": "<APPGW_SUBNET_PREFIX>"}, 0)
 
     def test_actual_run_command_scripts_are_lf_and_have_a_working_linux_shebang(self):
         for newline in (b"\n", b"\r\n"):
@@ -143,7 +143,7 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
                     endpoint = "https://" + host + suffix
                     reader = PayloadExpression("[true()]", template.get("variables", {}), endpoint)
                     parameters = {"managementPrefix": "<MANAGEMENT_SUBNET_PREFIX>",
-                                  "acaPrefix": "<ACA_SUBNET_PREFIX>", "brokerPrefix": "<BROKER_SUBNET_PREFIX>",
+                                  "portalPrefix": "<PORTAL_SUBNET_PREFIX>", "brokerPrefix": "<BROKER_SUBNET_PREFIX>",
                                   "agwPrefix": "<APPGW_SUBNET_PREFIX>"}
                     properties = reader.resolve(group["properties"], parameters)
                     values = [fqdn for collection in properties["ruleCollections"]

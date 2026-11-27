@@ -215,8 +215,8 @@ class LifecycleFixture:
                 (f"{services}/Microsoft.KeyVault/vaults/kv-{stem}/secrets/core-realtime-ticket-key?api-version=2024-11-01", missing))
         requests.append((f"{subscription}/providers/Microsoft.Resources/deployments/{stem}-monitoring?api-version=2022-09-01", missing))
 
-        nsg_suffixes = ["agw", "apim", "pep", "vm", "aca", "certificate", "broker"]
-        route_suffixes = ["agw", "apim", "vm", "aca", "certificate", "broker"]
+        nsg_suffixes = ["agw", "apim", "pep", "vm", "portal", "certificate", "broker"]
+        route_suffixes = ["agw", "apim", "vm", "portal", "certificate", "broker"]
         evidence = config.get("auditEvidence", {})
         if evidence.get("enabled") is True:
             nsg_suffixes.append("audit")

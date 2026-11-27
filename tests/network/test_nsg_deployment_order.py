@@ -9,7 +9,7 @@ from tests.network.test_nsg_rule_priorities import FixedExpression
 
 MODULES = ('portal-network', 'portal-network-bindings', 'credential-broker-network')
 NSG_NAMES = {name: 'nsg-synthetic-' + name for name in (
-    'agwNsgName', 'apimNsgName', 'pepNsgName', 'managementNsgName', 'acaNsgName', 'brokerNsgName')}
+    'agwNsgName', 'apimNsgName', 'pepNsgName', 'managementNsgName', 'portalNsgName', 'brokerNsgName')}
 
 
 def ancestors(resources, name):
@@ -95,9 +95,9 @@ class NsgDeploymentOrderTests(unittest.TestCase):
                         self.assertTrue(left in ancestors(template['resources'], right)
                                         or right in ancestors(template['resources'], left))
 
-    def test_aca_terminal_rules_wait_for_the_sql_private_endpoint_and_firewall(self):
+    def test_portal_terminal_rules_wait_for_the_sql_private_endpoint_and_firewall(self):
         resources = self.templates['credential-broker-network']['resources']
-        for group in ('aca', 'broker'):
+        for group in ('portal', 'broker'):
             with self.subTest(group=group):
                 ingress, egress = group + 'IngressDeny', group + 'EgressDeny'
                 self.assertIn(ingress, ancestors(resources, egress))

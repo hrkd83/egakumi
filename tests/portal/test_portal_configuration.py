@@ -1,4 +1,5 @@
 """Portal configuration must preserve network and certificate boundaries."""
+from ipaddress import ip_network
 import unittest
 from tests.support.configuration_fixtures import configuration, fixture, CORE
 
@@ -22,10 +23,11 @@ class PortalConfigurationTests(unittest.TestCase):
             self.validate(raw)
 
     def test_invalid_network_or_hostname_is_rejected(self):
-        for value in ('10.40.2.128/26', '10.99.0.0/26', '10.40.2.192/28'):
+        management = self.valid()['network']['subnetPrefixes']['management']
+        for value in (management, '10.99.0.0/26', '10.40.2.192/28'):
             with self.subTest(value=value):
                 raw = self.valid()
-                raw['network']['subnetPrefixes']['aca'] = value
+                raw['network']['subnetPrefixes']['portal'] = value
                 with self.assertRaisesRegex(configuration.ConfigurationError, 'network.subnetPrefixes'):
                     self.validate(raw)
         for value in ('gateway.example.com', 'console.example.com'):
@@ -36,16 +38,18 @@ class PortalConfigurationTests(unittest.TestCase):
                     self.validate(raw)
 
 
-    def test_aca_prefix_is_required_in_network(self):
+    def test_portal_prefix_is_required_in_network(self):
         raw = self.valid()
-        del raw['network']['subnetPrefixes']['aca']
+        del raw['network']['subnetPrefixes']['portal']
         with self.assertRaisesRegex(configuration.ConfigurationError, 'network.subnetPrefixes'):
             self.validate(raw)
 
-    def test_aca_accepts_the_minimum_subnet_size(self):
+    def test_portal_accepts_the_minimum_subnet_size(self):
         raw = self.valid()
-        raw['network']['subnetPrefixes']['aca'] = '10.40.2.192/27'
-        self.assertEqual(self.validate(raw)['network']['subnetPrefixes']['aca'], '10.40.2.192/27')
+        prefixes = raw['network']['subnetPrefixes']
+        minimum = str(next(ip_network(prefixes['portal']).subnets(new_prefix=27)))
+        prefixes['portal'] = minimum
+        self.assertEqual(self.validate(raw)['network']['subnetPrefixes']['portal'], minimum)
 
     def test_portal_cannot_override_the_network_prefix(self):
         raw = self.valid()

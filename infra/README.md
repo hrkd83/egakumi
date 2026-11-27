@@ -5,7 +5,7 @@
 | ディレクトリ | 担当する資材 |
 | --- | --- |
 | [config](config/) | 検証・本番の標準設定と、標準設定・合成済み設定に対応するJSON Schema。初回構築では準備コマンドで選んだprofileの標準値を参照 |
-| [network](modules/network/) | VNet、サブネット、Firewall、経路、Private Endpoint、[NSGの現行ルール](modules/network/nsg/) |
+| [network](modules/network/) | VNet、[サブネットの命名](modules/network/subnet-names.json)、Firewall、経路、Private Endpoint、[NSGの現行ルール](modules/network/nsg/) |
 | [ingress](modules/ingress/) | App Gateway、WAF、公開TLS参照。初回発行後に [public-ingress.bicep](modules/ingress/public-ingress.bicep) で構築 |
 | [services](modules/services/) | APIM、Foundry、業務用Key Vault、共通SQL、サービス間の権限 |
 | [container-apps](modules/container-apps/) | PortalとCredential Brokerの実行環境、共用ACR、内部DNS |

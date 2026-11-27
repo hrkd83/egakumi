@@ -286,7 +286,7 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         rule = collections[0]["rules"][0]
         self.assertEqual(rule["name"], "allow-aca-appgw-https")
         self.assertEqual(rule["ruleType"], "ApplicationRule")
-        self.assertEqual(rule["sourceAddresses"], ["[parameters('acaPrefix')]"])
+        self.assertEqual(rule["sourceAddresses"], ["[parameters('portalPrefix')]"])
         self.assertEqual(rule["protocols"], [{"protocolType": "Https", "port": 443}])
         self.assertEqual(rule["targetFqdns"], ["[split(parameters('gatewayOrigin'), '/')[2]]"])
         self.assertFalse(rule["terminateTLS"])

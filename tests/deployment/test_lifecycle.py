@@ -314,7 +314,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(parameters["sshPublicKey"]["value"], "LOCAL_ONLY_FIXTURE")
         self.assertEqual(parameters["existingNetworkSecurityGroupNames"]["value"], [])
         self.assertEqual(parameters["existingRouteTableRoutes"]["value"],
-                         {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "aca", "certificate", "broker")})
+                         {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "portal", "certificate", "broker")})
         self.assertEqual(transport.responses, [])
 
     def test_retry_with_disabled_deleted_zero_policies_reaches_core_parameters(self):

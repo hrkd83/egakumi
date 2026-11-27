@@ -25,13 +25,14 @@ from deployment.lifecycle import parameters as arm_parameters
 
 
 NETWORK_INPUTS = {
-    "addressSpaces": ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24", "10.40.3.0/24"],
+    # 5つ目の空間は初期VNetに登録し、サブネットには割り当てない。
+    "addressSpaces": ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24", "10.40.3.0/24", "10.40.4.0/24"],
     "subnetPrefixes": {"agw": "10.40.0.0/24", "pep": "10.40.1.0/24",
                        "firewall": "10.40.2.0/26", "apim": "10.40.2.64/26",
-                       "management": "10.40.2.128/26", "aca": "10.40.2.192/26",
-                       "certificate": "10.40.3.0/27", "broker": "10.40.3.128/25"},
+                       "portal": "10.40.2.128/26", "audit": "10.40.2.192/26",
+                       "broker": "10.40.3.0/25", "certificate": "10.40.3.128/27",
+                       "management": "10.40.3.192/26"},
 }
-PUBLIC_AUDIT_CIDR = "10.40.4.0/26"
 FIREWALL_INPUTS = {
     "snatPrivateRanges": ["IANAPrivateRanges"],
     "idpsPrivateRanges": [], "bypassTrafficSettings": [],
@@ -58,7 +59,6 @@ def public_documents(name="test"):
 
 def custom_documents():
     options, parameters = public_documents()
-    options["auditEvidence"]["enabled"] = False
     network = copy.deepcopy(NETWORK_INPUTS)
     network["addressSpaces"] = [item.replace("10.40.", "10.70.") for item in network["addressSpaces"]]
     network["subnetPrefixes"] = {key: value.replace("10.40.", "10.70.")
@@ -83,8 +83,7 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         for name in ("test", "production"):
             options, parameters = public_documents(name)
             with self.subTest(name=name):
-                self.assertEqual(parameters["network"]["addressSpaces"], [*NETWORK_INPUTS["addressSpaces"], PUBLIC_AUDIT_CIDR])
-                self.assertEqual(parameters["network"]["subnetPrefixes"], {**NETWORK_INPUTS["subnetPrefixes"], "audit": PUBLIC_AUDIT_CIDR})
+                self.assertEqual(parameters["network"], NETWORK_INPUTS)
                 self.assertNotIn("firewall", parameters["network"])
                 self.assertNotIn("auditAllowedIpAddresses", parameters["monitoring"])
                 self.assertFalse(set(options["network"]) & set(NETWORK_INPUTS))
@@ -168,7 +167,7 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                 self.assertEqual(actual, list(collapse_addresses(actual)))
                 self.assertEqual(sum(block.num_addresses for block in actual) + app_gateway.num_addresses,
                                  sum(block.num_addresses for block in original))
-                for kind in ("apim", "aca", "broker"):
+                for kind in ("apim", "portal", "broker"):
                     subnet = ip_network(network["subnetPrefixes"][kind])
                     self.assertTrue(any(subnet.subnet_of(block) for block in actual), kind)
 
@@ -366,6 +365,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
 
     def resolver(self, module, config):
         template = self.templates[module]
+        management = ip_network(config["network"]["subnetPrefixes"]["management"])
         parameters = {"config": config["network"], "location": config["location"], "resourcePrefix": "test-fixture", "subnetPrefixes": config["network"]["subnetPrefixes"],
             "firewallTlsInspection": {"managedIdentityResourceId": "/synthetic/uami", "intermediateCaSecretId": "https://fixture.example.com/secrets/ca"},
             "generatedApimServiceFqdns": config["generatedApimServiceFqdns"],
@@ -373,33 +373,61 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
             "portalPublicHostName": config["portal"]["publicHostName"],
             "foundryPrivateIps": ["10.70.1.4"], "keyVaultPrivateIps": ["10.70.1.5"],
             "auditStorageJapanPrivateIps": ["10.70.1.12"], "auditStorageFoundryPrivateIps": ["10.70.1.14"],
-            "managementPrivateIp": "10.70.2.132", "firewallPublicIpAddress": "192.0.2.10",
+            "managementPrivateIp": str(management.network_address + 4), "firewallPublicIpAddress": "192.0.2.10",
             "apimPrivateIp": "10.70.2.68", "appGatewayPublicIpAddress": "198.51.100.10",
             "existingNetworkSecurityGroupNames": [], "auditEvidenceEnabled": False,
             "nsgNames": {key: "nsg-test-fixture-" + suffix
                          for key, suffix in (("agw", "agw"), ("apim", "apim"), ("pep", "pep"),
-                                             ("management", "vm"), ("aca", "aca"), ("broker", "broker"))}}
+                                             ("management", "vm"), ("portal", "portal"), ("broker", "broker"))}}
         return NetworkArmExpression("[createObject()]", template), parameters
 
     def test_custom_vnet_address_spaces_and_subnets_are_in_compiled_arm(self):
         config = self.configuration()
         expression, parameters = self.resolver("network", config)
-        properties = self.templates["network"]["resources"]["vnet"]["properties"]
+        parameters["auditEvidenceEnabled"] = True
+        template = self.templates["network"]
+        properties = template["resources"]["vnet"]["properties"]
         self.assertEqual(expression.resolve(properties["addressSpace"], parameters), {"addressPrefixes": config["network"]["addressSpaces"]})
         self.assertEqual(expression.resolve(properties["dhcpOptions"], parameters), {"dnsServers": []})
-        subnets = expression.resolve(properties["subnets"], parameters)
-        self.assertEqual([item["properties"]["addressPrefix"] for item in subnets],
-                         [config["network"]["subnetPrefixes"][key] for key in ("agw", "firewall", "apim", "pep", "management", "aca", "broker", "certificate")])
-        self.assertEqual(len(subnets), 8)
-        for subnet, suffix in zip(subnets, ("agw", None, "apim", "pep", "vm", "aca", "broker", "certificate")):
-            with self.subTest(suffix=suffix):
+        declared = expression.resolve(properties["subnets"], parameters)
+        subnets = {subnet["name"]: subnet["properties"] for subnet in declared}
+        expected = (
+            ("agw", "AppGatewaySubnet", "agw"),
+            ("firewall", "AzureFirewallSubnet", None),
+            ("apim", "ApiManagementSubnet", "apim"),
+            ("pep", "PrivateEndpointSubnet", "pep"),
+            ("management", "ManagementSubnet", "vm"),
+            ("portal", "PortalSubnet", "portal"),
+            ("broker", "CredentialBrokerSubnet", "broker"),
+            ("audit", "AuditEvidenceSubnet", "audit"),
+            ("certificate", "CertificateJobSubnet", "certificate"),
+        )
+        self.assertEqual(len(declared), len(expected))
+        self.assertEqual(set(subnets), {name for _, name, _ in expected})
+        subnet_ids = expression.resolve(template["outputs"]["subnetIds"]["value"], parameters)
+        subnet_id_prefix = "/mock/Microsoft.Network/virtualNetworks/subnets/vnet-test-fixture/"
+        self.assertEqual(subnet_ids, {role: subnet_id_prefix + name for role, name, _ in expected})
+        firewall_ip_configuration = template["resources"]["firewall"]["properties"]["ipConfigurations"][0]
+        firewall_subnet = firewall_ip_configuration["properties"]["subnet"]["id"]
+        self.assertEqual(expression.resolve(firewall_subnet, parameters), subnet_ids["firewall"])
+        for role, name, suffix in expected:
+            with self.subTest(role=role):
+                subnet = subnets[name]
+                self.assertEqual(subnet["addressPrefix"], config["network"]["subnetPrefixes"][role])
                 if suffix is None:
-                    self.assertEqual(subnet["name"], "AzureFirewallSubnet")
-                    self.assertNotIn("networkSecurityGroup", subnet["properties"])
+                    self.assertNotIn("networkSecurityGroup", subnet)
                 else:
-                    self.assertEqual(subnet["properties"]["networkSecurityGroup"]["id"],
+                    self.assertEqual(subnet["networkSecurityGroup"]["id"],
                                      "/mock/Microsoft.Network/networkSecurityGroups/nsg-test-fixture-" + suffix)
-        self.assertEqual(subnets[3]["properties"]["privateEndpointNetworkPolicies"],
+                if role in ("firewall", "pep"):
+                    self.assertNotIn("routeTable", subnet)
+                else:
+                    self.assertEqual(subnet["routeTable"]["id"],
+                                     "/mock/Microsoft.Network/routeTables/rt-test-fixture-" + suffix)
+                if role in ("portal", "broker", "audit", "certificate"):
+                    self.assertEqual(subnet["delegations"][0]["properties"]["serviceName"],
+                                     "Microsoft.App/environments")
+        self.assertEqual(subnets["PrivateEndpointSubnet"]["privateEndpointNetworkPolicies"],
                          "NetworkSecurityGroupEnabled")
 
     def test_firewall_and_its_public_ip_default_to_azure_zone_allocation(self):
@@ -417,17 +445,17 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                 self.assertEqual(expression.resolve(resources["appGatewayPublicIp"]["zones"], parameters),
                                  ["1", "2", "3"])
 
-    def test_aca_delegation_links_the_subnet_to_the_firewall_egress_route(self):
+    def test_portal_delegation_links_the_subnet_to_the_firewall_egress_route(self):
         config = self.configuration()
         expression, parameters = self.resolver("network", config)
         resources = self.templates["network"]["resources"]
         subnets = expression.resolve(resources["vnet"]["properties"]["subnets"], parameters)
         self.assertEqual(len(subnets), 8)
-        aca = next(item["properties"] for item in subnets if item["name"] == "snet-test-fixture-aca")
-        self.assertEqual(aca["addressPrefix"], config["network"]["subnetPrefixes"]["aca"])
-        self.assertEqual(aca["delegations"][0]["properties"]["serviceName"], "Microsoft.App/environments")
-        self.assertIs(aca["defaultOutboundAccess"], False)
-        self.assertEqual(aca["routeTable"]["id"], "/mock/Microsoft.Network/routeTables/rt-test-fixture-aca")
+        portal = next(item["properties"] for item in subnets if item["name"] == "PortalSubnet")
+        self.assertEqual(portal["addressPrefix"], config["network"]["subnetPrefixes"]["portal"])
+        self.assertEqual(portal["delegations"][0]["properties"]["serviceName"], "Microsoft.App/environments")
+        self.assertIs(portal["defaultOutboundAccess"], False)
+        self.assertEqual(portal["routeTable"]["id"], "/mock/Microsoft.Network/routeTables/rt-test-fixture-portal")
         self.assertIs(resources["portalRouteTable"]["properties"]["disableBgpRoutePropagation"], True)
 
         routes = resources["portalRoutes"]
@@ -456,16 +484,17 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(rules[1, "allow-time-sync-egress"]["sourceAddressPrefix"], "10.70.2.64/26")
         self.assertEqual(rules[1, "allow-time-sync-egress"]["destinationAddressPrefix"], "Internet")
         self.assertEqual(rules[1, "allow-time-sync-egress"]["priority"], 328)
-        self.assertEqual(rules[4, "allow-firewall-https-ingress"]["destinationAddressPrefix"], "10.70.2.192/26")
+        self.assertEqual(rules[4, "allow-firewall-https-ingress"]["destinationAddressPrefix"], config["network"]["subnetPrefixes"]["portal"])
         expression, parameters = self.resolver("network-bindings", config)
         entries = expression.resolve("[variables('dynamicRules')]", parameters)
         dynamic = {(entry["nsgIndex"], entry["rule"]["name"]): entry["rule"]["properties"] for entry in entries}
         self.assertEqual(dynamic[0, "allow-firewall-public-https-ingress"]["sourceAddressPrefix"], "192.0.2.10/32")
         self.assertEqual(dynamic[0, "allow-firewall-public-https-ingress"]["priority"], 120)
         self.assertEqual(dynamic[0, "allow-apim-https-egress"]["destinationAddressPrefix"], "10.70.2.68/32")
-        self.assertEqual(dynamic[1, "allow-mgmt-vm-https-ingress"]["sourceAddressPrefix"], "10.70.2.132/32")
+        management_host = parameters["managementPrivateIp"] + "/32"
+        self.assertEqual(dynamic[1, "allow-mgmt-vm-https-ingress"]["sourceAddressPrefix"], management_host)
         self.assertEqual(dynamic[1, "allow-mgmt-vm-https-ingress"]["destinationAddressPrefix"], "10.70.2.64/26")
-        self.assertEqual(dynamic[3, "allow-apim-https-egress"]["sourceAddressPrefix"], "10.70.2.132/32")
+        self.assertEqual(dynamic[3, "allow-apim-https-egress"]["sourceAddressPrefix"], management_host)
         self.assertEqual(dynamic[3, "allow-apim-https-egress"]["destinationAddressPrefix"], "10.70.2.64/26")
         self.assertEqual(dynamic[4, "allow-appgw-https-egress"]["destinationAddressPrefix"], "198.51.100.10/32")
 

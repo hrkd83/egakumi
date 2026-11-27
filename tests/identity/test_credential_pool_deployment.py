@@ -173,7 +173,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                     'brokerEnvironmentName': broker_environment,
                     'brokerEnvironmentId': broker_base + broker_environment,
                     'brokerEnvironmentDomain': 'synthetic-broker.fixture.' + 'azurecontainerapps.io',
-                    'brokerSubnetId': subnet_base + 'vnet-' + stem + '/subnets/snet-' + stem + '-broker',
+                    'brokerSubnetId': subnet_base + 'vnet-' + stem + '/subnets/CredentialBrokerSubnet',
                     'registryName': 'acr' + stem.replace('-', ''),
                 }
                 state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}

@@ -1,6 +1,6 @@
 # Entraアプリと認可
 
-共用基盤の構築では、認証テナントに4つのシングルテナントアプリを登録します。Azureリソースを管理するテナントが別の場合は、paramsの `azureTenantId` と `entraTenantId` をそれぞれ指定します。テスト・本番の標準configでは本文監査を有効にするため、両項目に同じテナントを指定します。 [本文監査の構築条件](../audit/request-body-audit.md#初回構築)
+共用基盤の構築では、認証テナントに4つのシングルテナントアプリを登録します。本文監査の中継を認証するため、paramsの `azureTenantId` と `entraTenantId` に同じテナントを指定します。 [本文監査の構築条件](../audit/request-body-audit.md#初回構築)
 
 | アプリ | 使う場所 | Entraの設定と配備入力 |
 | --- | --- | --- |

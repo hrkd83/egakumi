@@ -20,7 +20,7 @@ param publicOrigin string
 @description('Gateway.InvokeのBearer試用に使う公開Gatewayの固定HTTPSオリジンです。')
 param gatewayOrigin string
 param networkResourceGroup string
-param acaPrefix string
+param portalPrefix string
 param expectedEgressIp string
 @secure()
 @description('Portal専用セッション署名鍵。空の場合は既存のKey Vault値を更新しません。')
@@ -52,7 +52,7 @@ resource apiAuthReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if
 module gatewayEgress 'gateway-egress.bicep' = {
   name: '${stem}-portal-gateway-egress'
   scope: resourceGroup(networkResourceGroup)
-  params: { stem: stem, acaPrefix: acaPrefix, gatewayOrigin: gatewayOrigin }
+  params: { stem: stem, portalPrefix: portalPrefix, gatewayOrigin: gatewayOrigin }
 }
 
 module database 'database.bicep' = {
