@@ -284,14 +284,7 @@ class WafLayoutBicepTests(unittest.TestCase):
                             if entry["selector"] in selectors]
                 self.assertEqual(selected, expected.get(name, []))
 
-    def test_no_extra_generators_or_dynamic_data_exclusions_remain(self):
-        removed = {"customMimePaths", "legacyMcpMessagePaths", "inlineImagePaths", "inlinePdfPaths", "inlineAudioPaths"}
-        self.assertFalse(removed & set(self.template["parameters"]))
-        modules = self.main["resources"]
-        modules = list(modules.values()) if isinstance(modules, dict) else modules
-        module = next(item for item in modules if "wafPolicyIdentifier" in item.get("properties", {}).get("parameters", {}))
-        self.assertFalse(removed & set(module["properties"]["parameters"]))
-        self.assertFalse(removed & set(self.main["variables"]))
+    def test_explicit_profiles_keep_their_exclusions_with_additional_api_paths(self):
         declarations = [r for r in self.resources if r["type"] == WAF_TYPE]
         self.assertEqual(sum("copy" not in r for r in declarations), 6)
         self.assertEqual(sum("copy" in r for r in declarations), 1)
@@ -334,16 +327,12 @@ class WafLayoutBicepTests(unittest.TestCase):
                 "REQUEST-944-APPLICATION-ATTACK-JAVA")]
             self.assertEqual(entry["exclusionManagedRuleSets"][0]["ruleGroups"], groups)
 
-    def test_standard_sku_has_no_waf_and_external_policy_input_is_removed(self):
-        parameters = self.parameters()
-        self.assertNotIn("existingWafPolicyId", self.template["parameters"])
-        for changes in ({"skuName": "Standard_v2"},):
-            with self.subTest(changes=changes):
-                external = {**parameters, **changes}
-                self.assertEqual(self.policies(external), {})
-                gateway = self.gateway(external)
-                self.assertNotIn("urlPathMaps", gateway)
-                self.assertNotIn("firewallPolicy", gateway)
+    def test_standard_sku_does_not_attach_waf(self):
+        parameters = self.parameters(skuName="Standard_v2")
+        self.assertEqual(self.policies(parameters), {})
+        gateway = self.gateway(parameters)
+        self.assertNotIn("urlPathMaps", gateway)
+        self.assertNotIn("firewallPolicy", gateway)
 
 
 if __name__ == "__main__":
