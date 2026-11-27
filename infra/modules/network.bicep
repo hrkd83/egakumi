@@ -84,7 +84,7 @@ func allowRule(ruleName string, priority int, direction string, protocol string,
   })
 }
 
-// AppGWとACAはAzure既定送信を保持。ACAは受信の末尾Any Denyも作成しません。
+// AppGWはAzure既定送信を保持。ACAの末尾Denyは動的な許可を登録した後で配置します。
 // AzureFirewallSubnetに顧客NSGを作成・関連付けしません。
 var nsgDefinitions = [
   {
@@ -144,12 +144,15 @@ var nsgDefinitions = [
       allowRule('allow-firewall-https-ingress', nsgPriorities.groups.aca.rules['allow-firewall-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.firewall], [subnetPrefixes.aca], ['443', '31443'])
       allowRule('allow-apim-https-ingress', nsgPriorities.groups.aca.rules['allow-apim-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.apim], [subnetPrefixes.aca], ['443', '31443'])
       allowRule('allow-azure-load-balancer-ingress', nsgPriorities.groups.aca.rules['allow-azure-load-balancer-ingress'].priority, 'Inbound', 'Tcp', ['AzureLoadBalancer'], [subnetPrefixes.aca], ['30000-32767'])
+      allowRule('allow-aca-internal-ingress', nsgPriorities.groups.aca.rules['allow-aca-internal-ingress'].priority, 'Inbound', '*', [subnetPrefixes.aca], [subnetPrefixes.aca], ['*'])
       allowRule('allow-arm-https-egress', nsgPriorities.groups.aca.rules['allow-arm-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureResourceManager'], ['443'])
       allowRule('allow-aca-internal-egress', nsgPriorities.groups.aca.rules['allow-aca-internal-egress'].priority, 'Outbound', '*', [subnetPrefixes.aca], [subnetPrefixes.aca], ['*'])
       allowRule('allow-entra-egress', nsgPriorities.groups.aca.rules['allow-entra-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureActiveDirectory'], ['443'])
       allowRule('allow-monitor-egress', nsgPriorities.groups.aca.rules['allow-monitor-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureMonitor'], ['443'])
       allowRule('allow-mcr-egress', nsgPriorities.groups.aca.rules['allow-mcr-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['MicrosoftContainerRegistry'], ['443'])
       allowRule('allow-afd-first-party-egress', nsgPriorities.groups.aca.rules['allow-afd-first-party-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureFrontDoor.FirstParty'], ['443'])
+      // CNIの配布先には安定した個別タグがないため、公開HTTPSをFirewallのFQDN規則へ渡します。
+      allowRule('allow-firewall-routed-public-https-egress', nsgPriorities.groups.aca.rules['allow-firewall-routed-public-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['Internet'], ['443'])
     ]
   }
 ]

@@ -480,14 +480,27 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                 self.assertEqual(expression.resolve(resources["appGatewayPublicIp"]["zones"], parameters),
                                  ["1", "2", "3"])
 
-    def test_portal_adds_only_the_explicit_delegated_subnet(self):
+    def test_aca_delegation_links_the_subnet_to_the_firewall_egress_route(self):
         config = self.configuration()
         config["network"]["subnetPrefixes"]["aca"] = "10.70.3.128/27"
         expression, parameters = self.resolver("network", config)
-        subnets = expression.resolve(self.templates["network"]["resources"]["vnet"]["properties"]["subnets"], parameters)
+        resources = self.templates["network"]["resources"]
+        subnets = expression.resolve(resources["vnet"]["properties"]["subnets"], parameters)
         self.assertEqual(len(subnets), 6)
-        self.assertEqual(subnets[-1]["properties"]["addressPrefix"], "10.70.3.128/27")
-        self.assertEqual(subnets[-1]["properties"]["delegations"][0]["properties"]["serviceName"], "Microsoft.App/environments")
+        aca = subnets[-1]["properties"]
+        self.assertEqual(aca["addressPrefix"], "10.70.3.128/27")
+        self.assertEqual(aca["delegations"][0]["properties"]["serviceName"], "Microsoft.App/environments")
+        self.assertIs(aca["defaultOutboundAccess"], False)
+        self.assertEqual(aca["routeTable"]["id"], "/mock/Microsoft.Network/routeTables/rt-test-fixture-aca")
+        self.assertIs(resources["portalRouteTable"]["properties"]["disableBgpRoutePropagation"], True)
+
+        routes = resources["portalRoutes"]
+        self.assertIn("firewall", routes["dependsOn"])
+        self.assertIn("portalRouteTable", routes["dependsOn"])
+        self.assertEqual(expression.resolve(routes["properties"]["addressPrefix"], parameters), "0.0.0.0/0")
+        self.assertEqual(routes["properties"]["nextHopType"], "VirtualAppliance")
+        self.assertEqual(routes["properties"]["nextHopIpAddress"],
+                         "[reference('firewall').ipConfigurations[0].properties.privateIPAddress]")
 
     def test_custom_cidrs_and_allocated_ips_feed_static_and_dynamic_nsg_rules(self):
         config = self.configuration()

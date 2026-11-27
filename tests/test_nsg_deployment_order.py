@@ -95,6 +95,11 @@ class NsgDeploymentOrderTests(unittest.TestCase):
                         self.assertTrue(left in ancestors(template['resources'], right)
                                         or right in ancestors(template['resources'], left))
 
+    def test_aca_terminal_rules_wait_for_the_sql_private_endpoint_and_firewall(self):
+        resources = self.templates['credential-broker-network']['resources']
+        self.assertIn('acaIngressDeny', ancestors(resources, 'acaEgressDeny'))
+        self.assertTrue({'acaSqlOut', 'sqlIn', 'rules'} <= ancestors(resources, 'acaIngressDeny'))
+
     def test_modules_writing_to_the_same_nsg_are_ordered(self):
         graph, nodes = dependency_graph(self.main)
         symbols = {}

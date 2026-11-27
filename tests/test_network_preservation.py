@@ -221,7 +221,7 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
         name = f"rt-{self.config['resourceStem']}-{suffix}"
         resource_id = (f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/"
                        f"{self.config['resourceGroupNames']['nw']}/providers/Microsoft.Network/routeTables/{name}")
-        return {"statusCode": 200, "body": {
+        result = {"statusCode": 200, "body": {
             "id": resource_id, "name": name, "type": "Microsoft.Network/routeTables", "etag": "read-only-table-etag",
             "location": self.config["location"],
             "tags": {"product": self.config["productName"], "environment": self.config["environmentName"],
@@ -234,6 +234,69 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
                         "nextHopIpAddress": "10.40.2.4", "hasBgpOverride": False, "provisioningState": "Succeeded"}},
                     {"name": "direct-default", "properties": {"addressPrefix": "0.0.0.0/0", "nextHopType": "Internet"}}]},
         }}
+
+        if suffix == "aca":
+            routes = result["body"]["properties"]["routes"]
+            routes[1] = {"name": "default-egress", "properties": {
+                "addressPrefix": "0.0.0.0/0", "nextHopType": "VirtualAppliance",
+                "nextHopIpAddress": "10.40.2.4"}}
+        return result
+
+    def test_aca_route_snapshot_rejects_public_bypasses_without_mutation(self):
+        prefix_responses = [{"statusCode": 404, "body": None}] * 3
+        for prefix, hop in (("203.0.113.0/24", "Internet"), ("AzureCloud", "VnetLocal"),
+                            ("0.0.0.0/0", "VirtualNetworkGateway")):
+            response = self.route_table_response("aca")
+            response["body"]["properties"]["routes"].append({"name": "additional-route", "properties": {
+                "addressPrefix": prefix, "nextHopType": hop}})
+            transport = ScriptedTransport(prefix_responses + [response])
+            with self.subTest(prefix=prefix, hop=hop), self.assertRaisesRegex(lifecycle.DeploymentError, "without a bypass"):
+                lifecycle.discover_existing_route_table_routes(self.config, transport)
+            self.assertFalse(transport.mutations())
+
+        response = self.route_table_response("aca")
+        response["body"]["properties"]["disableBgpRoutePropagation"] = False
+        transport = ScriptedTransport(prefix_responses + [response])
+        with self.assertRaisesRegex(lifecycle.DeploymentError, "BGP propagation"):
+            lifecycle.discover_existing_route_table_routes(self.config, transport)
+        self.assertFalse(transport.mutations())
+
+    def test_aca_route_snapshot_accepts_partial_creation_and_rejects_a_foreign_default_hop(self):
+        prefix_responses = [{"statusCode": 404, "body": None}] * 3
+        response = self.route_table_response("aca")
+        routes = response["body"]["properties"]["routes"]
+        default_route = routes.pop()
+        transport = ScriptedTransport(prefix_responses + [response])
+        snapshot = lifecycle.discover_existing_route_table_routes(self.config, transport)
+        self.assertEqual(len(snapshot[response["body"]["name"]]), 1)
+        self.assertFalse(transport.mutations())
+
+        default_route["properties"]["nextHopIpAddress"] = "10.40.2.68"
+        routes.append(default_route)
+        transport = ScriptedTransport(prefix_responses + [response])
+        with self.assertRaisesRegex(lifecycle.DeploymentError, "without a bypass"):
+            lifecycle.discover_existing_route_table_routes(self.config, transport)
+        self.assertFalse(transport.mutations())
+
+    def test_aca_route_snapshot_preserves_the_owned_app_gateway_return_route(self):
+        config = copy.deepcopy(self.config)
+        app_gateway_subnet = "198.51.100.0/24"
+        config["network"]["subnetPrefixes"]["agw"] = app_gateway_subnet
+        response = self.route_table_response("aca")
+        fields = {"addressPrefix": app_gateway_subnet, "nextHopType": "VirtualAppliance",
+                  "nextHopIpAddress": "10.40.2.4"}
+        response["body"]["properties"]["routes"].append({"name": "agw-return", "properties": fields})
+        prefix_responses = [{"statusCode": 404, "body": None}] * 3
+        transport = ScriptedTransport(prefix_responses + [response])
+        snapshot = lifecycle.discover_existing_route_table_routes(config, transport)
+        self.assertEqual(snapshot[response["body"]["name"]][-1]["properties"], fields)
+        self.assertFalse(transport.mutations())
+
+        fields["nextHopType"] = "Internet"
+        transport = ScriptedTransport(prefix_responses + [response])
+        with self.assertRaisesRegex(lifecycle.DeploymentError, "without a bypass"):
+            lifecycle.discover_existing_route_table_routes(config, transport)
+        self.assertFalse(transport.mutations())
 
     def test_first_partial_and_repeated_up_snapshot_only_the_four_exact_tables(self):
         suffixes = ("agw", "apim", "vm", "aca")

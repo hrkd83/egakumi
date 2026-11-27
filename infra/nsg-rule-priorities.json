@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "groups": {
     "agw": {
       "suffix": "agw",
@@ -1271,6 +1271,74 @@
           ],
           "destinationPorts": [
             "443"
+          ]
+        },
+        "allow-aca-internal-ingress": {
+          "designRecordId": "B-ACA-17",
+          "direction": "Inbound",
+          "priority": 321,
+          "access": "Allow",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "subnet:aca"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "allow-firewall-routed-public-https-egress": {
+          "designRecordId": "B-ACA-21",
+          "direction": "Outbound",
+          "priority": 325,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "tag:Internet"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "deny-any-ingress": {
+          "designRecordId": "N-ACA-IN-TERMINAL",
+          "direction": "Inbound",
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "deny-any-egress": {
+          "designRecordId": "N-ACA-OUT-TERMINAL",
+          "direction": "Outbound",
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
           ]
         }
       }

@@ -187,7 +187,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         self.assertEqual(set(public["resourceGroupNames"]), {"id", "nw", "monitor", "svc", "maint"})
         self.assertEqual(len(public["network"]["addressSpaces"]), 4)
         self.assertNotIn("configFile", public)
-        for field in ("sshPublicKeyFile", "pluginArgumentsFile", "clientSecretFile", "preparedPfxFile", "preparedPfxPasswordFile"):
+        for field in ("sshPublicKeyFile", "pluginArgumentsFile", "clientSecretFile"):
             self.assertNotIn('"' + field + '"', arguments.read_text())
         for secure_input in ("sshPublicKey", "dnsPluginArgumentsJson", "credentialProviderSecrets"):
             self.assertNotIn(secure_input, arm["parameters"])

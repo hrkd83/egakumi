@@ -184,9 +184,9 @@ try {
     Reset-Fixture;$script:Action='Install'
     Expect-Failure {Ensure-Certificate} 'Install accepted a rotation request'
     Check ($script:ReadCalls -eq 0) 'Install rotation read current certificate'
-    Reset-Fixture;$script:Config.mode='prepared'
-    Expect-Failure {Ensure-Certificate} 'Prepared mode accepted DNS planned rotation'
-    Check ($script:ReadCalls -eq 0) 'Prepared rotation read current certificate'
+    Reset-Fixture;$script:Config.mode='unsupported'
+    Expect-Failure {Ensure-Certificate} 'Unsupported mode accepted DNS planned rotation'
+    Check ($script:ReadCalls -eq 0) 'Unsupported rotation read current certificate'
     Reset-Fixture;$script:Current=$null
     Expect-Failure {Ensure-Certificate} 'Missing current certificate was silently provisioned'
     Check ($script:NewCalls -eq 0 -and $script:RenewCalls -eq 0) 'Missing current certificate called CA'

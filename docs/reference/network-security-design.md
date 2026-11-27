@@ -2,7 +2,7 @@
 
 [通信要件](network-communication-requirements.md) · [Firewall設計](firewall-policy-design.md) · [実証方法と検証結果の管理](network-security-validation.md) · [NSG運用一覧](../operations/network-security-groups.md) · [NSGにしない基盤通信](platform-communications.md)
 
-本書は初期構築に採用したNSGの通信対応と判断を記録する。定義の正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のcatalog v4であり、5 NSG・カスタム73規則（Allow 67、Deny 6）を構築する。Azureの既定規則30件はこの件数に含めない。`AzureFirewallSubnet`にはNSGを関連付けない。
+本書は初期構築に採用したNSGの通信対応と判断を記録する。定義の正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のcatalog v5であり、5 NSG・カスタム77規則（Allow 69、Deny 8）を構築する。Azureの既定規則30件はこの件数に含めない。`AzureFirewallSubnet`にはNSGを関連付けない。
 
 `FLOW-...`は通信要件の識別子、`POLICY-...`は拒否・既定規則の設計判断の識別子、規則の設計IDは資材の`designRecordId`である。同じ接続の送信・受信に同じFLOW IDを付ける。拒否規則や既定規則は通信の件数として加算しない。
 
@@ -33,11 +33,11 @@
 | `tag:...` | Azureサービスタグ | 名称・プロトコル・ポートは資材固定。タグのIP集合を公開入力で上書きしない。 |
 | `literal:*`／`literal:0.0.0.0/0` | Any／初期IPv4公開範囲 | 資材固定。企業環境に合わせた変更は初期構築後の運用とする。 |
 
-規則表の依存欄には、各規則へ入る構築情報を列挙する。規則の作成有無は全73件で固定であり、依存欄の値が作成スイッチを意味することはない。PEや資源の作成後に動的規則を設定し、終端Denyは必要なAllowが揃った後に設定する。
+規則表の依存欄には、各規則へ入る構築情報を列挙する。規則の作成有無は全77件で固定であり、依存欄の値が作成スイッチを意味することはない。PEや資源の作成後に動的規則を設定し、終端Denyは必要なAllowが揃った後に設定する。
 
 ## 全カスタム規則と通信対応
 
-すべての表で、名前・優先度・方向・プロトコル・ポート・アドレス参照・設計IDは正本の73件に対応する。用途と採用理由は通信要件への対応を示し、現在の経路でFirewallを通るかは[通信要件の経路](network-communication-requirements.md)と[Firewall設計](firewall-policy-design.md)で確認する。
+すべての表で、名前・優先度・方向・プロトコル・ポート・アドレス参照・設計IDは正本の77件に対応する。用途と採用理由は通信要件への対応を示し、現在の経路でFirewallを通るかは[通信要件の経路](network-communication-requirements.md)と[Firewall設計](firewall-policy-design.md)で確認する。
 
 ### AppGW（`agw`）
 
@@ -57,7 +57,7 @@
 | 優先度 | 規則名／設計ID | 送信元 → 宛先 | プロトコル／宛先ポート | 通信・判断ID | 用途・採用理由 | 構築情報への依存 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-apim-https-egress`<br>`N-AGW-OUT-01` | `subnet:agw` → `ip:apim` | TCP／443 | [FLOW-APPGW-APIM](network-communication-requirements.md#flow-appgw-apim) | 通常APIとバックエンドprobeをAPIM内部VIPのHTTPS443へ送る。構築VIPだけを指定し、再暗号化しない設計を記録する。 | `subnet:agw`, `ip:apim` |
-| 121 | `allow-aca-https-egress`<br>`N-AGW-OUT-03` | `subnet:agw` → `ip:aca` | TCP／443 | [FLOW-APPGW-ACA](network-communication-requirements.md#flow-appgw-aca) | PortalとprobeをACA共有VIPのHTTPS443へ送る。公開HTTPSはAppGWで終端し、ACAのHTTP受入設定と組み合わせる。 | `subnet:agw`, `ip:aca` |
+| 121 | `allow-aca-https-egress`<br>`N-AGW-OUT-03` | `subnet:agw` → `ip:aca` | TCP／443 | [FLOW-APPGW-ACA](network-communication-requirements.md#flow-appgw-aca) | PortalとprobeをACA共有VIPのHTTPS443へ送る。AppGWが再暗号化し、FirewallのTLS検査を経由してACAのHTTPS入口へ接続する。 | `subnet:agw`, `ip:aca` |
 | 220 | `allow-key-vault-https-egress`<br>`N-AGW-OUT-04` | `subnet:agw` → `ips:keyVault` | TCP／443 | [FLOW-APPGW-KV](network-communication-requirements.md#flow-appgw-kv) | AppGWが構築Key Vaultの証明書を取得・更新するHTTPS。PE NICの全IPを取得し、PEサブネット全体へ広げない。 | `subnet:agw`, `ips:keyVault` |
 
 ### APIM（`apim`）
@@ -146,13 +146,18 @@
 
 ### ACA（`aca`）
 
+PortalとCredential Brokerが共用する内部環境のサブネットに、次の18規則を適用する。
+
 #### Inbound
 
 | 優先度 | 規則名／設計ID | 送信元 → 宛先 | プロトコル／宛先ポート | 通信・判断ID | 用途・採用理由 | 構築情報への依存 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-firewall-https-ingress`<br>`B-ACA-03` | `subnet:firewall` → `subnet:aca` | TCP／443, 31443 | [FLOW-APPGW-ACA](network-communication-requirements.md#flow-appgw-aca) | AppGWのPortal通信とプローブがFirewallのTLS検査を経由して到達する。ACA ingressと基盤node portにTCP443／31443を許可する。 | `subnet:firewall`, `subnet:aca` |
 | 220 | `allow-apim-https-ingress`<br>`B-ACA-04` | `subnet:apim` → `subnet:aca` | TCP／443, 31443 | [FLOW-APIM-ACA](network-communication-requirements.md#flow-apim-aca) | APIMからCredential BrokerのHTTPS ingressと基盤node portへ到達する。ACA ingressと基盤node portにTCP443／31443を許可する。 | `subnet:apim`, `subnet:aca` |
-| 320 | `allow-azure-load-balancer-ingress`<br>`B-ACA-05` | `tag:AzureLoadBalancer` → `subnet:aca` | TCP／30000-32767 | [FLOW-ACA-LOAD-BALANCER](network-communication-requirements.md#flow-aca-load-balancer) | ACA基盤のLoad Balancer probe。ACAの公開仕様に沿ってTCP node port範囲を許可し、AppGW／APIMのAny判断を横展開しない。 | `subnet:aca` |
+| 222 | `allow-mgmt-vm-https-ingress`<br>`N-ACA-IN-MGMT-HTTPS` | `ip:management` → `subnet:aca` | TCP／443, 31443 | [FLOW-MGMT-ACA-HTTPS](network-communication-requirements.md#flow-mgmt-aca-https) | 管理VMの割当IPに限定してACAへのHTTPS保守接続を許可する。 | `ip:management`, `subnet:aca` |
+| 320 | `allow-azure-load-balancer-ingress`<br>`B-ACA-05` | `tag:AzureLoadBalancer` → `subnet:aca` | TCP／30000-32767 | [FLOW-ACA-LOAD-BALANCER](network-communication-requirements.md#flow-aca-load-balancer) | ACA基盤のLoad Balancer probe。作成時に動的なnode portを使うため、公式範囲を許可する。 | `subnet:aca` |
+| 321 | `allow-aca-internal-ingress`<br>`B-ACA-17` | `subnet:aca` → `subnet:aca` | Any／Any | [FLOW-ACA-INTERNAL](network-communication-requirements.md#flow-aca-internal) | 同一サブネット内の基盤通信を受ける。対象は共用ACAサブネットのCIDR内。 | `subnet:aca` |
+| 4096 | `deny-any-ingress`<br>`N-ACA-IN-TERMINAL` | Any → Any | Any／Any | `POLICY-ACA-IN-DENY` | 明示した受信許可以外の新規接続を拒否する。 | 固定literal／Azureタグのみ |
 
 #### Outbound
 
@@ -168,6 +173,8 @@
 | 322 | `allow-monitor-egress`<br>`B-ACA-14` | `subnet:aca` → `tag:AzureMonitor` | TCP／443 | [FLOW-ACA-MONITOR](network-communication-requirements.md#flow-aca-monitor) | ACAのログ／監視基盤へのHTTPS送信。NSG Allowだけでログ本文の収集成功とは判定しない。 | `subnet:aca` |
 | 323 | `allow-mcr-egress`<br>`B-ACA-15` | `subnet:aca` → `tag:MicrosoftContainerRegistry` | TCP／443 | [FLOW-ACA-MCR](network-communication-requirements.md#flow-aca-mcr) | Microsoft Container Registryの基盤image／artifact取得。構築ACR PEからの取得とは別通信である。 | `subnet:aca` |
 | 324 | `allow-afd-first-party-egress`<br>`B-ACA-16` | `subnet:aca` → `tag:AzureFrontDoor.FirstParty` | TCP／443 | [FLOW-ACA-PLATFORM-PACKAGES](network-communication-requirements.md#flow-aca-platform-packages) | Azure Front Door FirstParty経由の基盤配布・パッケージ依存。MCR等の配布依存とあわせて仕様を参照する。 | `subnet:aca` |
+| 325 | `allow-firewall-routed-public-https-egress`<br>`B-ACA-21` | `subnet:aca` → `tag:Internet` | TCP／443 | [FLOW-ACA-PLATFORM-PACKAGES](network-communication-requirements.md#flow-aca-platform-packages) | CDNを含む公開HTTPSを固定UDRでFirewallへ転送し、許可済みの宛先に絞る。 | `subnet:aca`、構築Firewallへ向かう固定UDR |
+| 4096 | `deny-any-egress`<br>`N-ACA-OUT-TERMINAL` | Any → Any | Any／Any | `POLICY-ACA-OUT-DENY` | 明示した送信許可以外の新規接続を拒否する。 | 固定literal／Azureタグのみ |
 
 ## 既定規則と拒否範囲
 
@@ -190,7 +197,7 @@ Azureは5 NSGそれぞれへ次の6既定規則を持たせる。資材で再作
 | APIM | 明示Allowの後、4096で拒否 | 明示Allowの後、4096で拒否 | 通常入口・保守・製品基盤依存・内部同期を列挙し、その外の新規接続を拒否する。 |
 | PE | 明示Allowの後、4096で拒否 | カスタム規則なし、既定を維持 | `privateEndpointNetworkPolicies: NetworkSecurityGroupEnabled`でclient接続を評価する。PE応答のための新規送信Allowは作成しない。 |
 | 管理VM | 4096で通常受信を拒否 | 明示Allowの後、4096で拒否 | 初期SSH接続元の公開入力を廃止。Run Command／Serial Consoleは通常Inbound TCP22を必要とする経路ではない。 |
-| ACA | 明示Allowと既定許可を維持。カスタム末尾Denyなし | 明示Allowと既定許可を維持。カスタム末尾Denyなし | managed基盤の更新・scale・復旧通信を推測した完全Allow集合で置き換えない。内部受信Any専用Allow、追加Internet／Storage包括Allowも初期作成しない。 |
+| ACA | 明示Allowの後、4096で拒否 | 明示Allowの後、4096で拒否 | 同じACAサブネット内の基盤通信と所定の相手だけを許可する。公開HTTPSの宛先制御は構築Firewallが担う。 |
 
 NSGはstatefulである。許可された接続への応答専用Allowを追加しない。一方、APIMのcounter-sync／cacheなど対向からも新規接続する製品通信は両方向で定義する。NSG規則の変更が既存接続へ直ちに再評価されるとは限らないため、拒否の確認は新規接続で行う。
 
@@ -200,7 +207,7 @@ Azure提供DNS、VM IMDS、DHCP、Agent host channel、ホスト時刻提供、l
 
 | 判断 | 採用した設計 | 理由・確認条件 |
 | --- | --- | --- |
-| `DEC-NSG-FIXED-SET` | catalog v4の5 NSG・73固定規則 | 規則を通信要件の参照として使うため、作成フラグを廃止し、構築CIDR・割当IPだけを差し込む。旧v2の管理VM UDP123規則1件を撤去する。 |
+| `DEC-NSG-FIXED-SET` | catalog v5の5 NSG・77固定規則 | 規則を通信要件の参照として使うため、作成フラグを廃止し、構築CIDR・割当IPだけを差し込む。旧v2の管理VM UDP123規則1件を撤去する。 |
 | `DEC-NSG-PRIORITIES` | 120／220／320から1ずつ、終端4096 | 業務要求、基盤固有、Azure仕様を区別し、帯の先頭を将来の追加用に空ける。 |
 | `DEC-NSG-APPGW-HTTPS` | AppGWからAPIM／PortalへHTTPS443 | FirewallのTLS検査後の送信元をNSGで許可し、AppGWから各内部VIPへの経路はFirewallを通す。 |
 | `DEC-NSG-GRPC-RETIRED` | gRPC専用通信を撤去、HTTPS保守を保持 | 提供サービスと初期要件を合わせ、複雑なpassthroughを再作成しない。入口確認ヘッダーの保護は通常API用に常設する。 |
@@ -208,7 +215,8 @@ Azure提供DNS、VM IMDS、DHCP、Agent host channel、ホスト時刻提供、l
 | `DEC-NSG-NTP` | APIMのInternet宛UDP123とNSG328を維持 | VNet標準DNSとFirewallの独立したFQDN回答差でAPIM NTPを遮断しない。APIM時刻確認は通信許可と分けて実証する。 |
 | `DEC-NSG-MGMT-HOST-TIME` | 管理VMはAzureホストPHCを唯一のChrony同期元にする | VMBus／PHCは非IP連携なので管理VM NSG325とFW外部NTPを撤去し、UDP123／319／320を追加しない。PHC選択・同期成立後に既知の旧許可だけを回収する。 |
 | `DEC-NSG-LB-ANY` | AppGW／APIMのLB受信は送信元以外Any | AzureLoadBalancerタグを明示し、両製品の基盤probe許可を統一する。ACAのnode port要件へは横展開しない。 |
-| `DEC-NSG-TERMINAL-DENY` | AppGW／APIM／PE／管理VMの受信、APIM／管理VMの送信に終端拒否 | 列挙した許可以外を拒否する。AppGWの公式送信制約とACAのmanaged基盤依存に対する例外を残す。 |
+| `DEC-NSG-TERMINAL-DENY` | AppGW／APIM／PE／管理VM／ACAの受信、APIM／管理VM／ACAの送信に終端拒否 | 列挙した許可以外を拒否する。Azure提供DNS等には基盤例外がある。 |
+| `DEC-NSG-ACA-EGRESS` | 公開宛TCP443は構築Firewallの許可条件で制限 | 固定の既定経路とAppGW向け復路を使い、BGP伝搬・既定送信アクセスを無効にする。CoreとNSG限定配備は既存経路が迂回可能な場合に停止する。 |
 | `DEC-SQL-PROXY` | 共有SQLはProxy、SQL向け送受信4規則はTCP1433 | 宛先を構築SQL PEへ限定し、Portalの同一接続・Sessionロックを維持する。[採用理由とライブラリ比較](sql-proxy-decision.md)を参照。 |
 | `DEC-NSG-AUDIT-BLOB-PE` | 監査Storage2組へBlob PEと管理VM送受信4規則を常設 | 監査Blobのprivate閲覧を用意し、各構築監査コンテナーのData Reader認可と組み合わせる。 |
 | `DEC-NSG-NO-FIREWALL-SUBNET` | AzureFirewallSubnetへ顧客NSGを関連付けない | Azure Firewallの公式制約を守り、顧客通信はFirewall Policyで管理する。 |
@@ -219,11 +227,11 @@ Azure提供DNS、VM IMDS、DHCP、Agent host channel、ホスト時刻提供、l
 
 | 正本・実装 | 役割 |
 | --- | --- |
-| [NSG JSON正本](../../infra/nsg-rule-priorities.json) | catalog v4の規則tupleと設計ID。73件の照合基準。 |
+| [NSG JSON正本](../../infra/nsg-rule-priorities.json) | catalog v5の規則tupleと設計ID。77件の照合基準。 |
 | [network.bicep](../../infra/modules/network.bicep) | 5 NSG、サブネット関連付け、静的基盤規則、標準DNS。 |
 | [network-bindings.bicep](../../infra/modules/network-bindings.bicep) | 割当IP・PE全IPを使う動的規則、監査Blobの4規則、終端Deny。 |
 | [portal-network.bicep](../../infra/modules/portal-network.bicep)／[bindings](../../infra/modules/portal-network-bindings.bicep) | ACR PE全IP、ACA VIP、AppGW→ACAのHTTPS443規則。 |
-| [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) | 共有SQL PE全IP、APIM→ACAと管理VM→SQL。 |
+| [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) | 共有SQL PE全IP、APIM→ACAと管理VM→SQL。許可と依存するFirewall規則の後にACAの終端Denyを設定する。 |
 | [nsg-fixed-upgrade.bicep](../../infra/modules/nsg-fixed-upgrade.bicep)／[fixed_nsg.py](../../scripts/deployment/helpers/fixed_nsg.py) | 既存環境の固定集合への限定移行と条件照合。新規構築用規則と別設計にはしない。 |
 
 既存移行では親NSGの規則を一括消去せず、所有・条件の照合、旧子規則の安全な順位移動、新固定tupleの設定と読戻し、旧子規則の削除を順に行う。管理VM時刻はPHCの実同期が成立してから、catalog v2の管理325と完全一致するlegacy tupleを直前ETag付きで限定削除し、所有Firewall collectionから旧管理NTP規則を除いて読み戻す。未知の企業ルール・時刻設定を自動削除しない。未解決の応答や競合がある場合は、保護stateを確認せずに再送しない。構築完了後の企業手動変更は運用責任として扱い、ハブ＆スポークの設定を公開パラメターへ逆輸入しない。
@@ -234,11 +242,12 @@ Azure提供DNS、VM IMDS、DHCP、Agent host channel、ホスト時刻提供、l
 
 | 検証 | 確認対象・合格条件 | 公開根拠・実環境での確認方法 |
 | --- | --- | --- |
-| `VERIFY-NSG-CATALOG` | catalog v4の73規則の名前・方向・優先度・Allow/Deny・プロトコル・両ポート・アドレス参照・設計IDが正本と一致。 | [優先度試験](../../tests/test_nsg_rule_priorities.py)、[IP所有境界](../../tests/test_parameter_ip_ownership.py)、[固定upgrade](../../tests/test_fixed_nsg_upgrade.py)。合成試験結果は[共通検証記録](network-security-validation.md)を参照する。 |
+| `VERIFY-NSG-CATALOG` | catalog v5の77規則の名前・方向・優先度・Allow/Deny・プロトコル・両ポート・アドレス参照・設計IDが正本と一致。 | [優先度試験](../../tests/test_nsg_rule_priorities.py)、[IP所有境界](../../tests/test_parameter_ip_ownership.py)、[固定upgrade](../../tests/test_fixed_nsg_upgrade.py)。合成試験結果は[共通検証記録](network-security-validation.md)を参照する。 |
 | `VERIFY-NSG-MIGRATION` | 未所有規則、tuple違い、版変更、競合、未知応答を検出し、安全確認前に旧Allowを消さない。 | [固定移行試験](../../tests/test_fixed_nsg_migration.py)、[配備順序](../../tests/test_nsg_deployment_order.py)、[既存NW維持](../../tests/test_network_preservation.py)。 |
 | `VERIFY-NSG-AUDIT` | 監査Blob PE全IPの送受信4規則、DNS／認可、管理VMのMIからの読取が対応する。 | [監査Storage合成試験](../../tests/test_audit_storage_network.py)。実環境では値を表示せず到達・container scope認可・Blob読取を別々に確認する。 |
-| `VERIFY-NSG-READBACK` | 構築IPで展開した73tuple、NSG関連付け、PE policy、既定規則、終端Denyの有無をAzure GETで完全照合する。 | 保護stateに対象所有・展開条件・応答・照合判定を保存する。親NSGの更新成功だけで合格にしない。 |
+| `VERIFY-NSG-READBACK` | 構築IPで展開した77tuple、NSG関連付け、PE policy、既定規則、終端Denyの有無をAzure GETで完全照合する。 | 保護stateに対象所有・展開条件・応答・照合判定を保存する。親NSGの更新成功だけで合格にしない。 |
 | `VERIFY-NSG-FLOWS` | AppGW→APIM／Portal、APIM→Foundry／Broker、ACA／管理VM→PE、各保守clientのTLS／認可／操作が成立する。 | 名前解決、new connection、経路、Firewall、TLS、token、RBACを独立に確認する。利用していないサービス依存の規則まで全実通信を生成したとは扱わない。 |
+| `VERIFY-NSG-ACA-EGRESS` | ACAの公開HTTPSが構築Firewallを経由する。未許可の公開宛・別サブネットとの新規接続が失敗する。 | ルートとFirewallログを照合し、許可した管理通信、ACR取得、App・Job起動、スケール、監視も確認する。 |
 | `VERIFY-NSG-TIME` | 管理VMのPHC／`AZUR`選択・`Normal`同期と旧UDP123許可の撤去、APIMのUDP123許可・時刻成立・診断を別々に確認する。 | 管理VMのVMBus／PHCは非IP連携でありFWログを同期の証拠にしない。APIMのFirewall AllowはUDP要求の許可の証拠で、内部daemon状態は公開APIにないため公開API時刻・関連診断と不可視の限界を区別する。 |
 | `VERIFY-NSG-FRESH-BUILD` | 新規構築で同じ固定集合と運用機能を再現する。 | Bicepと合成試験で再現条件を確認する。既存環境への限定適用は、未実施の新規全環境再構築E2Eの成功を意味しない。 |
 

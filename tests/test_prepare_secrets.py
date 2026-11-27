@@ -137,13 +137,6 @@ class RetainedSecretHelperTests(unittest.TestCase):
         self.assertFalse(self.dns.exists())
         self.assertFalse(self.entra.exists())
 
-    def test_prepared_certificate_does_not_prompt_for_dns_or_read_pfx(self):
-        self.config["certificate"] = {"mode": "prepared", "preparedPfxFile": "/must/not/read/private.pfx"}
-        result, prompt = self.invoke([CLIENT_SECRET])
-        self.assertEqual(result["created"], [str(self.entra)])
-        self.assertEqual(prompt.call_count, 1)
-        self.assertFalse(self.dns.exists())
-
     def test_no_required_inputs_is_noop_even_without_terminal(self):
         with mock.patch.object(prepare_secrets.sys.stdin, "isatty", return_value=False):
             self.assertEqual(prepare_secrets._prepare_secret_files({}, self.root), {"created": [], "reused": [], "replaced": []})
@@ -430,7 +423,9 @@ class RetainedSecretHelperTests(unittest.TestCase):
         self.assert_safe_output_and_no_staging()
 
     def test_cm_only_secret_is_not_described_as_key_vault_stored(self):
-        self.config["certificate"] = {"mode": "prepared"}
+        self.config["certificate"] = {"mode": "dnsPlugin", "plugin": "Azure",
+                                      "azureDnsSubscriptionId": UUID_ONE,
+                                      "azureDnsManagedIdentityResourceId": IDENTITY}
         self.config["apiDefinitions"] = []
         self.config["credentialProviders"][0]["clientId"] = UUID_ONE
         self.invoke([CLIENT_SECRET])
@@ -724,7 +719,7 @@ class AzurePublicSecretPreparationTests(unittest.TestCase):
         self.assertEqual(ready.call_count, 1)
         self.assertEqual(self.entra.read_text(), CLIENT_SECRET + "\n")
         self.assertNotIn(CLIENT_SECRET, self.output.getvalue())
-        for label in ("Cloudflare", "Route53", "PFX", "DNS API token"):
+        for label in ("Cloudflare", "Route53", "DNS API token"):
             self.assertNotIn(label, self.output.getvalue())
 
     def test_existing_azure_entra_secret_is_reused_without_any_input(self):
@@ -742,10 +737,10 @@ class AzurePublicSecretPreparationTests(unittest.TestCase):
         ready.assert_not_called()
 
     def test_unsupported_certificate_modes_and_providers_stop_before_secret_processing(self):
-        unsupported = [{"mode": "prepared"}, {}, *({"mode": "dnsPlugin", "plugin": provider}
+        unsupported = [{"mode": "unsupported"}, {}, *({"mode": "dnsPlugin", "plugin": provider}
                         for provider in ("Cloudflare", "Route53", "OtherProvider")),
                        *({**self.config["certificate"], field: "/must/not/read/input"}
-                         for field in ("pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile"))]
+                         for field in ("pluginArgumentsFile", "unknownCertificateField"))]
         for certificate in unsupported:
             with self.subTest(certificate=certificate), \
                     mock.patch.object(prepare_secrets, "_prepare_secret_files") as lower, \

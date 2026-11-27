@@ -16,6 +16,14 @@ from deployment.helpers import fixed_nsg as nsg
 from deployment.helpers import management_host_time as host_time
 
 
+ACA_DEFAULT_DENY_ADDITIONS = {
+    'allow-aca-internal-ingress',
+    'allow-firewall-routed-public-https-egress',
+    'deny-any-ingress',
+    'deny-any-egress',
+}
+
+
 def fixture_config():
     return {'subscriptionId': '11111111-1111-4111-8111-111111111111', 'productName': 'fixture',
             'environmentName': 'test', 'resourceStem': 'test-fixture', 'location': 'japaneast',
@@ -56,6 +64,9 @@ class MemoryTransport:
         self.tags = {'product': config['productName'], 'environment': config['environmentName'], 'azd-env-name': config['environmentName']}
         self.nw = self.groups['nw']+'/providers/Microsoft.Network/'
         self.vnet_id = self.nw+'virtualNetworks/vnet-'+self.stem
+        self.aca_route_table_id = self.nw + 'routeTables/rt-' + self.stem + '-aca'
+        self.firewall_id = self.nw + 'azureFirewalls/afw-' + self.stem
+        self.firewall_ip = str(ipaddress.ip_network(self.prefixes['firewall'])[4])
         self.subnets = {k: self.vnet_id+'/subnets/'+('AzureFirewallSubnet' if k=='firewall' else 'snet-'+self.stem+'-'+nsg.SUFFIXES[k])
                         for k in (*nsg.GROUPS, 'firewall')}
         for identity in self.groups.values():
@@ -65,12 +76,27 @@ class MemoryTransport:
             properties = {'addressPrefix': self.prefixes[key]}
             if key == 'pep':
                 properties['privateEndpointNetworkPolicies'] = 'NetworkSecurityGroupEnabled'
+            if key == 'aca':
+                properties.update(routeTable={'id': self.aca_route_table_id}, defaultOutboundAccess=False)
             if key != 'firewall' and not (legacy and key=='aca'):
                 properties['networkSecurityGroup'] = {'id': self.nsg_id(key)}
             subnet_properties.append({'id': identity, 'name': identity.rsplit('/', 1)[-1], 'properties': properties})
         self.add(self.vnet_id, 'Microsoft.Network/virtualNetworks', {'subnets': subnet_properties})
-        self.add(self.nw + 'firewallPolicies/afwp-' + self.stem, 'Microsoft.Network/firewallPolicies',
+        firewall_policy_id = self.nw + 'firewallPolicies/afwp-' + self.stem
+        self.add(firewall_policy_id, 'Microsoft.Network/firewallPolicies',
                  {'dnsSettings': {'enableProxy': True, 'servers': []}})
+        self.add(self.firewall_id, 'Microsoft.Network/azureFirewalls', {
+            'firewallPolicy': {'id': firewall_policy_id},
+            'ipConfigurations': [{'properties': {
+                'privateIPAddress': self.firewall_ip, 'subnet': {'id': self.subnets['firewall']}}}],
+        })
+        self.add(self.aca_route_table_id, 'Microsoft.Network/routeTables', {
+            'disableBgpRoutePropagation': True,
+            'routes': [{'name': name, 'properties': {'addressPrefix': destination,
+                        'nextHopType': 'VirtualAppliance', 'nextHopIpAddress': self.firewall_ip}}
+                       for name, destination in (('default-egress', '0.0.0.0/0'),
+                                                 ('agw-return', self.prefixes['agw']))],
+        })
         manifest = nsg._catalog('nsg-legacy-rule-definitions.json' if legacy else 'nsg-rule-priorities.json')
         for key in nsg.GROUPS:
             if legacy and key=='aca': continue
@@ -400,9 +426,12 @@ class FixedNsgMigrationTests(unittest.TestCase):
     def test_core_preparation_resumes_before_audit_pe_creation_but_completion_requires_them(self):
         for legacy, expected_moves in ((False, 1), (True, 45)):
             transport = MemoryTransport(self.config, legacy=legacy)
-            # The old fixed catalog had 72 children and no audit Blob endpoint.
+            # This partial build has neither audit Blob endpoints nor the ACA default-deny rules.
             if not legacy:
                 self.add_v2_management_ntp(transport)
+                aca = transport.resources[transport.nsg_id('aca')]['properties']
+                aca['securityRules'] = [rule for rule in aca['securityRules']
+                                        if rule['name'] not in ACA_DEFAULT_DENY_ADDITIONS]
             for group in ('management', 'pep'):
                 parent = transport.resources[transport.nsg_id(group)]
                 parent['properties']['securityRules'] = [
@@ -430,7 +459,34 @@ class FixedNsgMigrationTests(unittest.TestCase):
                 completed = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
                 self.assertEqual(completed['azureWrites'], expected_moves)
                 self.assertEqual(sum(len(nsg._inventory(transport.resources[transport.nsg_id(group)]))
-                                     for group in nsg.GROUPS), 73)
+                                     for group in nsg.GROUPS), 77)
+
+    def test_preparation_accepts_prior_aca_rules_and_resumes_after_partial_terminal_rules(self):
+        new_allows = ACA_DEFAULT_DENY_ADDITIONS - {'deny-any-ingress', 'deny-any-egress'}
+        for retained in (set(), new_allows, new_allows | {'deny-any-ingress'}):
+            with self.subTest(retained=sorted(retained)):
+                transport = MemoryTransport(self.config)
+                properties = transport.resources[transport.nsg_id('aca')]['properties']
+                properties['securityRules'] = [
+                    rule for rule in properties['securityRules']
+                    if rule['name'] not in ACA_DEFAULT_DENY_ADDITIONS - retained]
+                self.assertEqual(nsg.prepare_fixed_nsg_rules(
+                    self.config, transport, execute=True, record=self.record)['plannedMoves'], 0)
+                with self.assertRaises(nsg.FixedNsgError):
+                    nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record)
+                self.assertEqual(transport.mutations(), [])
+                transport.deploy_fixed()
+                self.assertEqual(nsg.complete_fixed_nsg_rules(
+                    self.config, transport, execute=True, record=self.record)['plannedDeletes'], 0)
+
+    def test_aca_terminal_rule_with_a_modified_tuple_stops_before_writes(self):
+        transport = MemoryTransport(self.config)
+        aca = transport.resources[transport.nsg_id('aca')]
+        terminal = next(rule for rule in aca['properties']['securityRules'] if rule['name'] == 'deny-any-egress')
+        terminal['properties']['priority'] = 4095
+        with self.assertRaises(nsg.FixedNsgError):
+            nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record)
+        self.assertEqual(transport.mutations(), [])
 
     def test_pending_audit_phase_cannot_ignore_a_rule_whose_binding_is_missing(self):
         transport = MemoryTransport(self.config)
@@ -462,7 +518,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
         transport.deploy_fixed()
         completed = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
         self.assertEqual(completed['azureWrites'], 45)
-        self.assertEqual(sum(len(transport.resources[transport.nsg_id(g)]['properties']['securityRules']) for g in nsg.GROUPS), 73)
+        self.assertEqual(sum(len(transport.resources[transport.nsg_id(g)]['properties']['securityRules']) for g in nsg.GROUPS), 77)
         self.assertEqual(nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)['azureWrites'], 0)
         self.assertTrue(all('/securityRules/' in c['path'] and c['headers']['If-Match']!='*' for c in transport.mutations()))
 

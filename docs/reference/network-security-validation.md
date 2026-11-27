@@ -11,7 +11,7 @@
 | 設計判断 | 通信要件、NSG/FWへの対応、採否、例外、変更入力の範囲 | 資材への実装と実環境動作 |
 | 資材実装 | 固定集合、構築IPのbinding、初期構築工程、限定更新工程 | 実際の配備成功とパケット到達 |
 | 合成検証 | 架空入力でのBicep展開、tuple・経路・生成・境界・競合処理の一致 | Azure側の動作、実DNS回答、サービス内部の全通信 |
-| Azure限定反映・読戻し | 所有する対象の設定一致、既存設定保持、処理完了 | 全73 NSG規則・全35 FW規則の個別パケット実証と管理VMの現在の時刻精度 |
+| Azure限定反映・読戻し | 所有する対象の設定一致、既存設定保持、処理完了 | 全77 NSG規則・全35 FW規則の個別パケット実証と管理VMの現在の時刻精度 |
 | 実操作 | 新規接続での業務・保守操作、認可、結果取得、失敗時の復旧 | 将来の全scale/基盤更新/障害復旧と、任意の企業接続 |
 | 新規再構築E2E | 新しい環境の初期工程から同じ機能が成立すること | 既存環境の限定反映や合成試験だけではこの段階を完了にしない |
 
@@ -23,7 +23,7 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 試験 | 確認する内容 |
 | --- | --- |
-| [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py) | catalog v4の73 NSG定義の展開一致、複数PE IP、priority、Firewallの基盤用途分割、直接経路向けFW規則の除去、ACA Dev宛先の固定生成 |
+| [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py) | catalog v5の77 NSG定義の展開一致、ACAの終端Deny、複数PE IP、priority、Firewallの基盤用途分割、直接経路向けFW規則の除去、ACA Dev宛先の固定生成 |
 | [test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py) | 構築サブネット・IPの所有境界、5 NSGとFirewallサブネットの非関連付け |
 | [test_dns_nsg.py](../../tests/test_dns_nsg.py) | 廃止DNS用規則の対象限定、未知の手動規則保持、競合・応答不明時の扱い |
 | [test_grpc_fixed_infrastructure.py](../../tests/test_grpc_fixed_infrastructure.py) | gRPC専用設備の撤去、HTTPS保守保持、AppGW/API入口の構成 |
@@ -53,6 +53,7 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 機能 | 公開実装・試験根拠 |
 | --- | --- |
+| ACAのFirewall経路 | [Core経路の保全試験](../../tests/test_network_preservation.py)、[NSG限定配備試験](../../tests/test_fixed_nsg_upgrade.py)。Firewallを迂回する公開宛経路の拒否と、所定の経路での再適用を確認する。 |
 | 固定NSGの限定移行 | [nsg-fixed-upgrade.bicep](../../infra/modules/nsg-fixed-upgrade.bicep)、[fixed migration](../../tests/test_fixed_nsg_migration.py)、[upgrade](../../tests/test_fixed_nsg_upgrade.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
 | Broker常設 | [Broker配備資材](../../apps/apim/deploy/main.bicep)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py)の`test_broker_resources_are_always_selected_independently_of_business_profiles` |
 | L7入口保護 | [AppGW資材](../../infra/modules/application-gateway.bicep)、[APIM共通policy](../../apps/apim/policies/service.xml)、[trusted ingress](../../tests/test_trusted_ingress.py) |
@@ -86,13 +87,15 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 確認 | 通信・設定との対応 | 合格条件と限界 |
 | --- | --- | --- |
-| NSG全件読戻し | catalog v4の5 NSG・73カスタム規則と既定規則、PE policy | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが一致。管理VM325の旧UDP123規則が残らずAPIM328が維持される。既定規則を再作成せず、例外区画の既定許可も確認 |
+| NSG全件読戻し | catalog v5の5 NSG・77カスタム規則と既定規則、PE policy | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが一致。管理VM325の旧UDP123規則が残らずAPIM328が維持される。既定規則を再作成せず、例外区画の既定許可も確認 |
 | FW全件読戻し | 6 RCG、10 collection、35規則。`rcg-platform`は12規則 | priority、action、種別、全source/destination、protocol/port、TLS inspectionが資材と一致。管理VM NTP規則が残らずAPIM NTPが維持され、直接経路用の不要規則が混ざらない |
 | 公開入口 | CLIENT、APPGW-APIM、APPGW-ACA | 公開TLS、HTTPリダイレクト、APIM正常API、Portalのhealthと画面、L7入口保護を確認。healthだけを全APIの認可確認にしない |
 | 入口のTLS検査 | APPGW-APIM、APPGW-ACA | AppGW両バックエンドのSNIと証明書チェーン、`HTTPS:443`のApplication Ruleの一致、TLS検査・IDPSのログを合成トラフィックで照合。Portalの実認証前にFirewall診断の[クエリ保護](../testing/log-privacy.md#firewallのtls検査ログ)を確認する |
 | 長時間応答と接続 | SSE、WebSocketと通常の非ストリーミングAPI | 120秒を超えるSSEとWebSocketで継続受信を確認し、必要な無通信時間を含むセッションを試す。先頭データが遅い通常応答も確認し、切断位置と継続時間を記録する。[Firewall TLS検査のタイムアウト](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#azure-firewall-limits) |
 | PE接続 | APIM/ACA/管理VMとFoundry/KV/SQL/ACR/監査Blob | DNS回答とPE全IP、往復制御、サービスTLSと認可を照合。FWログが無いことだけで直接経路成功としない |
-| ACAの現構成依存 | イメージ取得、App/Job起動、標準DNS、管理ID、監視 | 構築ACRと公開MCRの用途を区別。現在アプリのStorage非依存を将来の全アプリへ一般化しない |
+| ACAのFirewall経路 | ACAの既定経路、AppGW向け復路、既定送信アクセス、BGP伝搬 | 固定`0.0.0.0/0`とAppGW向け復路の次ホップが構築Firewall。既定送信とBGP伝搬は無効。承認済みのEntra・パッケージ配布へのHTTPSとFirewallログを照合し、未許可の公開宛TCP443はFirewallで拒否される。経路の変更は合成入力で検証する |
+| ACAの両方向の拒否 | 同一ACAサブネット、許可元、新規のその他VNet接続 | AppGW経由のPortal、APIMからBroker、管理VMからACAが到達する。明示許可のない別サブネットからの受信と、ACAから未許可のVNet内宛先・ポートへの送信が新規接続で拒否される |
+| ACAの現構成依存 | 新規イメージ取得、App/Job起動、スケール、標準DNS、管理ID、監視 | ACRのログインと専用データの名前がPEへ解決し、イメージ未取得のレプリカで取得できる。MCRからの初回起動、レプリカ増減、Broker／PortalのSQL Proxy接続、Key Vault参照と監視ログの取り込みを確認する |
 | 監査Blob・保存ログ | MGMT-AUDIT-JAPAN/FOUNDRY、MGMT-MONITOR | VMのMIで構築コンテナー/Workspaceを読み、取得が完了。監査Blobへの書込み・削除権限は付けない |
 | ACA App/環境のログ・App exec | MGMT-ARM、MGMT-ACA-DEV | 対象App/revision/replica/containerとtoken scopeを確認し、ログ本文/有限execの結果を取得。環境tokenをログ専用の保証として扱わない |
 | ACA Jobログ | ACA-SQL等のJob処理とMGMT-ACA-DEV | 対象Jobのtoken認可、保存ログ、実行が存続する場合のライブログを区別。schema Jobは配備更新工程の正常実行に合わせて確認 |
@@ -112,7 +115,7 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | --- | --- | --- |
 | Job対話exec | 初期非採用 | JobのライフサイクルとAPI/clientの制約をApp execと区別。ログ取得とJobの通常処理は維持 |
 | Serial NMI/reset/SysRq | 初期非採用 | 対話ログインと診断取得を保守範囲にし、破壊的な障害注入を実証のために追加しない |
-| ACA任意Internet/Storage Allowと両方向末尾Deny | 初期不作成 | managed基盤と現在アプリの依存を優先。将来のStorage利用や出口制限は新しい要件・FW経路・実検証を伴う |
+| ACAから公開Storageを使うワークロード | 初期対象外 | 構築ACRはPrivate Endpoint経由。Storageを新しく使うアプリやJobの追加時に、接続先・認可・経路を個別に設計する |
 | カスタムDNS用の作成switch | 廃止 | 初期は標準DNS固定。企業DNS移行は問い合わせ元、DNS IP、53/TCP/UDP、zone/link、FW自身のDNSと往復経路を手動で整合 |
 | gRPC専用設備 | 要件廃止 | HTTPS保守と通常HTTP/HTTPSの入口保護を残す。8443や専用転送を再作成しない |
 | fresh再構築E2E | 限定パッチ・合成検証とは別 | 初期工程への組込みと、実際に新しい全環境を構築して全機能を確認することを分ける |

@@ -157,6 +157,7 @@ ARMのemail receiverの`status: Enabled`は、メールアドレスの確認完�
 6. GatewayのFQDNで、TLS証明書のSAN・信頼チェーン・有効期限を確認する。公開TCP8443のgRPC専用入口を構成しない。公開TLSの確認とは別に、通常APIとSSE／WebSocket／MCPの実応答、AppGW→Firewall→APIM／ACAのHTTPS443転送とTLS検査、入口証明不備の拒否を確認する。
 7. 実行した配備で更新された`.local/<environment>/state/gateway-deployment.json`の`status: deployed`と、`.local/<environment>/state/portal-deployment.json`の`status: deployed`・`publicHealthVerified: true`を確認する。過去の成功結果が残っているだけの場合と区別する。
 8. 正規の購読キーと必要な本人セッションでGatewayの実応答を確認し、PortalのMicrosoftサインインと管理画面も確認する。初期構築後に同じ配備コマンドを重ねて実行する必要はない。
+9. 共用ACAの両方向の末尾DenyとFirewall経路を読み戻す。ACR Private Endpointからのイメージ取得、App／Jobの起動とスケール、監視、新規の未許可通信の拒否を確認する。[ACAの受入条件](../reference/network-security-validation.md#実環境の受入確認)
 
 DNS-01は一時TXTを使うため、AレコードをAppGWへ切り替える前でも証明書を取得できます。DNS検証が必要な場合はACMEの検証処理が一時TXTを作成・回収します。CAの認証を再利用する場合は、更新時に新しいTXTを作らないこともあります。GatewayのAやEntraのドメイン確認TXTと混同しません。
 

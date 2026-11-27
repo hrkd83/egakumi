@@ -62,7 +62,7 @@ class LifecycleFixture:
         self.config["management"]["sshPublicKeyFile"] = str(self.paths.secrets / "management-ssh.pub")
         # 対話準備hookに将来分岐が増えても、実ユーザーの秘密ファイルを
         # 読み書きさせない。すべての秘密参照を同じ一時フォルダーへ閉じ込める。
-        secret_fields = {"pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile", "clientSecretFile"}
+        secret_fields = {"pluginArgumentsFile", "clientSecretFile"}
         paths_seen = {}
 
         def isolate_secret_paths(value):

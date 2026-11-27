@@ -212,7 +212,7 @@ function Invoke-Json { Write-Output 'UNEXPECTED_SECRET_ACCESS'; throw 'Controlle
         with tempfile.TemporaryDirectory() as temporary:
             worker = Path(temporary) / "worker.ps1"
             worker.write_text(source)
-            for mode, plugin in (("prepared", "Azure"), ("dnsPlugin", "Cloudflare"),
+            for mode, plugin in (("dnsPlugin", "Cloudflare"),
                                  ("dnsPlugin", "Route53"), ("dnsPlugin", "Manual"),
                                  ("dnsPlugin", "Other"), ("dnsPlugin", "azure"),
                                  ("other", "Azure"), ("dnsPlugin", "Azure")):

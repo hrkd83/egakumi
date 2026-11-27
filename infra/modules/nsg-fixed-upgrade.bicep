@@ -43,10 +43,17 @@ resource createdParents 'Microsoft.Network/networkSecurityGroups@2025-01-01' = [
   properties: { securityRules: [] }
 }]
 
-var rules = flatten(map(groups, group => map(items(group.value.rules), rule => {
+var unorderedRules = flatten(map(groups, group => map(items(group.value.rules), rule => {
   name: 'nsg-${resourcePrefix}-${group.value.suffix}/${rule.key}'
   properties: ruleProperties(rule.value, rule.key, bindings)
 })))
+
+// ACA platform and workload dependencies must be allowed before enabling the
+// custom terminal denies when the NSG is already associated with a subnet.
+var rules = concat(
+  filter(unorderedRules, rule => rule.properties.access == 'Allow'),
+  filter(unorderedRules, rule => rule.properties.access == 'Deny')
+)
 
 @batchSize(1)
 resource fixedRules 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = [for rule in rules: {

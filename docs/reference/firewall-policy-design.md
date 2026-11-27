@@ -78,9 +78,11 @@ NSGの `allow-internet-egress` がTCP80／443を許可していても、Firewall
 | `portal-azure-monitor`（150） | `allow-aca-monitor` | N・TCP443 | ACA → `AzureMonitor`タグ | [`FLOW-ACA-MONITOR`](network-communication-requirements.md#flow-aca-monitor)。ACAの監視依存 | ACA `allow-monitor-egress`。他のAzureタグ用途と名前を分離 |
 | `portal-azure-monitor`（150） | `allow-aca-entra` | N・TCP443 | ACA → `AzureActiveDirectory`タグ | [`FLOW-ACA-ENTRA`](network-communication-requirements.md#flow-aca-entra)。ACAの認証基盤依存 | ACA `allow-entra-egress`。Monitor許可と同じportでも別規則にする |
 | `portal-platform-and-probe`（200） | `allow-aca-mcr` | A・HTTPS443 | ACA → `MCR`宛先群 | [`FLOW-ACA-MCR`](network-communication-requirements.md#flow-aca-mcr)。Microsoft Container Registryのimage取得 | ACA `allow-mcr-egress`。構築したACR PEへの接続と区別 |
-| `portal-platform-and-probe`（200） | `allow-aca-platform-packages` | A・HTTPS443 | ACA → `ACA-PACKAGES`宛先群 | [`FLOW-ACA-PLATFORM-PACKAGES`](network-communication-requirements.md#flow-aca-platform-packages)。ACA基盤のpackage依存 | ACA `allow-afd-first-party-egress`。必要FQDNを明示し、任意Internet許可にしない |
-| `portal-platform-and-probe`（200） | `allow-aca-managed-identity` | A・HTTPS443 | ACA → `ACA-IDENTITY`宛先群 | [`FLOW-ACA-MANAGED-IDENTITY-UPSTREAM`](network-communication-requirements.md#flow-aca-managed-identity-upstream)。ACA基盤のidentity依存 | ACAのARM／Entra等の仕様上の許可と既定送信。SDK→`IDENTITY_ENDPOINT`ローカル取得そのものをFW通信へ読み替えない |
+| `portal-platform-and-probe`（200） | `allow-aca-platform-packages` | A・HTTPS443 | ACA → `ACA-PACKAGES`宛先群 | [`FLOW-ACA-PLATFORM-PACKAGES`](network-communication-requirements.md#flow-aca-platform-packages)。ACA基盤のpackage依存 | ACA `allow-afd-first-party-egress`と`allow-firewall-routed-public-https-egress`。CDNを含む公開HTTPSは固定UDRでFirewallへ転送し、ここで列挙したFQDNに絞る |
+| `portal-platform-and-probe`（200） | `allow-aca-managed-identity` | A・HTTPS443 | ACA → `ACA-IDENTITY`宛先群 | [`FLOW-ACA-MANAGED-IDENTITY-UPSTREAM`](network-communication-requirements.md#flow-aca-managed-identity-upstream)。ACA基盤のidentity依存 | ACAのEntra向け許可とFirewall経由の公開TCP443枠を使う。SDKから`IDENTITY_ENDPOINT`へのローカル取得は別経路 |
 | `portal-runner`（300） | `allow-mgmt-vm-github-docker-node-build` | A・HTTPS443 | 管理VM → `APP-BUILD`宛先群 | [`FLOW-MGMT-APP-BUILD`](network-communication-requirements.md#flow-mgmt-app-build)。Git取得、Docker／Node／npmによる配備・build | 管理VM `allow-internet-egress`。必要配布先の共用CDN範囲を含め、TLS inspectionなしで既存配備到達性を維持 |
+
+ACAの公開HTTPSでは、NSGの`Internet`タグを固定`0.0.0.0/0` UDRと組み合わせ、構築Firewallが許可するFQDNまたはサービスタグへ宛先を限定する。ルートと拒否の実証は[受入条件](network-security-validation.md#実環境の受入確認)を参照する。
 
 `*.r2.cloudflarestorage.com`等のwildcardは特定自資源だけを許可する宛先ではない。配布元の共用CDNに必要な到達性として明記し、構築サブネット送信元とNSG、実行者の権限で用途を制限する。`api.ipify.org`向けの疎通probe許可は初期集合へ含めない。
 

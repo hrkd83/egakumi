@@ -268,8 +268,8 @@ class InitialDeploymentTests(unittest.TestCase):
         deploy.wait_for_application(config, Transport(), sleep=waits.append)
         self.assertEqual(waits, [10])
 
-    @unittest.skipUnless(os.name == 'posix' and shutil.which('flock'),
-                         'Guest build execution requires Bash and flock')
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'),
+                         'Guest build execution requires Bash on POSIX')
     def test_guest_build_pipeline_and_failure_cleanup_with_stubbed_docker(self):
         config, state = fixture()
         data, source_hash = image.source_bundle()
@@ -284,6 +284,13 @@ class InitialDeploymentTests(unittest.TestCase):
                     path = bin_dir / name
                     path.write_text('#!/usr/bin/env bash\nset -eu\n' + body + '\n')
                     path.chmod(0o700)
+                executable('flock', r"""
+test "$#" -eq 2
+test "$1" = -n
+test "$2" = 9
+: >&9
+printf '%s\n' flock >> "$MOCK_CALLS"
+""")
                 executable('systemctl', 'exit 0')
                 executable('python3', 'if [[ "$1" == */registry-login.py ]]; then printf mock-private-token; '
                            'else exec ' + shlex.quote(sys.executable) + ' "$@"; fi')
@@ -304,8 +311,8 @@ elif [ "$1" = image ] && [ "$2" = inspect ]; then
     printf '["%s/credential-broker@%s"]\\n' "$CORE_BUILD_REGISTRY" "''' + DIGEST + '''"
 fi
 ''')
-                # Only VM-specific root/OS/lock/tmp paths are substituted. Archive, token pipe,
-                # Docker command sequence, digest parsing and EXIT cleanup execute unchanged.
+                # Only VM-specific root/OS/lock/tmp paths are substituted. The flock stub checks the lock invocation.
+                # Archive, token pipe, Docker sequence, digest parsing and EXIT cleanup execute unchanged.
                 guest = script.replace('[ "$EUID" = 0 ]', ':').replace('. /etc/os-release', 'ID=ubuntu; VERSION_ID=24.04')
                 guest = guest.replace('exec 9>/run/lock/egakumi-credential-image.lock', 'exec 9>' + shlex.quote(str(root / 'lock')))
                 guest = guest.replace('/var/tmp/egakumi-credential-image.XXXXXXXX', str(root / 'work.XXXXXXXX'))
@@ -317,9 +324,11 @@ fi
                 self.assertEqual(result.returncode, 1 if failure_stage else 0, result.stderr)
                 self.assertNotIn('mock-private-token', result.stdout + result.stderr)
                 self.assertEqual(list(root.glob('work.*')), [])
+                calls = (root / 'docker-calls').read_text().splitlines()
+                self.assertEqual(calls[:1], ['flock'])
                 if failure_stage:
                     self.assertIn('"stage":"' + failure_stage + '"', result.stdout)
-                    self.assertNotIn('push', (root / 'docker-calls').read_text().splitlines())
+                    self.assertNotIn('push', calls)
                 else:
                     digest = image.parse_build_result({'executionState': 'Succeeded', 'exitCode': 0, 'output': result.stdout}, source_hash)
                     self.assertEqual(digest, DIGEST)

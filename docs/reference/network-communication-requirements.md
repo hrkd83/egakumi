@@ -11,7 +11,7 @@
 | 判断 | 採用する設計 | 理由と境界 |
 | --- | --- | --- |
 | 初期ネットワーク | 独立VNet、6サブネット、5 NSG、4ルートテーブル | AppGW、APIM、Private Endpoint、管理VM、ACAへNSGを関連付ける。AzureFirewallSubnetに顧客NSGを関連付けない |
-| 固定ルール集合 | NSG catalog v4は73カスタム規則（Allow67、Deny6）、Firewallは35規則（Network14、Application21）。名称・優先度・用途・作成を資材で固定 | ルール作成だけを切り替えるparams/configのフラグ・任意追加配列は設けない。構築した資源のアドレスは動的に設定する |
+| 固定ルール集合 | NSG catalog v5は77カスタム規則（Allow69、Deny8）、Firewallは35規則（Network14、Application21）。名称・優先度・用途・作成を資材で固定 | ルール作成だけを切り替えるparams/configのフラグ・任意追加配列は設けない。構築した資源のアドレスは動的に設定する |
 | 公開入口 | AppGWのHTTP80とHTTPS443 | HTTPはHTTPSへのリダイレクト用。公開IPv4の初期範囲は`0.0.0.0/0`。企業の許可元IP制限は引渡し後に手動で変更する |
 | AppGWのバックエンド | APIMとPortalのACA入口へHTTPS443 | AppGWで再暗号化し、Firewall PremiumでTLS検査後に再暗号化する。 |
 | APIMからの接続 | Foundry・Key Vault PE、BrokerのACA入口等へHTTPS443 | AppGWのバックエンド設定とは別接続。サービスのHTTPS契約と認証を維持する |
@@ -19,7 +19,8 @@
 | L7入口保護 | AppGWが`X-Core-L7-Ingress`を上書きし、APIMが検査 | 通常HTTP/HTTPS APIの入口保護として常設する。gRPC設定から独立させ、値は公開文書・paramsへ記載しない。業務APIの購読キー・Bearer認可も別に維持する |
 | 標準DNS | VNetとFirewallの上流DNSをAzure提供DNSへ固定。Firewall DNS proxyを保持 | DNS変更入力と初期カスタムDNS用NSG規則を設けない。Azure提供DNSのNSG例外を、他のDNSや全宛先53番へ一般化しない |
 | 標準時刻 | APIMの外部NTP、管理VMのAzureホストPHC同期 | APIMはNSG328でInternet宛UDP123、FirewallでAPIMサブネットからUDP123を許可。管理VMはChronyでPHC／`AZUR`だけを参照し、非IPのVMBus／PHCにNSG／FWのUDP123／319／320許可を作らない |
-| 明示Allowと既定許可 | 通信用途を明示しても、AppGW/ACAに必要な既定規則を保持 | 明示Allowが既定許可より狭いだけでは全体の許可範囲は狭まらない。AppGW Outbound、ACA両方向、PE Outboundの境界をNSG設計に記録する |
+| 明示Allowと既定許可 | ACAは受信・送信とも明示Allowの後に終端Deny。AppGWとPEの送信は既定規則も評価 | ACA両方向の例外、AppGW OutboundとPE Outboundの境界は[NSG設計](network-security-design.md#既定規則と拒否範囲)を参照 |
+| ACAの外向き経路 | 公開宛TCP443は固定`0.0.0.0/0` UDRで構築Firewallへ転送し、許可済みの宛先に限定 | ACAサブネットの既定送信アクセスとルート表のBGP伝搬を無効化。CoreとNSG限定配備は既存経路を照合し、迂回可能な設定があれば停止する |
 | 共有SQLの接続方式 | Proxy固定、SQL PEへTCP1433で直接接続 | [Proxy採用理由](sql-proxy-decision.md)を参照。PortalのSessionロックと接続層を維持し、Redirectへの移行は見送る |
 | Firewallの記録範囲 | 実際にFirewallを通る通信だけをルールにする | PEへ直接接続するSQL/Key Vault等に、将来の迂回を想定したFW規則を置かない。通信要件は本書で記録する |
 | 引渡し後の企業接続 | ハブ＆スポーク、中央DNS、企業NTP、許可元IPを手動で調整 | 初期構築の固定資材を企業設定の再適用手段としない。再実行は手動変更を戻し得るため、必要になった場合は別途差分と所有範囲を確認する |
@@ -64,11 +65,11 @@ NSGはstatefulである。許可された接続への応答に逆向きの新規
 | <a id="flow-apim-aca"></a>`FLOW-APIM-ACA` | APIM → ACA環境VIP / Broker | TCP443 / HTTPS。NSGは443と31443 | 本人接続・資格情報の内部窓口 | VNet直接。APIM Outbound、ACA Inbound。FW規則なし |
 | <a id="flow-apim-kv"></a>`FLOW-APIM-KV` | APIM → 構築Key Vault PE群 | TCP443 / HTTPS | Named Value等の基盤秘密参照、カスタムドメイン証明書参照・更新 | PE直接。APIM Outbound、PE Inbound。AzureKeyVaultタグ宛の基盤依存とは別 |
 | <a id="flow-aca-kv"></a>`FLOW-ACA-KV` | ACA App/Job → Key Vault PE群 | TCP443 / HTTPS | Portal/Broker等の構築秘密参照 | PE直接。ACA Outbound、PE Inbound。FW規則なし |
-| <a id="flow-aca-sql"></a>`FLOW-ACA-SQL` | ACA App/Job → SQL PE群 | TCP1433、SQL接続時のTLS | 本人接続台帳、Portal台帳、schema初期化・更新 | PE直接。ACA Outbound、PE Inbound。FW規則なし |
+| <a id="flow-aca-sql"></a>`FLOW-ACA-SQL` | ACA App/Job → SQL PE群 | TCP1433、Proxy接続時のTLS | 本人接続台帳、Portal台帳、schema初期化・更新 | PE直接。ACA Outbound、PE Inbound。FW規則なし |
 | <a id="flow-aca-acr"></a>`FLOW-ACA-ACR` | ACA → 構築ACR PEの全IP | TCP443 / HTTPS | App/Jobイメージ取得 | PE直接。login/dataのPE全IPを両NSGへ設定 |
-| <a id="flow-aca-appgw"></a>`FLOW-ACA-APPGW` | Portal/ACA → 構築AppGW public IP | TCP443 / HTTPS、WSS | Portalサーバーから公開Gateway APIを呼ぶ | FW経由。ACA Outbound、AppGW Inbound。Portal自身への内部HTTP接続とは別 |
+| <a id="flow-aca-appgw"></a>`FLOW-ACA-APPGW` | Portal/ACA → 構築AppGW public IP | TCP443 / HTTPS、WSS | Portalサーバーから公開Gateway APIを呼ぶ | FW経由。ACA Outbound、AppGW Inbound。PortalのHTTPS入口への転送とは別 |
 
-AppGWの公開側TLS、バックエンドHTTP、APIMから上流へのTLSは別の接続である。WAFを通ることとFirewallのTLS inspectionは別設定であり、[Firewall設計](firewall-policy-design.md)のApplication規則はTLS inspectionを行わない。IDPSの動作はSKU/モードと検査できる内容に依存し、暗号化された本文の攻撃検査まで保証しない。
+公開側TLS、AppGWからFirewall、Firewallからバックエンド、APIMから上流へのTLSはそれぞれ別の接続である。FirewallはAppGWからAPIMとPortalへの2つのApplication規則でTLSを検査する。ACAから外部へのFirewall規則は宛先を制御する。[Firewall設計](firewall-policy-design.md)
 
 ## 管理VMからの保守接続
 
@@ -108,12 +109,12 @@ AppGWの公開側TLS、バックエンドHTTP、APIMから上流へのTLSは別�
 | <a id="flow-apim-internet"></a>`FLOW-APIM-INTERNET` | APIM → Internetタグ | TCP80、443 | APIM NSG側の外向き許可枠。FWは下表の具体的なFQDN用途で制限。全Internet宛がFWでAllowになるわけではない |
 | <a id="flow-apim-ntp"></a>`FLOW-APIM-NTP` | APIM → 外部時刻源 | UDP123 | FW経由。NSGはInternet、FW宛先は`*`。DNS回答差で時刻同期を遮断しない。内部daemonの可視性とAPIMの時刻応答を区別 |
 | <a id="flow-aca-load-balancer"></a>`FLOW-ACA-LOAD-BALANCER` | AzureLoadBalancer → ACAサブネット | TCP30000–32767 | ACA基盤probe。FW非通過。AppGW/APIMのAny判断をACAへ適用しない |
-| <a id="flow-aca-internal"></a>`FLOW-ACA-INTERNAL` | ACAサブネット内 → 同サブネット | 全プロトコル・全ポート | managed基盤の内部通信。Outboundを明示し、Inboundは既定許可を維持。個々の内部wireを推測固定しない |
+| <a id="flow-aca-internal"></a>`FLOW-ACA-INTERNAL` | ACAサブネット内 → 同サブネット | 全プロトコル・全ポート | managed基盤の内部通信。送受信とも同じACAサブネットのCIDRを明示する |
 | <a id="flow-aca-arm"></a>`FLOW-ACA-ARM` | ACA → ARM | TCP443 / HTTPS | PortalのAPIM操作、BrokerのCM操作、管理API。FW経由 |
-| <a id="flow-aca-entra"></a>`FLOW-ACA-ENTRA` | ACA → Entra ID基盤 | TCP443 / HTTPS | 認証・ID基盤。FWのタグ規則とlogin用FQDN規則が重なり得る |
+| <a id="flow-aca-entra"></a>`FLOW-ACA-ENTRA` | ACA → Entra ID基盤 | TCP443 / HTTPS | 認証・ID基盤とMicrosoft Graph。同タグのFW規則とlogin用FQDN規則が重なり得る |
 | <a id="flow-aca-monitor"></a>`FLOW-ACA-MONITOR` | ACA → AzureMonitorタグ | TCP443 / HTTPS | 監視・ログ送信。FW経由 |
 | <a id="flow-aca-mcr"></a>`FLOW-ACA-MCR` | ACA → Microsoft Container Registry | TCP443 / HTTPS | Microsoft提供イメージ取得。FW経由。構築ACR PEとは別 |
-| <a id="flow-aca-platform-packages"></a>`FLOW-ACA-PLATFORM-PACKAGES` | ACA → AzureFrontDoor.FirstParty / ACA基盤配布先 | TCP443 / HTTPS | MCR等の配布・ACA基盤package依存。FW経由。タグとFQDNの範囲は同一ではない |
+| <a id="flow-aca-platform-packages"></a>`FLOW-ACA-PLATFORM-PACKAGES` | ACA → AzureFrontDoor.FirstPartyと基盤パッケージ配布先 | TCP443 / HTTPS | CDN経由のパッケージも含め、NSGから構築Firewallへ到達させる。Firewallの許可済みFQDNに限定する |
 | <a id="flow-aca-managed-identity-upstream"></a>`FLOW-ACA-MANAGED-IDENTITY-UPSTREAM` | ACA基盤 → 管理IDの上流サービス | TCP443 / HTTPS | managed基盤側の依存先。FWの承認FQDNで扱う。AppからIDENTITY_ENDPOINTへのローカルtoken取得とは別 |
 | <a id="flow-mgmt-arm"></a>`FLOW-MGMT-ARM` | 管理VM → AzureResourceManagerタグ | TCP443 / HTTPS | VM/ACA等の管理、token発行API、Azure DNSによる証明書更新。FW経由 |
 | <a id="flow-mgmt-entra"></a>`FLOW-MGMT-ENTRA` | 管理VM → AzureActiveDirectoryタグ | TCP443 / HTTPS | Entra、所定ID処理。FW経由。ローカルIMDS取得とは別 |
@@ -122,6 +123,8 @@ AppGWの公開側TLS、バックエンドHTTP、APIMから上流へのTLSは別�
 | <a id="flow-mgmt-internet"></a>`FLOW-MGMT-INTERNET` | 管理VM → Internetタグ | TCP80、443 | NSG側の外向き許可枠。FWはOS更新、CA、build、ACA Dev等へ用途を分ける |
 
 ## Firewallを通る外部HTTP/HTTPSの用途分割
+
+`AzureActiveDirectory`タグはサインインとMicrosoft Graphを含む。ACAパッケージのCDN宛はNSGの公開TCP443枠とFirewallのFQDN規則で制御する。[サービス・タグの仕様](https://learn.microsoft.com/en-us/azure/virtual-network/service-tags-overview) · [ACAのFirewall要件](https://learn.microsoft.com/en-us/azure/container-apps/use-azure-firewall)
 
 下表の宛先群は、[Firewall設計の全35レコード](firewall-policy-design.md#ルールと通信要件の対応)でFQDN・protocol・port・collectionへ対応付ける。Network Ruleに先に一致する接続もあるため、各Application Ruleが必ずhitするという前提を置かない。
 

@@ -356,7 +356,7 @@ class PublicDnsTests(unittest.TestCase):
                 self.assertEqual(len(self.dns.mutations()), 1)
 
     def test_non_azure_certificate_providers_return_external_without_cloud_calls(self):
-        for certificate in ({"mode": "prepared"}, {"mode": "dnsPlugin", "plugin": "Cloudflare"},
+        for certificate in ({"mode": "dnsPlugin", "plugin": "Cloudflare"},
                             {"mode": "dnsPlugin", "plugin": "Route53"}):
             with self.subTest(certificate=certificate):
                 self.config["certificate"] = certificate

@@ -60,8 +60,8 @@ class AzureDnsPrerequisiteTests(unittest.TestCase):
         with mock.patch.object(sys.stdin, "isatty", return_value=False):
             self.assertIs(self.invoke(), self.config)
 
-    def test_other_providers_and_prepared_certificates_are_rejected_without_input(self):
-        for certificate in ({}, {"mode": "prepared"},
+    def test_unsupported_modes_and_providers_are_rejected_without_input(self):
+        for certificate in ({}, {"mode": "unsupported"},
                             *({"mode": "dnsPlugin", "plugin": provider} for provider in ("Cloudflare", "Route53", "OtherProvider"))):
             with self.subTest(certificate=certificate), mock.patch("builtins.input") as prompt:
                 with self.assertRaisesRegex(dns_selection.DnsSelectionError, "Azure Public DNS"):
