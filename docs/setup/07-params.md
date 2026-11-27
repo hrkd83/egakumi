@@ -13,14 +13,15 @@ Core初回構築では、`portal.publicHostName`を設定し、`portal.authentic
 | 場所 | 管理するもの |
 | --- | --- |
 | `.local/<environment>/params.local.json` | 導入先ごとのID・公開名・IP計画・連絡先、アプリClient IDと秘密ファイル参照 |
-| `config/test.json`／`config/production.json` | 共通のSKU・モデル・保護機能・利用制限、OAuth表示名／scope／poolとセッション設定 |
+| `infra/config/test.json`／`infra/config/production.json` | 構築資材が提供する検証・本番の標準値。初回構築ではそのまま参照する |
 | `.local/<environment>/secrets/` | 対話入力や保護された鍵生成で保存する秘密ファイル |
 | 資材のコード・API正本 | 固定の通信・認証契約、標準API、params/configから導出する内部設定 |
-| `schemas/` | 公開params、共通config、解決済み内部設定それぞれの型・制約 |
 
-ファイル参照は**そのJSONのあるフォルダーを基準に解決**します。準備済みparamsはconfigを`../../config/test.json`または`../../config/production.json`、秘密を`./secrets/...`で参照します。`.local/`と`.azure/`はチェックアウト直下だけに置き、リンクと所有者専用権限を確認します。実値を公開example・コード・作業記録へ書き込まず、秘密値をJSONへ直接記載しません。
+ファイル参照は**そのJSONのあるフォルダーを基準に解決**します。準備コマンドは選択したprofileの参照をparamsへ設定します。生成先ではconfigを`../../infra/config/test.json`または`../../infra/config/production.json`、秘密を`./secrets/...`で参照します。`.local/`と`.azure/`はチェックアウト直下だけに置き、リンクと所有者専用権限を確認します。実値を公開example・コード・作業記録へ書き込まず、秘密値をJSONへ直接記載しません。
 
-公開入力は[params schema](../../schemas/params.schema.json)と[config schema](../../schemas/options.schema.json)で検証します。[configuration schema](../../schemas/configuration.schema.json)は、API配列・完全なprovider・導出値を含む内部合成形式の参照です。内部形式の項目を、そのまま公開params/configへ追加することはできません。
+エディター向けのSchemaは、[公開paramsの例](../../params/)の隣に[params用](../../params/params.schema.json)、[標準config](../../infra/config/)の隣に[config用](../../infra/config/options.schema.json)を置いています。[configuration schema](../../infra/config/configuration.schema.json)は、API配列・完全なprovider・導出値を含む内部合成形式の参照です。内部形式の項目を、そのまま公開params/configへ追加することはできません。
+
+準備済みparamsが移設前の標準configを参照している場合も、準備コマンドは入力を保持し、配備時は同じprofileを読み込みます。エディターの参照を更新するときは、paramsの `$schema` に `../../params/params.schema.json` を指定します。
 
 ## 7-2. 環境別paramsと自動生成IDを確認する
 

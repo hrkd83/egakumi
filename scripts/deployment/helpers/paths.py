@@ -12,6 +12,8 @@ from .private_permissions import check_private_permissions, protect_new_path
 
 
 REPOSITORY = Path(__file__).resolve().parents[3]
+STANDARD_CONFIG_DIRECTORY = Path("infra/config")
+STANDARD_CONFIG_PROFILES = ("test", "production")
 
 
 def checked_environment(value: str) -> str:

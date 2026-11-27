@@ -27,7 +27,7 @@
   "properties": {
     "$schema": {
       "type": "string",
-      "default": "../schemas/params.schema.json"
+      "default": "./params.schema.json"
     },
     "$comment": {
       "type": "string",
@@ -39,7 +39,7 @@
       "type": "string",
       "minLength": 1,
       "pattern": "\\.[jJ][sS][oO][nN]$",
-      "description": "標準動作設定の正本を選びます。テストは../config/test.json、本番は../config/production.json。企業固有値はこのparamsへ設定し、configはコピーしません。"
+      "description": "標準動作設定の正本を選びます。テストは../infra/config/test.json、本番は../infra/config/production.json。企業固有値はこのparamsへ設定し、configはコピーしません。"
     },
     "azureTenantId": {
       "$ref": "#/$defs/guid",

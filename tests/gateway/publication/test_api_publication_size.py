@@ -177,7 +177,7 @@ class ApiPublicationSizeTests(unittest.TestCase):
     def setUpClass(cls):
         # 正式の公開例の全APIから、実際のXMLとARM展開後サイズを調べます。
         raw = bound_coverage()
-        config = configuration.normalize_configuration(raw, base_directory=CORE / "config")
+        config = configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
         cls.credential_login = credential_login.settings(config)
         definitions = config["apiDefinitions"]
         # 実ARMは親main.bicepから解決済みURLを受け取る。ここでは合成IDだけを使う。

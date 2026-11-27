@@ -14,7 +14,7 @@ from catalog import standard_apis
 def standard_fixture():
     """公開例と合成した架空環境を使い、実在環境や秘密をテストへ持ち込まない。"""
     raw = fixture()
-    raw["services"]["modelDeployments"] = json.loads((CORE / "config/test.json").read_text(encoding="utf-8"))["services"]["modelDeployments"]
+    raw["services"]["modelDeployments"] = json.loads((CORE / "infra/config/test.json").read_text(encoding="utf-8"))["services"]["modelDeployments"]
     raw["credentialProviders"] = [{
         "name": "graph-delegated", "displayName": "Fixture delegated Graph",
         "identityProvider": "aad", "clientId": "44444444-4444-4444-8444-444444444444",

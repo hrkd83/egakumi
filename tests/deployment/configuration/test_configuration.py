@@ -20,6 +20,7 @@ from tests.support.configuration_fixtures import (
     CORE, configuration, fixture, ssh_fixture_key, api_fixture,
     profiled_api_fixture, connection_fixture, pii_fixture, pii_key_fixture, bind_credential_fixture_id,
 )
+from tests.support.schema_helpers import read_schema
 from deployment.helpers.firewall_destinations import generated_apim_service_fqdns
 
 
@@ -61,7 +62,7 @@ class PublicSampleTests(unittest.TestCase):
 
     def test_schema_and_templates_distinguish_generated_apim_identifier(self):
         for filename in ("params.schema.json", "configuration.schema.json"):
-            service = json.loads((CORE / "schemas" / filename).read_text(encoding="utf-8"))["properties"]["services"]
+            service = read_schema(filename.removesuffix(".schema.json"))["properties"]["services"]
             with self.subTest(schema=filename):
                 self.assertIn("apimInstanceId", service["required"])
                 self.assertEqual(service["properties"]["apimInstanceId"]["pattern"], "^[a-z0-9]{6}$")
@@ -77,7 +78,7 @@ class PublicSampleTests(unittest.TestCase):
         for name in ("test", "production"):
             with self.subTest(name=name):
                 parameters, options, actual = self.sample(name)
-                self.assertEqual(parameters["configFile"], "../config/" + name + ".json")
+                self.assertEqual(parameters["configFile"], "../infra/config/" + name + ".json")
                 self.assertEqual(parameters["productName"], "egakumi")
                 self.assertEqual(parameters["subscriptionId"], "00000000-0000-0000-0000-000000000000")
                 self.assertEqual(parameters["entraTenantId"], "00000000-0000-0000-0000-000000000000")
@@ -179,24 +180,24 @@ class QueryObservationConfigurationTests(unittest.TestCase):
         api = raw["apiDefinitions"][0]
         api["operations"][0]["queryObservation"] = "piiRestRule"
         api["mcp"]["queryObservation"] = "piiFacadeRule"
-        result = configuration.normalize_configuration(raw, base_directory=CORE / "config")["apiDefinitions"][0]
+        result = configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")["apiDefinitions"][0]
         self.assertEqual(result["operations"][0]["queryObservation"], "piiRestRule")
         self.assertEqual(result["mcp"]["queryObservation"], "piiFacadeRule")
-        self.assertNotIn("queryObservation", configuration.normalize_configuration(pii_fixture(), base_directory=CORE / "config")["apiDefinitions"][0]["mcp"])
+        self.assertNotIn("queryObservation", configuration.normalize_configuration(pii_fixture(), base_directory=CORE / "infra/config")["apiDefinitions"][0]["mcp"])
         for scope in ("operation", "mcp"):
             for value in (None, False, {}, "none", "unknown", "invalid.rule"):
                 changed = pii_fixture()
                 target = changed["apiDefinitions"][0]
                 (target["operations"][0] if scope == "operation" else target["mcp"])["queryObservation"] = value
                 with self.subTest(scope=scope, value=value), self.assertRaises(configuration.ConfigurationError):
-                    configuration.normalize_configuration(changed, base_directory=CORE / "config")
+                    configuration.normalize_configuration(changed, base_directory=CORE / "infra/config")
 
 
 class CanonicalApiConfigurationTests(unittest.TestCase):
     """統合でURLの境界がなくなっても、元契約・権限・上限を保持する。"""
 
     def normalize(self, raw):
-        return configuration.normalize_configuration(raw, base_directory=CORE / "config")
+        return configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
 
     def test_release_is_explicit_and_reserved_product_cannot_bypass_it(self):
         raw = api_fixture()
@@ -325,16 +326,16 @@ class PortableFileReferenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
             saved = configuration.configuration_for_file(
-                {"$schema": "../schemas/input.json", "configFile": "../config/options.json"},
+                {"$schema": "./params.schema.json", "configFile": "../infra/config/options.json"},
                 base_directory=root / "params", output_directory=root / "generated/deep")
-            self.assertEqual(saved, {"$schema": "../../schemas/input.json",
-                                     "configFile": "../../config/options.json"})
+            self.assertEqual(saved, {"$schema": "../../params/params.schema.json",
+                                     "configFile": "../../infra/config/options.json"})
 
 
 class ConfigurationTests(unittest.TestCase):
     """公開サンプルと配備設定の型・値・組合せ・秘密ファイル境界を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def normalize(self, value=None):
-        return configuration.normalize_configuration(fixture() if value is None else value, base_directory=CORE / "config")
+        return configuration.normalize_configuration(fixture() if value is None else value, base_directory=CORE / "infra/config")
 
 
     def test_certificate_subnet_is_allocated_from_free_space_or_checked_when_explicit(self):
@@ -1118,7 +1119,7 @@ class UnknownConfigurationFieldTests(unittest.TestCase):
         locations = ((), ("services",), ("gateway", "authentication"),
                      ("apiDefinitions", 0), ("apiDefinitions", 0, "authorization"),
                      ("apiDefinitions", 0, "mcp"))
-        internal_schema = local_schema_validator(json.loads((CORE / "schemas/configuration.schema.json").read_text(encoding="utf-8")))
+        internal_schema = local_schema_validator(json.loads((CORE / "infra/config/configuration.schema.json").read_text(encoding="utf-8")))
         for location in locations:
             with self.subTest(location=location):
                 raw = pii_fixture()
@@ -1127,12 +1128,12 @@ class UnknownConfigurationFieldTests(unittest.TestCase):
                     target = target[part]
                 target["unexpectedSetting"] = "synthetic"
                 with self.assertRaisesRegex(configuration.ConfigurationError, "unexpectedSetting"):
-                    configuration.normalize_configuration(raw, base_directory=CORE / "config")
+                    configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
                 errors = list(internal_schema.iter_errors(raw))
                 self.assertTrue(any(error.validator == "additionalProperties"
                                     and "unexpectedSetting" in error.message for error in errors))
         from tests.support.configuration_fixtures import public_fixture
-        public_schema = local_schema_validator(json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8")))
+        public_schema = local_schema_validator(json.loads((CORE / "params/params.schema.json").read_text(encoding="utf-8")))
         for location in ((), ("services",), ("gateway", "authentication"),
                          ("credentialProviders", "graphDelegated")):
             with self.subTest(public_location=location):

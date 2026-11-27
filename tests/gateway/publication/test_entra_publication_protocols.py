@@ -213,7 +213,7 @@ class GeneratedSourceTests(unittest.TestCase):
         canonical=(core/'apps/api-gateway/policies/snippets/request/mcp-metadata-guard/mcp-metadata-guard.xml').read_text(encoding='utf-8')
         self.assertEqual(publication.PRM_GUARD,canonical)
         expected=publication._structure(ET.fromstring(canonical))
-        config=configuration.normalize_configuration(bound_external_coverage(),base_directory=core/'config')
+        config=configuration.normalize_configuration(bound_external_coverage(),base_directory=core/'infra/config')
         definitions=[api for api in config['apiDefinitions'] if api['apiType']=='mcp' or 'mcp' in api]
         self.assertTrue(any(api['apiType']=='mcp' for api in definitions))
         self.assertTrue(any('mcp' in api for api in definitions))
@@ -326,7 +326,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
         from tests.gateway.publication.test_api_publication_size import SizeExpression, expand
         from deployment.helpers import credential_login
         core = Path(__file__).resolve().parents[3]
-        config = configuration.normalize_configuration(bound_external_coverage(), base_directory=core / "config")
+        config = configuration.normalize_configuration(bound_external_coverage(), base_directory=core / "infra/config")
         definitions = config["apiDefinitions"]
         for api in definitions:
             api.setdefault("backendUrl", "https://provider.example.com" + api.get("backendPath", ""))

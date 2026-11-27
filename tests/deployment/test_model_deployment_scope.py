@@ -7,13 +7,14 @@ import tempfile
 import unittest
 from unittest import mock
 
+from tests.support.schema_helpers import read_schema
 from tests.support.configuration_fixtures import CORE, configuration, fixture
 from tests.support.lifecycle_fixtures import lifecycle
 
 
 class ModelDeploymentScopeTests(unittest.TestCase):
     def normalize(self, value):
-        return configuration.normalize_configuration(value, base_directory=CORE / "config")
+        return configuration.normalize_configuration(value, base_directory=CORE / "infra/config")
 
     def model(self, **overrides):
         return {"name": "claude-fixture", "modelName": "claude-fixture", "modelFormat": "Anthropic",
@@ -64,7 +65,7 @@ class ModelDeploymentScopeTests(unittest.TestCase):
         except ImportError:
             self.skipTest("jsonschema is available in the integration venv")
         for name in ("configuration", "options"):
-            schema = json.loads((CORE / "schemas" / f"{name}.schema.json").read_text(encoding="utf-8"))
+            schema = read_schema(name)
             validator = jsonschema.Draft202012Validator(schema["$defs"]["modelDeployment"])
             self.assertTrue(validator.is_valid(self.model(
                 name="model-fixture", modelName="model-fixture", modelFormat="OpenAI")))

@@ -1,8 +1,8 @@
 {
-  "$schema": "../schemas/params.schema.json",
+  "$schema": "./params.schema.json",
   "$comment": "公開の入力テンプレートです。GUID・DNS・CIDR・連絡先は実環境から独立した架空例で、prepare_local_environment.pyでチェックアウト直下.local/<environment>/params.local.jsonへ展開し、導入先の値を保護領域で設定します。services.apimInstanceIdの<AUTO_GENERATED_APIM_INSTANCE_ID>は初回自動生成を示すマーカーです。初回prepareが6文字の英小文字・数字IDへ置換して保存し、通常の更新では保存済みIDを保持します。未解決マーカーは実入力として使えません。azureTenantIdはAzure構築先、entraTenantIdは基盤用Entraアプリの認証先です。API・Tools・Credentialには相異なるClient IDを指定し、Core構築後にPortalのClient IDを追加します。credentialProviders.graphDelegatedにはToolsのClient IDと保護secretファイル参照、gateway.authentication.credentialLogin.identityにはCredentialのClient IDと別の保護secretファイル参照を設定します。共通表示名・scope・pool・本人接続セッション設定はconfigから読みます。gateway.authentication.entra.audienceはegakumi-apiのClient IDへ置き換えます。購読キーヘッダーapi-keyと委任scope Gateway.Invokeは資材で固定します。firewallTlsInspectionは準備済みの専用ID・中間CAのバージョン参照・ルートCAファイルで置き換えます。秘密値はこのファイルに書かず保護された参照先へ非表示で入力します。",
   "schemaVersion": 1,
-  "configFile": "../config/test.json",
+  "configFile": "../infra/config/test.json",
   "productName": "egakumi",
   "environmentName": "test",
   "subscriptionId": "00000000-0000-0000-0000-000000000000",

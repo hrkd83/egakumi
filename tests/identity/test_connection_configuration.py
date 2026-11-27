@@ -5,7 +5,7 @@ from tests.support.configuration_fixtures import configuration, connection_fixtu
 
 class ConnectionOwnerConfigurationTests(unittest.TestCase):
     def normalize(self, raw):
-        return configuration.normalize_configuration(raw, base_directory=CORE / 'config')
+        return configuration.normalize_configuration(raw, base_directory=CORE / 'infra/config')
 
     def test_personal_connection_is_selected_by_verified_session(self):
         raw = connection_fixture()

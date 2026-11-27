@@ -144,7 +144,7 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 
 ## 次へ進む前の確認
 
-- cloneしたルートに`azure.yaml`、`infra/`、`params/`、`config/`がある。
+- cloneしたルートに`azure.yaml`、`infra/config/`、`params/`がある。
 - 環境別の`.local/<environment>/`を準備し、paramsに保存されたAPIM識別子と、Entraの戻り先計算に使う製品名・環境名・公開名を確認した。
 - 上記ツールとPowerShellの依存検査が成功する。
 - Azure／Entra／DNSの担当・権限、公開名とIP計画が決まっている。

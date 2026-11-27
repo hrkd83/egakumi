@@ -20,7 +20,7 @@ def bind_credential_fixture_id(parameters):
 def public_fixture(profile="test"):
     """新しい公開paramsとconfigへ独立した登録情報を入れ、相対参照を保つ。"""
     parameters = json.loads((CORE / "params" / f"{profile}.example.json").read_text(encoding="utf-8"))
-    options = json.loads((CORE / "config" / f"{profile}.json").read_text(encoding="utf-8"))
+    options = json.loads((CORE / "infra/config" / f"{profile}.json").read_text(encoding="utf-8"))
     parameters["configFile"] = "options.json"
     parameters["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
     parameters["azureTenantId"] = "99999999-9999-4999-8999-999999999999"

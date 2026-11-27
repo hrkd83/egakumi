@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "AI Workforce 合成済み内部設定",
-  "description": "params/configとAPI正本から解決した内部設定です。公開の構築入力はparams.schema.jsonとoptions.schema.jsonで検証します。",
+  "description": "params/configとAPI正本から解決した内部設定です。公開の構築入力はparams/params.schema.jsonとinfra/config/options.schema.jsonで検証します。",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "$schema": {
       "type": "string",
-      "description": "エディター参照のみ。合成設定の保存時に、出力先からschemas/configuration.schema.jsonへの相対参照を自動設定します。実行時に外部取得せずAzureへの入力から除外します。"
+      "description": "エディター参照のみ。ローカル専用領域で内部設定を検証する場合は、対象JSONからinfra/config/configuration.schema.jsonへの相対参照を指定します。実行時に外部取得せずAzureへの入力から除外します。"
     },
     "$comment": {
       "type": "string",

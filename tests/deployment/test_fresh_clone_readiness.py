@@ -103,8 +103,8 @@ class FreshCloneReadinessTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name).resolve()
         # 読む元を公開ソースの種類へ限定する。*.local.jsonやprivate領域を探索しない。
-        patterns = ("scripts/**/*.py", "config/test.json", "config/production.json",
-                    "params/*.example.json", "schemas/*.schema.json", "infra/modules/monitoring/log-privacy.json",
+        patterns = ("scripts/**/*.py", "infra/config/*.json",
+                    "params/*.example.json", "params/params.schema.json", "infra/modules/monitoring/log-privacy.json",
                     "infra/modules/network/nsg/core-rules.json",
                     "apps/api-gateway/waf-input-contracts.json", "apps/api-gateway/waf-data-exclusions.json",
                     "apps/api-gateway/apis/*.json", "apps/api-gateway/schemas/*.json", "apps/api-gateway/model-capabilities.json",
@@ -115,7 +115,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, target)
         self.standards_before = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                                 for path in (self.root / "config").glob("*.json")}
+                                 for path in (self.root / "infra/config").glob("*.json")}
         self.assert_no_private_inputs()
 
     def assert_no_private_inputs(self):
@@ -134,7 +134,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         self.assertNotIn("codex", raw)
         bind_credential_fixture_id(raw)
         raw.update(subscriptionId=SUBSCRIPTION, azureTenantId=TENANT, entraTenantId=TENANT)
-        standard = json.loads((self.root / "config" / (profile + ".json")).read_text(encoding="utf-8"))
+        standard = json.loads((self.root / "infra/config" / (profile + ".json")).read_text(encoding="utf-8"))
         self.assertNotIn("subscriptionKeyHeader", raw["gateway"]["authentication"])
         self.assertEqual(standard["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
         self.assertNotIn("oauthTenantId", raw["credentialProviders"]["graphDelegated"])
@@ -149,7 +149,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         raw["certificate"]["azureDnsManagedIdentityResourceId"] = DNS_IDENTITY
         raw["services"].update(publisherName="Fresh clone organization", publisherEmail="operator@fresh-clone.example")
         raw["monitoring"]["operatorEmailAddresses"] = ["operator@fresh-clone.example"]
-        raw["configFile"] = "../../config/" + profile + ".json"
+        raw["configFile"] = "../../infra/config/" + profile + ".json"
         raw["management"]["sshPublicKeyFile"] = "./secrets/management-ssh.pub"
         raw["credentialProviders"]["graphDelegated"]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
         return raw
@@ -205,7 +205,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         for secure_input in ("sshPublicKey", "dnsPluginArgumentsJson", "credentialProviderSecrets"):
             self.assertNotIn(secure_input, arm["parameters"])
         self.assertEqual({path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                          for path in (self.root / "config").glob("*.json")}, self.standards_before)
+                          for path in (self.root / "infra/config").glob("*.json")}, self.standards_before)
         self.assert_no_private_inputs()
         return report, public
 
@@ -214,7 +214,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         for profile in ("test", "production"):
             with self.subTest(profile=profile):
                 report, public = self.check_in_isolated_process(profile, self.enterprise_parameters(profile))
-                standard = json.loads((self.root / "config" / (profile + ".json")).read_text())
+                standard = json.loads((self.root / "infra/config" / (profile + ".json")).read_text())
                 self.assertEqual(report["modelNames"], [item["name"] for item in standard["services"]["modelDeployments"]])
                 self.assertEqual(report["apiNames"], [])
                 self.assertTrue(public["publishApis"])
@@ -255,7 +255,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
                 self.assertEqual(public["gateway"]["authentication"]["subscriptionKeyHeader"], "api-key")
                 self.assertEqual(public["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
                 self.assertTrue(all(api["authorization"]["mode"] == "subscriptionKey" for api in public["apiDefinitions"]))
-                standard = json.loads((self.root / "config" / (profile + ".json")).read_text())
+                standard = json.loads((self.root / "infra/config" / (profile + ".json")).read_text())
                 self.assertEqual(public["services"]["modelDeployments"], standard["services"]["modelDeployments"])
 
 

@@ -43,7 +43,7 @@ class ManualPortalPolicyTests(unittest.TestCase):
             "messages": {"kind": "registeredOperation", "bodyFormat": "json", "maxRequestBytes": 2048000},
         })
         for profile in ("test", "production"):
-            gateway = json.loads((CORE / f"config/{profile}.json").read_text(encoding="utf-8"))["gateway"]
+            gateway = json.loads((CORE / f"infra/config/{profile}.json").read_text(encoding="utf-8"))["gateway"]
             self.assertEqual(config["operations"][0]["maxRequestBytes"], gateway["wafMaxRequestBodySizeInKb"] * 1024)
         routes = list(inbound.iter("rewrite-uri"))
         self.assertEqual([node.attrib for node in routes], [{"template": "/anthropic/v1/messages", "copy-unmatched-params": "true"}])

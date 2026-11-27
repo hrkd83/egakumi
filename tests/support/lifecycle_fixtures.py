@@ -56,7 +56,7 @@ class LifecycleFixture:
         core = Path(__file__).resolve().parents[2]
         raw = fixture()
         raw["publishApis"] = True  # These fixtures exercise the complete azd up lifecycle.
-        self.config = normalize_configuration(raw, base_directory=core / "config")
+        self.config = normalize_configuration(raw, base_directory=core / "infra/config")
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name).resolve()

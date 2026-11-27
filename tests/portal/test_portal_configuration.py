@@ -10,7 +10,7 @@ class PortalConfigurationTests(unittest.TestCase):
         return raw
 
     def validate(self, raw):
-        return configuration.normalize_configuration(raw, base_directory=CORE / "config")
+        return configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
 
     def test_portal_hostname_is_loaded(self):
         self.assertEqual(self.validate(self.valid())['portal']['publicHostName'], 'portal.example.com')

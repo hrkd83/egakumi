@@ -44,6 +44,7 @@ from .apim_naming import apim_instance_id
 from .apim_input_contract import validate_input_contract
 from .apim_document_contract import DOCUMENT_API_VERSION
 from .credential_login import SESSION_POLICY_DEFAULTS, SESSION_POLICY_BOUNDS, MAX_TRANSACTION_LIFETIME_SECONDS
+from .paths import STANDARD_CONFIG_DIRECTORY
 
 
 class ConfigurationError(ValueError):
@@ -1732,7 +1733,15 @@ def _compose_configuration_source(source: Path, raw: dict) -> dict:
     reference = _string(raw["configFile"], "configFile", maximum=4096)
     if "://" in reference or "\x00" in reference or Path(reference).suffix.lower() != ".json":
         _fail("configFile", "must reference a local JSON config file")
-    config_source = (source.parent / Path(reference).expanduser()).resolve()
+    config_reference = source.parent / Path(reference).expanduser()
+    config_source = config_reference.resolve()
+    # 移設前に生成した標準paramsは、保存済み入力を書き換えずに同じプロファイルを読む。
+    # 明示された別の設定や既存ファイル、切れたリンクを標準設定で置き換えない。
+    if (source.name == "params.local.json" and source.parent.parent.name == ".local"
+            and reference in ("../../config/test.json", "../../config/production.json")
+            and not config_source.exists()
+            and not (config_reference.is_symlink() or config_reference.parent.is_symlink())):
+        config_source = (source.parents[2] / STANDARD_CONFIG_DIRECTORY / config_reference.name).resolve()
     if config_source == source:
         _fail("configFile", "cannot reference the parameters file itself")
     standard = _read_configuration_source(config_source)

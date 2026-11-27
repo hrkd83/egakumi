@@ -36,7 +36,7 @@ class GeneratedQueryObservationPublicationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.template = compile_bicep("apps/api-gateway/api-publication.bicep")
-        cls.config = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")
+        cls.config = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "infra/config")
 
     def parameters(self, config=None):
         config = self.config if config is None else config
@@ -98,7 +98,7 @@ class GeneratedQueryObservationPublicationTests(unittest.TestCase):
         sse = next(api for api in raw["apiDefinitions"] if api["name"] == "sample-mcp-legacy")
         for endpoint in sse["mcpProxy"]["endpoints"]:
             endpoint["queryObservation"] = "boxBrowse" if endpoint["name"] == "message" else "workiqEvents"
-        config = configuration.normalize_configuration(raw, base_directory=CORE / "config")
+        config = configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
         expected = {
             "sample-rest-v1": ({"echo-get": "vendorMessages"}, {}),
             "sample-mcp-v1": ({}, {method + " /mcp": "workiqSearch" for method in ("POST", "GET", "DELETE")}),

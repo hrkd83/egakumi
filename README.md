@@ -95,7 +95,7 @@ RGと共通基盤用マネージドIDは`azd up`が作成します。[管理ポ�
 | 永続化・運用 | 共用SQLサーバー内のPortal／credentials DB、管理VMとディスク、Key Vault、LAW／App Insights、ログexport、監査Storageと保持・複製、アラート・通知 |
 | Core外の共有資源 | 公開DNS・ドメイン、企業ハブ・ExpressRoute／VPN・中央DNS等、採用する共有資源 |
 
-標準構成は [test.json](config/test.json)・[production.json](config/production.json)、アプリ資源は [Gateway Bicep](apps/api-gateway/deploy/)・[Portal Bicep](apps/portal/deploy/)で確認できます。導入・変更時に、これらを含む全資源で見積もり、稼働後は対象Subscriptionの利用額と照合します。撤去後も保護・保持により残るデータや共有資源の費用を確認します。
+標準構成は [test.json](infra/config/test.json)・[production.json](infra/config/production.json)、アプリ資源は [Gateway Bicep](apps/api-gateway/deploy/)・[Portal Bicep](apps/portal/deploy/)で確認できます。導入・変更時に、これらを含む全資源で見積もり、稼働後は対象Subscriptionの利用額と照合します。撤去後も保護・保持により残るデータや共有資源の費用を確認します。
 
 ## 構築後に使う資料
 

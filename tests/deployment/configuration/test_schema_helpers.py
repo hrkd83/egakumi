@@ -16,9 +16,10 @@ class LocalSchemaHelperTests(unittest.TestCase):
         root = schema_helpers.ROOT
         cases = [
             {'$ref': 'configuration.schema.json#/$defs/guid'},
-            {'$ref': (root / 'schemas/configuration.schema.json').resolve().as_uri() + '#/$defs/guid'},
+            {'$ref': schema_helpers.schema_path('configuration').resolve().as_uri() + '#/$defs/guid'},
             {'$defs': {'value': {'type': 'integer'}}, '$ref': '#/$defs/value'},
             {'$ref': 'params.schema.json#/$defs/guid'},
+            {'$ref': schema_helpers.schema_path('params').resolve().as_uri() + '#/$defs/guid'},
         ]
         with mock.patch('urllib.request.urlopen', side_effect=AssertionError('Network access forbidden')):
             for index, schema in enumerate(cases):
@@ -30,8 +31,8 @@ class LocalSchemaHelperTests(unittest.TestCase):
                     with self.assertRaises(ValidationError):
                         validator.validate('not-a-valid-value')
             # 既存の標準config全体も、同じオフラインvalidatorで検証します。
-            options = json.loads((root / 'schemas/options.schema.json').read_text(encoding='utf-8'))
-            sample = json.loads((root / 'config/test.json').read_text(encoding='utf-8'))
+            options = schema_helpers.read_schema('options')
+            sample = json.loads((root / 'infra/config/test.json').read_text(encoding='utf-8'))
             schema_helpers.local_schema_validator(options).validate(sample)
 
     def test_unknown_http_https_file_and_relative_references_are_rejected_without_value_echo(self):
@@ -63,15 +64,16 @@ class LocalSchemaHelperTests(unittest.TestCase):
         fake_module.Resource = mock.Mock()
         with tempfile.TemporaryDirectory(prefix='synthetic-schema-store-') as directory:
             root = Path(directory)
-            (root / 'schemas').mkdir()
+            (root / 'infra/config').mkdir(parents=True)
             document = {'$schema': 'https://json-schema.org/draft/2020-12/schema',
                         '$id': 'https://schemas.example.com/synthetic.schema.json',
                         '$defs': {'integer': {'type': 'integer'}},
                         '$ref': '#/$defs/integer'}
-            path = root / 'schemas/synthetic.schema.json'
+            path = root / 'infra/config/synthetic.schema.json'
             path.write_text(json.dumps(document), encoding='utf-8')
             with mock.patch.dict('sys.modules', {'referencing': fake_module}), mock.patch.object(
                     schema_helpers, 'ROOT', root), mock.patch.object(
+                    schema_helpers, 'SCHEMA_PATHS', {'synthetic': 'infra/config/synthetic.schema.json'}), mock.patch.object(
                     schema_helpers.inspect, 'signature', return_value=inspect.Signature()):
                 for alias in ('synthetic.schema.json', path.resolve().as_uri(), document['$id']):
                     with self.subTest(alias=alias):

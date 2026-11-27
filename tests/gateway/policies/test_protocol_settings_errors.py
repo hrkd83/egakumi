@@ -24,7 +24,7 @@ QUERY_ID='core-protocol-query-validation'
 
 def generated_protocols():
     core=Path(__file__).resolve().parents[3]
-    definitions=configuration.normalize_configuration(bound_external_coverage(),base_directory=core/'config')['apiDefinitions']
+    definitions=configuration.normalize_configuration(bound_external_coverage(),base_directory=core/'infra/config')['apiDefinitions']
     selected={
         'dynamic':next(api for api in definitions if api['apiType']=='websocket' and 'defaultModel' in api['websocket']),
         'fixed':next(api for api in definitions if api['apiType']=='websocket' and 'defaultModel' not in api['websocket'] and 'model' in api['websocket'].get('queryParameters',{})),

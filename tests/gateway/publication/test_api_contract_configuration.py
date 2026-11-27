@@ -1,6 +1,5 @@
 """Operation defaults and model overrides preserve authorization and backend boundaries."""
 import copy
-import json
 import unittest
 from tests import REPOSITORY
 
@@ -68,9 +67,9 @@ class ApiContractConfigurationTests(unittest.TestCase):
                 self.normalize(api)
 
     def test_editor_schemas_restrict_declared_body_size_check_to_explicit_upload_formats(self):
-        from tests.support.schema_helpers import local_schema_validator
+        from tests.support.schema_helpers import local_schema_validator, read_schema
         for name in ('configuration', 'params'):
-            schema = json.loads((CORE / f'schemas/{name}.schema.json').read_text(encoding='utf-8'))
+            schema = read_schema(name)
             validator = local_schema_validator({'$schema': schema['$schema'], '$ref': '#/$defs/operationConstraint', '$defs': schema['$defs']})
             base = {'kind': 'registeredOperation', 'maxRequestBytes': 32768}
             for body_format in ('json', 'binary', 'multipart', 'text', 'none'):
@@ -172,11 +171,11 @@ class ApiContractConfigurationTests(unittest.TestCase):
                 normalize(api)
 
     def test_editor_schemas_accept_model_differences_and_reject_old_or_nested_selection(self):
-        from tests.support.schema_helpers import local_schema_validator
+        from tests.support.schema_helpers import local_schema_validator, read_schema
         constraint = contract()['authorization']['operationConstraints']['chat-completions']
         constraint['modelAliases'] = {'synthetic-review': 'text-model'}
         for name in ('configuration', 'params'):
-            schema = json.loads((CORE / f'schemas/{name}.schema.json').read_text(encoding='utf-8'))
+            schema = read_schema(name)
             validator = local_schema_validator({'$schema': schema['$schema'], '$ref': '#/$defs/operationConstraint', '$defs': schema['$defs']})
             with self.subTest(schema=name):
                 self.assertEqual(list(validator.iter_errors(constraint)), [])
@@ -222,7 +221,7 @@ class ApiContractConfigurationTests(unittest.TestCase):
             'backendAudience':'https://cognitiveservices.azure.com',
             'backendAuthentication':{'mode':'speechEntra','resourceId':'/subscriptions/'+TENANT+'/resourceGroups/fixture/providers/Microsoft.CognitiveServices/accounts/speech'}}
         with self.assertRaisesRegex(ConfigurationError,'services.speechEnabled'):
-            normalize_configuration(config,base_directory=CORE/'config')
+            normalize_configuration(config,base_directory=CORE/'infra/config')
 
     def test_override_rejects_untrusted_url_or_wrong_credential_boundary(self):
         variants=[{'backendService':'external','backendUrl':'http://plain.example.com'},

@@ -6,7 +6,7 @@ import unittest
 from tests.support.configuration_fixtures import CORE, configuration, fixture
 
 
-PUBLIC_FILES = ("config/test.json", "config/production.json")
+PUBLIC_FILES = ("infra/config/test.json", "infra/config/production.json")
 
 
 class InitialModelTests(unittest.TestCase):
@@ -56,7 +56,7 @@ class InitialModelTests(unittest.TestCase):
             with self.subTest(file=name):
                 raw = fixture()
                 raw["services"]["modelDeployments"] = copy.deepcopy(models)
-                actual = configuration.normalize_configuration(raw, base_directory=CORE / "config")
+                actual = configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
                 self.assertEqual(actual["services"]["modelDeployments"], models)
 
 

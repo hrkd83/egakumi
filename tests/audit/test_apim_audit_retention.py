@@ -68,7 +68,7 @@ class ApimAuditRetentionTests(unittest.TestCase):
                   for key, value in self.template['parameters'].items() if 'defaultValue' in value}
         result.update(productName='fixture', environmentName=environment, resourceStem=environment + '-fixture',
                       location='japaneast', foundryLocation='eastus2')
-        options = json.loads((CORE / f'config/{environment}.json').read_text())['monitoring']
+        options = json.loads((CORE / f'infra/config/{environment}.json').read_text())['monitoring']
         result.update({key: options[key] for key in ('auditImmutabilityMode', 'auditRetentionDays', 'auditStorageSku')})
         result.update(overrides)
         return result

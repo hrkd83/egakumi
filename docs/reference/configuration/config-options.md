@@ -11,10 +11,10 @@ Portal認証証明書はparamsの`portal.certificate`で設定し、KV自己署�
 
 | 正本 | 主な初期構成 | 選ぶときの確認 |
 | --- | --- | --- |
-| `config/test.json` | Firewall Premium・IDPS Deny、検証向けのSKU・保護設定 | 検証後の撤去を想定した費用・保持設定か |
-| `config/production.json` | Firewall Premium・IDPS Deny（Alert and Deny）、AppGW／Public IPの3ゾーン | 対象地域のSKU・ゾーン、可用性・監査保持・削除保護の運用に合うか |
+| `infra/config/test.json` | Firewall Premium・IDPS Deny、検証向けのSKU・保護設定 | 検証後の撤去を想定した費用・保持設定か |
+| `infra/config/production.json` | Firewall Premium・IDPS Deny（Alert and Deny）、AppGW／Public IPの3ゾーン | 対象地域のSKU・ゾーン、可用性・監査保持・削除保護の運用に合うか |
 
-[第07章](../../setup/07-params.md)のparamsの`configFile`を、選ぶ正本への相対パスにします。`environmentName`を変えてもSKU・保持・保護は自動で切り替わりません。configのexampleやlocalコピーは作らず、必要な変更は選んだ正本へ記録します。
+[第07章](../../setup/07-params.md)の準備コマンドが、profileに対応する正本の相対パスをparamsの`configFile`に設定します。`environmentName`を変えてもSKU・保持・保護は自動で切り替わりません。configのexampleやlocalコピーは作らず、必要な変更は選んだ正本へ記録します。
 
 ## 標準設定を調整する場合
 
@@ -37,7 +37,7 @@ Claudeは手動公開するため、初回構築のモデル配備一覧に含�
 
 ## configリファレンス
 
-スキーマは [標準config](../../../schemas/options.schema.json)／[合成設定](../../../schemas/configuration.schema.json)。下表は資材の初期値と動作で、導入先のtenant・domain・IPを指定する欄ではありません。
+スキーマは [標準config](../../../infra/config/options.schema.json)／[合成設定](../../../infra/config/configuration.schema.json)。下表は資材の初期値と動作で、導入先のtenant・domain・IPを指定する欄ではありません。
 
 
 ### 標準値を変える場合だけ確認する項目（config）

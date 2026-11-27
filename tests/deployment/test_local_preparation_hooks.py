@@ -261,7 +261,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
         core = Path(__file__).resolve().parents[2]
         source = (self.root / ".local/test/params.local.json").resolve()
         lifecycle.private_parent(source, self.root)
-        (self.root / "config").mkdir()
+        (self.root / "infra/config").mkdir(parents=True)
         raw = json.loads((core / "params/test.example.json").read_text(encoding="utf-8"))
         bind_credential_fixture_id(raw)
         for field in ("subscriptionId", "azureTenantId", "entraTenantId"):
@@ -276,11 +276,11 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
         raw["gateway"]["authentication"]["credentialLogin"]["identity"]["clientSecretFile"] = "./secrets/entra-credential-secret.txt"
         raw["services"]["apimInstanceId"] = "abc123"
         raw["credentialProviders"]["graphDelegated"]["clientId"] = "44444444-4444-4444-8444-444444444444"
-        raw["configFile"] = "../../config/test.json"
+        raw["configFile"] = "../../infra/config/test.json"
         raw["management"]["sshPublicKeyFile"] = "./secrets/management-ssh.pub"
         raw["credentialProviders"]["graphDelegated"]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
         source.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n")
-        (self.root / "config/test.json").write_bytes((core / "config/test.json").read_bytes())
+        (self.root / "infra/config/test.json").write_bytes((core / "infra/config/test.json").read_bytes())
         return source
 
     def test_fresh_clone_entra_input_and_non_tty_retry_keep_prepared_azure_params(self):
@@ -437,7 +437,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
     def test_unsupported_or_incomplete_dns_preconditions_stop_before_local_or_azure_changes(self):
         source = self.clone_public_inputs()
         raw = json.loads(source.read_text())
-        config_file = self.root / "config/test.json"
+        config_file = self.root / "infra/config/test.json"
         original_options = config_file.read_bytes()
         cases = ("cloudflare", "route53", "unsupported-mode", "dns-file",
                  "missing-subscription", "zero-subscription", "missing-identity", "invalid-identity")

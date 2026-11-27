@@ -83,7 +83,7 @@ protocol中継の回帰試験は[tests/fixtures/external-api-definitions.json](t
 
 変更内容に応じてローカル試験・型検査・lint・ビルドを実行し、不具合修正には再現条件を検証する回帰テストを追加・更新します。書式や説明文だけの変更は差分・参照先・整合性を確認します。実行した検査、失敗・スキップと理由、残る確認事項を変更説明へ記録します。
 
-試験対象は実施revisionの`config/`、`params/`、`apps/api-gateway/apis/`から決めます。モデル名・版・件数を共通手順へ複写しません。試験実行と不具合修正・配備を区別し、ローカル成功を実環境での受入完了に読み替えません。
+試験対象は実施revisionの`infra/config/`、`params/`、`apps/api-gateway/apis/`から決めます。モデル名・版・件数を共通手順へ複写しません。試験実行と不具合修正・配備を区別し、ローカル成功を実環境での受入完了に読み替えません。
 
 実環境の試験では以下を共通ルールとします。各試験の対象・具体的な受入条件・実行順は各仕様書に従います。
 
@@ -163,7 +163,7 @@ SQL統合試験は通常の `npm test` ではスキップします。[SQL統合�
 
 | 順番 | 入口 | 分かること |
 | --- | --- | --- |
-| 1 | [params](params/test.example.json)・[config](config/test.json) | 自社の値と標準値。JSONの説明はSchemaとREADMEに記載 |
+| 1 | [params](params/test.example.json)・[config](infra/config/test.json) | 自社の値と標準値。JSONの説明はSchemaとREADMEに記載 |
 | 2 | [azure.yaml](azure.yaml) | Coreのup/downのhookと処理順序 |
 | 3 | [configuration.py](scripts/deployment/helpers/configuration.py)・[lifecycle.py](scripts/deployment/lifecycle.py) | 合成、入力・秘密参照検査、事前確認、構築後の設定 |
 | 4 | [main.bicep](infra/main.bicep)・[資材一覧](infra/README.md) | 5RG、ネットワーク、ID、サービスの依存関係 |
@@ -183,7 +183,7 @@ Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshe
 
 構築済み環境の更新・途中失敗からの再開では、同じparamsとCoreの`.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。
 
-APIM全体ポリシーは[service.xml](apps/api-gateway/policies/service.xml)、各APIのXMLは`apps/api-gateway/policies/`、標準APIのJSONは[apps/api-gateway/apis/](apps/api-gateway/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。モデルの配備・SKU・容量は`config/test.json`または`config/production.json`、標準GraphのClient ID・秘密参照と環境固有値はparams、Graph表示名・scope・poolはconfigの`credentialProviders.graphDelegated`で管理します。追加providerは双方の`additional[]`を論理名で照合します。`apps/api-gateway/api-publication.bicep`と`apps/api-gateway/deploy/api_publication.py`が登録を担当し、`apps/credential-broker/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
+APIM全体ポリシーは[service.xml](apps/api-gateway/policies/service.xml)、各APIのXMLは`apps/api-gateway/policies/`、標準APIのJSONは[apps/api-gateway/apis/](apps/api-gateway/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。モデルの配備・SKU・容量は`infra/config/test.json`または`infra/config/production.json`、標準GraphのClient ID・秘密参照と環境固有値はparams、Graph表示名・scope・poolはconfigの`credentialProviders.graphDelegated`で管理します。追加providerは双方の`additional[]`を論理名で照合します。`apps/api-gateway/api-publication.bicep`と`apps/api-gateway/deploy/api_publication.py`が登録を担当し、`apps/credential-broker/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
 
 購読キーによる共通認可は全体ポリシーに集約し、資材固定の購読キーヘッダー`api-key`とAPIM標準の購読検証を使います。公開ヘッダー入力と`requiredScope`は廃止し、社員委任scopeは`Gateway.Invoke`へ固定します。API側は`<base />`で継承し、モデル・入力・出力等の操作制約と下流認証を設定します。API登録は子資源の配備成功を確認した後、ETag付きで共通ポリシーを統合・読戻し確認します。
 

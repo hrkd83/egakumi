@@ -22,7 +22,7 @@ OTHER = "33333333-3333-4333-8333-333333333333"
 class StandardAuthorizationConfigurationTests(unittest.TestCase):
     def test_common_api_authorization_is_key_based_without_token_defaults(self):
         raw=api_fixture()
-        result=configuration.normalize_configuration(raw,base_directory=CORE/"config")
+        result=configuration.normalize_configuration(raw,base_directory=CORE/"infra/config")
         auth=result["apiDefinitions"][0]["authorization"]
         self.assertEqual(auth["mode"],"subscriptionKey")
         self.assertEqual(set(auth), {"mode", "operationConstraints"})
@@ -37,7 +37,7 @@ class StandardAuthorizationConfigurationTests(unittest.TestCase):
                 else:
                     authorization["mode"] = "unknown"
                 with self.assertRaisesRegex(configuration.ConfigurationError, r"authorization\.mode"):
-                    configuration.normalize_configuration(raw, base_directory=CORE / "config")
+                    configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
 
 
 class StandardAuthorizationExpressionTests(unittest.TestCase):

@@ -4,6 +4,7 @@
 
 | ディレクトリ | 担当する資材 |
 | --- | --- |
+| [config](config/) | 検証・本番の標準設定と、標準設定・合成済み設定に対応するJSON Schema。初回構築では準備コマンドで選んだprofileの標準値を参照 |
 | [network](modules/network/) | VNet、サブネット、Firewall、経路、Private Endpoint、[NSGの現行ルール](modules/network/nsg/) |
 | [ingress](modules/ingress/) | App Gateway、WAF、公開TLS参照。初回発行後に [public-ingress.bicep](modules/ingress/public-ingress.bicep) で構築 |
 | [services](modules/services/) | APIM、Foundry、業務用Key Vault、共通SQL、サービス間の権限 |
@@ -15,5 +16,7 @@
 | [guest](guest/) | 管理VMで実行するスクリプトと証明書Jobイメージに入れるワーカー |
 
 空のAzure環境に [正式手順](../docs/setup/08-provision-core.md) で構築します。この資材での構築を再開するときは、NSGカタログが対象とするサブネットの作成済みルールを読み取り、現行の定義と照合します。規則名・通信条件が一致しない場合は、Coreのネットワーク配備に進む前に停止します。
+
+導入先固有の設定は[paramsの例とSchema](../params/)を基に、環境別の保護paramsに記入します。 [入力手順](../docs/setup/07-params.md)
 
 GatewayのAPI・ポリシー・アプリ配備は [apps/api-gateway/deploy](../apps/api-gateway/deploy/)、Portal本体の配備は [apps/portal/deploy](../apps/portal/deploy/) にあります。
