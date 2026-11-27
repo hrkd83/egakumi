@@ -1333,13 +1333,12 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     c["monitoring"] = mon
     portal = _object(c.get("portal"), "portal", {"publicHostName", "authentication", "certificate"})
     portal_cert = _object(portal.setdefault("certificate", {}), "portal.certificate", {"certificateName", "validityMonths", "renewBeforeDays"})
-    cert_name = _string(portal_cert.setdefault("certificateName", "portal-auth"), "portal.certificate.certificateName", maximum=127)
-    if not re.fullmatch(r"[a-z0-9-]+", cert_name):
+    portal_cert_name = _string(portal_cert.setdefault("certificateName", "portal-auth"),
+                               "portal.certificate.certificateName", maximum=127)
+    if not re.fullmatch(r"[a-z0-9-]+", portal_cert_name):
         _fail("portal.certificate.certificateName", "must use lowercase letters, digits and hyphens")
     _integer(portal_cert.setdefault("validityMonths", 12), "portal.certificate.validityMonths", 1, 24)
     _integer(portal_cert.setdefault("renewBeforeDays", 60), "portal.certificate.renewBeforeDays", 7, 90)
-    if portal_cert["certificateName"] == c["certificate"]["certificateName"]:
-        _fail("portal.certificate.certificateName", "must differ from the HTTPS certificate name")
     if "authentication" in portal:
         auth_path = "portal.authentication"
         auth = _object(portal["authentication"], auth_path, {"tenantId", "clientId", "keyId", "certificateThumbprint"})
@@ -1357,7 +1356,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
                 _fail(auth_path + ".certificateThumbprint", "must be the public certificate SHA-1 thumbprint paired with the key version")
             auth["certificateThumbprint"] = thumbprint.lower()
     portal_host = _host(portal.get("publicHostName"), "portal.publicHostName")
-    cert = _object(c.get("certificate"), "certificate", {"mode", "certificateName", "contactEmail", "directory", "plugin", "renewBeforeDays", "checkEveryHours", "moduleVersion", "dnsSleepSeconds", "validationTimeoutSeconds", "minimumValidDays", "domainNames", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"})
+    cert = c.get("certificate")
     validate_supported_certificate(cert)
     # 指定がなければGatewayとPortalの実ホスト名をSANへ入れます。ワイルドカードを使う場合は
     # paramsへ明示します。*.example.comは直下の一階層だけで、apexや深い階層を含みません。
@@ -1373,8 +1372,13 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         if not any(name == hostname or name.startswith("*.") and hostname.split(".", 1)[1] == name[2:]
                    for name in cert["domainNames"]):
             _fail("certificate.domainNames", "must cover the Gateway hostname")
-    if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", _string(cert.setdefault("certificateName", "tls-public"), "certificate.certificateName", maximum=80)):
+    https_cert_name = _string(cert.setdefault("certificateName", "tls-public"),
+                              "certificate.certificateName", maximum=80)
+    if not re.fullmatch(r"[A-Za-z0-9-]{1,80}", https_cert_name):
         _fail("certificate.certificateName", "must be a Key Vault certificate identifier")
+    # Key Vault treats object identifiers as case-insensitive.
+    if portal_cert_name == https_cert_name.casefold():
+        _fail("portal.certificate.certificateName", "must differ from the HTTPS certificate name")
     _integer(cert.setdefault("renewBeforeDays", 30), "certificate.renewBeforeDays", 1, 60)
     _integer(cert.setdefault("checkEveryHours", 12), "certificate.checkEveryHours", 1, 24)
     _integer(cert.setdefault("dnsSleepSeconds", 60), "certificate.dnsSleepSeconds", 10, 600)
@@ -1903,14 +1907,17 @@ def load_ssh_public_key(raw_path: str) -> str:
     return " ".join(fields)
 
 
-def validate_supported_certificate(certificate: dict) -> None:
-    """構築入口はAzure Public DNSによるDNS-01発行だけを受け付ける。"""
-    if not isinstance(certificate, dict) or certificate.get("mode") != "dnsPlugin":
+def validate_supported_certificate(certificate: Any) -> None:
+    """Azure Public DNSのDNS-01発行に使う入力だけを受け付ける。"""
+    _object(certificate, "certificate", {
+        "mode", "certificateName", "contactEmail", "directory", "plugin", "renewBeforeDays",
+        "checkEveryHours", "moduleVersion", "dnsSleepSeconds", "validationTimeoutSeconds",
+        "minimumValidDays", "domainNames", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId",
+    })
+    if certificate.get("mode") != "dnsPlugin":
         _fail("certificate.mode", "DNS-01 issuance requires dnsPlugin mode")
     if certificate.get("plugin") != "Azure":
         _fail("certificate.plugin", "Azure Public DNS is required; prepare its public authoritative zone before azd up")
-    if any(key in certificate for key in ("pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile")):
-        _fail("certificate", "use the Azure DNS subscription and managed identity references")
     validate_azure_dns_identity(certificate)
 
 
@@ -2136,8 +2143,7 @@ def load_secret_inputs(configuration: dict) -> dict:
     secrets: dict[str, Any] = {"sshPublicKey": public_key,
         "firewallTlsInspection": load_firewall_tls_inspection(configuration),
         "credentialProviderSecrets": load_credential_provider_secrets(configuration)}
-    # Azure DNS authenticates on the VM through its assigned identity. No
-    # DNS credential file or caller-supplied PFX is read or forwarded.
+    # Azure DNS authenticates on the VM through its assigned identity.
     secrets["dnsPluginArgumentsJson"] = ""
     return secrets
 

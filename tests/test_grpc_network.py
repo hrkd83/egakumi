@@ -625,6 +625,7 @@ class GrpcBootstrapTests(unittest.TestCase):
              mock.patch.object(lifecycle, "ROOT", self.root), \
              mock.patch.object(lifecycle, "ArmTransport"), \
              mock.patch.object(lifecycle, "complete_core_network_upgrade"), \
+             mock.patch("deployment.helpers.portal_auth_certificate.collect_initial_certificate"), \
              mock.patch.object(lifecycle, "configure_grpc_endpoint", side_effect=ValueError("Still pending")):
             with self.assertRaisesRegex(ValueError, "Still pending"):
                 lifecycle.postprovision(config)

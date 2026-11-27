@@ -1043,16 +1043,22 @@ class ConfigurationTests(unittest.TestCase):
                 self.normalize(raw)
 
 
-    def test_prepared_certificate_import_is_rejected_before_secret_reads(self):
-        for include_files in (False, True):
-            raw = fixture()
-            raw["certificate"] = {"mode": "prepared"}
-            if include_files:
-                raw["certificate"].update(preparedPfxFile="../secrets/server.pfx", preparedPfxPasswordFile="../secrets/pfx-password.txt")
-            with mock.patch.object(configuration, "_read_protected_file", side_effect=AssertionError("must not read supplied PFX")):
-                with self.assertRaises(configuration.ConfigurationError): self.normalize(raw)
-                with self.assertRaisesRegex(configuration.ConfigurationError, "DNS-01 issuance requires dnsPlugin mode"):
-                    configuration.load_secret_inputs(raw)
+    def test_portal_certificate_name_must_differ_from_effective_https_name(self):
+        raw = fixture()
+        raw["certificate"].pop("certificateName", None)
+        normalized = self.normalize(raw)
+        self.assertEqual(normalized["certificate"]["certificateName"], "tls-public")
+        self.assertEqual(normalized["portal"]["certificate"]["certificateName"], "portal-auth")
+
+        for https_name in (None, "tls-public", "TLS-PUBLIC"):
+            with self.subTest(https_name=https_name):
+                collision = copy.deepcopy(raw)
+                if https_name is not None:
+                    collision["certificate"]["certificateName"] = https_name
+                collision["portal"]["certificate"] = {"certificateName": "tls-public"}
+                with self.assertRaisesRegex(configuration.ConfigurationError,
+                                            r"portal\.certificate\.certificateName: must differ"):
+                    self.normalize(collision)
 
     @mock.patch.object(configuration, "load_firewall_tls_inspection", return_value={})
     def test_azure_secret_inputs_do_not_read_or_forward_dns_credentials(self, _firewall_tls):
@@ -1065,8 +1071,6 @@ class ConfigurationTests(unittest.TestCase):
             with mock.patch.object(configuration, "load_dns_plugin_arguments", side_effect=AssertionError("Azure uses managed identity")):
                 secrets = configuration.load_secret_inputs(normalized)
             self.assertEqual(secrets["dnsPluginArgumentsJson"], "")
-            self.assertNotIn("preparedPfxBase64", secrets)
-            self.assertNotIn("preparedPfxPassword", secrets)
             self.assertNotIn("pluginArgumentsFile", configuration.build_bicep_configuration(normalized)["certificate"])
 
     def test_plain_cloudflare_token_is_rejected_without_value_in_error(self):

@@ -359,8 +359,6 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 self.assertEqual(values["credentialProviderSecrets"], {"graph-delegated": client_secret})
                 self.assertEqual(values["dnsPluginArgumentsJson"], "")
                 self.assertEqual(values["sshPublicKey"], ssh_fixture_key())
-                self.assertNotIn("preparedPfxBase64", values)
-                self.assertNotIn("preparedPfxPassword", values)
                 return values
 
             def load_inputs(config):
@@ -425,7 +423,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
         raw = json.loads(source.read_text())
         config_file = self.root / "config/test.json"
         original_options = config_file.read_bytes()
-        cases = ("cloudflare", "route53", "prepared", "dns-file", "pfx-file", "pfx-password",
+        cases = ("cloudflare", "route53", "unsupported-mode", "dns-file",
                  "missing-subscription", "zero-subscription", "missing-identity", "invalid-identity")
         for hook in ("preup", "preprovision"):
             for case in cases:
@@ -433,10 +431,8 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 certificate = changed["certificate"]
                 if case == "cloudflare": certificate["plugin"] = "Cloudflare"
                 elif case == "route53": certificate["plugin"] = "Route53"
-                elif case == "prepared": options["certificate"]["mode"] = "prepared"
+                elif case == "unsupported-mode": options["certificate"]["mode"] = "unsupported"
                 elif case == "dns-file": certificate["pluginArgumentsFile"] = "./secrets/unsupported-input.json"
-                elif case == "pfx-file": certificate["preparedPfxFile"] = "./secrets/unsupported.pfx"
-                elif case == "pfx-password": certificate["preparedPfxPasswordFile"] = "./secrets/unsupported-password.txt"
                 elif case == "missing-subscription": certificate.pop("azureDnsSubscriptionId")
                 elif case == "zero-subscription": certificate["azureDnsSubscriptionId"] = "00000000-0000-0000-0000-000000000000"
                 elif case == "missing-identity": certificate.pop("azureDnsManagedIdentityResourceId")

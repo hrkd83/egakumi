@@ -886,7 +886,7 @@ function Resume-ExistingAcmeOrder($Order) {
 
 <#
 .SYNOPSIS
-モード・期限に応じて再利用、持込み、取得または更新を選びます。
+既存の証明書を検証し、必要に応じて DNS-01 で発行または更新します。
 .DESCRIPTION
 DNS-01 の TXT は各注文の検証時だけ作成・回収します。azd down まで放置する構造ではありません。失敗時も注文状態を保存し、再注文の重複を抑えます。
 .OUTPUTS

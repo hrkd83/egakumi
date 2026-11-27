@@ -330,13 +330,20 @@ class SplitConfigurationTests(unittest.TestCase):
 
     def test_every_environment_field_is_rejected_in_config_even_if_parameters_override_it(self):
         for path in PARAMETER_OWNED_PATHS:
-            for value in ([], "ENTERPRISE-VALUE-SENTINEL"):
+            portal_section = path == ("portal",)
+            values = ({}, {"publicHostName": "portal.ENTERPRISE-VALUE-SENTINEL.example.com"}) if portal_section else (
+                [], "ENTERPRISE-VALUE-SENTINEL"
+            )
+            for value in values:
                 options, parameters = {}, {}
                 for target in (options, parameters):
                     for key in path[:-1]:
                         target = target.setdefault(key, {})
                     target[path[-1]] = copy.deepcopy(value)
-                with self.subTest(path=".".join(path), empty=value == []):
+                if portal_section:
+                    # Portal の配置制約を検査する前に、params の型で拒否されないようにします。
+                    parameters["portal"] = {"publicHostName": "portal.example.com"}
+                with self.subTest(path=".".join(path), empty=not value):
                     with self.assertRaisesRegex(ConfigurationError, r"move.*params\.") as caught:
                         self.sources(options, parameters)
                     self.assertNotIn("ENTERPRISE-VALUE-SENTINEL", str(caught.exception))
