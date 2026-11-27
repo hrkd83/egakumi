@@ -222,8 +222,8 @@ class LifecycleOperatorAccessTests(LifecycleFixture, unittest.TestCase):
         self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("stage") or {"azureWrites": 0}
         self.complete_nsg.side_effect = lambda *args, **kwargs: events.append("complete") or {"azureWrites": 0}
         outputs = self.outputs()
-        transport = ScriptedTransport([{"statusCode": 201}, {"statusCode": 200,
-            "body": {"properties": {"provisioningState": "Succeeded",
+        transport = ScriptedTransport([{"statusCode": 404, "body": None}, {"statusCode": 201}, {"statusCode": 200, "body": {"properties": {
+                "provisioningState": "Succeeded",
                 "outputs": {key: {"value": value} for key, value in outputs.items()}}}}])
         with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
                 mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -234,7 +234,7 @@ class LifecycleOperatorAccessTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
                 mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
                 mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True, "l7IngressEnabled": True}):
-            lifecycle.deploy_phase(self.config, "core", secrets={"l7IngressSecret": "PRIVATE_INGRESS_FIXTURE"})
+            lifecycle.deploy_phase(self.config, "core", secrets={})
         self.assertEqual(events, ["stage", "discover", "complete"])
         self.assertEqual(self.prepare_nsg.call_args.args, (self.config, transport))
         self.assertTrue(callable(self.prepare_nsg.call_args.kwargs["record"]))
@@ -242,11 +242,12 @@ class LifecycleOperatorAccessTests(LifecycleFixture, unittest.TestCase):
 
     def test_direct_core_unknown_operator_rule_stops_fixed_migration_before_deployment(self):
         self.prepare_nsg.side_effect = lifecycle.FixedNsgError("Unverified operator rule")
+        transport = ScriptedTransport([{"statusCode": 404, "body": None}])
         with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
-                mock.patch.object(lifecycle, "ArmTransport") as factory, \
-                self.assertRaises(lifecycle.DeploymentError):
-            lifecycle.deploy_phase(self.config, "core")
-        factory.return_value.request.assert_not_called()
+                mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
+                self.assertRaisesRegex(lifecycle.DeploymentError, "Unverified operator rule"):
+            lifecycle.deploy_phase(self.config, "core", secrets={})
+        self.assertEqual(transport.mutations(), [])
 
     def test_monitoring_does_not_stage_or_delete_nsg_rules(self):
         transport = ScriptedTransport([{"statusCode": 201}, {"statusCode": 200,
@@ -260,7 +261,7 @@ class LifecycleOperatorAccessTests(LifecycleFixture, unittest.TestCase):
 
     def test_native_preprovision_checks_fixed_rules_before_core_inputs_and_stops_on_failure(self):
         self.prepare_nsg.side_effect = lifecycle.FixedNsgError("Unverified operator rule")
-        transport = ScriptedTransport([{"statusCode": 404, "body": None}])
+        transport = ScriptedTransport([{"statusCode": 404, "body": None}] * 4)
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
                 mock.patch.object(lifecycle, "register_providers"), \
                 mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \

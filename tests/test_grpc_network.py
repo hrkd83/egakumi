@@ -10,8 +10,6 @@ import os
 from pathlib import Path
 import re
 import stat
-import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -100,6 +98,48 @@ class GrpcBootstrapTests(unittest.TestCase):
         self.config["gateway"].pop("grpc", None)
         self.assertTrue(grpc.enabled(self.config))
         self.assertEqual(set(grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)), {"l7IngressSecret"})
+
+    def test_initial_ingress_credentials_register_once_without_reading_secret_values(self):
+        self.config["gateway"]["realtimeControlEnabled"] = True
+        source = grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)
+        initial = Transport([ok(code=404), ok(code=404)])
+        plan = grpc.plan_secret_registration(self.config, self.root, initial, source)
+        self.assertEqual(set(plan), {"l7IngressSecret", "realtimeTicketKey"})
+        self.assertEqual(len(set(plan.values())), 2)
+        names = [grpc.SECRET_NAME, grpc.TICKET_NAME]
+        for call, name in zip(initial.calls, names, strict=True):
+            self.assertEqual(call["method"], "GET")
+            self.assertEqual(call["path"], self.vault_id + f"/secrets/{name}?api-version=2024-11-01")
+            self.assertIsNone(call["body"])
+        self.assertTrue(set(plan.values()).isdisjoint(source.values()))
+
+        responses = [
+            ok({"id": call["path"].split("?")[0], "type": "Microsoft.KeyVault/vaults/secrets",
+                "tags": {"egakumi-ingress-generation": plan[parameter]},
+                "properties": {"attributes": {"enabled": True}}})
+            for call, parameter in zip(initial.calls, ("l7IngressSecret", "realtimeTicketKey"), strict=True)
+        ]
+        retry = Transport(responses)
+        self.assertEqual(grpc.prepare_secret(self.config, self.root, lifecycle.protected_json), source)
+        self.assertEqual(grpc.plan_secret_registration(self.config, self.root, retry, source), {})
+        self.assertEqual(retry.calls, initial.calls)
+
+        wrong_assignment = copy.deepcopy(responses)
+        wrong_assignment[0]["body"]["tags"] = {}
+        with self.assertRaisesRegex(ValueError, "restore the protected source"):
+            grpc.plan_secret_registration(self.config, self.root, Transport(wrong_assignment), source)
+
+    def test_existing_registration_blocks_replacement_if_owned_source_was_lost(self):
+        grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)
+        grpc.secret_path(self.config, self.root).unlink()
+        replacement = grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)
+        owned_path = f"{self.vault_id}/secrets/{grpc.SECRET_NAME}"
+        transport = Transport([ok({"id": owned_path, "type": "Microsoft.KeyVault/vaults/secrets",
+                                  "tags": {"egakumi-ingress-generation": "0" * 32},
+                                  "properties": {"attributes": {"enabled": True}}})])
+        with self.assertRaisesRegex(ValueError, "restore the protected source"):
+            grpc.plan_secret_registration(self.config, self.root, transport, replacement)
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"])
 
     def test_apim_name_matches_owned_service_case_insensitively(self):
         """所有するサービス名だけを認め、別名・パス・クエリーは拒否する。"""
@@ -643,7 +683,7 @@ class GrpcInfrastructureSourceTests(unittest.TestCase):
         self.assertIn("@secure()\nparam l7IngressSecret", source)
         self.assertIn("@secure()\nparam realtimeTicketKey", source)
         self.assertNotIn("output grpc ", source)
-        self.assertIn("l7IngressEnabled: true", source)
+        self.assertIn("l7IngressEnabled: useIngressSecrets", source)
         services = (core / "infra/modules/services.bicep").read_text()
         self.assertIn("'Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2': 'false'", services)
         gateway = (core / "infra/modules/application-gateway.bicep").read_text()
@@ -651,63 +691,6 @@ class GrpcInfrastructureSourceTests(unittest.TestCase):
         self.assertNotIn("listener-grpc-tcp", gateway)
         self.assertIn("enableHttp2: true", gateway)
 
-    def test_vm_secret_functions_do_not_rotate_on_reapply_or_certificate_renewal(self):
-        core = Path(__file__).resolve().parents[1]
-        runtime = os.environ.get("POWERSHELL_RUNTIME") or shutil.which("pwsh")
-        if not runtime:
-            candidates = sorted((core / ".tools/powershell").glob("*/pwsh"))
-            runtime = str(candidates[-1]) if candidates else None
-        if not runtime:
-            self.skipTest("PowerShell runtime unavailable")
-        # Import only functions through the parser AST. The script entry point,
-        # IMDS, certificate issuer and Azure endpoints can never run here.
-        script = r'''
-param([string]$Source)
-$ErrorActionPreference='Stop'
-Set-StrictMode -Version Latest
-$tokens=$null; $errors=$null
-$ast=[Management.Automation.Language.Parser]::ParseFile($Source,[ref]$tokens,[ref]$errors)
-if ($errors.Count) {throw 'Guest script parse errors'}
-foreach ($fn in $ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst]},$false)) {
- . ([scriptblock]::Create($fn.Extent.Text))
-}
-$script:Stored=@{}; $script:Writes=0; $script:Reads=0
-function Get-VaultSecret([string]$Name) {$script:Reads++; return $script:Stored[$Name]}
-function Set-VaultSecret([string]$Name,[string]$Value) {
- $script:Writes++; $script:Stored[$Name]=[pscustomobject]@{value=$Value;attributes=[pscustomobject]@{enabled=$true}}
- return $script:Stored[$Name]
-}
-$script:Config=[pscustomobject]@{l7IngressEnabled=$true;realtimeTicketEnabled=$true}
-$Action='Install'; $L7IngressSecret=('a'*128); $RealtimeTicketKey=('b'*128)
-Set-L7IngressProof; Set-RealtimeTicketKey
-if ($script:Writes -ne 2 -or $script:Stored['core-l7-ingress-secret'].value -ne $L7IngressSecret -or
-    $script:Stored['core-realtime-ticket-key'].value -ne $RealtimeTicketKey) {throw 'Separate credentials not stored'}
-Set-L7IngressProof; Set-RealtimeTicketKey
-if ($script:Writes -ne 2) {throw 'Reapply rotated a credential'}
-$beforeReads=$script:Reads; $beforeWrites=$script:Writes
-$Action='Renew'; $L7IngressSecret='PRIVATE_FIXTURE_VALUE'; $RealtimeTicketKey='PRIVATE_FIXTURE_VALUE'
-Set-L7IngressProof; Set-RealtimeTicketKey
-if ($script:Reads -ne $beforeReads -or $script:Writes -ne $beforeWrites) {throw 'Renewal accessed input credentials'}
-$Action='Install'; $script:Config.l7IngressEnabled=$false; $script:Config.realtimeTicketEnabled=$false
-Set-L7IngressProof; Set-RealtimeTicketKey; Ensure-ApimCertificateChain
-if ($script:Reads -ne $beforeReads -or $script:Writes -ne $beforeWrites) {throw 'Disabled features accessed credentials'}
-$script:Config.l7IngressEnabled=$true; $script:Config.realtimeTicketEnabled=$true
-foreach ($fn in @('Set-L7IngressProof','Set-RealtimeTicketKey')) {
- $failed=$false; try {& $fn} catch {$failed=$true; if ($_.Exception.Message -match 'PRIVATE_FIXTURE_VALUE') {throw 'Private input was echoed'}}
- if (-not $failed) {throw 'Invalid input accepted'}
-}
-if ($script:Reads -ne $beforeReads -or $script:Writes -ne $beforeWrites) {throw 'Invalid input reached Key Vault'}
-'Guest ingress credential fixtures PASS; no Azure, DNS or CA requests.'
-'''
-        with tempfile.TemporaryDirectory() as directory:
-            fixture = Path(directory) / "guest-fixture.ps1"
-            fixture.write_text(script, encoding="utf-8")
-            result = subprocess.run([runtime, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(fixture),
-                                     "-Source", str(core / "infra/guest/certificate.ps1")],
-                                    capture_output=True, text=True, timeout=30, check=False,
-                                    env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("fixtures PASS", result.stdout)
 
 
 if __name__ == "__main__":

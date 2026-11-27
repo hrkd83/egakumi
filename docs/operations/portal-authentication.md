@@ -13,17 +13,17 @@
 
 12か月・60日前は運用既定値で、Microsoft共通の必須更新頻度ではありません。`portal.certificate`の有効期間を変更する場合は、現行証明書との整合と手順を確認してください。KVの自動更新を有効にしてもEntra登録や固定参照の切替は自動完了しません。この資材はKVの自動更新actionを設定しません。
 
-署名用UAMIには対象鍵のmetadata読取り・署名だけを付与します。管理VMは発行・照合と旧鍵版の無効化を行うため、より強い運用権限を持ちます。管理VMの既存HTTPS証明書操作権限は継続します。鍵は非exportableでも署名権限の悪用を防げるわけではないため、VM/UAMIとRBACを保護します。
+署名用UAMIには対象鍵のmetadata読取り・署名だけを付与します。発行・照合と旧鍵版の無効化は、証明書Jobに割り当てた専用の運用IDが行います。鍵をエクスポートできなくても、署名権限の悪用を防ぐにはUAMIとRBACの保護が必要です。
 
-管理VMの鍵単位のDataActionは`Microsoft.KeyVault/vaults/keys/read`と`Microsoft.KeyVault/vaults/keys/update/action`です。`keys/write`は管理プレーンのActionであり、このKVデータ操作用ロールには指定しません。[Microsoftの操作一覧](https://learn.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations#microsoftkeyvault)を参照してください。
+証明書Jobの鍵単位のDataActionは`Microsoft.KeyVault/vaults/keys/read`と`Microsoft.KeyVault/vaults/keys/update/action`です。`keys/write`は管理プレーンのActionであり、このKVデータ操作用ロールには指定しません。[Microsoftの操作一覧](https://learn.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations#microsoftkeyvault)を参照してください。
 
-KVの最新証明書GETはpolicyを含みますが、版指定GETは証明書本体だけを返します。workerは最新の同じ版のpolicy・公開鍵・署名を検証し、証明書ID・鍵ID・thumbprintと結び付けたpolicyをVMの保護checkpointへ保存します。更新後の旧版はこの検証済み記録を使い、現在の別の版のpolicyで代用しません。記録のない過去版を自動採用しません。これは公開metadataの保存で、秘密鍵を取り出す処理ではありません。
+KVの最新証明書GETはpolicyを含みますが、版指定GETは証明書本体だけを返します。workerは最新の同じ版のpolicy・公開鍵・署名を検証し、証明書ID・鍵ID・thumbprintと結び付けたpolicyをJob用Storageの保護checkpointへ保存します。更新後の旧版はこの検証済み記録を使い、現在の別の版のpolicyで代用しません。記録のない過去版を自動採用しません。これは公開metadataの保存で、秘密鍵を取り出す処理ではありません。
 
 ## 実行前の照合
 
-同じcheckoutの`DEPLOY_PARAMS_FILE`、azd環境、Coreの`state/latest.json`、`state/portal-auth-certificate.json`を選択してください。別環境のstate・鍵を黙って探索・コピーしません。`.local/`のルートをリンクにせず、ディレクトリは所有者専用、ファイルは所有者専用にします。運用入口はparams・Core所有記録・現物VM/KVを照合します。
+同じcheckoutの`DEPLOY_PARAMS_FILE`、azd環境、Coreの`state/latest.json`、`state/portal-auth-certificate.json`を選択してください。別環境のstate・鍵を黙って探索・コピーしません。`.local/`のルートをリンクにせず、ディレクトリは所有者専用、ファイルは所有者専用にします。運用入口はparams・Core所有記録・Jobまたは旧構成の実行先・対象KVを照合します。
 
-`scripts/operations/portal_auth_certificate.py`は既定で計画を表示します。Azure変更には`--execute`が必要です。値や公開証明書本文は画面へ出しません。管理VMの配置済みworkerのハッシュが一致することも確認します。
+`scripts/operations/portal_auth_certificate.py`は既定で計画を表示します。Azure変更には`--execute`が必要です。値や公開証明書本文は画面へ出しません。Job構成では固定イメージdigestと今回の実行を照合します。
 
 ```sh
 python3 -B scripts/operations/portal_auth_certificate.py prepare --config "$DEPLOY_PARAMS_FILE"
@@ -31,9 +31,9 @@ python3 -B scripts/operations/portal_auth_certificate.py prepare --config "$DEPL
 
 ## 初期構築と既存環境への限定追加
 
-新規構築は標準の`azd up`を使います。Coreの`infra/main.bicep`が署名専用ID、鍵運用権限、初期発行Run Commandの3部品を呼び出します。TLS工程による固定版PowerShellの準備、KVのPE/DNS・通信規則・RBAC、監査設定の完了後に、管理VMで`Initialize`を実行します。`postprovision`が公開`.cer`と初期証明書stateを収集します。専用Portal EntraアプリのClient IDはこの段階で不要です。初期発行・取得が失敗した場合は構築完了処理を停止し、Coreの作成記録を保持して生成した秘密入り入力を回収します。
+新規構築は標準の`azd up`を使います。Coreが署名用ID、証明書Job用の運用IDと権限、専用ACA環境とプライベート接続を準備します。非公開ACRへ登録した固定イメージでPortal署名Jobの`Initialize`を実行します。`postprovision`が公開`.cer`と初期証明書stateを収集します。専用Portal EntraアプリのClient IDはこの段階で不要です。初期発行・取得が失敗した場合は構築完了処理を停止し、Coreの作成記録を保持して生成した秘密入り入力を回収します。
 
-構築済みの環境へ証明書準備を追加する場合は、同じ3部品だけを使う`initialize`を選びます。対象は署名ID、カスタムロール定義、対象鍵scopeのロール割当、管理VM Run Commandの計4資源です。既存Portal・管理VM・KV・所有RG、管理VMのCertificates Officer権限、TLS Run Commandの正常終了とPowerShell準備を読み取りで照合します。KVへの実通信と実runtimeの版は発行workerも検査します。
+従来のVM方式で構築済みの環境へ証明書準備だけを追加する場合は、旧方式用の`initialize`を選びます。空の環境からのJob方式は前段の`azd up`を使います。対象は署名ID、カスタムロール定義、対象鍵scopeのロール割当、管理VM Run Commandの計4資源です。既存Portal・管理VM・KV・所有RG、管理VMのCertificates Officer権限、TLS Run Commandの正常終了とPowerShell準備を読み取りで照合します。KVへの実通信と実runtimeの版は発行workerも検査します。
 
 ```sh
 # 既存環境の初期発行計画。3部品のwhat-ifと保護checkpointを作成
@@ -52,10 +52,10 @@ python3 -B scripts/operations/portal_auth_certificate.py initialize --config "$D
 
 | 操作 | 結果と次の担当 |
 | --- | --- |
-| `prepare` | 管理VMからKVへ新しい鍵・自己署名証明書の生成を要求。現行固定参照を維持し、`generated/portal-auth-renewal-public.cer`へ公開証明書だけを出力 |
+| `prepare` | Portal署名JobからKVへ新しい鍵・自己署名証明書の生成を要求。現行固定参照を維持し、`generated/portal-auth-renewal-public.cer`へ公開証明書だけを出力 |
 | 手動Entra登録 | Entra担当が新しい公開証明書を追加し、thumbprint・期限を照合。旧証明書は受入まで保持 |
 | `confirm-registration` | 担当者が手動登録の完了を明示し、対象アプリの設定とcandidateを束ねる |
-| `switch` | 現行の固定イメージを使い、本体とGraphジョブの鍵版・thumbprintを一緒に切替。設定・イメージを読戻し、VMのcurrentを同期 |
+| `switch` | 現行の固定イメージを使い、本体とGraphジョブの鍵版・thumbprintを一緒に切替。設定・イメージを読み戻し、発行workerのcurrentを同期 |
 | `verify` | 実際のログイン・Graph管理・定期ジョブを人が確認した後、現物設定も照合して受入記録を更新 |
 | 手動Entra旧版削除 | 受入後、Entra担当が旧公開証明書を削除 |
 | `retire` | 現行設定を再確認して、旧KV鍵のexact versionだけを無効化 |
@@ -72,7 +72,7 @@ python3 -B scripts/operations/portal_auth_certificate.py verify --config "$DEPLO
 python3 -B scripts/operations/portal_auth_certificate.py retire --config "$DEPLOY_PARAMS_FILE" --entra-old-certificate-removed --execute
 ```
 
-受入のフラグは実施済みの確認を記録するためのものです。ヘルス応答だけで付けません。切替時のイメージは`state/portal-deployment.json`から取得し、同時に新機能をリリースしません。更新中はPortal通常配備との重複を避けてください。ローカルの運用lockは他checkoutや他端末の同時実行まで排他するものではありません。管理VMのworkerも同じ鍵の操作を排他します。
+受入のフラグは実施済みの確認を記録するためのものです。ヘルス応答だけで付けません。切替時のイメージは`state/portal-deployment.json`から取得し、同時に新機能をリリースしません。更新中はPortal通常配備との重複を避けてください。ローカルの運用lockは他checkoutや他端末の同時実行まで排他するものではありません。専用ACA JobはBlobリースで同じ鍵の操作を排他します。
 
 ```sh
 python3 -B scripts/operations/portal_auth_certificate.py rollback --config "$DEPLOY_PARAMS_FILE"
@@ -83,15 +83,15 @@ python3 -B scripts/operations/portal_auth_certificate.py rollback --config "$DEP
 
 ## 失敗・応答不明からの再開
 
-workerはKV作成POSTの前に管理VMの保護checkpointへintentを保存します。POSTの応答不明では別の鍵を重ねて生成せず、pendingと新しい公開証明書のrequestタグを照合します。初回再構築も既存currentを検証して再利用し、毎回発行しません。現物とstateが異なる場合は停止します。
+workerはKV作成POSTの前にJob用Storageの保護checkpointへ要求を保存します。POSTの応答不明では別の鍵を重ねて生成せず、pendingと新しい公開証明書のrequestタグを照合します。初回再構築も既存currentを検証して再利用し、毎回発行しません。現物とstateが異なる場合は停止します。
 
-運用入口もVM Run Commandのexact IDをPOST/PUT前に保存します。同じ操作を再実行するとそのcommandを確認します。Pending状態を再送しません。失敗資源と保護checkpointを調査し、VM commandがFailed/Canceled/TimedOutで完了していることを確認できた場合だけ、同じ操作へ`--resume-failed-worker`を付けて再開します。新しいVM commandは既存KV intentを利用し、発行POSTを自動で重ねません。
+運用入口は開始前の識別子を保存します。同じ操作を再実行すると、その要求に対応するJob実行を照合します。状態が不明な場合は開始要求を重ねず、元の実行を調べます。失敗が確定した場合だけ、同じ操作へ`--resume-failed-worker`を付けて再開します。新しい実行は既存の要求記録を使い、KVへの発行POSTを自動で重ねません。
 
 ```sh
 python3 -B scripts/operations/portal_auth_certificate.py prepare --config "$DEPLOY_PARAMS_FILE" --resume-failed-worker --execute
 ```
 
-KVの要求が送られたか不明でpendingも結果もない場合、checkpointを削除して再実行せず、運用担当がKVの現物と要求状況を確認してください。由来不明の既存証明書や他要求の証明書を自動採用しません。完了commandは段階結果を保存してから回収し、失敗commandは調査用に保持します。保存・回収の途中失敗でも、既存stateを手で削除せず同じ段階から再開します。
+KVの要求が送られたか不明でpendingも結果もない場合、checkpointを削除して再実行せず、運用担当がKVの現物と要求状況を確認してください。由来不明の既存証明書や他要求の証明書を自動採用しません。段階結果と実行記録を調査できるように保持します。保存の途中で失敗した場合も、既存stateを残して同じ段階から再開します。
 
 ## 旧Portal構成の撤去
 

@@ -458,7 +458,7 @@ class ReadOnlyGuestFixtureTests(unittest.TestCase):
         LinuxTimeConfigurationTests.setUpClass()
         helper = LinuxTimeConfigurationTests()
         with tempfile.TemporaryDirectory(prefix="core-time-readonly-guest-") as folder:
-            root = Path(folder)
+            root = Path(folder).resolve()
             paths, _ = helper.fixture(root)
             device = root / "device"
             device.symlink_to("/dev/null")

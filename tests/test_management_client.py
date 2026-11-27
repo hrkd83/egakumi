@@ -1,5 +1,4 @@
 """管理VM保守clientの対象境界・固定wire・秘密非出力を合成データで確認する。"""
-import base64
 import copy
 import contextlib
 import io
@@ -7,9 +6,11 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 from urllib.parse import parse_qs, urlsplit
@@ -17,6 +18,21 @@ from urllib.parse import parse_qs, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import management_client as client
+
+OPERATOR_ID = '55555555-5555-5555-5555-555555555555'
+
+
+def operator_account(inventory):
+    return {'tenantId': inventory['azureTenantId'], 'user': {'type': 'user'}, 'environmentName': 'AzureCloud'}
+
+
+def operator_token(inventory, *, sample='opaque', changes=None):
+    return {'accessToken': f'synthetic-{sample}-token', 'tokenType': 'Bearer',
+            'tenant': inventory['azureTenantId'], 'expires_on': int(time.time()) + 3600, **(changes or {})}
+
+
+def cli_response(payload):
+    return subprocess.CompletedProcess([], 0, json.dumps(payload).encode())
 
 
 def fixture():
@@ -55,49 +71,88 @@ class ManagementClientTests(unittest.TestCase):
     def setUp(self):
         self.inventory = fixture()
         self.identity = mock.Mock()
-        self.identity.token.return_value = 'synthetic-vm-token'
+        self.identity.token.return_value = 'synthetic-operator-token'
         self.transport = mock.Mock()
         self.transport.open.return_value = io.BytesIO(b'synthetic-log-body\n')
         self.output = io.BytesIO()
 
-    def test_imds_uses_only_system_identity_with_distinct_audiences_and_memory_cache(self):
+    def test_operator_tokens_use_distinct_resources_with_memory_cache_and_no_imds_token(self):
         inventory = self.inventory
-        claims = {'oid': inventory['managementPrincipalId'], 'tid': inventory['azureTenantId']}
-        payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip('=')
-        # Deliberately unsigned synthetic structure; no real token is recorded.
-        synthetic = 'synthetic-header.' + payload + '.synthetic-signature'
-        self.transport.json.side_effect = [{'resourceId': inventory['managementVmId']}] + [
-            {'access_token': synthetic, 'expires_on': str(int(time.time()) + 3600),
-             'resource': audience, 'token_type': 'Bearer'}
-            for audience in (client.ARM_AUDIENCE, client.STORAGE_AUDIENCE, client.LOGS_AUDIENCE)]
-        identity = client.VmIdentity(inventory, self.transport)
+        audiences = (client.ARM_AUDIENCE, client.STORAGE_AUDIENCE, client.LOGS_AUDIENCE, client.SQL_AUDIENCE)
+        tokens = [operator_token(inventory, sample=str(i))
+                  for i, _ in enumerate(audiences)]
+        self.transport.json.return_value = {'resourceId': inventory['managementVmId']}
+        run = mock.Mock(side_effect=list(map(cli_response, (operator_account(inventory), {'id': OPERATOR_ID}, *tokens))))
+        identity = client.OperatorIdentity(inventory, self.transport, OPERATOR_ID, run=run)
         with contextlib.redirect_stdout(io.StringIO()) as output, contextlib.redirect_stderr(io.StringIO()) as errors:
-            for audience in (client.ARM_AUDIENCE, client.STORAGE_AUDIENCE, client.LOGS_AUDIENCE):
-                self.assertEqual(identity.token(audience), synthetic)
-                self.assertEqual(identity.token(audience), synthetic)
-        self.assertEqual(self.transport.json.call_count, 4)
+            for audience, data in zip(audiences, tokens):
+                self.assertEqual(identity.token(audience), data['accessToken'])
+                self.assertEqual(identity.token(audience), data['accessToken'])
+        self.transport.json.assert_called_once_with('GET', client.IMDS_ORIGIN + '/metadata/instance/compute?api-version=2021-02-01',
+                                                   headers={'Metadata': 'true'})
         self.assertEqual(output.getvalue(), '')
         self.assertEqual(errors.getvalue(), '')
-        for call in self.transport.json.call_args_list[1:]:
-            method, url = call.args
-            self.assertEqual(method, 'GET')
-            self.assertEqual(urlsplit(url).hostname, '169.254.169.254')
-            query = parse_qs(urlsplit(url).query)
-            self.assertEqual(set(query), {'api-version', 'resource'})
-            self.assertEqual(call.kwargs['headers'], {'Metadata': 'true'})
+        self.assertEqual(run.call_args_list[1].args[0][1:6],
+                         ['ad', 'signed-in-user', 'show', '--query', '{id:id}'])
+        self.assertEqual(run.call_count, 2 + len(audiences))
+        for call, audience in zip(run.call_args_list[2:], audiences):
+            self.assertEqual(call.args[0], [client.AZURE_CLI, 'account', 'get-access-token', '--tenant', inventory['azureTenantId'],
+                                           '--resource', audience, '--output', 'json', '--only-show-errors'])
+            self.assertEqual(call.kwargs['stderr'], subprocess.DEVNULL)
 
-    def test_other_vm_or_identity_stops_without_leaking_imds_response(self):
-        identity = client.VmIdentity(self.inventory, self.transport)
+    def test_other_vm_or_workload_account_stops_before_requesting_a_token(self):
+        run = mock.Mock()
+        identity = client.OperatorIdentity(self.inventory, self.transport, OPERATOR_ID, run=run)
         self.transport.json.return_value = {'resourceId': '/foreign/synthetic-vm'}
         with self.assertRaisesRegex(client.MaintenanceError, 'constructed management VM'):
             identity.token(client.ARM_AUDIENCE)
-        self.assertEqual(self.transport.json.call_count, 1)
-        self.transport.reset_mock()
-        identity.verified = True
-        self.transport.json.return_value = {'access_token': '<MALFORMED_IMDS_RESPONSE>'}
-        with self.assertRaises(client.MaintenanceError) as failure:
+        run.assert_not_called()
+        self.transport.json.return_value = {'resourceId': self.inventory['managementVmId']}
+        for change in ({'user': {'type': 'servicePrincipal'}}, {'tenantId': OPERATOR_ID}, {'environmentName': 'AzureChinaCloud'}):
+            with self.subTest(change=change):
+                run.reset_mock()
+                run.return_value = cli_response({**operator_account(self.inventory), **change})
+                with self.assertRaisesRegex(client.MaintenanceError, 'inventory tenant'):
+                    identity.token(client.ARM_AUDIENCE)
+                run.assert_called_once()
+
+    def test_wrong_operator_stops_before_requesting_a_token(self):
+        self.transport.json.return_value = {'resourceId': self.inventory['managementVmId']}
+        run = mock.Mock(side_effect=list(map(cli_response, (
+            operator_account(self.inventory), {'id': self.inventory['managementPrincipalId']}))))
+        identity = client.OperatorIdentity(self.inventory, self.transport, OPERATOR_ID, run=run)
+        with self.assertRaisesRegex(client.MaintenanceError, 'not the named operator'):
             identity.token(client.ARM_AUDIENCE)
-        self.assertNotIn('MALFORMED_IMDS_RESPONSE', str(failure.exception))
+        self.assertEqual(run.call_count, 2)
+
+    def test_invalid_token_metadata_or_header_characters_stop_without_leaking_token(self):
+        self.transport.json.return_value = {'resourceId': self.inventory['managementVmId']}
+        invalid_metadata = ({'tenant': OPERATOR_ID}, {'expires_on': 1}, {'expires_on': True},
+                            {'tokenType': 'Other'})
+        invalid_responses = [operator_token(self.inventory, changes=change) for change in invalid_metadata]
+        invalid_responses.append(operator_token(self.inventory, sample='invalid\nheader'))
+        for index, invalid in enumerate(invalid_responses):
+            with self.subTest(response=index):
+                run = mock.Mock(side_effect=list(map(cli_response, (
+                    operator_account(self.inventory), {'id': OPERATOR_ID}, invalid))))
+                identity = client.OperatorIdentity(self.inventory, self.transport, OPERATOR_ID, run=run)
+                with self.assertRaisesRegex(client.MaintenanceError, 'current bearer token') as error:
+                    identity.token(client.ARM_AUDIENCE)
+                self.assertNotIn(invalid['accessToken'], str(error.exception))
+
+    def test_expiring_operator_token_is_refreshed_for_the_same_audience(self):
+        self.transport.json.return_value = {'resourceId': self.inventory['managementVmId']}
+        now = int(time.time())
+        token = operator_token(self.inventory, changes={'expires_on': now + 120})
+        renewed = operator_token(self.inventory, sample='renewed', changes={'expires_on': now + 3600})
+        run = mock.Mock(side_effect=list(map(cli_response, (
+            operator_account(self.inventory), {'id': OPERATOR_ID}, token, renewed))))
+        identity = client.OperatorIdentity(self.inventory, self.transport, OPERATOR_ID, run=run)
+        with mock.patch.object(client.time, 'time', return_value=now):
+            self.assertEqual(identity.token(client.ARM_AUDIENCE), token['accessToken'])
+        with mock.patch.object(client.time, 'time', return_value=now + 61):
+            self.assertEqual(identity.token(client.ARM_AUDIENCE), renewed['accessToken'])
+        self.assertEqual(run.call_args_list[2], run.call_args_list[3])
 
     def test_arbitrary_resources_and_url_selectors_are_rejected_before_token_requests(self):
         for target in ('https://foreign.invalid', '/subscriptions/foreign/resourceGroups/other/providers/Microsoft.App/containerApps/ca-other'):
@@ -130,23 +185,16 @@ class ManagementClientTests(unittest.TestCase):
         self.identity.token.assert_not_called()
 
     def test_saved_logs_use_registered_audience_independently_of_new_http_endpoint(self):
-        claims = {'oid': self.inventory['managementPrincipalId'], 'tid': self.inventory['azureTenantId']}
-        payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip('=')
-        synthetic = 'synthetic-header.' + payload + '.synthetic-signature'
+        token = operator_token(self.inventory)
+        synthetic = token['accessToken']
         query_url = ('https://api.loganalytics.azure.com/v1/workspaces/'
                      + self.inventory['workspace']['customerId'] + '/query')
 
         def response(method, url, **kwargs):
             if urlsplit(url).hostname == '169.254.169.254':
                 self.assertEqual(method, 'GET')
-                if '/metadata/instance/compute?' in url:
-                    return {'resourceId': self.inventory['managementVmId']}
-                # The synthetic issuer requires the SDK's registered resource;
-                # do not derive the IMDS audience from the new HTTP hostname.
-                self.assertEqual(parse_qs(urlsplit(url).query)['resource'], ['https://api.loganalytics.io'])
-                self.assertEqual(kwargs['headers'], {'Metadata': 'true'})
-                return {'access_token': synthetic, 'expires_on': str(int(time.time()) + 3600),
-                        'resource': 'https://api.loganalytics.io', 'token_type': 'Bearer'}
+                self.assertIn('/metadata/instance/compute?', url)
+                return {'resourceId': self.inventory['managementVmId']}
             self.assertEqual(method, 'POST')
             self.assertEqual(url, query_url)
             self.assertEqual(kwargs['headers'], {'Authorization': 'Bearer ' + synthetic,
@@ -155,10 +203,12 @@ class ManagementClientTests(unittest.TestCase):
             return {'tables': [{'name': 'PrimaryResult', 'rows': [[1]]}]}
 
         self.transport.json.side_effect = response
-        identity = client.VmIdentity(self.inventory, self.transport)
+        run = mock.Mock(side_effect=list(map(cli_response, (operator_account(self.inventory), {'id': OPERATOR_ID}, token))))
+        identity = client.OperatorIdentity(self.inventory, self.transport, OPERATOR_ID, run=run)
         client.workspace_query(self.inventory, self.inventory['workspace']['id'], 'ContainerAppSystemLogs | take 1',
                                identity, self.transport, self.output)
-        self.assertEqual(self.transport.json.call_count, 3)
+        self.assertEqual(self.transport.json.call_count, 2)
+        self.assertIn('https://api.loganalytics.io', run.call_args.args[0])
         self.assertEqual(json.loads(self.output.getvalue())['tables'][0]['rows'], [[1]])
 
     def test_partial_log_query_failure_is_not_reported_as_success(self):
@@ -260,15 +310,48 @@ class ManagementClientTests(unittest.TestCase):
         with self.assertRaises(client.MaintenanceError):
             client.NoRedirect().redirect_request(None, None, 302, '', {}, 'https://foreign.invalid')
 
+    def test_installed_inventory_requires_root_ownership_and_exact_group_read_only_modes(self):
+        group = SimpleNamespace(getgrnam=mock.Mock(return_value=SimpleNamespace(gr_gid=100)))
+        path = mock.Mock()
+        directory = path.parent
+        parent = mock.Mock()
+        path.parents = (directory, parent)
+        directory.lstat.return_value = SimpleNamespace(st_uid=0, st_gid=100, st_mode=stat.S_IFDIR | 0o750)
+        parent.lstat.return_value = SimpleNamespace(st_uid=0, st_gid=0, st_mode=stat.S_IFDIR | 0o755)
+        path.lstat.return_value = SimpleNamespace(st_uid=0, st_gid=100, st_mode=stat.S_IFREG | 0o640)
+        with mock.patch.dict(sys.modules, {'grp': group}), mock.patch.object(client, '_plain_path', return_value=path), \
+                mock.patch.object(client, '_read_bound_file', return_value=json.dumps(self.inventory)) as read:
+            self.assertEqual(client.load_inventory(), self.inventory)
+            read.assert_called_once_with(path, path.lstat.return_value)
+            for node, change in ((path, {'st_mode': stat.S_IFREG | 0o660}), (path, {'st_gid': 101}),
+                                 (path, {'st_uid': 1000}), (directory, {'st_mode': stat.S_IFDIR | 0o770}),
+                                 (parent, {'st_uid': 1000})):
+                with self.subTest(change=change):
+                    original = node.lstat.return_value
+                    node.lstat.return_value = SimpleNamespace(**{**vars(original), **change})
+                    read.reset_mock()
+                    with self.assertRaises(client.MaintenanceError):
+                        client.load_inventory()
+                    read.assert_not_called()
+                    node.lstat.return_value = original
+
     @unittest.skipUnless(os.name == 'posix', 'Management VM POSIX permissions are tested on Linux')
-    def test_inventory_and_output_require_owner_only_files_without_overwriting(self):
+    def test_root_does_not_use_interactive_operator_entrance(self):
+        with mock.patch.object(os, 'geteuid', return_value=0), mock.patch.object(client, 'load_inventory') as load:
+            with self.assertRaisesRegex(client.MaintenanceError, 'without sudo'):
+                client.main(['--operator-object-id', OPERATOR_ID, '--output', 'synthetic-output',
+                             'environment-logs', '--resource-id', 'synthetic-resource'])
+            load.assert_not_called()
+
+    @unittest.skipUnless(os.name == 'posix', 'Management VM POSIX permissions are tested on Linux')
+    def test_user_inputs_and_outputs_require_owner_only_files_without_overwriting(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             root.chmod(0o700)
-            source = root / 'inventory.json'
-            source.write_text(json.dumps(self.inventory), encoding='utf-8')
+            source = root / 'query.txt'
+            source.write_bytes(b'synthetic-query')
             source.chmod(0o600)
-            self.assertEqual(client.load_inventory(source), self.inventory)
+            self.assertEqual(client.read_protected(source), b'synthetic-query')
             output = root / 'output.bin'
             with client.protected_output(output) as stream:
                 stream.write(b'synthetic-private-body')
@@ -279,12 +362,12 @@ class ManagementClientTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b'synthetic-private-body')
             source.chmod(0o644)
             with self.assertRaises(client.MaintenanceError):
-                client.load_inventory(source)
+                client.read_protected(source)
 
     @unittest.skipUnless(os.name == 'posix', 'Management VM POSIX permissions are tested on Linux')
     def test_public_checkout_output_and_linked_paths_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             root.chmod(0o700)
             (root / 'infra').mkdir()
             (root / 'AGENTS.md').write_text('synthetic-checkout')

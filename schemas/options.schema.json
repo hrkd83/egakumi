@@ -1013,33 +1013,6 @@
         }
       }
     },
-    "loginPrincipal": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "principalId",
-        "principalType",
-        "role"
-      ],
-      "properties": {
-        "principalId": {
-          "$ref": "#/$defs/guid"
-        },
-        "principalType": {
-          "enum": [
-            "User",
-            "Group",
-            "ServicePrincipal"
-          ]
-        },
-        "role": {
-          "enum": [
-            "User",
-            "Administrator"
-          ]
-        }
-      }
-    },
     "credentialProvider": {
       "type": "object",
       "additionalProperties": false,

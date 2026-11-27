@@ -187,12 +187,14 @@ class ApimHostnamePreservationTests(LifecycleFixture, unittest.TestCase):
 
     def test_preup_and_final_preprovision_write_the_same_owned_snapshot_into_private_inputs(self):
         for phase in ("preup", "preprovision"):
+            absent = {"statusCode": 404, "body": None}
+            responses = [absent, absent] if phase == "preprovision" else []
             with self.subTest(phase=phase), mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
                     mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
                     mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
                     mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
                     mock.patch.object(lifecycle, "run", return_value={}), \
-                    mock.patch.object(lifecycle, "ArmTransport", return_value=ScriptedTransport([{"statusCode": 404, "body": None}])), \
+                    mock.patch.object(lifecycle, "ArmTransport", return_value=ScriptedTransport(responses)), \
                     mock.patch.object(lifecycle, "capacity_preflight"), \
                     mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
                     mock.patch.object(lifecycle, "configure_app_insights_cap"), \
@@ -210,7 +212,8 @@ class ApimHostnamePreservationTests(LifecycleFixture, unittest.TestCase):
 
     def test_direct_core_put_includes_snapshot_and_monitoring_does_not_discover_domains(self):
         for phase in ("core", "monitoring"):
-            transport = ScriptedTransport([{"statusCode": 201, "body": {}},
+            responses = [{"statusCode": 404, "body": None}] if phase == "core" else []
+            transport = ScriptedTransport(responses + [{"statusCode": 201, "body": {}},
                 {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded", "outputs": {}}}}])
             with self.subTest(phase=phase), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
                     mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
@@ -253,15 +256,19 @@ class ApimHostnameBicepTests(unittest.TestCase):
         self.assertFalse(any(resource["type"].startswith("Microsoft.ApiManagement/service/apis")
                              or resource["type"] == "Microsoft.ApiManagement/service/policies"
                              for resource in nested_resources))
-        all_resources = list(resources.values()) if isinstance(resources, dict) else resources
-        self.assertFalse(any("apim-baseline" in resource.get("name", "")
-                             for resource in all_resources))
-        gateway_module = next(resource for resource in all_resources
-                              if "-gateway" in resource.get("name", ""))
-        self.assertFalse(any("apim-baseline" in item for item in gateway_module["dependsOn"]))
-        self.assertFalse(any(resource.get("type") == "Microsoft.Resources/deployments"
-                             and "api-publication" in resource.get("name", "")
-                             for resource in all_resources))
+        # The deferred AppGW deployment must use the observed APIM host,
+        # which is exported by the Core that owns the APIM service PUT.
+        gateway_plan = template["outputs"]["gatewayPlan"]["value"]
+        self.assertIn("'apimHostName'", gateway_plan)
+        self.assertIn(".outputs.apimGatewayHost.value", gateway_plan)
+        ingress = compile_bicep('infra/public-ingress.bicep')
+        deferred = ingress["resources"]
+        deferred_resources = deferred.values() if isinstance(deferred, dict) else deferred
+        gateway = next(resource for resource in deferred_resources
+                       if "apimHostName" in resource.get("properties", {}).get("parameters", {}))
+        self.assertEqual(gateway["properties"]["parameters"]["apimHostName"]["value"],
+                         "[parameters('gatewayPlan').apimHostName]")
+
 
 
 if __name__ == "__main__":

@@ -1,0 +1,60 @@
+{
+  "groups": {
+    "agw": {
+      "allow-public-tls-vault-https-egress": {
+        "priority": 221,
+        "direction": "Outbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "sourcePort": "*",
+        "source": ["subnet:agw"],
+        "destination": ["ips:certificateVault"],
+        "destinationPorts": ["443"]
+      }
+    },
+    "pep": {
+      "allow-appgw-public-tls-vault-https-ingress": {
+        "priority": 231,
+        "direction": "Inbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "sourcePort": "*",
+        "source": ["subnet:agw"],
+        "destination": ["ips:certificateVault"],
+        "destinationPorts": ["443"]
+      },
+      "allow-certificate-jobs-private-https-ingress": {
+        "priority": 232,
+        "direction": "Inbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "sourcePort": "*",
+        "source": ["subnet:certificate"],
+        "destination": ["ips:certificateVault", "ips:keyVault", "ips:registry", "ips:certificateBlob"],
+        "destinationPorts": ["443"]
+      },
+      "allow-mgmt-vm-certificate-jobs-blob-https-ingress": {
+        "priority": 233,
+        "direction": "Inbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "sourcePort": "*",
+        "source": ["ip:management"],
+        "destination": ["ips:certificateBlob"],
+        "destinationPorts": ["443"]
+      }
+    },
+    "management": {
+      "allow-certificate-jobs-blob-https-egress": {
+        "priority": 229,
+        "direction": "Outbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "sourcePort": "*",
+        "source": ["ip:management"],
+        "destination": ["ips:certificateBlob"],
+        "destinationPorts": ["443"]
+      }
+    }
+  }
+}

@@ -187,7 +187,7 @@ verifyで現在のPHC／`AZUR`、`Normal`、残補正100ms以下とSSH／rsyslog
 作成フラグや追加FQDNの公開入力は設けません。TLS inspectionは無効です。
 
 この宛先はリージョン共用のDev gatewayです。Firewallは資源パスやテナントを限定しないため、
-構築したApp・環境・Jobへの操作は管理VMのMI／RBACと保守clientのinventoryで制限します。
+構築したApp・環境・Jobへの操作は、担当者本人へ作業時に付与したAzure RBACと保守clientのinventoryで制限します。
 [公式CLI](https://github.com/Azure/azure-cli/blob/51552fd56854d33f646a031bbbf024cf1fbc4d42/src/azure-cli/azure/cli/command_modules/containerapp/custom.py)が扱う
 metadata返却先・replicaの`logStreamEndpoint`を照合し、TLS、ライブログ本文、execを個別に検証します。
 規則の作成・読戻しだけで、各保守操作の成功とは判定しません。

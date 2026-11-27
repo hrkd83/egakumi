@@ -123,7 +123,7 @@ SQL版4への移行後、旧imageだけへ戻しても旧Brokerのhealthは回�
 
 SQLの実行用ユーザーはマネージドIDのクライアントIDをSIDとして登録する。Azure RBACの割当で使うオブジェクトIDとは用途が異なる。[Microsoft公式のCREATE USERの例](https://learn.microsoft.com/en-us/sql/t-sql/statements/create-user-transact-sql?view=azuresqldb-current#k-create-a-contained-database-user-from-a-microsoft-entra-principal-without-validation)に従う。
 
-管理VMからの直接保守も初期構築に含める。各SQL初期化Jobは、管理VMのSystemAssigned MIを固定ユーザー`core_management_vm`として自DB内に登録し、`db_owner`を常設付与する。GatewayとPortalの構築DBだけが対象で、通常アプリ用IDの権限は維持する。管理用client IDは毎回、構築VMのIMDSとARMの現個体・MIを照合して内部配備入力へ渡し、公開params/configから指定しない。同名の別主体や、同じSIDを持つ別名ユーザーがあればgrant前に停止する。管理VM内の操作は[保護SQL clientの手順](../operations.md#保護入出力とsqlを含む8種類の操作)を使う。DB内のデータ・DDL・権限を変更できる保守権限なので、VMを利用できる人間・プログラムの範囲も管理する。
+管理VMからの直接保守は、担当者本人のEntra IDに、DBAが承認済みの構築DBとオブジェクトのSQL権限を手動付与し、終了時に回収する。初期構築ではスキーマジョブと通常アプリのIDに必要なSQL権限を用意する。本人への付与と回収、初回構築直後のDBA権限、回収後の接続確認は[管理VMからのSQL保守手順](../operations/management-sql-access.md)に従う。
 
 既存の照合ジョブは毎時17分にCMとSQLを突き合わせ、消失・切断した接続を利用未確認に戻す。同じジョブで60日未使用の接続も回収し、Entra同期や追加ジョブは作らない。CM側だけの接続、pool上限、照合不能は件数として調査し、観測だけで容量を解放しない。
 

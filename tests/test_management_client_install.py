@@ -26,7 +26,7 @@ class ManagementClientInstallTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(prefix='synthetic-client-install-')
         self.addCleanup(self.directory.cleanup)
-        self.root = Path(self.directory.name) / 'maintenance'
+        self.root = Path(self.directory.name).resolve() / 'maintenance'
         self.inventory = fixtures.ManagementClientBicepTests().fixture()[2]
         self.source = (ROOT / 'scripts/management_client.py').read_bytes()
         self.requirements = (ROOT / 'scripts/maintenance-requirements.txt').read_bytes()
@@ -75,7 +75,7 @@ class ManagementClientInstallTests(unittest.TestCase):
                 if self != root and self in root.parents:
                     mode &= ~0o022
                 if str(self) in bad_modes: mode = stat.S_IFMT(mode) | bad_modes[str(self)]
-                return SimpleNamespace(st_uid=1 if str(self) in bad_owners else 0, st_mode=mode)
+                return SimpleNamespace(st_uid=1 if str(self) in bad_owners else 0, st_gid=100, st_mode=mode)
 
             def is_symlink(self):
                 return str(self) in unsafe or str(self) in self_fixture.runtime_links or super().is_symlink()
@@ -88,6 +88,7 @@ class ManagementClientInstallTests(unittest.TestCase):
         environment = {
             'CORE_MAINTENANCE_SOURCE_B64': base64.b64encode(self.source).decode(),
             'CORE_MAINTENANCE_REQUIREMENTS_B64': base64.b64encode(self.requirements).decode(),
+            'CORE_MAINTENANCE_GID': '100',
             'CORE_MAINTENANCE_INVENTORY_B64': base64.b64encode(json.dumps(inventory).encode()).decode()}
         observed_vm = inventory['managementVmId'] if observed_vm is None else observed_vm
         self.network.open.return_value = io.BytesIO(json.dumps({'resourceId': observed_vm}).encode())
@@ -121,7 +122,7 @@ class ManagementClientInstallTests(unittest.TestCase):
             mode = actual.st_mode
             if os.name == 'nt': mode = stat.S_IFMT(mode) | 0o600
             if opened.get(fd) in bad_modes: mode = stat.S_IFMT(mode) | bad_modes[opened[fd]]
-            return SimpleNamespace(st_uid=1 if opened.get(fd) in bad_owners else 0, st_mode=mode)
+            return SimpleNamespace(st_uid=1 if opened.get(fd) in bad_owners else 0, st_gid=100, st_mode=mode)
 
         def close_file(fd):
             original_close(fd)
@@ -152,6 +153,14 @@ class ManagementClientInstallTests(unittest.TestCase):
                     configuration = venv / 'pyvenv.cfg'
                     configuration.write_bytes(b'Synthetic private runtime configuration')
                     configuration.chmod(0o600)
+                    python_lib = venv / 'lib' / f'python{sys.version_info.major}.{sys.version_info.minor}'
+                    python_lib.mkdir(mode=0o700, exist_ok=True)
+                    packages = python_lib / 'site-packages'
+                    packages.mkdir(mode=0o700, exist_ok=True)
+                    dependency = packages / 'synthetic_dependency.py'
+                    if not dependency.exists():
+                        dependency.write_bytes(b'# synthetic dependency\n')
+                        dependency.chmod(0o600)
                     self.runtime_pip_ready.add(str(root))
                     self.runtime_builds.append(str(root))
             return self.runtime(*args, **kwargs)
@@ -160,7 +169,7 @@ class ManagementClientInstallTests(unittest.TestCase):
              mock.patch.object(os, 'environ', environment), mock.patch.object(os, 'O_NOFOLLOW', getattr(os, 'O_NOFOLLOW', 0), create=True), \
              mock.patch.dict(sys.modules, {'fcntl': fcntl}), mock.patch.object(os, 'open', side_effect=open_file), \
              mock.patch.object(os, 'fstat', side_effect=file_stat), mock.patch.object(os, 'replace', side_effect=replace_file), \
-             mock.patch.object(os, 'close', side_effect=close_file), \
+             mock.patch.object(os, 'close', side_effect=close_file), mock.patch.object(os, 'chown', create=True), \
              mock.patch.object(subprocess, 'run', side_effect=run_runtime), mock.patch('sys.stdout', new=io.StringIO()):
             exec(compile(block, 'synthetic-guest-install', 'exec'), {'__name__': 'synthetic_install'})
 
@@ -176,6 +185,14 @@ class ManagementClientInstallTests(unittest.TestCase):
         self.assertIsNone(request.get_header('Authorization'))
         self.assertFalse(any(path.suffix == '.pyc' for path in self.root.rglob('*')))
         self.assertEqual(len(self.runtime.call_args.kwargs['pass_fds']), 1)
+        if os.name == 'posix':
+            for name in ('inventory.json', 'management_client.py', 'venv/pyvenv.cfg'):
+                self.assertEqual(stat.S_IMODE((self.root / name).stat().st_mode), 0o640)
+            for name in ('.', 'venv', 'venv/bin'):
+                self.assertEqual(stat.S_IMODE((self.root / name).stat().st_mode), 0o750)
+            dependency = next((self.root / 'venv/lib').glob('*/site-packages/synthetic_dependency.py'))
+            self.assertEqual(stat.S_IMODE(dependency.stat().st_mode), 0o640)
+            self.assertEqual(stat.S_IMODE((self.root / '.owner.json').stat().st_mode), 0o600)
 
     def test_repeated_core_and_app_stages_only_add_constructed_resource_ids(self):
         self.prepare(self.inventory)
@@ -227,7 +244,7 @@ class ManagementClientInstallTests(unittest.TestCase):
     def test_staging_and_each_atomic_commit_interruption_retry_without_losing_constructed_app_ids(self):
         for index, failure in enumerate((('staging', 'requirements.txt'), ('replace', 'management_client.py'),
                                         ('replace', 'requirements.txt'), ('replace', 'inventory.json'), ('runtime', ''))):
-            self.root = Path(self.directory.name) / ('maintenance-' + str(index))
+            self.root = Path(self.directory.name).resolve() / ('maintenance-' + str(index))
             self.prepare(self.inventory)
             added = copy.deepcopy(self.inventory)
             base = added['environments'][0].rsplit('/managedEnvironments/', 1)[0]
@@ -266,7 +283,7 @@ class ManagementClientInstallTests(unittest.TestCase):
             self.prepare(self.inventory)
         self.assertEqual(unknown.read_bytes(), b'Synthetic unmanaged data')
         self.assertFalse((self.root / '.owner.json').exists())
-        self.root = Path(self.directory.name) / 'another-maintenance'
+        self.root = Path(self.directory.name).resolve() / 'another-maintenance'
         self.prepare(self.inventory)
         altered = copy.deepcopy(self.inventory)
         altered['managementPrincipalId'] = '55555555-5555-4555-8555-555555555555'
@@ -332,12 +349,15 @@ class ManagementClientInstallTests(unittest.TestCase):
         venv = self.root / 'venv'
         note = venv / 'unmanaged-note'
         note.write_bytes(b'Synthetic runtime note must remain unchanged')
+        note.chmod(0o600)
         self.runtime_pip_ready.remove(str(self.root))
         before = len(self.runtime_builds)
         self.prepare(self.inventory)
         self.assertEqual(len(self.runtime_builds), before + 1)
         self.assertIn(str(self.root), self.runtime_pip_ready)
         self.assertEqual(note.read_bytes(), b'Synthetic runtime note must remain unchanged')
+        if os.name == 'posix':
+            self.assertEqual(stat.S_IMODE(note.stat().st_mode), 0o600)
         (venv / 'pyvenv.cfg').unlink()
         before = len(self.runtime_builds)
         self.prepare(self.inventory)
@@ -484,7 +504,10 @@ class ManagementClientInstallTests(unittest.TestCase):
         self.assertIn('-I -B -m pip --isolated install --index-url https://pypi.org/simple', command)
         self.assertIn('--no-deps', command)
         self.assertIn('--no-cache-dir', command)
-        self.assertNotIn('curl ', script)
+        install = script.split("runtime_install = r'''", 1)[1].split("'''", 1)[0]
+        self.assertNotIn('curl ', install)
+        self.assertIn('azure-cli=$azure_cli_package', script)
+        self.assertIn('signed-by'.casefold(), script.casefold())
         self.assertNotIn('az login', script)
 
 

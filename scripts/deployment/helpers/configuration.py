@@ -101,7 +101,7 @@ PARAMETER_SECTION_KEYS = {
     "network": PARAMETER_NETWORK_IP_KEYS,
     "services": {"publisherName", "publisherEmail", "apimInstanceId"},
     "gateway": {"publicHostName", "authentication"},
-    "management": {"adminUsername", "sshPublicKeyFile", "loginAssignments"},
+    "management": {"adminUsername", "sshPublicKeyFile"},
     "monitoring": {"operatorEmailAddresses"},
     "certificate": {"contactEmail", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"},
 }
@@ -134,6 +134,7 @@ PARAMETER_OWNED_PATHS = (
 # 旧入力は空値でも受け付けず、値の意味を変える自動移行をしません。
 FIXED_INITIAL_PATHS = (
     ("authorization",), ("apiDefinitions",), ("publishApis",),
+    ("management", "loginAssignments"),
     *(("network", "firewall", key) for key in ("snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings")),
     ("gateway", "existingWafPolicyId"),
     ("gateway", "authentication", "subscriptionKeyHeader"),
@@ -355,17 +356,15 @@ def _no_secrets(value: Any, path: str = "configuration") -> None:
             _no_secrets(nested, f"{path}[{i}]")
 
 
-def _principals(value: Any, path: str, *, login: bool = False) -> list[dict]:
-    """RBAC対象の公開ID・種類・重複を検査し、VMログイン時だけ役割も確認する。"""
+def _principals(value: Any, path: str) -> list[dict]:
+    """RBAC対象の公開ID・種類・重複を検査する。"""
     result = _list(value, path)
     seen = set()
     for i, principal in enumerate(result):
         p = f"{path}[{i}]"
-        _object(principal, p, {"principalId", "principalType", "role"} if login else {"principalId", "principalType"})
+        _object(principal, p, {"principalId", "principalType"})
         principal["principalId"] = _guid(principal.get("principalId"), p + ".principalId")
         _choice(principal.get("principalType"), p + ".principalType", ("User", "Group", "ServicePrincipal"))
-        if login:
-            _choice(principal.get("role"), p + ".role", ("User", "Administrator"))
         if principal["principalId"] in seen:
             _fail(path, "contains duplicate principals")
         seen.add(principal["principalId"])
@@ -383,8 +382,8 @@ def _network(raw: Any) -> dict:
         "appGatewayZones", "dnsTtl",
     })
     spaces = _cidrs(n.get("addressSpaces"), "network.addressSpaces", minimum=1)
-    prefixes = _object(n.get("subnetPrefixes"), "network.subnetPrefixes", set(SUBNET_KINDS))
-    if set(prefixes) != set(SUBNET_KINDS):
+    prefixes = _object(n.get("subnetPrefixes"), "network.subnetPrefixes", {*SUBNET_KINDS, "certificate"})
+    if not set(SUBNET_KINDS) <= set(prefixes):
         _fail("network.subnetPrefixes", "must define exactly agw, firewall, apim, pep, management and aca")
     # まずVNet内の住所の区切りを検査する。各サブネットが個別に正しいCIDRでも、
     # 互いに重なっていたりVNet外だったりすれば、後続リソースを配置できない。
@@ -392,15 +391,29 @@ def _network(raw: Any) -> dict:
     if any(left.overlaps(right) for i, left in enumerate(networks) for right in networks[i + 1:]):
         _fail("network.addressSpaces", "address spaces overlap")
     subnet_networks = []
-    for key in SUBNET_KINDS:
+    for key in (*SUBNET_KINDS, "certificate") if "certificate" in prefixes else SUBNET_KINDS:
         item = _cidrs([prefixes[key]], "network.subnetPrefixes." + key, minimum=1)[0]
         subnet = ipaddress.ip_network(item)
-        maximum_prefix = {"agw": 24, "pep": 24, "aca": 27}.get(key, 26)
+        maximum_prefix = {"agw": 24, "pep": 24, "aca": 27, "certificate": 27}.get(key, 26)
         if subnet.prefixlen > maximum_prefix or not any(subnet.subnet_of(parent) for parent in networks):
             _fail("network.subnetPrefixes." + key, "must fit the address space and meet the designed subnet size")
         subnet_networks.append(subnet)
     if any(left.overlaps(right) for i, left in enumerate(subnet_networks) for right in subnet_networks[i + 1:]):
         _fail("network.subnetPrefixes", "subnets overlap")
+    if "certificate" not in prefixes:
+        # Existing config can adopt a stable /27 from unused space; never
+        # choose another range by probing live or private inputs.
+        available = []
+        for space in networks:
+            blocks = [space]
+            for allocated in (subnet for subnet in subnet_networks if subnet.subnet_of(space)):
+                blocks = [remainder for block in blocks for remainder in
+                          (block.address_exclude(allocated) if allocated.subnet_of(block) else (block,))]
+            available.extend(block for block in blocks if block.prefixlen <= 27)
+        if not available:
+            _fail("network.subnetPrefixes.certificate", "requires an unused /27 or larger subnet; extend the declared VNet space")
+        first_block = min(available, key=lambda network: network.network_address)
+        prefixes["certificate"] = str(next(first_block.subnets(new_prefix=27)))
     # 公開設定ではtrue=伝播、false=非伝播と読む。ARMのdisable指定への反転は
     # Bicep側で行い、利用者が否定の否定を読み解く必要をなくす。
     routes = _object(n.get("bgpRoutePropagation", {}), "network.bgpRoutePropagation", {"agw", "apim", "management"})
@@ -1271,7 +1284,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     c["gateway"] = g
     # VMはサイズとOSイメージだけでなく、ディスク方式・SSH鍵・管理者名も検査する。
     # latestの自動選択は使わず、検証した固定版で再現可能にする。
-    m = _object(c.get("management"), "management", {"vmSize", "imageReference", "diskControllerType", "osDiskSizeGB", "osDiskSku", "enableAcceleratedNetworking", "encryptionAtHost", "adminUsername", "sshPublicKeyFile", "loginAssignments", "patchAssessmentMode", "patchMode"})
+    m = _object(c.get("management"), "management", {"vmSize", "imageReference", "diskControllerType", "osDiskSizeGB", "osDiskSku", "enableAcceleratedNetworking", "encryptionAtHost", "adminUsername", "sshPublicKeyFile", "patchAssessmentMode", "patchMode"})
     _string(m.get("vmSize"), "management.vmSize")
     controller = _choice(m.get("diskControllerType"), "management.diskControllerType", ("SCSI", "NVMe"))
     if m["vmSize"] == "Standard_D2as_v6" and controller != "NVMe":
@@ -1294,7 +1307,6 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _fail("management.adminUsername", "must be a non-reserved Linux administrator name")
     base = Path(base_directory).resolve()
     m["sshPublicKeyFile"] = _secret_path(m.get("sshPublicKeyFile"), "management.sshPublicKeyFile", base)
-    _principals(m.setdefault("loginAssignments", []), "management.loginAssignments", login=True)
     _choice(m.setdefault("patchAssessmentMode", "ImageDefault"), "management.patchAssessmentMode", ("ImageDefault", "AutomaticByPlatform"))
     _choice(m.setdefault("patchMode", "ImageDefault"), "management.patchMode", ("ImageDefault", "AutomaticByPlatform"))
     c["management"] = m
@@ -2144,7 +2156,6 @@ def load_secret_inputs(configuration: dict) -> dict:
         "firewallTlsInspection": load_firewall_tls_inspection(configuration),
         "credentialProviderSecrets": load_credential_provider_secrets(configuration)}
     # Azure DNS authenticates on the VM through its assigned identity.
-    secrets["dnsPluginArgumentsJson"] = ""
     return secrets
 
 

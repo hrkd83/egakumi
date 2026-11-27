@@ -105,10 +105,12 @@ class PortalBootstrapLifecycleTests(LifecycleFixture, unittest.TestCase):
             ScriptedTransport([response])))
 
     def test_both_preparation_hooks_pass_actual_existence_into_native_azd_inputs(self):
+        absent = {"statusCode": 404, "body": None}
         for phase in ("preup", "preprovision"):
             for exists in (False, True):
-                response = self.app_response() if exists else {"statusCode": 404, "body": None}
-                responses = ([{"statusCode": 404, "body": None}] if phase == "preprovision" else []) + [response]
+                response = self.app_response() if exists else absent
+                # Native preprovision checks ACR and the monitoring deployment before Portal.
+                responses = ([absent, absent] if phase == "preprovision" else []) + [response]
                 transport = ScriptedTransport(responses)
                 with self.subTest(phase=phase, exists=exists), \
                         mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
@@ -133,10 +135,11 @@ class PortalBootstrapLifecycleTests(LifecycleFixture, unittest.TestCase):
                     self.assertFalse(transport.mutations())
 
     def test_direct_core_checks_existing_app_but_monitoring_does_not(self):
+        absent = {"statusCode": 404, "body": None}
         for phase in ("core", "monitoring"):
             for exists in (False, True):
-                response = self.app_response() if exists else {"statusCode": 404, "body": None}
-                responses = ([response] if phase == "core" else []) + [
+                response = self.app_response() if exists else absent
+                responses = ([absent, response] if phase == "core" else []) + [
                     {"statusCode": 201, "body": {}}, {"statusCode": 200, "body": {
                         "properties": {"provisioningState": "Succeeded", "outputs": {}}}}]
                 transport = ScriptedTransport(responses)
@@ -153,7 +156,10 @@ class PortalBootstrapLifecycleTests(LifecycleFixture, unittest.TestCase):
                     values = transport.mutations()[0]["body"]["properties"]["parameters"]
                     self.assertIs(values["existingPortalApp"]["value"], exists if phase == "core" else False)
                     self.assertEqual([call["method"] for call in transport.calls],
-                                     (["GET"] if phase == "core" else []) + ["PUT", "GET"])
+                                     (["GET", "GET"] if phase == "core" else []) + ["PUT", "GET"])
+                    if phase == "core":
+                        self.assertIn("/providers/Microsoft.ContainerRegistry/registries/", transport.calls[0]["path"])
+                        self.assertIn("/providers/Microsoft.App/containerApps/", transport.calls[1]["path"])
 
     def test_preservation_does_not_require_a_particular_registry_or_identity_layout(self):
         response = self.app_response()
@@ -221,7 +227,14 @@ class PortalBootstrapBicepTests(unittest.TestCase):
         self.assertEqual(endpoint['properties']['privateLinkServiceConnections'][0]['properties']['privateLinkServiceId'],
                          "[parameters('registryId')]")
         self.assertTrue(any('portal-network' in item for item in module('portal')['dependsOn']))
-        self.assertTrue(any('portal-network-bindings' in item for item in module('gateway')['dependsOn']))
+        exported_plan = main['outputs']['gatewayPlan']['value']
+        self.assertIn("'portalBackendHost', reference(", exported_plan)
+        self.assertIn(".outputs.appHost.value", exported_plan)
+        ingress = compile_bicep('infra/public-ingress.bicep')
+        gateway = next(item for item in ingress['resources']
+                       if 'portalBackendHost' in item.get('properties', {}).get('parameters', {}))
+        self.assertEqual(gateway['properties']['parameters']['portalBackendHost']['value'],
+                         "[parameters('gatewayPlan').portalBackendHost]")
         portal_output = main['outputs']['portal']['value']
         for key in ('registryResourceGroup', 'pullIdentityResourceGroup', 'networkResourceGroup'):
             self.assertIn(key, portal_output)

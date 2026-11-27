@@ -13,18 +13,17 @@ from management_fixtures import maintenance_metadata
 class ManagementMaintenanceInputTests(unittest.TestCase):
     subscription = '11111111-1111-4111-8111-111111111111'
 
-    def test_only_constructed_identity_and_four_roles_are_copied_without_mutating_state(self):
+    def test_only_four_constructed_roles_are_copied_without_mutating_state(self):
         metadata = maintenance_metadata(self.subscription)
         metadata['unrelated'] = 'synthetic-unused-metadata'
         original = copy.deepcopy(metadata)
         values = management_maintenance_inputs({'subscriptionId': self.subscription}, metadata)
-        self.assertEqual(values, {key: metadata[key] for key in ('principalId', 'roleDefinitionIds')})
+        self.assertEqual(values, {'roleDefinitionIds': metadata['roleDefinitionIds']})
         values['roleDefinitionIds'].clear()
         self.assertEqual(metadata, original)
 
-    def test_incomplete_identity_or_metadata_has_no_fallback(self):
-        for value in (None, {}, [], {'principalId': '<INVALID_PRINCIPAL_ID>'},
-                      {'principalId': '00000000-0000-0000-0000-000000000000', 'roleDefinitionIds': {}}):
+    def test_missing_role_metadata_has_no_fallback(self):
+        for value in (None, {}, [], {'roleDefinitionIds': None}):
             with self.subTest(metadata=value), self.assertRaisesRegex(ValueError, 'Core management maintenance'):
                 management_maintenance_inputs({'subscriptionId': self.subscription}, value)
 
@@ -44,16 +43,6 @@ class ManagementMaintenanceInputTests(unittest.TestCase):
         metadata['roleDefinitionIds']['appExec'] = metadata['roleDefinitionIds']['appLogs']
         with self.assertRaisesRegex(ValueError, 'distinct approved definitions'):
             management_maintenance_inputs({'subscriptionId': self.subscription}, metadata)
-
-    def test_verified_sql_client_id_is_internal_and_requires_a_nonzero_guid(self):
-        metadata = maintenance_metadata(self.subscription)
-        metadata['sqlClientId'] = '66666666-6666-4666-8666-666666666666'
-        self.assertEqual(management_maintenance_inputs({'subscriptionId': self.subscription}, metadata)['sqlClientId'], metadata['sqlClientId'])
-        for invalid in ('', None, '<INVALID_SQL_CLIENT_ID>', '00000000-0000-0000-0000-000000000000'):
-            metadata['sqlClientId'] = invalid
-            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, 'SQL client identity'):
-                management_maintenance_inputs({'subscriptionId': self.subscription}, metadata)
-
 
 if __name__ == '__main__':
     unittest.main()

@@ -19,7 +19,7 @@ from broker_deployment import wait_for_schema
 from deploy_gateway import foundation_inputs
 from configuration_fixtures import fixture
 from arm_helpers import ArmExpression
-from management_fixtures import maintenance_metadata, client_core_outputs
+from management_fixtures import client_core_outputs
 
 
 def raw_fixture():
@@ -70,7 +70,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
 
     def test_compiled_broker_resource_graph_is_always_present_and_keeps_sql_phase_gate(self):
         gateway = compile_bicep('apps/apim/deploy/main.bicep')
-        for suffix in ('identity', 'database', 'access', 'broker', 'management-access'):
+        for suffix in ('identity', 'database', 'access', 'broker'):
             with self.subTest(module=suffix):
                 module, = [item for item in gateway['resources']
                            if '-gateway-' + suffix + "'" in item['name']]
@@ -143,7 +143,6 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                            + config['resourceGroupNames']['id']
                            + '/providers/Microsoft.ManagedIdentity/userAssignedIdentities/')
                 foundation = {
-                    'managementMaintenance': maintenance_metadata(config['subscriptionId']),
                     'resourceGroup': config['resourceGroupNames']['svc'],
                     'identityResourceGroup': config['resourceGroupNames']['id'],
                     'apimName': apim_name(config),

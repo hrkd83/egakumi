@@ -357,7 +357,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 with mock.patch.object(configuration, "load_firewall_tls_inspection", return_value={}):
                     values = real_inputs(config)
                 self.assertEqual(values["credentialProviderSecrets"], {"graph-delegated": client_secret})
-                self.assertEqual(values["dnsPluginArgumentsJson"], "")
+                self.assertNotIn("dnsPluginArgumentsJson", values)
                 self.assertEqual(values["sshPublicKey"], ssh_fixture_key())
                 return values
 

@@ -15,9 +15,6 @@ param phase string = 'core'
 param sshPublicKey string = ''
 @description('正式CLIが保護保存した初期作成証跡の内部世代。公開params/configで変更する値ではありません。')
 param managementInitialSerialGeneration string = ''
-@description('DNS-01 認証用のプラグイン引数。API トークンを含むためログや通常出力に出しません。')
-@secure()
-param dnsPluginArgumentsJson string = ''
 @description('Firewallの中間CAの参照とAppGW用公開ルート証明書。中間CAの秘密鍵は渡しません。')
 @secure()
 param firewallTlsInspection object = {}
@@ -30,6 +27,9 @@ param l7IngressSecret string = ''
 @description('Realtime セッションの所有者を示す署名付きチケットの鍵。利用者へ鍵自体は返しません。')
 @secure()
 param realtimeTicketKey string = ''
+@description('Verified internal metadata for absent ingress keys. Existing generations are never written again.')
+@secure()
+param ingressSecretRegistration object = {}
 @description('監査コンテナーの保存保護ポリシーをこの呼出しで管理するか。既存の Locked 保護を解除する指定ではありません。')
 param manageAuditImmutabilityPolicies bool = true
 @description('実状態を照合した既存 Locked 監査ポリシーの ID。追加コンテナーの配備時も既存の保持を変更しません。内部入力です。')
@@ -70,9 +70,10 @@ var infrastructureApis = configuration.?infrastructureApiDefinitions ?? configur
 var realtimeEnabled = (gatewayConfig.?realtimeControlEnabled ?? false) || length(filter(configuration.apiDefinitions, api => length(filter(items(api.authorization.operationConstraints), entry => contains(['realtimeCreate', 'realtimeHangup'], entry.value.kind))) > 0)) > 0
 // 文書ジョブとRealtimeは同じサーバー署名鍵を用途別の署名文脈で使用します。
 var ownerTicketEnabled = realtimeEnabled || length(filter(infrastructureApis, api => length(filter(items(api.authorization.operationConstraints), entry => contains(['documentAnalysis', 'documentAnalysisStatus'], entry.value.kind))) > 0)) > 0
-// 通常HTTP(S)の入口証明は初期構成で常設します。
-var useIngressSecrets = true
 var certConfig = configuration.certificate
+var acmeDirectoryUrl = certConfig.directory == 'staging' ? 'https://acme-staging-v02.api.letsencrypt.org/directory' : 'https://acme-v02.api.letsencrypt.org/directory'
+var certificateJobName = 'caj-${stem}-tls'
+var portalCertificateJobName = 'caj-${stem}-auth-cert'
 // Pythonの文書受付と同じ正本POST/binary契約だけに、容量と独立した専用WAFを維持します。
 var documentUploadPaths = flatten(map(filter(infrastructureApis, api => (api.?name ?? '') == 'document-analysis-v1' && api.path == 'tools/documents/v1'), api => map(filter(api.operations, operation => operation.name == 'analyze_document' && operation.method == 'POST' && operation.urlTemplate == '/analyze' && api.authorization.operationConstraints[operation.name].kind == 'documentAnalysis' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? '') == 'binary'), operation => '/${api.path}${operation.urlTemplate}')))
 // 既存の署名付き2操作だけ、可変IDの位置をAppGW用patternへ写します。任意のtemplateは展開しません。
@@ -184,7 +185,6 @@ module network 'modules/network.bicep' = if (deployCore) {
     generatedApimServiceFqdns: configuration.generatedApimServiceFqdns
     gatewayPublicHostName: gatewayConfig.publicHostName
     portalPublicHostName: portalConfig.publicHostName
-    certificateDirectory: configuration.certificate.directory
     existingNetworkSecurityGroupNames: existingNetworkSecurityGroupNames
     existingRouteTableRoutes: existingRouteTableRoutes
   }
@@ -286,8 +286,6 @@ module management 'modules/management.bicep' = if (deployCore) {
     adminUsername: managementConfig.adminUsername
     sshPublicKey: sshPublicKey
     initialSerialGeneration: managementInitialSerialGeneration
-    loginAssignments: managementConfig.loginAssignments
-    dnsManagedIdentityResourceId: certConfig.mode == 'dnsPlugin' && certConfig.?plugin == 'Azure' ? certConfig.azureDnsManagedIdentityResourceId : ''
     patchAssessmentMode: managementConfig.patchAssessmentMode
     patchMode: managementConfig.patchMode
   }
@@ -364,20 +362,11 @@ module auditPrivateDnsLink 'modules/audit-storage-private-dns-link.bicep' = if (
   }
 }
 
-// ロール定義は常設し、割当は構築リソース自身のスコープへ限定します。
+// ロールを定義し、対象資源での担当者への割当は保守時に行います。
 module managementMaintenanceRoles 'modules/management-maintenance-roles.bicep' = if (deployCore) {
   name: '${stem}-management-maintenance-roles'
   params: { resourceStem: stem }
 }
-module managementLogAnalytics 'modules/management-monitoring-bindings.bicep' = if (deployCore) {
-  name: '${stem}-management-log-analytics'
-  scope: monitorGroup
-  params: {
-    principalId: management!.outputs.managementVm.principalId
-    workspaceName: monitoring.outputs.monitoring.workspaceName
-  }
-}
-
 // 内部通信の準備後に、サービス ID へ用途別 Azure RBAC を付与します。
 module serviceBindings 'modules/service-bindings.bicep' = if (deployCore) {
   name: '${stem}-service-bindings'
@@ -385,8 +374,6 @@ module serviceBindings 'modules/service-bindings.bicep' = if (deployCore) {
   params: {
     names: serviceNames
     principalIds: services!.outputs.principalIds
-    certificateIdentityPrincipalId: identity.outputs.principalId
-    managementPrincipalId: management!.outputs.managementVm.principalId
     // 通常HTTP入口保護・所有者チケットの KV 参照にも APIM 自身の ID が必要です。KV 範囲の既存組込ロールだけを使います。
     grantApimSecretAccess: true
     speechEnabled: servicesConfig.?speechEnabled ?? false
@@ -425,40 +412,30 @@ module auditConfiguration 'modules/management-audit.bicep' = if (deployCore) {
   dependsOn: [networkBindings]
 }
 
-// DNS-01 認証で証明書を取得し Key Vault へ登録。必要な通信と権限の準備が終わってから動かします。
-module certificate 'modules/certificate.bicep' = if (deployCore) {
-  name: '${stem}-certificate'
-  scope: maintGroup
+// 公開TLSとPortalの署名証明書はCoreの後段に起動する専用Jobが扱います。
+module certificateJobIdentities 'modules/certificate-identities.bicep' = if (deployCore) {
+  name: '${stem}-certificate-job-identities'
+  scope: idGroup
+  params: { stem: stem, location: location, tags: tags }
+}
+
+resource dnsJobIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = if (deployCore) {
+  scope: resourceGroup(split(certConfig.azureDnsManagedIdentityResourceId, '/')[2], split(certConfig.azureDnsManagedIdentityResourceId, '/')[4])
+  name: last(split(certConfig.azureDnsManagedIdentityResourceId, '/'))
+}
+
+// 入口の共有値は証明書用VaultとJobへ渡しません。
+module ingressValues 'modules/ingress-values.bicep' = if (deployCore) {
+  name: '${stem}-ingress-values'
+  scope: svcGroup
   params: {
-    vmName: management!.outputs.managementVm.name
-    location: location
-    tags: tags
-    config: {
-      mode: certConfig.mode
-      hostname: gatewayConfig.publicHostName
-      hostnames: certConfig.domainNames
-      requiredHostnames: [gatewayConfig.publicHostName, portalConfig.publicHostName]
-      keyVaultName: serviceNames.keyVault
-      certificateName: certConfig.certificateName
-      accountEmail: certConfig.?contactEmail ?? ''
-      dnsPlugin: certConfig.?plugin ?? ''
-      azureDnsSubscriptionId: certConfig.?azureDnsSubscriptionId ?? ''
-      azureDnsManagedIdentityResourceId: certConfig.?azureDnsManagedIdentityResourceId ?? ''
-      moduleVersion: certConfig.moduleVersion
-      directoryUrl: certConfig.directory == 'staging' ? 'https://acme-staging-v02.api.letsencrypt.org/directory' : 'https://acme-v02.api.letsencrypt.org/directory'
-      renewBeforeDays: certConfig.renewBeforeDays
-      renewIntervalHours: certConfig.checkEveryHours
-      dnsSleepSeconds: certConfig.?dnsSleepSeconds ?? 60
-      validationTimeoutSeconds: certConfig.?validationTimeoutSeconds ?? 120
-      minimumValidDays: certConfig.?minimumValidDays ?? 7
-      l7IngressEnabled: true
-      realtimeTicketEnabled: ownerTicketEnabled
-    }
-    dnsPluginArgumentsJson: dnsPluginArgumentsJson
+    vaultName: serviceNames.keyVault
+    ownerTicketEnabled: ownerTicketEnabled
+    registration: ingressSecretRegistration
     l7IngressSecret: l7IngressSecret
     realtimeTicketKey: realtimeTicketKey
   }
-  dependsOn: [networkBindings, serviceBindings, auditConfiguration]
+  dependsOn: [sharedEntraSecrets]
 }
 
 // Portal用IDはID用RG、レジストリと実行基盤はサービスRGに配置します。
@@ -474,25 +451,6 @@ module portalAuthIdentity '../apps/portal/deploy/auth-identity.bicep' = if (depl
   scope: idGroup
   params: { stem: stem, location: location, tags: tags }
 }
-module portalAuthKeyOperations 'modules/portal-auth-key-operations.bicep' = if (deployCore) {
-  name: '${stem}-portal-auth-key-operations'
-  scope: svcGroup
-  params: { vaultName: serviceNames.keyVault, keyName: portalConfig.certificate.certificateName, principalId: management!.outputs.managementVm.principalId }
-  dependsOn: [services]
-}
-module portalAuthCertificate 'modules/portal-auth-certificate.bicep' = if (deployCore) {
-  name: '${stem}-portal-auth-certificate'
-  scope: maintGroup
-  params: {
-    vmName: management!.outputs.managementVm.name
-    location: location
-    tags: tags
-    config: { vaultName: serviceNames.keyVault, certificateName: portalConfig.certificate.certificateName, validityMonths: portalConfig.certificate.validityMonths }
-  }
-  // TLS工程が固定版PowerShellを準備し、KV PE/DNS/RBACと監査が整ってから専用workerを実行します。
-  dependsOn: [certificate, portalAuthKeyOperations, networkBindings, serviceBindings, auditConfiguration]
-}
-
 module portalRegistry 'modules/portal-registry.bicep' = if (deployCore) {
   name: '${stem}-portal-registry'
   scope: svcGroup
@@ -564,15 +522,54 @@ module portalNetworkBindings 'modules/portal-network-bindings.bicep' = if (deplo
   }
 }
 
-module managementPortalAccess 'modules/management-aca-bindings.bicep' = if (deployCore) {
-  name: '${stem}-management-portal-access'
+module certificateStorage 'modules/certificate-storage.bicep' = if (deployCore) {
+  name: '${stem}-certificate-storage'
   scope: svcGroup
   params: {
-    principalId: management!.outputs.managementVm.principalId
-    roleDefinitionIds: managementMaintenanceRoles!.outputs.roleDefinitionIds
-    applicationNames: [portal!.outputs.platform.applicationName]
-    environmentNames: [portal!.outputs.platform.environmentName]
+    stem: stem
+    location: location
+    tags: tags
+    tenantId: configuration.azureTenantId
+    vaultSkuName: servicesConfig.vaultSkuName
+    vaultRetentionDays: servicesConfig.vaultRetentionDays
+    vaultPurgeProtection: servicesConfig.vaultPurgeProtection
+    portalVaultName: serviceNames.keyVault
+    portalCertificateName: portalConfig.certificate.certificateName
+    registryName: portalRegistry!.outputs.name
+    pullPrincipalId: certificateJobIdentities!.outputs.pull.principalId
+    tlsPrincipalId: certificateJobIdentities!.outputs.tls.principalId
+    portalPrincipalId: certificateJobIdentities!.outputs.portal.principalId
+    diagnosticSettingProperties: diagnosticSettingProperties
   }
+  dependsOn: [services]
+}
+module certificateNetwork 'modules/certificate-network.bicep' = if (deployCore) {
+  name: '${stem}-certificate-network'
+  scope: nwGroup
+  params: {
+    stem: stem
+    location: location
+    tags: tags
+    subnetIds: network!.outputs.subnetIds
+    subnetPrefixes: network!.outputs.subnetPrefixes
+    nsgNames: network!.outputs.nsgNames
+    firewallPolicyName: network!.outputs.firewallPolicyName
+    managementPrivateIp: management!.outputs.managementVm.privateIp
+    keyVaultPrivateIps: endpoints!.outputs.keyVaultPrivateIps
+    registryPrivateIps: portalNetwork!.outputs.registryPrivateIps
+    tlsVaultId: certificateStorage!.outputs.vaultId
+    storageAccountId: certificateStorage!.outputs.storageAccountId
+    vaultPrivateDnsZoneId: network!.outputs.privateDnsZoneIds.keyVault
+    blobPrivateDnsZoneId: auditPrivateDns!.outputs.privateDnsZoneId
+    acmeIssuerHost: split(acmeDirectoryUrl, '/')[2]
+  }
+  dependsOn: [portalNetworkBindings, credentialNetwork, auditPrivateDnsLink]
+}
+module certificateEnvironment 'modules/certificate-environment.bicep' = if (deployCore) {
+  name: '${stem}-certificate-environment'
+  scope: svcGroup
+  params: { stem: stem, location: location, tags: tags, subnetId: network!.outputs.subnetIds.certificate, diagnosticSettingProperties: diagnosticSettingProperties }
+  dependsOn: [certificateNetwork]
 }
 
 module credentialNetwork 'modules/credential-broker-network.bicep' = if (deployCore) {
@@ -627,80 +624,125 @@ module managementClient 'modules/management-maintenance-client.bicep' = if (depl
     inventory: managementClientInventory
   }
   // PyPI/OSパッケージの既存の構築用経路とVMの初期設定が完成してから準備します。
-  dependsOn: [credentialNetwork, certificate, managementPortalAccess, managementLogAnalytics, auditPrivateDnsLink]
+  dependsOn: [credentialNetwork, auditConfiguration, auditPrivateDnsLink]
 }
-// 証明書とネットワーク側の経路が揃ったら、公開入口を構築します。
-module gateway 'modules/application-gateway.bicep' = if (deployCore) {
-  name: '${stem}-gateway'
-  scope: nwGroup
-  params: {
-    diagnosticSettingProperties: diagnosticSettingProperties
-    productName: product
-    environmentName: environmentName
-    resourceStem: stem
-    wafPolicyIdentifier: configuration.services.apimInstanceId
+// The native Core produces only nonsecret plans. Verified Job completion gates
+// public-ingress.bicep in postprovision; an ARM Job PUT is not a successful run.
+var useIngressSecrets = true
+var certificateSecretUri = deployCore ? 'https://${certificateStorage!.outputs.vaultName}${environment().suffixes.keyvaultDns}/secrets/${certConfig.certificateName}/' : ''
+var gatewayPlan = {
+  networkResourceGroup: nwGroup.name
+  vaultResourceGroup: svcGroup.name
+  certificateName: certConfig.certificateName
+  diagnosticSettingProperties: diagnosticSettingProperties
+  productName: product
+  environmentName: environmentName
+  resourceStem: stem
+  wafPolicyIdentifier: configuration.services.apimInstanceId
+  location: location
+  tags: tags
+  portalHostName: portalConfig.publicHostName
+  publicHostName: gatewayConfig.publicHostName
+  skuName: gatewayConfig.skuName
+  autoscaleMinCapacity: gatewayConfig.autoscaleMinCapacity
+  autoscaleMaxCapacity: gatewayConfig.autoscaleMaxCapacity
+  zones: gatewayConfig.zones
+  wafMode: gatewayConfig.wafMode
+  wafMaxRequestBodySizeInKb: gatewayConfig.?wafMaxRequestBodySizeInKb ?? 128
+  wafRequestBodyInspectLimitInKb: gatewayConfig.?wafRequestBodyInspectLimitInKb ?? 128
+  wafFileUploadLimitInMb: gatewayConfig.?wafFileUploadLimitInMb ?? 100
+  wafCustomRules: gatewayConfig.?wafCustomRules ?? []
+  wafExclusions: gatewayConfig.?wafExclusions ?? []
+  publishedApiPaths: concat(publishedHttpWafPaths, deploymentOperationWafPaths, map(filter(infrastructureApis, api => contains(api, 'mcp')), api => '/${api.mcp.path}/mcp'), signedOperationWafPaths)
+  documentUploadPaths: documentUploadPaths
+  speechRawBodyPaths: speechRawBodyPaths
+  backendRequestTimeoutSeconds: gatewayConfig.backendRequestTimeoutSeconds
+}
+output gatewayPlan object = deployCore ? union(gatewayPlan, {
+  certificateVaultName: certificateStorage!.outputs.vaultName
+  certificateReaderPrincipalId: identity.outputs.principalId
+  subnetId: network!.outputs.subnetIds.agw
+  publicIpId: network!.outputs.appGatewayPublicIpId
+  publicIpAddress: network!.outputs.appGatewayPublicIpAddress
+  apimPrivateIp: services!.outputs.apimPrivateIpAddresses[0]
+  portalBackendIp: portal!.outputs.staticIp
+  portalBackendHost: portal!.outputs.appHost
+  apimHostName: services!.outputs.apimGatewayHost
+  keyVaultCertificateSecretId: certificateSecretUri
+  certificateIdentityId: identity.outputs.id
+}) : {}
+output ingressMonitoringPlan object = deployCore ? {
+  resourceGroup: monitorGroup.name
+  resourceStem: stem
+  location: location
+  tags: tags
+  monitoring: monitoring.outputs.monitoring
+  storage: monitoring.outputs.storage
+  apimId: services!.outputs.serviceResourceIds.apim
+  firewallId: network!.outputs.firewallId
+  networkResourceIds: network!.outputs.monitoredResourceIds
+  resourceGroupIds: [idGroup.id, nwGroup.id, monitorGroup.id, svcGroup.id, maintGroup.id]
+  enableLogAlerts: monitoringConfig.enableLogAlerts
+  apimSkuName: servicesConfig.apimSkuName
+  appInsightsIngestionWarningGb: monitoringConfig.appInsightsIngestionWarningGb
+  telemetryPublisherPrincipalIds: [services!.outputs.principalIds.project]
+  certificateMonitoring: { environmentName: certificateEnvironment!.outputs.name, jobName: certificateJobName, checkEveryHours: certConfig.checkEveryHours }
+} : {}
+output certificateBootstrap object = deployCore ? {
+  resourceGroup: svcGroup.name
+  location: location
+  environmentId: certificateEnvironment!.outputs.id
+  environmentName: certificateEnvironment!.outputs.name
+  subnetId: network!.outputs.subnetIds.certificate
+  registryId: portalRegistry!.outputs.id
+  registryName: portalRegistry!.outputs.name
+  registryServer: portalRegistry!.outputs.server
+  registryPrivateIps: portalNetwork!.outputs.registryPrivateIps
+  storageAccountId: certificateStorage!.outputs.storageAccountId
+  storageAccountName: certificateStorage!.outputs.storageAccountName
+  storageUrl: certificateStorage!.outputs.storageUrl
+  receiptContainerName: certificateStorage!.outputs.receiptContainerName
+  certificateVaultId: certificateStorage!.outputs.vaultId
+  certificateVaultName: certificateStorage!.outputs.vaultName
+  certificateSecretUri: certificateSecretUri
+  jobName: certificateJobName
+  portalJobName: portalCertificateJobName
+  jobPlan: {
     location: location
     tags: tags
-    subnetId: network!.outputs.subnetIds.agw
-    publicIpId: network!.outputs.appGatewayPublicIpId
-    publicIpAddress: network!.outputs.appGatewayPublicIpAddress
-    apimPrivateIp: services!.outputs.apimPrivateIpAddresses[0]
-    portalHostName: portalConfig.publicHostName
-    portalBackendIp: portal!.outputs.staticIp
-    portalBackendHost: portal!.outputs.appHost
-    apimHostName: services!.outputs.apimGatewayHost
-    publicHostName: gatewayConfig.publicHostName
-    keyVaultCertificateSecretId: certificate!.outputs.certificateSecretUri
-    firewallRootCaData: firewallTlsInspection.?rootCaData ?? ''
-    certificateIdentityId: identity.outputs.id
-    skuName: gatewayConfig.skuName
-    autoscaleMinCapacity: gatewayConfig.autoscaleMinCapacity
-    autoscaleMaxCapacity: gatewayConfig.autoscaleMaxCapacity
-    zones: gatewayConfig.zones
-    wafMode: gatewayConfig.wafMode
-    wafMaxRequestBodySizeInKb: gatewayConfig.?wafMaxRequestBodySizeInKb ?? 128
-    wafRequestBodyInspectLimitInKb: gatewayConfig.?wafRequestBodyInspectLimitInKb ?? 128
-    wafFileUploadLimitInMb: gatewayConfig.?wafFileUploadLimitInMb ?? 100
-    wafCustomRules: gatewayConfig.?wafCustomRules ?? []
-    wafExclusions: gatewayConfig.?wafExclusions ?? []
-    publishedApiPaths: concat(publishedHttpWafPaths, deploymentOperationWafPaths, map(filter(infrastructureApis, api => contains(api, 'mcp')), api => '/${api.mcp.path}/mcp'), signedOperationWafPaths)
-    documentUploadPaths: documentUploadPaths
-    speechRawBodyPaths: speechRawBodyPaths
-    backendRequestTimeoutSeconds: gatewayConfig.backendRequestTimeoutSeconds
-    l7IngressSecret: l7IngressSecret
+    environmentId: certificateEnvironment!.outputs.id
+    registryServer: portalRegistry!.outputs.server
+    jobName: certificateJobName
+    portalJobName: portalCertificateJobName
+    pullIdentityId: certificateJobIdentities!.outputs.pull.id
+    tlsIdentity: certificateJobIdentities!.outputs.tls
+    portalIdentity: certificateJobIdentities!.outputs.portal
+    dnsIdentityId: dnsJobIdentity!.id
+    dnsClientId: dnsJobIdentity!.properties.clientId
+    storageUrl: certificateStorage!.outputs.storageUrl
+    receiptContainerName: certificateStorage!.outputs.receiptContainerName
+    portalStateContainerName: certificateStorage!.outputs.portalStateContainerName
+    tlsConfig: {
+      mode: certConfig.mode
+      hostname: gatewayConfig.publicHostName
+      hostnames: certConfig.domainNames
+      requiredHostnames: [gatewayConfig.publicHostName, portalConfig.publicHostName]
+      keyVaultName: certificateStorage!.outputs.vaultName
+      certificateName: certConfig.certificateName
+      dnsPlugin: certConfig.plugin
+      azureDnsSubscriptionId: certConfig.azureDnsSubscriptionId
+      azureDnsManagedIdentityResourceId: dnsJobIdentity!.id
+      moduleVersion: certConfig.moduleVersion
+      directoryUrl: acmeDirectoryUrl
+      renewBeforeDays: certConfig.renewBeforeDays
+      renewIntervalHours: certConfig.checkEveryHours
+      dnsSleepSeconds: certConfig.dnsSleepSeconds
+      validationTimeoutSeconds: certConfig.validationTimeoutSeconds
+      minimumValidDays: certConfig.minimumValidDays
+    }
+    portalConfig: { vaultName: serviceNames.keyVault, certificateName: portalConfig.certificate.certificateName, validityMonths: portalConfig.certificate.validityMonths }
   }
-  dependsOn: [monitoring, portalNetworkBindings]
-}
-
-// 各リソースが存在してからアラート・通知・監査閲覧権限を接続します。
-module monitoringBindings 'modules/monitoring-bindings.bicep' = if (deployCore) {
-  name: '${stem}-monitoring-bindings'
-  scope: monitorGroup
-  params: {
-    resourceStem: stem
-    location: location
-    tags: tags
-    monitoring: monitoring.outputs.monitoring
-    storage: monitoring.outputs.storage
-    appGatewayId: gateway!.outputs.applicationGateway.id
-    apimId: services!.outputs.serviceResourceIds.apim
-    firewallId: network!.outputs.firewallId
-    networkResourceIds: network!.outputs.monitoredResourceIds
-    resourceGroupIds: [idGroup.id, nwGroup.id, monitorGroup.id, svcGroup.id, maintGroup.id]
-    operatorEmailAddresses: monitoringConfig.operatorEmailAddresses
-    enableLogAlerts: monitoringConfig.enableLogAlerts
-    apimSkuName: servicesConfig.apimSkuName
-    appInsightsIngestionWarningGb: monitoringConfig.appInsightsIngestionWarningGb
-    telemetryPublisherPrincipalIds: [services!.outputs.principalIds.project]
-    // 構築コンテナー全件への管理VM自身の読取を常設します。追加閲覧者は構築後の手動設定です。
-    auditReaders: map(monitoring.outputs.storage.containerIds, containerId => {
-      collector: startsWith(toLower(containerId), '${toLower(monitoring.outputs.storage.collectJapan.id)}/') ? 'collectJapan' : 'collectFoundry'
-      containerName: last(split(containerId, '/'))
-      principalId: management!.outputs.managementVm.principalId
-      principalType: 'ServicePrincipal'
-    })
-  }
-}
+} : {}
 
 // API・認証ポリシー・名前付きの値・CM・BrokerはGateway配備工程が所有します。
 
@@ -728,12 +770,11 @@ output auditStoragePrivateAccess object = deployCore ? {
   privateDnsLinkId: auditPrivateDnsLink!.outputs.privateDnsLinkId
 } : {}
 output managementMaintenance object = deployCore ? {
-  principalId: management!.outputs.managementVm.principalId
   roleDefinitionIds: managementMaintenanceRoles!.outputs.roleDefinitionIds
 } : {}
 output managementClientInventory object = managementClientInventory
 output services object = deployCore ? services!.outputs.serviceResourceIds : {}
-output endpoints object = deployCore ? { foundry: services!.outputs.foundryEndpoint, project: services!.outputs.projectEndpoint, public: gateway!.outputs.applicationGateway.publicUrl } : {}
+output endpoints object = deployCore ? { foundry: services!.outputs.foundryEndpoint, project: services!.outputs.projectEndpoint, public: '' } : {}
 output managementVm object = deployCore ? management!.outputs.managementVm : {}
 // 初回404と元のCore入力・出力を再開時に照合する非秘密の世代証跡。秘密はOSProfileへ渡しません。
 output managementInitialSerialCreation object = deployCore && !empty(managementInitialSerialGeneration) ? {
@@ -742,18 +783,18 @@ output managementInitialSerialCreation object = deployCore && !empty(managementI
   managementVm: management!.outputs.managementVm
 } : {}
 output AZURE_LOCATION string = location
-output gateway object = deployCore ? gateway!.outputs.applicationGateway : {}
+output gateway object = {}
 // 通常HTTP(S)の入口保護を常設します。APIM保守は標準FQDNのHTTPSを使用します。
 // 公開証明書URIは、旧gRPC専用domainの所有照合と撤去にだけ使用します。
 output ingressSecrets object = deployCore ? {
-  enabled: true
-  l7IngressEnabled: true
+  enabled: false
+  l7IngressEnabled: useIngressSecrets
   realtimeEnabled: realtimeEnabled
   ownerTicketEnabled: ownerTicketEnabled
   apimId: services!.outputs.serviceResourceIds.apim
   apimGatewayHost: services!.outputs.apimGatewayHost
   publicHostName: gatewayConfig.publicHostName
-  certificateSecretUri: certificate!.outputs.certificateSecretUri
+  certificateSecretUri: certificateSecretUri
   namedValueId: '${services!.outputs.serviceResourceIds.apim}/namedValues/core-l7-ingress-secret'
 } : { enabled: false }
 // Expected IDs are available even if the subsequent core deployment fails.
@@ -762,6 +803,7 @@ output ingressSecrets object = deployCore ? {
 output cleanup object = {
   activityDiagnosticSettingId: subscriptionResourceId('Microsoft.Insights/diagnosticSettings', 'diag-${stem}-activity')
   keyVaultName: serviceNames.keyVault
+  certificateVaultName: 'kvtls-${stem}'
   foundryName: serviceNames.foundry
   apimName: serviceNames.apim
   serviceResourceGroup: svcGroup.name
@@ -769,6 +811,7 @@ output cleanup object = {
   location: location
   serviceResourceIds: {
     keyVault: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.KeyVault/vaults', serviceNames.keyVault)
+    certificateVault: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.KeyVault/vaults', 'kvtls-${stem}')
     foundry: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.CognitiveServices/accounts', serviceNames.foundry)
     apim: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.ApiManagement/service', serviceNames.apim)
   }
@@ -776,8 +819,7 @@ output cleanup object = {
 
 output portal object = deployCore ? union(portal!.outputs.platform, {
   authIdentity: portalAuthIdentity!.outputs.identity
-  authCertificateRunCommandId: portalAuthCertificate!.outputs.runCommandId
-  managementMaintenance: { principalId: management!.outputs.managementVm.principalId, roleDefinitionIds: managementMaintenanceRoles!.outputs.roleDefinitionIds }
+  authCertificateJobId: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.App/jobs', portalCertificateJobName)
   registryName: portalRegistry!.outputs.name
   registryId: portalRegistry!.outputs.id
   registryServer: portalRegistry!.outputs.server
@@ -799,7 +841,6 @@ output portal object = deployCore ? union(portal!.outputs.platform, {
 
 // Gateway配備が参照する共通基盤の公開メタデータ。アプリ固有リソースや秘密値は含めません。
 output gatewayFoundation object = deployCore ? {
-  managementMaintenance: { principalId: management!.outputs.managementVm.principalId, roleDefinitionIds: managementMaintenanceRoles!.outputs.roleDefinitionIds }
   resourceGroup: svcGroup.name
   identityResourceGroup: idGroup.name
   apimName: serviceNames.apim

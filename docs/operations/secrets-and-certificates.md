@@ -1,6 +1,6 @@
 # EntraのsecretとTLS証明書を更新する
 
-Portal専用EntraアプリはKV内の非exportable自己署名鍵によるclient assertionを使います。HTTPS証明書・CM client secret・Cookie署名鍵とは別用途です。初期生成は構築資材が管理VMで実行し、更新は[Portal認証の運用](portal-authentication.md)の専用スクリプトを使います。
+Portal専用EntraアプリはKV内の非exportable自己署名鍵によるclient assertionを使います。HTTPS証明書・CM client secret・Cookie署名鍵とは別用途です。初期生成は構築時の専用ACA Jobで実行し、更新は[Portal認証の運用](portal-authentication.md)の専用スクリプトを使います。
 
 [共通手順](common.md) · [Entra準備](../setup/02-entra.md) · [運用テスト](../testing/operations-tests.md)
 
@@ -84,15 +84,13 @@ ARM配備、Gの配備記録とジョブを読み、実行中・完了・失敗�
 
 ## TLS証明書を更新し、公開HTTPSまで確認する
 
-入口は[certificate.py](../../scripts/operations/certificate.py)。構築済み管理VMの保存済み
-worker・configを使用し、新しい定期jobやACME環境を作らない。対象VM・AppGW・
-versionless KV参照・公開ホストを照合し、workerのソース一致も確認する。
-管理VMの既存MIを使って公開certificate metadataだけを読み、PFXや秘密鍵を取得しない。
+入口は[certificate.py](../../scripts/operations/certificate.py)です。構築済みの公開TLS Job、AppGW、版なしのKey Vault参照、公開ホストを照合します。
+専用ACA Jobの結果には公開証明書の情報だけを含めます。 [証明書用Job](certificate-jobs.md)
 
-1. まず次を計画・反映する。実行時は一回限りのVM Run Commandで更新timerと公開metadataを
+1. まず次を計画・反映する。実行時は専用ACA Jobで公開証明書の情報を
    読み、Gateway／PortalのHTTPS443のSNI・信頼を検証する。
    `public-tls-verified`は、KVの現在leafと実TLSが一致した場合だけ記録する。
-   正常完了した今回のRun Commandだけを回収し、404を確認する。実行中や応答不明のものは保持する。
+   実行の識別子と結果を保護記録へ保存し、応答不明時は同じ実行を照合する。
 
 ```sh
 python3 -B scripts/operations/certificate.py --config "$DEPLOY_PARAMS_FILE" --stage check
@@ -114,7 +112,7 @@ python3 -B scripts/operations/certificate.py --config "$DEPLOY_PARAMS_FILE" --st
 5. AppGW更新を有限時間で読み、公開Gateway・PortalのHTTPS443の実TLS leaf・信頼・ホスト名が
    現在KVと一致することを確認する。KVの版が増えたことだけで完了にしない。
    通常APIとPortalログインも確認する。
-6. workerは成功したが同期で止まった場合は、元のVM Run Command・同期結果・参照を読む。
+6. workerは成功したが同期で止まった場合は、元のACA Job実行・同期結果・参照を読む。
    正常な証明書を再発行せず、必要なら`--stage sync`を計画・反映してAppGW同期とTLS観測を
    行う。`check`で新版の配信を確認できた場合は追加更新しない。応答が不明な要求は、
    元の結果を確認してから再開する。
@@ -127,7 +125,7 @@ HostとSNIに使用する。Microsoftが管理する既定証明書を使用す�
 [内部VNetのDNS](https://learn.microsoft.com/azure/api-management/api-management-using-with-internal-vnet)
 
 **異常時：** worker・DNS・KV・サービス同期のどこで止まったかを保護記録で特定する。
-実行中や応答不明のVM要求・AppGW更新要求を繰り返さず、旧証明書の有効な版を保持する。
-DNS権限・KV権限／経路・timer・参照の対象だけを修正してから再試行する。
+実行中や応答不明のJob開始要求・AppGW更新要求を繰り返さず、旧証明書の有効な版を保持する。
+DNS権限・Key Vault権限と経路・ACAのスケジュール・参照の対象だけを修正してから再試行する。
 公開側が旧版なら、再発行する前に同期を確認する。作業用タグ復元が未完了なら、現在の
 タグとETagを読み、同時変更を消さず該当タグだけを戻す。ログや秘密の一括取得は不要。

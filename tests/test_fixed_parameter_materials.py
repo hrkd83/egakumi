@@ -3,6 +3,7 @@
 合成入力だけを使うオフライン試験。Azureの受入・疎通は検証しない。
 """
 import copy
+import json
 import unittest
 
 from arm_helpers import PolicyExpression
@@ -160,9 +161,6 @@ class FixedParameterMaterialsTests(unittest.TestCase):
         reader = expression(template)
         actual = [reader.resolve(item["properties"], parameters) for item in grants]
         expected = {
-            parameters["certificateIdentityPrincipalId"]: {"4633458b-17de-408a-b874-0445c86b69e6"},
-            parameters["managementPrincipalId"]: {"a4417e6f-fecd-4de8-b567-7b0420556985",
-                                                 "b86a8fe4-44ce-4948-aee5-eccb2c155cd7"},
             parameters["principalIds"]["apim"]: {"4633458b-17de-408a-b874-0445c86b69e6",
                                                  "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd",
                                                  "7628b7b8-a8b2-4cdc-b46f-e9b35248918e",
@@ -177,15 +175,16 @@ class FixedParameterMaterialsTests(unittest.TestCase):
             roles.setdefault(item["principalId"], set()).add(item["roleDefinitionId"].split("/")[-1])
         self.assertEqual(roles, expected)
 
-    def test_main_only_supplies_constructed_management_identity_as_audit_reader(self):
+    def test_manual_maintenance_exposes_scopes_without_assigning_audit_reader_to_vm(self):
         template = self.templates["main"]
-        bindings, = [item for item in resources(template) if "-monitoring-bindings" in item.get("name", "")]
-        supplied = bindings["properties"]["parameters"]["auditReaders"]["value"]
-        self.assertTrue(supplied.startswith("[map("), supplied)
-        self.assertIn(".outputs.storage.value.containerIds", supplied)
-        self.assertIn(".outputs.managementVm.value.principalId", supplied)
-        self.assertNotIn("monitoringConfig", supplied)
-        self.assertNotIn("concat(", supplied)
+        supplied = template["outputs"]["ingressMonitoringPlan"]["value"]
+        self.assertIn("monitoring", supplied)
+        self.assertIn("storage", supplied)
+        self.assertNotIn(".outputs.managementVm.value.principalId", json.dumps(supplied))
+        outputs = template["outputs"]
+        self.assertIn(".outputs.roleDefinitionIds.value", outputs["managementMaintenance"]["value"])
+        self.assertIn(".outputs.managementVm.value.principalId",
+                      json.dumps(outputs["managementClientInventory"]["value"]))
 
 
 if __name__ == "__main__":

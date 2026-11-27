@@ -544,6 +544,7 @@ class LinuxManagementTemplateTests(unittest.TestCase):
 
     def test_vm_uses_linux_entra_and_monitor_extensions_and_dcr(self):
         template = self.templates["management"]
+        self.assertFalse(self.resources(template, "Microsoft.Authorization/roleAssignments"))
         extensions = self.resources(template, "Microsoft.Compute/virtualMachines/extensions")
         self.assertEqual({extension["properties"]["type"] for extension in extensions},
                          {"AADSSHLoginForLinux", "AzureMonitorLinuxAgent"})

@@ -3,7 +3,8 @@
 param(
     [ValidateSet('Initialize', 'Prepare', 'Inspect', 'Activate', 'Retire')][string]$Action,
     [string]$ConfigJson,
-    [switch]$LibraryOnly
+    [switch]$LibraryOnly,
+    [switch]$ContainerJob
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -12,21 +13,25 @@ function Invoke-PortalVault {
     param([string]$Method, [string]$Path, $Body = $null)
     # 対象KVの相対パスだけを受け付け、redirectと変更要求の再送を禁止します。
     if ($Path -notmatch '^/(certificates|keys)/[a-zA-Z0-9/-]+(?:/pending)?$') { throw 'Invalid vault operation' }
-    $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::new($Method), "$script:Vault$Path`?api-version=7.4")
-    $request.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $script:Token)
-    if ($null -ne $Body) {
-        $request.Content = [System.Net.Http.StringContent]::new(($Body | ConvertTo-Json -Depth 20 -Compress), [Text.Encoding]::UTF8, 'application/json')
-    }
-    try {
-        $response = $script:Http.SendAsync($request).GetAwaiter().GetResult()
+    $attempts = if ($ContainerJob) { 31 } else { 1 }
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::new($Method), "$script:Vault$Path`?api-version=7.4")
+        $request.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $script:Token)
+        if ($null -ne $Body) {
+            $request.Content = [System.Net.Http.StringContent]::new(($Body | ConvertTo-Json -Depth 20 -Compress), [Text.Encoding]::UTF8, 'application/json')
+        }
         try {
-            $status = [int]$response.StatusCode
-            $value = $null
-            if ($status -in 200,201,202) { $value = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json -AsHashtable }
-            if ($status -notin 200,201,202,404) { throw 'Vault operation was rejected' }
-            return @{ status = $status; value = $value }
-        } finally { $response.Dispose() }
-    } finally { $request.Dispose() }
+            $response = $script:Http.SendAsync($request).GetAwaiter().GetResult()
+            try {
+                $status = [int]$response.StatusCode
+                $value = $null
+                if ($status -eq 403 -and $attempt -lt $attempts) { Start-Sleep -Seconds 10; continue }
+                if ($status -in 200,201,202) { $value = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json -AsHashtable }
+                if ($status -notin 200,201,202,404) { throw 'Vault operation was rejected' }
+                return @{ status = $status; value = $value }
+            } finally { $response.Dispose() }
+        } finally { $request.Dispose() }
+    }
 }
 
 function Get-PortalPolicy {
@@ -115,6 +120,7 @@ function Read-PortalCertificate {
 
 function Save-PortalCheckpoint {
     param($Value)
+    if ($ContainerJob) { Invoke-PortalJobCheckpoint 'PUT' $Value; return }
     $temporary = "$script:StatePath.tmp"
     if (Test-Path $temporary) { throw 'Unrecovered certificate checkpoint' }
     [IO.File]::WriteAllText($temporary, ($Value | ConvertTo-Json -Depth 10 -Compress))
@@ -202,39 +208,49 @@ function Invoke-PortalCertificateAction {
 
 if ($LibraryOnly) { return }
 try {
-    if (-not $IsLinux -or [Environment]::UserName -cne 'root') { throw 'Management VM root execution is required' }
+    if (-not $IsLinux -or (-not $ContainerJob -and [Environment]::UserName -cne 'root')) { throw 'Management VM root execution is required' }
     $config = $ConfigJson | ConvertFrom-Json -AsHashtable
     if ($config.vaultName -notmatch '^[a-z0-9-]{3,24}$' -or $config.certificateName -notmatch '^[a-z0-9-]{1,127}$' -or $config.validityMonths -notin 1..24) { throw 'Invalid certificate configuration' }
     $script:Vault = "https://$($config.vaultName).vault.azure.net"
     $script:Name = $config.certificateName
     $script:Months = $config.validityMonths
-    $directory = "/var/lib/egakumi-portal-auth/$($config.vaultName)-$script:Name"
-    foreach ($path in @('/var/lib/egakumi-portal-auth', $directory, "$directory/state.json", "$directory/state.json.tmp", "$directory/lock")) {
-        if (Test-Path $path) { if ((Get-Item -Force $path).LinkType) { throw 'Certificate state must not use links' } }
-    }
-    $null = [IO.Directory]::CreateDirectory($directory)
-    [IO.File]::SetUnixFileMode($directory, [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite -bor [IO.UnixFileMode]::UserExecute)
-    $script:StatePath = "$directory/state.json"
-    $lock = [IO.File]::Open("$directory/lock", [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-    [IO.File]::SetUnixFileMode("$directory/lock", [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite)
     $handler = [System.Net.Http.HttpClientHandler]::new()
     $handler.AllowAutoRedirect = $false
     $handler.UseProxy = $false
     $script:Http = [System.Net.Http.HttpClient]::new($handler)
     $script:Http.Timeout = [TimeSpan]::FromSeconds(30)
-    $imds = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net')
-    $imds.Headers.Add('Metadata','true')
-    try {
-        $response = $script:Http.SendAsync($imds).GetAwaiter().GetResult()
+    if ($ContainerJob) {
+        $script:Token = (Get-CertificateJobToken 'Vault' $env:CERTIFICATE_CLIENT_ID $script:Vault).access_token
+        $checkpoint = Invoke-PortalJobCheckpoint 'GET'
+    } else {
+        $directory = "/var/lib/egakumi-portal-auth/$($config.vaultName)-$script:Name"
+        foreach ($path in @('/var/lib/egakumi-portal-auth', $directory, "$directory/state.json", "$directory/state.json.tmp", "$directory/lock")) {
+            if (Test-Path $path) { if ((Get-Item -Force $path).LinkType) { throw 'Certificate state must not use links' } }
+        }
+        $null = [IO.Directory]::CreateDirectory($directory)
+        [IO.File]::SetUnixFileMode($directory, [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite -bor [IO.UnixFileMode]::UserExecute)
+        $script:StatePath = "$directory/state.json"
+        $lock = [IO.File]::Open("$directory/lock", [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        [IO.File]::SetUnixFileMode("$directory/lock", [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite)
+        $imds = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net')
+        $imds.Headers.Add('Metadata','true')
         try {
-            if (-not $response.IsSuccessStatusCode) { throw 'Managed identity authentication failed' }
-            $script:Token = ($response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json -AsHashtable).access_token
-        } finally { $response.Dispose() }
-    } finally { $imds.Dispose() }
-    $checkpoint = $(if (Test-Path $script:StatePath) { Get-Content -Raw $script:StatePath | ConvertFrom-Json -AsHashtable } else { @{} })
+            $response = $script:Http.SendAsync($imds).GetAwaiter().GetResult()
+            try {
+                if (-not $response.IsSuccessStatusCode) { throw 'Managed identity authentication failed' }
+                $script:Token = ($response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json -AsHashtable).access_token
+            } finally { $response.Dispose() }
+        } finally { $imds.Dispose() }
+        $checkpoint = $(if (Test-Path $script:StatePath) { Get-Content -Raw $script:StatePath | ConvertFrom-Json -AsHashtable } else { @{} })
+    }
     $result = Invoke-PortalCertificateAction $Action $config $checkpoint
-    Write-Output ('EGAKUMI_PORTAL_AUTH:' + ($result | ConvertTo-Json -Depth 10 -Compress))
-} catch { Write-Output 'Portal authentication certificate operation failed; inspect protected state before retrying'; exit 1 }
+    $prefix = if ($ContainerJob) { 'EGAKUMI_CERTIFICATE_RESULT:' } else { 'EGAKUMI_PORTAL_AUTH:' }
+    Write-Output ($prefix + ($result | ConvertTo-Json -Depth 10 -Compress))
+} catch {
+    if ($ContainerJob) { Write-Output 'CERTIFICATE_STAGE:portal-certificate' }
+    else { Write-Output 'Portal authentication certificate operation failed; inspect protected state before retrying' }
+    exit 1
+}
 finally {
     $script:Token = $null
     if (Test-Path variable:script:Http) { $script:Http.Dispose() }

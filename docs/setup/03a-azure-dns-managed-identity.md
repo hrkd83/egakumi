@@ -2,7 +2,7 @@
 
 [03. 公開DNSの準備に戻る](03-public-dns.md) · [04. paramsを設定する](04-params.md)
 
-Azure Portalでユーザー割り当てマネージドIDを先に作成し、そのIDへ公開DNSの操作権限を付与します。IDの公開参照を構築前に環境別paramsへ設定すると、`azd up`がメンテナンス用の管理VMへ紐づけ、証明書の初回取得・定期更新に使用します。
+Azure Portalでユーザー割り当てマネージドIDを先に作成し、そのIDへ公開DNSの操作権限を付与します。IDの公開参照を構築前に環境別paramsへ設定すると、`azd up`が専用ACAの公開TLS Jobへ紐づけ、証明書の初回取得・定期更新に使用します。
 
 `<...>`は導入先で確認して入力する値です。画面中の黒帯は、アカウント、Subscription、RG、DNS名、リソースIDなどの固有情報をマスキングしたものです。画面の値を転記せず、自分の環境で値を確認してください。公開DNSの委任は[03. 公開DNS](03-public-dns.md)で済ませます。
 
@@ -29,7 +29,7 @@ IDの置き場所と、DNS権限を付ける対象RGは別々に確認します�
 
 - ID作成先RGでユーザー割り当てIDを作成できること。例: `Managed Identity Contributor`。
 - DNS側RGでロール割り当てを作成できること。例: `Role Based Access Control Administrator`や`Owner`。割り当て可能ロールの条件がある場合はDNS用ロールを許可すること。
-- 後のCore構築時には管理VMの作成・更新と、既存IDの割り当てができること。ID側の権限例は`Managed Identity Operator`です。既に持つロールで満たしていれば追加付与は不要です。
+- 後の構築時にはACA Jobの作成・更新と、既存IDの割り当てができること。ID側の権限例は`Managed Identity Operator`です。既に持つロールで満たしていれば追加付与は不要です。
 
 これらはAzureリソースの権限です。このDNS用IDの準備で、Entraのアプリ登録やclient secretを作成する作業はありません。
 
@@ -119,7 +119,7 @@ DNSゾーンを別Subscriptionに置いている場合、paramsへ設定するDN
 
 設定先は`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`です。`azd up`は準備済みの参照を検査し、不足・不正があれば構築前に停止します。
 
-Coreは証明書取得前に指定したIDを管理VMへ紐づけます。初回取得・定期更新ではそのIDでDNSのTXTを作成し、認証後に該当の検証値を回収します。Key Vaultへのアクセスには管理VMのシステム割り当てIDを使います。IDとDNS権限は外部の事前準備資源として維持し、Coreの`azd down`で削除する構成にはしません。
+構築資材は初回発行の前に指定したIDを公開TLS Jobへ紐づけます。初回取得・定期更新ではそのIDでDNSのTXTを作成し、認証後に該当の検証値を回収します。公開TLS用Key VaultへのアクセスにはJob専用の実行IDを使います。IDとDNS権限は外部の事前準備資源として維持し、Coreの`azd down`で削除する構成にはしません。
 
 入力の形式検査やロール割り当ての登録確認は、実際の証明書発行・更新の成功確認とは別です。構築後の証明書・更新timerの確認は[運用手順](../operations.md)を参照してください。
 

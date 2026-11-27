@@ -110,10 +110,7 @@ class WafControlRouteTests(unittest.TestCase):
                 return super().evaluate(parameters, index, tree, bindings)
 
         template = compile_bicep('infra/main.bicep')
-        resources = template['resources']
-        resources = list(resources.values()) if isinstance(resources, dict) else resources
-        module = next(r for r in resources if 'publishedApiPaths' in r.get('properties', {}).get('parameters', {}))
-        expression = module['properties']['parameters']['publishedApiPaths']['value']
+        expression = template['variables']['gatewayPlan']['publishedApiPaths']
         original = next(api for api in contracts() if api['name'] == 'openai-realtime-observer-v1')
         cases = [('standard', original)]
         for field, value in (('name', 'custom-observer'), ('apiType', 'http'), ('websocket', {}),

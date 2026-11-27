@@ -130,18 +130,18 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
                     and resource["name"] == "[format('{0}-" + name + "', "
                     + ("variables" if target == "core" else "parameters") + "('stem'))]")
 
-    def test_initial_certificate_runs_after_runtime_network_and_role_preparation(self):
-        module = self.module('portal-auth-certificate')
-        dependency_text = json.dumps(module['dependsOn'])
-        for dependency in ('portal-auth-key-operations', 'service-bindings', 'network-bindings', 'certificate', 'management-audit'):
-            self.assertIn(dependency, dependency_text)
-        command, = module['properties']['template']['resources']
-        self.assertEqual(command['properties']['asyncExecution'], False)
-        self.assertEqual(command['properties']['treatFailureAsDeploymentFailure'], True)
-        embedded_sources = [value for value in module['properties']['template']['variables'].values() if isinstance(value, str)]
-        self.assertTrue(any('worker.ps1 -Action Initialize' in value for value in embedded_sources))
-        self.assertTrue(any('EGAKUMI_PORTAL_AUTH' in value for value in embedded_sources))
-        self.assertNotIn('clientId', module['properties']['parameters']['config']['value'])
+    def test_portal_certificate_job_pulls_private_image_with_the_dedicated_identity(self):
+        jobs = compile_bicep('infra/certificate-jobs.bicep')
+        resources = jobs['resources']
+        if isinstance(resources, dict):
+            resources = resources.values()
+        job, = [resource for resource in resources if resource['type'] == 'Microsoft.App/jobs']
+        parameters = jobs['parameters']
+        self.assertEqual(parameters['accountEmail']['type'].casefold(), 'securestring')
+        self.assertIn('imageDigest', parameters)
+        self.assertIn('identitySettings', json.dumps(job['properties']['configuration']))
+        self.assertIn('Manual', json.dumps(job['properties']['configuration']))
+        self.assertIn('CERTIFICATE_MODE', json.dumps(job['properties']['template']))
 
     def test_dedicated_signer_has_only_public_read_and_sign_on_the_key_scope(self):
         resources = self.module('portal-auth-key-access', 'portal')['properties']['template']['resources']
@@ -151,7 +151,15 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         self.assertIn('Microsoft.KeyVault/vaults/keys', assignment['scope'])
 
     def test_management_key_operator_uses_supported_data_actions_on_the_key_scope(self):
-        resources = self.module('portal-auth-key-operations')['properties']['template']['resources']
+        storage = compile_bicep('infra/modules/certificate-storage.bicep')
+        modules = storage['resources']
+        if isinstance(modules, dict):
+            modules = modules.values()
+        key_module = next(item for item in modules if '-portal-job-key-operations' in item.get('name', ''))
+        self.assertEqual(key_module['properties']['parameters']['principalId'], {'value': "[parameters('portalPrincipalId')]"})
+        resources = key_module['properties']['template']['resources']
+        if isinstance(resources, dict):
+            resources = resources.values()
         role = next(item for item in resources if item['type'].endswith('/roleDefinitions'))
         permission, = role['properties']['permissions']
         # keys/write is a control-plane Action; the KV update REST API uses update/action.
@@ -239,9 +247,15 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         self.assertIn("7f951dda-4ed3-4680-a7ca-43fe172d538d", schema["variables"]["acrPull"])
 
     def test_portal_ingress_keeps_the_configured_long_request_budget(self):
-        gateway = self.module("gateway")
+        ingress = compile_bicep('infra/public-ingress.bicep')
+        resources = ingress['resources']
+        if isinstance(resources, dict):
+            resources = resources.values()
+        gateway = next(item for item in resources if "{0}-gateway" in item.get('name', ''))
         self.assertEqual(gateway["properties"]["parameters"]["backendRequestTimeoutSeconds"],
-                         {"value": "[variables('gatewayConfig').backendRequestTimeoutSeconds]"})
+                         {"value": "[parameters('gatewayPlan').backendRequestTimeoutSeconds]"})
+        self.assertIn("variables('gatewayConfig').backendRequestTimeoutSeconds",
+                      self.main['variables']['gatewayPlan']['backendRequestTimeoutSeconds'])
         template = gateway["properties"]["template"]
         app_gateway, = [item for item in template["resources"]
                         if item["type"] == "Microsoft.Network/applicationGateways"]

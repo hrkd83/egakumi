@@ -57,10 +57,10 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | 固定NSGの限定移行 | [nsg-fixed-upgrade.bicep](../../infra/modules/nsg-fixed-upgrade.bicep)、[fixed migration](../../tests/test_fixed_nsg_migration.py)、[upgrade](../../tests/test_fixed_nsg_upgrade.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
 | Broker常設 | [Broker配備資材](../../apps/apim/deploy/main.bicep)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py)の`test_broker_resources_are_always_selected_independently_of_business_profiles` |
 | L7入口保護 | [AppGW資材](../../infra/modules/application-gateway.bicep)、[APIM共通policy](../../apps/apim/policies/service.xml)、[trusted ingress](../../tests/test_trusted_ingress.py) |
-| 監査Blob閲覧 | [audit-reader-bindings](../../infra/modules/audit-reader-bindings.bicep)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py) |
-| ACA/保存ログの認可 | [maintenance roles](../../infra/modules/management-maintenance-roles.bicep)、[ACA bindings](../../infra/modules/management-aca-bindings.bicep)、[Workspace bindings](../../infra/modules/management-monitoring-bindings.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py) |
+| 監査Blob閲覧 | [保守時の手動付与](../operations.md#保守の付与回収)、[保守資材の回帰試験](../../tests/test_maintenance_upgrade.py) |
+| ACA/保存ログの認可 | [ACAカスタムロール定義](../../infra/modules/management-maintenance-roles.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py)、[本人クライアント試験](../../tests/test_management_client.py) |
 | 保守clientと導入 | [management_client.py](../../scripts/management_client.py)、[client試験](../../tests/test_management_client.py)、[導入試験](../../tests/test_management_client_install.py) |
-| SQL直接保守 | [SQL認可の資材試験](../../tests/test_sql_management_grants_infra.py)、[SQL client試験](../../tests/test_management_sql_client.py)、[構築DB discovery試験](../../tests/test_management_sql_discovery.py) |
+| SQL直接保守 | [本人への付与・回収](../operations/management-sql-access.md)、[SQL認可の資材試験](../../tests/test_sql_management_grants_infra.py)、[SQLクライアント試験](../../tests/test_management_sql_client.py) |
 | Serial初期準備 | [初期module](../../infra/modules/management-serial-initialization.bicep)、[初期処理試験](../../tests/test_serial_initialization.py)、[guest試験](../../tests/test_management_serial_guest.py) |
 | 管理VMのAzureホスト時刻 | [guest監査設定](../../infra/guest/configure-audit.sh)、[監査module](../../infra/modules/management-audit.bicep)、[Linux時刻試験](../../tests/test_management_linux.py)。PHC device／`clock_name`、唯一source、既知旧設定の移行、未知設定の拒否、同期確認失敗時の復旧を合成条件で検証する |
 | Core前の管理VM時刻gate | [読取gate](../../scripts/deployment/helpers/management_host_time.py)、[gate試験](../../tests/test_management_host_time.py)。既存VMの所有・現行script全文一致・RunCommand成功出力、VM作成／実行開始／終了のUTC時刻、旧VMや旧結果の拒否、厳密な整数HTTP404の新規構築判定を検証する。NSG限定移行の旧管理NTP削除にも適用する。先行適用証跡を現在精度の保証にしない |
@@ -96,10 +96,11 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | ACAのFirewall経路 | ACAの既定経路、AppGW向け復路、既定送信アクセス、BGP伝搬 | 固定`0.0.0.0/0`とAppGW向け復路の次ホップが構築Firewall。既定送信とBGP伝搬は無効。承認済みのEntra・パッケージ配布へのHTTPSとFirewallログを照合し、未許可の公開宛TCP443はFirewallで拒否される。経路の変更は合成入力で検証する |
 | ACAの両方向の拒否 | 同一ACAサブネット、許可元、新規のその他VNet接続 | AppGW経由のPortal、APIMからBroker、管理VMからACAが到達する。明示許可のない別サブネットからの受信と、ACAから未許可のVNet内宛先・ポートへの送信が新規接続で拒否される |
 | ACAの現構成依存 | 新規イメージ取得、App/Job起動、スケール、標準DNS、管理ID、監視 | ACRのログインと専用データの名前がPEへ解決し、イメージ未取得のレプリカで取得できる。MCRからの初回起動、レプリカ増減、Broker／PortalのSQL Proxy接続、Key Vault参照と監視ログの取り込みを確認する |
-| 監査Blob・保存ログ | MGMT-AUDIT-JAPAN/FOUNDRY、MGMT-MONITOR | VMのMIで構築コンテナー/Workspaceを読み、取得が完了。監査Blobへの書込み・削除権限は付けない |
+| 監査Blob・保存ログ | MGMT-AUDIT-JAPAN/FOUNDRY、MGMT-MONITOR | 担当者本人が一時付与の範囲内で対象コンテナー／Workspaceを読む。範囲外の読取、監査Blobの書込み・削除、回収後の新規操作は拒否される |
 | ACA App/環境のログ・App exec | MGMT-ARM、MGMT-ACA-DEV | 対象App/revision/replica/containerとtoken scopeを確認し、ログ本文/有限execの結果を取得。環境tokenをログ専用の保証として扱わない |
 | ACA Jobログ | ACA-SQL等のJob処理とMGMT-ACA-DEV | 対象Jobのtoken認可、保存ログ、実行が存続する場合のライブログを区別。schema Jobは配備更新工程の正常実行に合わせて確認 |
-| SQL直接保守 | MGMT-SQL | 構築2DBだけでVMのMI・DBユーザー・権限・ODBC18・TLS/証明書検証が成立。DDL/更新の再送可否を結果保存と分ける |
+| SQL直接保守 | MGMT-SQL | 対象DBだけで一時付与した本人のユーザーと最小権限で接続し、ODBC 18のTLSと証明書検証を確認する。別DBと回収後の新規接続は拒否される |
+| 本人のVM接続 | 管理ネットワーク、VMのEntra SSH、一時RBACとLinuxグループ | 付与前・回収後の新規SSHを拒否し、付与期間中だけ本人がsudoなしで接続し資材を使用できる。既存セッション終了・ユーザー鍵の扱い・証明書用IDの分離を確認する |
 | VM基盤・監査 | 非NSGのIMDS、DHCP、Agent、AMA、Disk、Boot | 実MI/版/実効設定/転送と保存を確認。managed内部保存を顧客NIC通信へ推測対応付けしない |
 | Serial Console | 操作端末/Compute制御とguest serial channel | 認可、managed Boot Diagnostics、guest初期認証、実ログイン、SSH鍵維持を確認。VM NSGのSSH受信許可を追加しない |
 | APIM時刻 | APIM-NTP | UDP123のAllow/拒否、診断エラー、APIM自身の現在時刻応答を組み合わせる。内部daemon/NTP応答packetは公開APIで不可視の場合があり、観測範囲を明記 |

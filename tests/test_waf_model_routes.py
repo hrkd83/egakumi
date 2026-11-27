@@ -45,10 +45,7 @@ class ModelWafRouteTests(unittest.TestCase):
         cls.manifest = load_manifest()
         cls.profiles = [p for p in cls.manifest['profiles'] if p['name'] in MODEL_WAF_PATHS]
         cls.main = compile_bicep('infra/main.bicep')
-        resources = cls.main['resources']
-        resources = list(resources.values()) if isinstance(resources, dict) else resources
-        module = next(r for r in resources if 'publishedApiPaths' in r.get('properties', {}).get('parameters', {}))
-        cls.expression = module['properties']['parameters']['publishedApiPaths']['value']
+        cls.expression = cls.main['variables']['gatewayPlan']['publishedApiPaths']
 
     def test_only_the_two_formal_operations_publish_model_prefixes_in_python_and_main(self):
         expected = {'openai-images-v1': ('image-edit', 'g-images'),

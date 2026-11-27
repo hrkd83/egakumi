@@ -73,7 +73,7 @@ AppGWと公開IPのゾーン指定は両方同じ値にします。[]はゾー�
 
 規則の作成有無・任意追加規則・追加FQDNは公開設定にしません。廃止した`apimAdditionalNetworkRules`・`managementAdditionalNetworkRules`・`apimAdditionalApplicationRules`・`managementAdditionalApplicationRules`・`apimAllowedFqdns`・`managementAllowedFqdns`は、config／paramsの空値も拒否します。[固定初期集合と内部宛先生成](04-params.md#ネットワーク監査の接続設定)を確認してください。
 
-APIMの承認済み証明書到達性と正規API宛先、管理VMの固定配布先と業務ACME／構築ホストを常設規則へ組み込みます。API生成先0でもAPIM規則を空宛先で送信せず、既存証明書規則と重複する基底を維持します。証明書directory、API正本、アプリ登録と以下のSKU／IDPSモード等は維持します。独立した`snatPrivateRanges`・`idpsPrivateRanges`・`bypassTrafficSettings`入力は空値でも拒否します。ネットワーク規則のSNAT除外は`IANAPrivateRanges`と構築VNetの`addressSpaces`です。Premium IDPSの内部分類はRFC1918と構築VNetのCIDRからAppGWサブネットを除いて生成し、初期bypassは空に固定します。
+APIMの承認済み証明書到達性と正規API宛先、管理VMの構築先と、証明書用の専用ACA環境からACME・DNS管理API・Private Endpointへ接続する規則を組み込みます。API生成先0でもAPIM規則を空宛先で送信せず、既存証明書規則と重複する基底を維持します。証明書directory、API正本、アプリ登録と以下のSKU／IDPSモード等は維持します。独立した`snatPrivateRanges`・`idpsPrivateRanges`・`bypassTrafficSettings`入力は空値でも拒否します。ネットワーク規則のSNAT除外は`IANAPrivateRanges`と構築VNetの`addressSpaces`です。Premium IDPSの内部分類はRFC1918と構築VNetのCIDRからAppGWサブネットを除いて生成し、初期bypassは空に固定します。
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
@@ -129,7 +129,7 @@ WAFの用途別ポリシーとデータ欄の除外は[WAFの公開仕様](../te
 
 APIMの常設L7入口証明／Realtime所有者署名のKey Vault参照は、APIM自身のシステム割り当てマネージドIDを使い、対象KVだけに組み込みのKey Vault Secrets Userを付与します。APIMのHTTPS保守は既定の`<APIM_NAME>.azure-api.net`をPrivate DNSで内部VIPへ解決し、同名のHost／SNIとMicrosoft管理の既定証明書を使います。gRPC専用だったAPIMの公開名customProxyと公開証明書参照は撤去します。[KV firewall有効時にAPIMのユーザー割り当てIDを使用できない制約](https://learn.microsoft.com/azure/api-management/api-management-howto-use-managed-service-identity)に合わせた構成です。AppGWは証明書用のユーザー割り当てIDを引き続き使います。IDの権限とPE経由の到達性は別々に実機確認します。
 
-APIMが参照するKVは、`publicNetworkAccess: Disabled`と`defaultAction: Deny`を維持し、`bypass: AzureServices`を管理処理用の例外として設定します。カスタムドメイン証明書を参照する場合、APIMはVNetからKVへ到達できてもこの例外が必要ですが、標準構築ではそのAPIM証明書参照を撤去しました。named valueも管理面の機能ですが、ネットワーク到達性があれば例外なしの接続を選べます。この資材では管理用のtrusted services例外を維持します。gRPC専用customProxyの撤去後、APIMは公開証明書を参照せず、常設L7入口証明と所有者署名用のNamed Valueを参照します。一般利用者や任意のAzureアプリへの公開許可ではなく、trusted serviceにも対象KVのRBACを要求します。通常のAPIMバックエンド呼出し・管理VM・AppGWの証明書読取はPE経由で確認します。[APIM管理面と通常のAPI通信の区別](https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/trusted-service-connectivity-retirement-march-2026#scenarios-that-are-not-affected-by-the-breaking-change)、[公開アクセス無効時も残るtrusted services例外](https://learn.microsoft.com/en-us/azure/key-vault/general/network-security#key-vault-firewall-enabled-trusted-services-only)
+APIMが参照するKVは、`publicNetworkAccess: Disabled`と`defaultAction: Deny`を維持し、`bypass: AzureServices`を管理処理用の例外として設定します。カスタムドメイン証明書を参照する場合、APIMはVNetからKVへ到達できてもこの例外が必要ですが、標準構築ではそのAPIM証明書参照を撤去しました。named valueも管理面の機能ですが、ネットワーク到達性があれば例外なしの接続を選べます。この資材では管理用のtrusted services例外を維持します。gRPC専用customProxyの撤去後、APIMは公開証明書を参照せず、常設L7入口証明と所有者署名用のNamed Valueを参照します。一般利用者や任意のAzureアプリへの公開許可ではなく、trusted serviceにも対象KVのRBACを要求します。AppGWは公開TLS用Vaultの対象証明書だけをPrivate Endpoint経由で読み取ります。[APIM管理面と通常のAPI通信の区別](https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/trusted-service-connectivity-retirement-march-2026#scenarios-that-are-not-affected-by-the-breaking-change)、[公開アクセス無効時も残るtrusted services例外](https://learn.microsoft.com/en-us/azure/key-vault/general/network-security#key-vault-firewall-enabled-trusted-services-only)
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
@@ -171,7 +171,7 @@ API配列の置換、`publishApis`切替、既存WAF Resource ID、caller別`rat
 
 #### Linux管理VM（management）
 
-管理VMはUbuntu 24.04 LTS amd64＋SSH公開鍵認証です。現在の自動構築が対応するイメージはCanonical / ubuntu-24_04-lts / serverで、別ディストリビューション・custom imageを指定して動作保証するものではありません。SSHのパスワード認証・RDPは構成しません。初期VMのSerial Console用ローカル認証は[配備工程](06-deploy.md)で別に準備します。証明書取得・更新は固定版PowerShell 7.6.7をLinuxで動かし、定期実行はsystemd timer、OSログ収集はLinux AMA/DCRで行います。
+管理VMはUbuntu 24.04 LTS amd64＋SSH公開鍵認証です。現在の自動構築が対応するイメージはCanonical / ubuntu-24_04-lts / serverで、別ディストリビューション・custom imageを指定して動作保証するものではありません。SSHのパスワード認証・RDPは構成しません。初期VMのSerial Console用ローカル認証は[配備工程](06-deploy.md)で別に準備します。OSログ収集はLinux AMA/DCRで行います。公開TLSの取得・更新は固定版PowerShellを含むイメージで動く、専用ACAのJobが担当します。
 
 Microsoft LearnはAzureホスト時刻を通常最適な同期元とし、最新LinuxイメージのChrony＋PHC構成を案内しています。管理VMの時刻同期はUbuntu 24.04のChronyでAzureホストのPHCを唯一の同期元にします。`/dev/ptp_hyperv`がcharacter deviceで、対応する`clock_name`が`hyperv`であることを変更前に確認し、PHCの`refid`を`AZUR`として設定します。既知のUbuntu標準外部NTP／pool／source読込経路を無効化し、外部NTPへのfallbackやtimesyncdへの切替は行いません。PHC・Chronyの不足、未知の企業時刻設定、変更された旧管理ファイルは変更前に失敗させます。旧`90-core-platform.sources`とtimesyncd用`90-core-platform.conf`は、既知の管理内容と完全一致する場合だけ移行します。
 
@@ -217,7 +217,7 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
-| `certificate.mode` | `"dnsPlugin"` | Azure Public DNSとUAMIを使い、Linux管理VMでDNS-01による取得・更新を行う。dnsPlugin固定。 |
+| `certificate.mode` | `"dnsPlugin"` | Azure Public DNSとUAMIを使い、専用ACAの公開TLS JobでDNS-01による取得・更新を行う。dnsPlugin固定。 |
 | `certificate.certificateName` | `"tls-public"` | Key Vault内の証明書名。 |
 | `certificate.directory` | `"production"` | production/staging。staging証明書は公開ブラウザーで信頼されない。 |
 | `certificate.renewBeforeDays` | `30` | 期限の何日前から更新するか。 |

@@ -44,7 +44,8 @@ def targets(ctx):
     expected_gateway = prefix + ctx.config['resourceGroupNames']['nw'] + '/providers/Microsoft.Network/applicationGateways/agw-' + ctx.config['resourceStem']
     if vm.casefold() != expected_vm.casefold() or gateway.casefold() != expected_gateway.casefold():
         raise OperationError('The recorded VM or Application Gateway differs from the selected environment')
-    vault = ctx.service_id('keyVault').rsplit('/', 1)[-1]
+    bootstrap = outputs.get('certificateBootstrap')
+    vault = bootstrap['certificateVaultName'] if bootstrap else ctx.service_id('keyVault').rsplit('/', 1)[-1]
     name = checked_name(ctx.config['certificate']['certificateName'])
     checked_name(vault)
     return vm, gateway, vault, name
@@ -271,26 +272,47 @@ def observe(ctx, metadata, *, timeout=300, sleep=time.sleep, clock=time.monotoni
         sleep(min(5, deadline - clock()))
 
 
+def job_metadata(ctx, *, renew=False, thumbprint=None):
+    from deployment.helpers.certificate_jobs import run_certificate_action
+    from deployment.lifecycle import ArmTransport
+
+    transport = ctx.transport if ctx.transport is not None else ArmTransport(ctx.config)
+    arguments = {'rotateFromThumbprint': thumbprint} if thumbprint else None
+    result = run_certificate_action(ctx.config, ctx.state['outputs'], transport,
+                                    lambda path, record: ctx.save_private(path, record, overwrite=True),
+                                    workspace=ctx.workspace, mode='tls', action='renew' if renew else 'check',
+                                    arguments=arguments, retry_failed=True)
+    return {'thumbprint': result['certificateThumbprint'].upper(), 'notBefore': result['notBefore'],
+            'notAfter': result['expires'], 'certificateId': result['certificateId']}
+
+
 def operate(ctx, args):
     vm, gateway, vault, name = targets(ctx)
     if args.thumbprint and not re.fullmatch(r'[0-9A-Fa-f]{40}', args.thumbprint):
         raise OperationError('Planned rotation requires the current 40-character public leaf thumbprint')
+    job_backed = bool(ctx.state['outputs'].get('certificateBootstrap'))
     plan = {'stage': args.stage, 'status': 'planned', 'azureWrites': 0,
-            'certificateConsumer': 'application-gateway', 'newJob': False, 'pfxDownload': False,
+            'certificateConsumer': 'application-gateway', 'newJob': job_backed, 'pfxDownload': False,
             'publicTls': 'not-verified'}
     if not args.execute:
         ctx.record('certificate-plan', plan)
         return plan
-    ctx.verify_resource(vm, COMPUTE_API, 'Microsoft.Compute/virtualMachines')
+    if not job_backed:
+        ctx.verify_resource(vm, COMPUTE_API, 'Microsoft.Compute/virtualMachines')
     verify_references(ctx, gateway, vault, name)
-    metadata = run_worker(ctx, vm, vault, name)
+    if job_backed:
+        metadata = job_metadata(ctx)
+    else:
+        metadata = run_worker(ctx, vm, vault, name)
     if args.stage == 'renew':
         previous_thumbprint = metadata['thumbprint']
         if args.thumbprint and args.thumbprint.upper() != metadata['thumbprint']:
             raise OperationError('The current Key Vault leaf changed; inspect it before requesting rotation')
         rotation_thumbprint = args.thumbprint.upper() if args.thumbprint else metadata['thumbprint'] if getattr(args, 'rotate', False) else None
-        metadata = run_worker(ctx, vm, vault, name, renew=True,
-                              thumbprint=rotation_thumbprint)
+        if job_backed:
+            metadata = job_metadata(ctx, renew=True, thumbprint=rotation_thumbprint)
+        else:
+            metadata = run_worker(ctx, vm, vault, name, renew=True, thumbprint=rotation_thumbprint)
         if rotation_thumbprint and metadata['thumbprint'] == previous_thumbprint:
             raise OperationError('The requested rotation did not produce a different public leaf')
         ctx.record('certificate-renewed', {'metadata': metadata, 'publicTls': 'not-verified'})

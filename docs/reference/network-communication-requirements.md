@@ -78,12 +78,12 @@ NSGはstatefulである。許可された接続への応答に逆向きの新規
 | <a id="flow-mgmt-kv"></a>`FLOW-MGMT-KV` | 管理VM → Key Vault PE群 | TCP443 / HTTPS | 証明書・秘密の所定保守処理 | PE直接。管理VM Outbound、PE Inbound、用途別MI/RBAC |
 | <a id="flow-mgmt-foundry"></a>`FLOW-MGMT-FOUNDRY` | 管理VM → Foundry PE群 | TCP443 / HTTPS | Foundryデータ面の保守 | PE直接。管理VM Outbound、PE Inbound。ARM管理は別接続 |
 | <a id="flow-mgmt-acr"></a>`FLOW-MGMT-ACR` | 管理VM → ACR PEの全IP | TCP443 / HTTPS | イメージ配備・取得の保守 | PE直接。管理VM Outbound、PE Inbound |
-| <a id="flow-mgmt-sql"></a>`FLOW-MGMT-SQL` | 管理VM → SQL PE群 | TCP1433、SQL接続時のTLS | 構築Gateway/PortalのDB直接保守 | PE直接。管理VM Outbound、PE Inbound。VMのMI、DB内ユーザーと権限、ODBC clientが必要 |
+| <a id="flow-mgmt-sql"></a>`FLOW-MGMT-SQL` | 管理VM → SQL PE群 | TCP1433、SQL接続時のTLS | 構築Gateway/PortalのDB直接保守 | PE直接。管理VM Outbound、PE Inbound。担当者本人のEntra認証、作業期間中の対象DB内の権限、ODBC clientが必要 |
 | <a id="flow-mgmt-apim"></a>`FLOW-MGMT-APIM` | 管理VM → APIMサブネット | TCP443 / HTTPS | private Gateway側の保守確認 | VNet直接。管理VM Outbound、APIM Inbound。APIM管理用ARMとは別 |
 | <a id="flow-mgmt-aca-https"></a>`FLOW-MGMT-ACA-HTTPS` | 管理VM → ACA環境VIP | TCP443 / HTTPS。ACA NSGは443と31443 | Broker等のprivate HTTPS入口確認 | VNet直接。管理VM Outbound、ACA Inbound。Dev gatewayは別接続 |
-| <a id="flow-mgmt-audit-japan"></a>`FLOW-MGMT-AUDIT-JAPAN` | 管理VM → collectJapan監査StorageのBlob PE群 | TCP443 / HTTPS | 日本側監査Blobの閲覧 | PE直接。管理VM Outbound227、PE Inbound229。構築コンテナー単位の読取権限 |
-| <a id="flow-mgmt-audit-foundry"></a>`FLOW-MGMT-AUDIT-FOUNDRY` | 管理VM → collectFoundry監査StorageのBlob PE群 | TCP443 / HTTPS | Foundry側監査Blobの閲覧 | PE直接。管理VM Outbound228、PE Inbound230。Foundry APIへの接続とは別 |
-| <a id="flow-mgmt-aca-dev"></a>`FLOW-MGMT-ACA-DEV` | 管理VM → 構築リージョンのACA Dev gateway | TCP443 / HTTPS、WSS | App/環境/Jobのライブログ、App exec | FW経由。NSGのInternet443とFWの単一リージョン宛FQDN規則。ARM token取得・MI/RBAC・対象実行の存続も必要 |
+| <a id="flow-mgmt-audit-japan"></a>`FLOW-MGMT-AUDIT-JAPAN` | 管理VM → collectJapan監査StorageのBlob PE群 | TCP443 / HTTPS | 日本側監査Blobの閲覧 | PE直接。管理VM Outbound227、PE Inbound229。担当者本人への構築コンテナー単位の一時読取権限 |
+| <a id="flow-mgmt-audit-foundry"></a>`FLOW-MGMT-AUDIT-FOUNDRY` | 管理VM → collectFoundry監査StorageのBlob PE群 | TCP443 / HTTPS | Foundry側監査Blobの閲覧 | PE直接。管理VM Outbound228、PE Inbound230。担当者本人への構築コンテナー単位の一時読取権限 |
+| <a id="flow-mgmt-aca-dev"></a>`FLOW-MGMT-ACA-DEV` | 管理VM → 構築リージョンのACA Dev gateway | TCP443 / HTTPS、WSS | App/環境/Jobのライブログ、App exec | FW経由。NSGのInternet443とFWの単一リージョン宛FQDN規則。担当者本人のARM token、作業対象へのAzure RBAC、対象実行の存続も必要 |
 
 保守操作の権限とclientは[管理VMの保守操作](../operations.md#管理vmから保守データを取得する)を参照する。NSGのTCP1433/443許可だけで、SQL保守、Blob閲覧、ACA execが認可されるわけではない。手動Jobのログ確認のためだけにDDLや初期データ更新を再実行しない。
 
@@ -117,7 +117,7 @@ NSGはstatefulである。許可された接続への応答に逆向きの新規
 | <a id="flow-aca-platform-packages"></a>`FLOW-ACA-PLATFORM-PACKAGES` | ACA → AzureFrontDoor.FirstPartyと基盤パッケージ配布先 | TCP443 / HTTPS | CDN経由のパッケージも含め、NSGから構築Firewallへ到達させる。Firewallの許可済みFQDNに限定する |
 | <a id="flow-aca-managed-identity-upstream"></a>`FLOW-ACA-MANAGED-IDENTITY-UPSTREAM` | ACA基盤 → 管理IDの上流サービス | TCP443 / HTTPS | managed基盤側の依存先。FWの承認FQDNで扱う。AppからIDENTITY_ENDPOINTへのローカルtoken取得とは別 |
 | <a id="flow-mgmt-arm"></a>`FLOW-MGMT-ARM` | 管理VM → AzureResourceManagerタグ | TCP443 / HTTPS | VM/ACA等の管理、token発行API、Azure DNSによる証明書更新。FW経由 |
-| <a id="flow-mgmt-entra"></a>`FLOW-MGMT-ENTRA` | 管理VM → AzureActiveDirectoryタグ | TCP443 / HTTPS | Entra、所定ID処理。FW経由。ローカルIMDS取得とは別 |
+| <a id="flow-mgmt-entra"></a>`FLOW-MGMT-ENTRA` | 管理VM → AzureActiveDirectoryタグ | TCP443 / HTTPS | Entra SSHと担当者本人のAzure CLI認証。FW経由 |
 | <a id="flow-mgmt-monitor"></a>`FLOW-MGMT-MONITOR` | 管理VM → AzureMonitorタグ | TCP443 / HTTPS | AMA送信・保存ログ照会。FW経由。監査Blob PE閲覧とは別 |
 | <a id="flow-mgmt-agent-storage"></a>`FLOW-MGMT-AGENT-STORAGE` | 管理VM → Storageタグ | TCP443 / HTTPS | Agent/拡張の直接Storage接続等。FW経由。接続済みManaged Disk I/Oやmanaged Boot Diagnostics内部保存をこの接続へ置き換えない |
 | <a id="flow-mgmt-internet"></a>`FLOW-MGMT-INTERNET` | 管理VM → Internetタグ | TCP80、443 | NSG側の外向き許可枠。FWはOS更新、CA、build、ACA Dev等へ用途を分ける |
@@ -147,7 +147,7 @@ FWの許可先が一定でも、各通信が常に発生するという意味で
 
 ## 通常NSGルールへ置き換えない通信
 
-操作端末からAzureへの制御通信は、管理VMから同じサービスへ接続する通信と実行主体が異なる。以下は端末・サービス側の要件であり、VNet内5 NSGや顧客転送用FW35規則へ誤って追加しない。Azure CLIの人間Entra認証はWindows側で行い、WSLは公開資材の合成試験に使用する。
+以下は操作端末・サービス側の制御通信の要件である。構築のAzure CLI認証は操作端末で行い、管理VMで保守クライアントを使う担当者はゲスト内のAzure CLIにも本人でサインインする。SSHの到達経路と作業中の許可は[管理VMへの接続手順](../operations/management-vm-access.md)に従う。
 
 | 主体 → 宛先 | プロトコル・用途 | 構築VNet側の制御との関係 |
 | --- | --- | --- |
@@ -192,6 +192,6 @@ FWの許可先が一定でも、各通信が常に発生するという意味で
 
 ## 再構築と実証の範囲
 
-構築資材は、同じ固定通信集合と構築資源からのアドレスbinding、標準DNS、APIMの外部NTP許可と管理VMのAzureホストPHC同期、L7入口保護、監査Blob PE、管理VMの保守client/権限/Serial初期準備を再現するための正本である。既存の管理VMはPHC実同期成立後に旧管理NSG325の完全一致tupleをETag付きで限定削除し、所有FW collectionを更新・読戻しする。未知の企業ルール・時刻設定は自動削除しない。限定パッチだけに存在し、初期構築には存在しない設定を完了形の設計へ持ち込まない。
+構築資材は、同じ固定通信集合と構築資源からのアドレスbinding、標準DNS、APIMの外部NTP許可と管理VMのAzureホストPHC同期、L7入口保護、監査Blob PE、管理VMの保守clientとSerialの初期準備を再現するための正本である。担当者の権限は作業期間に合わせて別途付与・回収する。既存の管理VMはPHC実同期成立後に旧管理NSG325の完全一致tupleをETag付きで限定削除し、所有FW collectionを更新・読戻しする。未知の企業ルール・時刻設定は自動削除しない。限定パッチだけに存在し、初期構築には存在しない設定を完了形の設計へ持ち込まない。
 
 資材生成・ローカル合成検証・既存環境への限定反映/読戻し・実操作・新規環境の一式再構築は別の確認段階である。ルール全件の設定一致を、各ルールのパケット実証済みと読み替えない。判定と結果の扱いは[検証と実証結果の管理](network-security-validation.md)で定める。

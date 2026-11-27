@@ -1,4 +1,4 @@
-// 発行は既存の管理VM certificates officerを使い、対応鍵の照合・旧版無効化を追加します。
+// Portal証明書Jobによる対応鍵の照合・旧版無効化を、指定した鍵に限定します。
 targetScope = 'resourceGroup'
 param vaultName string
 param keyName string

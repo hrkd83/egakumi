@@ -92,13 +92,19 @@ def collect_initial_certificate(config, outputs, transport, save_json, *, worksp
         raise ValueError('Initial authentication certificate issuance has not completed successfully')
     record = parse_worker_output(view.get('output', ''), config)
     workspace = workspace if workspace is not None else local_paths(config)
+    store_initial_certificate(config, workspace, record, save_json)
+
+
+def store_initial_certificate(config, workspace, record, save_json):
+    """発行方法を問わず、検証済み公開証明書を既存のPortal配備記録へ結び付ける。"""
+    record = certificate_record(record, config)
     path = workspace.checked(workspace.state / 'portal-auth-certificate.json')
     if path.exists():
         check_private_permissions(path)
         state = json.loads(path.read_text(encoding='utf-8'))
         validate_certificate_state(state, config)
         if state['current'] != record:
-            raise ValueError('VM current certificate differs from the protected state; recover the interrupted rotation first')
+            raise ValueError('The current certificate differs from the protected state; recover the interrupted rotation first')
     else:
         save_json(path, {'subscriptionId': config['subscriptionId'], 'azureTenantId': config['azureTenantId'], 'resourceStem': config['resourceStem'], 'current': record, 'phase': 'initial'})
     save_public_certificate(workspace, record)

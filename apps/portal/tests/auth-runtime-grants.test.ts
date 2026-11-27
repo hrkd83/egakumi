@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertRuntimePrincipal, grantRuntimeProcedureAccess, parseRuntimeIdentity, portalRuntimePermissions, portalRuntimeProcedures } from "../scripts/auth-runtime-grants.ts";
+import { assertRuntimePrincipal, grantRuntimeProcedureAccess, parseMigrationRuntimeIdentity, parseRuntimeIdentity, portalRuntimePermissions, portalRuntimeProcedures } from "../scripts/auth-runtime-grants.ts";
 
 const environment = {
   PORTAL_SQL_RUNTIME_CLIENT_ID: "00112233-4455-6677-8899-aabbccddeeff",
@@ -22,6 +22,17 @@ test("初期化に必要なIDの欠落・ゼロ値・SQL識別子の混入を拒
     { ...environment, PORTAL_SQL_RUNTIME_CLIENT_ID: "00000000-0000-0000-0000-000000000000" },
     { ...environment, PORTAL_SQL_RUNTIME_USER_NAME: "invalid]; DROP TABLE portalUser;--" },
   ]) assert.throws(() => parseRuntimeIdentity(values));
+});
+
+test("Azure初期化はスキーマ更新用と実行用に異なるEntraクライアントIDを使う", () => {
+  const schemaClientId = environment.PORTAL_SQL_RUNTIME_CLIENT_ID.replace("00112233", "33221100");
+  assert.deepEqual(parseMigrationRuntimeIdentity({ ...environment, AZURE_CLIENT_ID: schemaClientId }),
+    parseRuntimeIdentity(environment));
+  for (const value of [undefined, "not-a-guid", "00000000-0000-0000-0000-000000000000",
+    environment.PORTAL_SQL_RUNTIME_CLIENT_ID.toUpperCase()]) {
+    assert.throws(() => parseMigrationRuntimeIdentity({ ...environment, AZURE_CLIENT_ID: value }), /nonzero and distinct/);
+  }
+  assert.throws(() => parseMigrationRuntimeIdentity({ AZURE_CLIENT_ID: schemaClientId }), /nonzero and distinct/);
 });
 
 test("既存のSQLユーザーが別のIDなら権限を付与せず停止する", () => {

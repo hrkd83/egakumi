@@ -516,28 +516,16 @@ class FullConstructionTests(unittest.TestCase):
 
 
 class FullConstructionBicepTests(unittest.TestCase):
-    def test_core_uses_same_three_modules_and_passes_initial_certificate_config_without_entra(self):
+    def test_core_prepares_portal_signing_identity_and_passes_independent_job_configuration(self):
         core = compile_bicep('infra/main.bicep')
-        sources = {'portal-auth-identity': 'apps/portal/deploy/auth-identity.bicep',
-                   'portal-auth-key-operations': 'infra/modules/portal-auth-key-operations.bicep',
-                   'portal-auth-certificate': 'infra/modules/portal-auth-certificate.bicep'}
-        count = 0
-        for name, source in sources.items():
-            module = next(resource for resource in core['resources'] if resource['name'] == "[format('{0}-" + name + "', variables('stem'))]")
-            self.assertEqual(module['condition'], "[variables('deployCore')]")
-            compiled = compile_bicep(source)
-            self.assertEqual(module['properties']['template'], compiled)
-            resources = compiled['resources']
-            count += len(resources)
-        self.assertEqual(count, 4)
-        command = next(resource for resource in core['resources'] if resource['name'] == "[format('{0}-portal-auth-certificate', variables('stem'))]")
-        parameters = command['properties']['parameters']
-        self.assertEqual(set(parameters['config']['value']), {'vaultName', 'certificateName', 'validityMonths'})
-        self.assertEqual(parameters['config']['value']['certificateName'], "[variables('portalConfig').certificate.certificateName]")
-        self.assertIn('authCertificateRunCommandId', core['outputs']['portal']['value'])
-        dependencies = json.dumps(command['dependsOn'])
-        for prerequisite in ('certificate', 'portal-auth-key-operations', 'network-bindings', 'service-bindings', 'management-audit'):
-            self.assertIn(prerequisite, dependencies)
+        resources = core['resources']
+        if isinstance(resources, dict):
+            resources = resources.values()
+        output = core['outputs']['certificateBootstrap']['value']
+        self.assertIn('portalJobName', output)
+        self.assertIn('portalConfig', output)
+        self.assertTrue(any('-portal-auth-identity' in resource.get('name', '') for resource in resources))
+        self.assertTrue(any('-certificate-storage' in resource.get('name', '') for resource in resources))
 
 
 if __name__ == '__main__':

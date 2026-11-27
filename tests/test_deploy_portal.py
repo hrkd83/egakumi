@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import deploy_portal as portal
 from deployment.helpers.paths import local_paths
-from management_fixtures import maintenance_metadata, client_core_outputs
+from management_fixtures import client_core_outputs
 
 
 def fixture():
@@ -46,7 +46,6 @@ def fixture():
         'names': {'apim': 'apim-test-sample-abc123'},
         'gateway': {'publicUrl': 'https://gateway.example.com'},
         'portal': {'applicationName': 'ca-test-sample-portal', 'environmentName': 'cae-test-sample',
-            'managementMaintenance': maintenance_metadata(config['subscriptionId']),
             'registryName': 'acrtestsample', 'pullIdentityId': identities + 'id-test-sample-portal-pull',
             'runtimeIdentity': {'id': identities + 'id-test-sample-portal-pull'},
             'schemaIdentity': {'id': identities + 'id-test-sample-credential-schema'},
@@ -63,12 +62,6 @@ class PortalDeploymentTests(unittest.TestCase):
         authentication = mock.patch.object(portal, 'deployment_authentication', side_effect=lambda config, workspace, slot: config['portal']['authentication'])
         authentication.start()
         self.addCleanup(authentication.stop)
-        # Dedicated tests verify the readonly guest probe. The App CLI tests
-        # only exercise the fixed internal-input wiring and deployment order.
-        discovery = mock.patch.object(portal, 'discover_management_sql_identity',
-                                      return_value='77777777-7777-4777-8777-777777777777')
-        self.sql_discovery = discovery.start()
-        self.addCleanup(discovery.stop)
         # Native ACL behavior is checked by the dedicated Serial integration
         # suite. This offline CLI fixture clears environment/subprocess state.
         if os.name == 'nt':
@@ -107,35 +100,6 @@ class PortalDeploymentTests(unittest.TestCase):
                     for boundary in (bundle, cli, transport, write):
                         boundary.assert_not_called()
                 self.assertEqual({path: path.read_bytes() for path in before}, before)
-
-    def test_sql_identity_discovery_failure_stops_before_secret_image_or_app_changes(self):
-        config, state = fixture()
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory).resolve()
-            workspace = local_paths(config, root)
-            workspace.ensure()
-            state_file = workspace.state / 'latest.json'
-            state_file.write_text(json.dumps(state), encoding='utf-8')
-            self.sql_discovery.side_effect = ValueError('synthetic-SAMI-discovery-failed')
-            with mock.patch.object(portal, 'REPOSITORY', root), \
-                 mock.patch.dict(os.environ, {'AZURE_ENV_NAME': config['environmentName'], 'PYTHONDONTWRITEBYTECODE': '1'}, clear=True), \
-                 mock.patch.object(portal, 'load_configuration', return_value=config), \
-                 mock.patch.object(portal, 'prepare_api_key_groups', return_value=config), \
-                 mock.patch.object(portal, 'run_json', return_value={}), \
-                 mock.patch.object(portal, 'verify_foundation'), \
-                 mock.patch.object(portal, 'require_appgw_backend_tls_ready'), \
-                 mock.patch.object(portal, 'ArmTransport'), \
-                 mock.patch.object(portal, 'source_bundle') as bundle, \
-                 mock.patch.object(portal, 'build_image') as build, \
-                 mock.patch.object(portal, 'signing_secret') as signing, \
-                 mock.patch.object(portal, 'profile_secret') as profile, \
-                 mock.patch.object(portal, 'deploy_release') as release, \
-                 contextlib.redirect_stdout(io.StringIO()):
-                with self.assertRaisesRegex(ValueError, 'synthetic-SAMI-discovery-failed'):
-                    portal.main(['--config', str(workspace.params), '--state-file', str(state_file),
-                                 '--image-digest', 'sha256:' + 'a' * 64, '--execute'])
-            for operation in (bundle, build, signing, profile, release):
-                operation.assert_not_called()
 
     def test_cli_records_verified_tls_after_portal_release(self):
         config, state = fixture()
@@ -178,19 +142,6 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertFalse(values['deployApplication'])
         self.assertEqual(values['tenantId'], config['credentialProviders'][0]['oauthTenantId'])
         self.assertEqual(values['apimName'], 'apim-test-sample-abc123')
-        maintenance = state['outputs']['portal']['managementMaintenance']
-        self.assertEqual(values['managementPrincipalId'], maintenance['principalId'])
-        self.assertEqual(values['managementRoleDefinitionIds'], maintenance['roleDefinitionIds'])
-        self.assertEqual(state, original)
-
-    def test_missing_maintenance_output_is_not_filled_from_other_state_or_public_params(self):
-        config, state = fixture()
-        existing = state['outputs']['portal'].pop('managementMaintenance')
-        state['outputs']['managementMaintenance'] = existing
-        config['managementMaintenance'] = existing
-        original = copy.deepcopy(state)
-        with self.assertRaisesRegex(ValueError, 'Current Core management maintenance output'):
-            portal.deployment_inputs(config, state)
         self.assertEqual(state, original)
 
     def test_old_core_without_client_inventory_cannot_start_app_preparation(self):
@@ -513,7 +464,6 @@ class PortalDeploymentTests(unittest.TestCase):
             cli.assert_not_called()
             prepare.assert_not_called()
             profile_secret.assert_not_called()
-            self.sql_discovery.assert_not_called()
             saved = json.loads((workspace.state / 'portal-plan.json').read_text(encoding='utf-8'))
             self.assertNotIn('signingSecret', saved['parameters'])
             self.assertNotIn('profileSecret', saved['parameters'])

@@ -43,7 +43,7 @@ scripts/deploy_portal.py     手元とCIから共通で使う配備コマンド
 | `azd up` | 共有基盤・Gateway・Portal初期サンプル・KV自己署名認証証明書を準備 |
 | Portal配備工程 | Portal専用DB、Cookie署名・購読profileの秘密と読み取り権限、認証証明書の署名権限、SQL初期化ジョブ、認証・APIキー台帳と実行用SQL権限、管理グループと標準API正本から生成する製品承認・検証用APIM購読の作成・台帳登録、APIMの購読管理権限、Portalイメージ、既存Container Appの本体 |
 
-新規構築は`azd up`で共有資源・Gateway・Portal ACA初期サンプルと認証証明書を準備します。`postprovision`が管理VMで実行された発行結果を照合し、公開証明書と固定参照を保護保存します。`postup`は`deploy_applications.py --gateway-only --execute`でGatewayだけを配備します。[専用Portalアプリの手動登録](entra-portal.md)後、以下の個別配備でPortal本体をビルドしてサンプルを更新します。`azd provision`ではGateway本体も未配備です。
+新規構築は`azd up`で共有資源・Gateway・Portal ACA初期サンプルと認証証明書を準備します。`postprovision`が専用ACA Jobの発行結果を照合し、公開証明書と固定参照を保護保存します。`postup`は`deploy_applications.py --gateway-only --execute`でGatewayだけを配備します。[専用Portalアプリの手動登録](entra-portal.md)後、以下の個別配備でPortal本体をビルドしてサンプルを更新します。`azd provision`ではGateway本体も未配備です。
 
 **Portal専用DBはPortal配備資材で管理します。構築済み基盤のPortalだけを更新・再試行するときは、`deploy_portal.py --execute` を使えます。** 共通SQLサーバー`sql-<環境>-<製品>`を再利用し、その中へ`sqldb-<環境>-<製品>-portal`を作成します。CM用の`...-credentials` DBとは分離します。
 
