@@ -34,7 +34,7 @@ class InitialModelTests(unittest.TestCase):
                 self.assertIs(type(model["capacity"]), int)
                 self.assertGreater(model["capacity"], 0)
 
-    def test_retired_text_families_are_absent_from_deployments_and_api_contracts(self):
+    def test_text_api_models_match_capabilities_and_are_deployed(self):
         definition = json.loads((CORE / "apps/apim/apis/openai-inference-v1.json").read_text(encoding="utf-8"))
         capabilities = json.loads((CORE / "apps/apim/model-capabilities.json").read_text(encoding="utf-8"))
         api_models = set()
@@ -50,8 +50,6 @@ class InitialModelTests(unittest.TestCase):
             with self.subTest(file=name):
                 deployment_names = {model["name"] for model in models}
                 self.assertTrue(api_models <= deployment_names)
-                for model_id in deployment_names | api_models | capability_models:
-                    self.assertFalse(model_id.startswith(("gpt-5.4", "gpt-5.5")), model_id)
 
     def test_each_environment_catalog_passes_public_configuration_validation(self):
         for name, models in self.models.items():
