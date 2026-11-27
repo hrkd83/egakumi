@@ -2,7 +2,7 @@
 
 [共通確認](common.md) · [基盤設定](platform-settings.md) · [NSG設計・通信対応](../reference/network-security-design.md) · [非NSG通信](../reference/platform-communications.md)
 
-初期構築は5 NSG・カスタム73ルール（Allow 67、Deny 6）の固定集合とする。AzureFirewallSubnetにはNSGを関連付けない。
+初期構築は5 NSG・カスタム77ルール（Allow 69、Deny 8）の固定集合とする。AzureFirewallSubnetにはNSGを関連付けない。
 通信の用途を1ルールずつ名前と設計IDで記録し、ルールの作成有無を公開params／configで制御しない。
 
 - 120から: クライアント要求から発生する通信。
@@ -17,9 +17,9 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 
 ## 正本とアドレス参照
 
-正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のversion 2で、
+正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のcatalog v5で、
 名称・方向・優先度・Allow/Deny・両ポート・プロトコル・アドレス参照・設計IDを定義する。
-以下の表は正本catalog v4の73件に対応する。送信元ポートは全件Any。
+以下の表は正本catalog v5の77件に対応する。送信元ポートは全件Any。
 
 サブネットCIDRは構築入力から、単IPは構築した資源の割当IPから、PEは構築したPE NICの全IPから
 動的に設定する。単IP・PE IPは/32とし、同じサブネットの他資源へ無条件に広げない。
@@ -38,7 +38,7 @@ NSGの初期集合を変える新しいスイッチを追加しない。
 | [network.bicep](../../infra/modules/network.bicep) | 5 NSG・サブネット関連付け・静的基盤ルール |
 | [network-bindings.bicep](../../infra/modules/network-bindings.bicep) | AppGW／APIM／管理VM割当IP・Foundry／Key Vault全PE IP・終端拒否 |
 | [portal-network.bicep](../../infra/modules/portal-network.bicep)と[bindings](../../infra/modules/portal-network-bindings.bicep) | ACA VIP・ACR全PE IP |
-| [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) | 共有SQL全PE IP・APIM→ACA共有VIP |
+| [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) | 共有SQL全PE IP・APIM→ACA共有VIP・ACAの終端Deny |
 
 ## AppGW（agw）
 
@@ -200,13 +200,20 @@ VNet・Private Endpointへの具体的な経路が優先されるため、Firewa
 通信の許可は送信元と宛先のNSGに記録します。Firewallには現在の経路で通過する通信だけを登録し、
 将来の経路変更用の許可は含めません。
 
+PortalとCredential Brokerの共用ACAは、必要な受信と送信を明示して両方向の残りを拒否します。
+同じACAサブネット内の基盤通信は両方向で許可し、他サブネットとの接続は個別の規則で許可します。
+[ACA基盤のNSG要件](https://learn.microsoft.com/en-us/azure/container-apps/firewall-integration#nsg-allow-rules)
+
 ### Inbound
 
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-firewall-https-ingress` | FirewallサブネットCIDR | ACAサブネットCIDR | TCP／443, 31443 | `B-ACA-03` |
 | 220 | `allow-apim-https-ingress` | APIMサブネットCIDR | ACAサブネットCIDR | TCP／443, 31443 | `B-ACA-04` |
+| 222 | `allow-mgmt-vm-https-ingress` | 管理VM /32 | ACAサブネットCIDR | TCP／443, 31443 | `N-ACA-IN-MGMT-HTTPS` |
 | 320 | `allow-azure-load-balancer-ingress` | `AzureLoadBalancer`タグ | ACAサブネットCIDR | TCP／30000-32767 | `B-ACA-05` |
+| 321 | `allow-aca-internal-ingress` | ACAサブネットCIDR | ACAサブネットCIDR | Any／Any | `B-ACA-17` |
+| 4096 | `deny-any-ingress` | Any | Any | Any／Any | `N-ACA-IN-TERMINAL` |
 
 ### Outbound
 
@@ -222,6 +229,8 @@ VNet・Private Endpointへの具体的な経路が優先されるため、Firewa
 | 322 | `allow-monitor-egress` | ACAサブネットCIDR | `AzureMonitor`タグ | TCP／443 | `B-ACA-14` |
 | 323 | `allow-mcr-egress` | ACAサブネットCIDR | `MicrosoftContainerRegistry`タグ | TCP／443 | `B-ACA-15` |
 | 324 | `allow-afd-first-party-egress` | ACAサブネットCIDR | `AzureFrontDoor.FirstParty`タグ | TCP／443 | `B-ACA-16` |
+| 325 | `allow-firewall-routed-public-https-egress` | ACAサブネットCIDR | `Internet`タグ | TCP／443 | `B-ACA-21` |
+| 4096 | `deny-any-egress` | Any | Any | Any／Any | `N-ACA-OUT-TERMINAL` |
 
 ## 既定規則と末尾拒否の扱い
 
@@ -230,8 +239,8 @@ NSGはstatefulなので、受信で許可した接続の応答のための逆方
 [既定規則と接続状態](https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview)
 
 AppGWとAPIMのAzureLoadBalancer受信は、送信元タグ以外をAnyに統一して明示する。
-AppGW／APIM／PE／管理VMの受信末尾にDenyを置き、ACAの受信・送信にはカスタムAny末尾Denyを置かない。
-APIM／管理VMの送信末尾にはDenyを置く。AppGWとPEの送信末尾には置かない。
+AppGW／APIM／PE／管理VM／ACAの受信と、APIM／管理VM／ACAの送信は、優先度4096のDenyを終端とする。
+AppGWとPEの送信は既定規則を評価する。
 
 標準AppGW v2はInternet向け送信包括許可を必要とするため、既定Outbound許可を維持する。
 AppGWの3件の明示送信Allowは通信設計の記録でもあり、これらだけで送信範囲を限定したとは解釈しない。
@@ -239,9 +248,12 @@ Network Isolationの例外をSKU名だけで適用しない。
 [AppGW NSG要件](https://learn.microsoft.com/azure/application-gateway/configuration-infrastructure#network-security-groups)・
 [Network Isolation](https://learn.microsoft.com/azure/application-gateway/application-gateway-private-deployment)
 
-ACAにはInternet／Storageの追加包括Allowを初期作成しない。必要な基盤通信の完全な限定を
-検証する前に末尾Denyを追加しない。アプリ／Job・image取得・scale・更新・復旧の運用成立は別途確認する。
-[ACA NSG要件](https://learn.microsoft.com/azure/container-apps/firewall-integration#nsg-allow-rules)
+ACAの公開HTTPSは、NSGの`Internet`タグ宛TCP443とFirewallの宛先制御を組み合わせる。
+基盤パッケージ配布のCDNを個別サービスタグで網羅できないため、固定の`0.0.0.0/0` UDRで構築Firewallへ転送し、
+Firewallの許可条件に一致しない通信はそこで拒否する。ACAサブネットの既定送信アクセスとルート表のBGP伝搬は無効にする。
+CoreとNSG限定配備は、既存の関連付けと経路を検査し、Firewallを迂回できる設定を検出した場合は停止する。
+ACRのログイン・専用データエンドポイントにはPrivate Endpointの全IP、共有SQLにはProxy接続のTCP1433を使う。
+[ACAのFirewall要件](https://learn.microsoft.com/en-us/azure/container-apps/use-azure-firewall) · [ACRのデータエンドポイント](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-firewall-rules#allow-access-to-rest-and-data-endpoints)
 
 PEはサービス側から新規接続を開始しない。PEサブネットのNSGポリシーは
 `NetworkSecurityGroupEnabled`とし、受信Allowと末尾Denyで制御する。同サブネットへ別NICを置く場合は
@@ -257,16 +269,17 @@ DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と�
 同じNSGの子ルールへの書込は、`batchSize(1)`と`dependsOn`で直列化する。
 モジュールは`network → networkBindings → portalNetwork → portal → portalNetworkBindings → credentialNetwork`の
 順で実行し、各モジュール内でも同じNSGを更新する子ルールに依存関係を置く。
+ACAの末尾Denyは、共有SQL向けNSG許可と所有Firewall規則が完了した後に設定する。
 既存NSGの親は再PUTせず、タグは専用Tags API、ルールは子リソースで更新する。
 この順序と固定ルールの全条件をコンパイル済み資材で確認し、新規構築と再適用で同じ定義を使う。
 
 既存環境も最終状態は同じ資材に収束させる。今回の関連改修ではApp Gateway後段のHTTPS・gRPC撤去・標準DNS固定・管理VMのAzureホストPHC同期を
-含むため、旧HTTPS後段へ最終Coreを先に適用しない。
+含むため、既存のHTTPバックエンドは最終Coreの適用前に切替計画を確認する。
 
 1. Windows側Azure CLIで認証し、入力・Core state・所有RG／VNet／NSG／内部資源・実ルールを読み取る。
    WSLはローカル試験とBicepコンパイルに使用し、Entra認証にLinux側Azure CLIを使わない。
 2. [HTTPS切替計画](platform-settings.md#appgw後段のtls検査を検証する)を用意する。
-   Firewall80追加時は443を保持し、対応image／revision・HTTP readinessを確認してAppGW後段とprobeを切り替える。
+   対応image／revision、HTTPSプローブと検査用CAの信頼を確認してAppGW後段を切り替える。
    [管理VMのホスト時計への先行移行](#管理vmのホスト時計へ先行移行する)は現行guest監査moduleを単独適用する。既知内容の照合と変更前保存を行い、PHCの実同期と現行scriptの成功証跡が成立してからCoreと旧外部NTP許可の撤去へ進む。
 3. `fixed_nsg.prepare_fixed_nsg_rules`は変更前に全NSGを監査し、完全一致した所有済み旧ルールだけを
    一時優先度へ移す。旧Allowは1000番台、旧末尾Denyは4080とし、旧順序を維持する。
@@ -274,10 +287,10 @@ DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と�
    基盤監査Storageの旧名2件は、TCP／443・送受信元・既定優先度の完全一致を確認し、
    同じ許可条件のまま優先度1500へ退避する。新名の227／229が確認できるまで旧名を削除せず、
    中断後も退避済みのルールを確認して再開できる。保守資材の限定適用では元の優先度にある旧名も照合する。
-4. [NSG限定資材](../../infra/modules/nsg-fixed-upgrade.bicep)を単独what-ifで検証し、固定73子と
+4. [NSG限定資材](../../infra/modules/nsg-fixed-upgrade.bicep)を単独what-ifで検証し、固定77子と
    新ACA NSGだけをIncremental配備する。既存NSGの親、UDR、VNet親、Firewall本体、Public IPは書かない。
    その後、ACA subnetの直前ETagを使った限定PUTでNSG関連付けだけを追加する。
-   `complete_fixed_nsg_rules`が5関連付け・全73条件と既定規則を照合した後にだけ、完全一致する旧子を回収する。
+   `complete_fixed_nsg_rules`が5関連付け・全77条件と既定規則を照合した後にだけ、完全一致する旧子を回収する。
    catalog v2の旧管理325は既知legacy tupleとの完全一致と直前ETagで限定削除し、所有Firewall collectionから管理VM NTP規則を除いて読み戻す。APIMのUDP123許可、未知の企業規則を削除しない。
    Incremental配備で省いた旧子が削除されたとは判断しない。
 5. APIMの通常L7保護を常設し、所有参照を照合した旧gRPC専用domainとAppGW L4設備を撤去する。
@@ -296,11 +309,13 @@ DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と�
 所有する既存NSG名を読み取る。新ACA parentのtagsは再構築と同じ構築tagsと固定3タグのunionとする。
 実VNetのDNSとFirewall上流DNSがAzure提供の空設定であり、Firewall DNS proxyが有効であることを
 NSG変更前に要求する。手動custom DNSがあればこの入口で切り替えず、規則の更新前に停止する。
-公開params／configは増やさず、catalog v4の73規則を常に生成する。
-`verify_fixed_nsg_upgrade_what_if`は73子の全tupleを照合し、展開診断、対象子のIgnore、
+ACAでは所有先の一致、構築Firewall宛の既定経路、既定送信アクセスとBGP伝搬の無効化を先に照合する。
+AppGW向け復路がある場合はその定義も照合し、実際の入口と復路はAzureの受入で確認する。
+公開params／configは増やさず、catalog v5の77規則を常に生成する。許可を配備してから末尾Denyを設定する。
+`verify_fixed_nsg_upgrade_what_if`は77子の全tupleを照合し、展開診断、対象子のIgnore、
 不足、削除、既存parentやNSG以外への書込を拒否する。what-ifのSucceededだけで判断しない。
 
-`associate_fixed_aca_nsg`は73子が揃った後に、ACA subnetの既知writable設定を保持して
+`associate_fixed_aca_nsg`は77子が揃った後に、ACA subnetの既知writable設定を保持して
 NSG参照だけを変更する。現routeTable、delegations、標準送信設定等を保持し、API仕様の
 readOnly以外で未対応の項目があれば値を省略せず停止する。現在の関連付けが別NSGなら停止する。
 変更前記録・直前ETag・If-Match・一致readbackを必要とし、応答不明や未完了時はPUTを再送しない。

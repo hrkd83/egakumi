@@ -1,6 +1,7 @@
-"""Compile all 73 fixed NSG rules with synthetic addresses; no Azure calls."""
+"""Compile the fixed NSG rules with synthetic addresses; no Azure calls."""
 import copy
 import json
+from ipaddress import ip_address, ip_network
 from pathlib import Path
 import unittest
 
@@ -230,7 +231,9 @@ class NsgRulePriorityTests(unittest.TestCase):
             ('credential-broker-network', 'managementSqlIn', 'pep', 'allow-mgmt-vm-sql-1433-ingress'),
             ('credential-broker-network', 'brokerOut', 'apim', 'allow-aca-https-egress'),
             ('credential-broker-network', 'acaSqlOut', 'aca', 'allow-sql-1433-egress'),
-            ('credential-broker-network', 'managementSqlOut', 'management', 'allow-sql-1433-egress'))
+            ('credential-broker-network', 'managementSqlOut', 'management', 'allow-sql-1433-egress'),
+            ('credential-broker-network', 'acaIngressDeny', 'aca', 'deny-any-ingress'),
+            ('credential-broker-network', 'acaEgressDeny', 'aca', 'deny-any-egress'))
         for m, symbol, g, name in additional:
             item = self.templates[m]['resources'][symbol]
             self.assertNotIn('condition', item, (m, symbol)); self.assertNotIn(name, result[g])
@@ -249,9 +252,9 @@ class NsgRulePriorityTests(unittest.TestCase):
         return result
 
     def test_complete_contract_has_unique_contiguous_bands_and_no_grpc_rules(self):
-        self.assertEqual(self.contract['version'], 4)
+        self.assertEqual(self.contract['version'], 5)
         self.assertEqual(set(self.contract['groups']), set(GROUPS))
-        expected_counts = {'agw': 9, 'apim': 22, 'aca': 14, 'pep': 13, 'management': 15}
+        expected_counts = {'agw': 9, 'apim': 22, 'aca': 18, 'pep': 13, 'management': 15}
         record_ids = set(); terminal = 0
         for g, group in self.contract['groups'].items():
             self.assertEqual(len(group['rules']), expected_counts[g]); identities = set(); bands = {}
@@ -269,9 +272,9 @@ class NsgRulePriorityTests(unittest.TestCase):
                 retired_http = {('management', 'Outbound'): {225}, ('aca', 'Inbound'): {221}}.get((g, direction), set())
                 expected = [priority for priority in range(start, max(priorities) + 1) if priority not in retired_http]
                 self.assertEqual(sorted(priorities), expected)
-        self.assertEqual((len(record_ids), terminal), (73, 6))
+        self.assertEqual((len(record_ids), terminal), (77, 8))
 
-    def test_all_73_compiled_tuples_match_fixed_manifest_with_single_and_multiple_ips(self):
+    def test_compiled_tuples_match_fixed_manifest_with_single_and_multiple_ips(self):
         for multiple, prefix in ((False, '10.70'), (True, '10.80')):
             p = self.parameters(multiple, prefix); actual = self.compiled_rules(p)
             for g, rules in actual.items():
@@ -314,11 +317,67 @@ class NsgRulePriorityTests(unittest.TestCase):
             'source': [p['subnetPrefixes']['apim']], 'destination': ['Internet'], 'destinationPorts': ['123'],
         })
 
+    def test_aca_allows_runtime_dependencies_and_denies_other_flows(self):
+        parameters = self.parameters()
+        rules = sorted((canonical(rule) for rule in self.compiled_rules(parameters)['aca'].values()),
+                       key=lambda rule: rule['priority'])
+        public_ip = '203.0.113.10'
+        load_balancer_ip = '192.0.2.10'
+        service_tags = {'Internet': {public_ip}, 'AzureLoadBalancer': {load_balancer_ip}}
+        aca = parameters['__ips']['aca']
+        other_replica = str(ip_address(aca) + 1)
+        firewall = str(ip_network(parameters['subnetPrefixes']['firewall'])[4])
+        other_subnet = str(ip_network(parameters['subnetPrefixes']['agw'])[4])
+
+        def matches_address(address, prefixes):
+            for prefix in prefixes:
+                if prefix == '*' or address in service_tags.get(prefix, set()):
+                    return True
+                if '/' in prefix and ip_address(address) in ip_network(prefix):
+                    return True
+            return False
+
+        def matches_port(port, ranges):
+            for limits in ranges:
+                if limits == '*':
+                    return True
+                first, _, last = limits.partition('-')
+                if int(first) <= port <= int(last or first):
+                    return True
+            return False
+
+        cases = (
+            ('Inbound', 'Tcp', firewall, aca, 31443, 'Allow'),
+            ('Inbound', 'Tcp', parameters['apimPrivateIp'], aca, 443, 'Allow'),
+            ('Inbound', 'Tcp', parameters['managementPrivateIp'], aca, 443, 'Allow'),
+            ('Inbound', 'Tcp', load_balancer_ip, aca, 32123, 'Allow'),
+            ('Inbound', 'Tcp', load_balancer_ip, aca, 1433, 'Deny'),
+            ('Inbound', 'Tcp', other_subnet, aca, 443, 'Deny'),
+            ('Inbound', 'Udp', other_replica, aca, 8080, 'Allow'),
+            ('Outbound', 'Udp', aca, other_replica, 8080, 'Allow'),
+            ('Outbound', 'Tcp', aca, parameters['__sets']['keyVault'][1], 443, 'Allow'),
+            ('Outbound', 'Tcp', aca, parameters['__sets']['registry'][1], 443, 'Allow'),
+            ('Outbound', 'Tcp', aca, parameters['__sets']['sql'][1], 1433, 'Allow'),
+            ('Outbound', 'Tcp', aca, parameters['__sets']['sql'][1], 443, 'Deny'),
+            ('Outbound', 'Tcp', aca, other_subnet, 443, 'Deny'),
+            ('Outbound', 'Tcp', aca, public_ip, 443, 'Allow'),
+            ('Outbound', 'Tcp', aca, public_ip, 80, 'Deny'),
+            ('Outbound', 'Udp', aca, public_ip, 443, 'Deny'),
+        )
+        for direction, protocol, source, destination, port, allowed in cases:
+            with self.subTest(direction=direction, protocol=protocol, source=source,
+                              destination=destination, port=port):
+                matching = next(rule for rule in rules if rule['direction'] == direction
+                                and rule['protocol'] in (protocol, '*')
+                                and matches_address(source, rule['source'])
+                                and matches_address(destination, rule['destination'])
+                                and matches_port(port, rule['destinationPorts']))
+                self.assertEqual(matching['access'], allowed)
+
     def test_defaults_parent_preservation_and_fixed_dns_are_maintained(self):
         p = self.parameters(); network = self.templates['network']; actual = self.compiled_rules(p)
-        for g, directions in (('agw', ('Outbound',)), ('aca', ('Inbound', 'Outbound')), ('pep', ('Outbound',))):
+        for g, directions in (('agw', ('Outbound',)), ('pep', ('Outbound',))):
             self.assertFalse(any(r['access']=='Deny' and r['direction'] in directions for r in actual[g].values()))
-        self.assertNotIn('allow-internet-egress', actual['aca']); self.assertNotIn('allow-storage-egress', actual['aca'])
         names = self.resolve('network', "[variables('nsgResourceNames')]", p)
         self.assertEqual(names, ['nsg-test-fixture-'+self.contract['groups'][g]['suffix'] for g in GROUPS])
         p['existingNetworkSecurityGroupNames'] = names

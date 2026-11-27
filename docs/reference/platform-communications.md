@@ -38,7 +38,9 @@ Private DNS zone、VNet link、PEのDNS zone groupが正しい回答を作る条
 
 公開済みのMCR、Azure Front Door FirstParty、ARM、Entra、Monitor等の必要通信は、採用済みNSG規則へ対応付ける。未公開または個別条件が未確定の保守処理を、新しい宛先・ポートの推測で補わない。ACAのネットワーク形態・サービス更新・レジストリ依存によって要求が変わり得る。[ACAの送信要件](https://learn.microsoft.com/en-us/azure/container-apps/firewall-integration#outbound)と[Azure Firewallとの統合](https://learn.microsoft.com/en-us/azure/container-apps/use-azure-firewall)を参照する。
 
-初期ACAには受信・送信のカスタムAny末尾Denyを作らず、任意Internet／Storage向けAllowも作らない。構築ACR、MCR、現在のApp／Jobと管理ID／監視依存を通信要件へ分け、現在アプリのStorage非依存を将来アプリへ一般化しない。実操作と設定の確認方法・結果管理は[検証文書](network-security-validation.md)にまとめる。既定の存在だけで全基盤通信の成功とは判定しない。将来末尾Denyを追加する場合は、image取得、起動・scale、アプリ／Job実行、監視、基盤更新と障害復旧を先に検証する。[公式Issueの補足](https://github.com/microsoft/azure-container-apps/issues/893#issuecomment-1711892233)は再現条件の参考であり、必要宛先の公式契約を置き換えない。
+PortalとCredential Brokerの共用ACAでは、必要な通信を明示してから受信・送信の末尾で拒否する。同一サブネット内の基盤通信は双方に明示し、Azure提供DNSの例外は維持する。パッケージの公開HTTPSは固定UDRでFirewallへ転送し、その宛先制御に従う。ACRのログインと専用データエンドポイントは構築したPrivate EndpointのIPへ接続する。
+
+新規構築後はイメージ取得、App／Jobの起動、スケール、監視、基盤更新と障害復旧を確認し、成功した範囲を記録する。[検証と受入条件](network-security-validation.md#実環境の受入確認) · [ACRのPrivate Link](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-private-endpoints)
 
 ## 管理VMサブネット
 

@@ -71,7 +71,7 @@ func allowRule(ruleName string, priority int, direction string, protocol string,
   })
 }
 
-// 明示Allowの後にだけ末尾Denyを登録します。AppGW/ACA送信とACA受信は既定規則を維持します。
+// このモジュールの末尾Denyは明示Allowの後に登録します。ACAの末尾DenyはSQL経路の準備後に配置します。
 func denyRule(direction string, priority int) object => {
   name: direction == 'Inbound' ? 'deny-any-ingress' : 'deny-any-egress'
   properties: {

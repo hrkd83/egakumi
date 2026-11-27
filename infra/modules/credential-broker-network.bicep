@@ -43,6 +43,18 @@ func allowRule(ruleName string, priority int, direction string, protocol string,
   })
 }
 
+func denyProperties(direction string, priority int) object => {
+  description: 'Reject communication outside the fixed initial allow rules'
+  priority: priority
+  direction: direction
+  access: 'Deny'
+  protocol: '*'
+  sourcePortRange: '*'
+  destinationPortRange: '*'
+  sourceAddressPrefix: '*'
+  destinationAddressPrefix: '*'
+}
+
 resource zone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
   name: 'privatelink.database.windows.net'
   location: 'global'
@@ -120,6 +132,21 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
     ]
   }
 }
+// ACR・Key Vault・基盤向けの許可は先行モジュールで用意済みです。
+// 両向きのSQL PE規則とFirewall許可を登録してから、ACAの末尾Denyを順に配置します。
+resource acaIngressDeny 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: acaNsg
+  name: 'deny-any-ingress'
+  properties: denyProperties('Inbound', nsgPriorities.groups.aca.rules['deny-any-ingress'].priority)
+  dependsOn: [acaSqlOut, sqlIn, rules]
+}
+resource acaEgressDeny 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: acaNsg
+  name: 'deny-any-egress'
+  properties: denyProperties('Outbound', nsgPriorities.groups.aca.rules['deny-any-egress'].priority)
+  dependsOn: [acaIngressDeny]
+}
+
 output endpointId string = endpoint.id
 
 output sqlPrivateIps array = ips

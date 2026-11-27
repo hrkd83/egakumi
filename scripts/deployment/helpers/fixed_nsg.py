@@ -16,6 +16,7 @@ import re
 import time
 from uuid import UUID
 
+from .aca_egress import validate_aca_route_snapshot
 from .apim_naming import apim_name
 from .management_host_time import ManagementHostTimeError, require_management_host_time_core_ready
 
@@ -208,8 +209,37 @@ def _verify_group(config, transport, identity):
         raise FixedNsgError('Network resource group ownership is unverified')
 
 
+def _verify_aca_egress_path(config, transport, subnet):
+    groups, stem, prefixes = _scope(config)
+    network = groups['nw'] + '/providers/Microsoft.Network/'
+    route_table_id = network + 'routeTables/rt-' + stem + '-aca'
+    if (_ref(subnet.get('routeTable')) != route_table_id.casefold()
+            or subnet.get('defaultOutboundAccess') is not False or subnet.get('natGateway')
+            or subnet.get('serviceEndpoints') not in (None, [])
+            or subnet.get('serviceEndpointPolicies') not in (None, [])):
+        raise FixedNsgError('The ACA subnet egress boundary does not match the fixed Firewall route')
+    firewall = _read(config, transport, network + 'azureFirewalls/afw-' + stem,
+                     'Microsoft.Network/azureFirewalls')['properties']
+    expected_subnet = network + 'virtualNetworks/vnet-' + stem + '/subnets/AzureFirewallSubnet'
+    ip_configs = firewall.get('ipConfigurations')
+    if (not isinstance(ip_configs, list) or len(ip_configs) != 1 or not isinstance(ip_configs[0], dict)
+            or not isinstance(ip_configs[0].get('properties'), dict)
+            or _ref(ip_configs[0]['properties'].get('subnet')) != expected_subnet.casefold()
+            or _ref(firewall.get('firewallPolicy')) != (network + 'firewallPolicies/afwp-' + stem).casefold()):
+        raise FixedNsgError('The ACA egress Firewall ownership and subnet are unverified')
+    firewall_ip = _address(ip_configs[0]['properties'].get('privateIPAddress'), prefixes['firewall'])
+    table = _read(config, transport, route_table_id, 'Microsoft.Network/routeTables')['properties']
+    if table.get('disableBgpRoutePropagation') is not True:
+        raise FixedNsgError('The ACA route table must disable BGP propagation')
+    try:
+        validate_aca_route_snapshot(table.get('routes'), prefixes['firewall'], prefixes['agw'],
+                                    firewall_ip=firewall_ip, require_default=True)
+    except ValueError:
+        raise FixedNsgError('The ACA route table does not prove that public traffic uses the owned Firewall') from None
+
+
 def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False, permit_pending_audit_endpoints=False,
-                            _required_bindings=None):
+                            _required_bindings=None, _require_aca_egress_path=False):
     """Read and verify resource identities, subnet links, PE targets and all NIC IPs."""
     if type(permit_unassociated_aca) is not bool or type(permit_pending_audit_endpoints) is not bool:
         raise FixedNsgError('The internal ACA association phase is invalid')
@@ -249,6 +279,8 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False,
         if address_prefixes != [prefixes[key]]: raise FixedNsgError('The owned subnet CIDR differs')
         if key == 'pep' and p.get('privateEndpointNetworkPolicies') != 'NetworkSecurityGroupEnabled':
             raise FixedNsgError('The initial Private Endpoint subnet NSG enforcement policy differs')
+        if key == 'aca' and _require_aca_egress_path:
+            _verify_aca_egress_path(config, transport, p)
         associated = _ref(p.get('networkSecurityGroup'))
         if key == 'firewall':
             if associated: raise FixedNsgError('AzureFirewallSubnet must not have a customer NSG')
@@ -450,7 +482,8 @@ def _etag(value):
 def fixed_nsg_upgrade_parameters(config, transport):
     """Supply the NSG-only Bicep from owned live addresses; no public switches."""
     groups, stem, _ = _scope(config)
-    bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True)
+    bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True,
+                                       _require_aca_egress_path=True)
     parents = _parents(config, transport)
     if any(parents[key] is None for key in GROUPS if key != 'aca'):
         raise FixedNsgError('The NSG-only upgrade requires all four existing base NSGs')
@@ -491,10 +524,11 @@ def verify_fixed_nsg_upgrade_what_if(config, document, bindings):
             or document.get('potentialChanges') not in (None, []) or not isinstance(document.get('changes'), list)):
         raise FixedNsgError('NSG-only what-if is incomplete or contains expansion diagnostics')
     catalog = _catalog('nsg-rule-priorities.json')
+    if set(catalog['groups']) != set(GROUPS):
+        raise FixedNsgError('The NSG-only manifest does not contain the fixed groups')
     expected = {groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-' + SUFFIXES[key]
                 + '/securityRules/' + name: _definition(rule, bindings)
                 for key in GROUPS for name, rule in catalog['groups'][key]['rules'].items()}
-    if len(expected) != 73: raise FixedNsgError('The NSG-only manifest must contain exactly 73 children')
     expected = {identity.casefold(): value for identity, value in expected.items()}
     aca = (groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-aca').casefold()
     observed = set()
@@ -541,7 +575,7 @@ def verify_fixed_nsg_upgrade_what_if(config, document, bindings):
         elif action not in ('Ignore', 'NoChange'):
             raise FixedNsgError('NSG-only what-if would write an unrelated resource or an existing parent')
     if observed != set(expected): raise FixedNsgError('NSG-only what-if did not expand all fixed children')
-    return {'fixedChildrenVerified': 73, 'expansionDiagnostics': 0, 'unrelatedWrites': 0}
+    return {'fixedChildrenVerified': len(observed), 'expansionDiagnostics': 0, 'unrelatedWrites': 0}
 
 
 def _subnet_reference(value):
@@ -613,6 +647,7 @@ def associate_fixed_aca_nsg(config, transport, *, bindings, execute=False, recor
     target = groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-aca'
     before = _request(transport, 'GET', identity).get('body')
     properties = _writable_aca_subnet(before, identity)
+    _verify_aca_egress_path(config, transport, properties)
     existing = _ref(properties.get('networkSecurityGroup'))
     if existing and existing != target.casefold(): raise FixedNsgError('ACA subnet has a different NSG owner')
     if existing: return {'associationRequired': False, 'associationVerified': True}

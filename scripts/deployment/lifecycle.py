@@ -112,6 +112,7 @@ if __package__ in (None, ""):
     __package__ = "deployment"
 
 from .helpers.paths import REPOSITORY, configuration_path, local_paths, private_parent
+from .helpers.aca_egress import validate_aca_route_snapshot
 from .helpers.azd_parameters import ARM_PARAMETERS_ENV, arm_parameters_reference, complete_arm_parameters
 from .helpers.configuration import ConfigurationError, build_bicep_configuration, entra_tenant_id, load_configuration, load_firewall_tls_inspection, load_secret_inputs
 from .helpers.diagnostics import DiagnosticPreservationError, canonical_settings, prepare_settings
@@ -812,6 +813,14 @@ def discover_existing_route_table_routes(config: dict, transport: ArmTransport) 
             # id/type/etag/進行状態は読取用。既存の全書込可能値だけを複写する。
             sanitized.append({"name": route_name, "properties": {
                 key: copy.deepcopy(value) for key, value in fields.items() if key in route_properties}})
+        if suffix == "aca":
+            if properties.get("disableBgpRoutePropagation") is not True:
+                raise DeploymentError("ACA public HTTPS requires BGP propagation to be disabled")
+            try:
+                subnets = config["network"]["subnetPrefixes"]
+                validate_aca_route_snapshot(sanitized, subnets["firewall"], subnets["agw"])
+            except ValueError as error:
+                raise DeploymentError(str(error)) from None
         existing[name] = sanitized
     return existing
 
