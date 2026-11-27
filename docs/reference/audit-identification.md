@@ -108,10 +108,10 @@ APIMのポリシー式には独自の構文と許可メンバーの制約があ�
 
 正常の経路では、共通認証の後に主体のsnapshotを1回作り、各traceは小さなsnapshotとcontextから許可項目を写す。主体の検証処理を各fragmentへ重複展開しない。Bearerの設定・内部処理エラーでは、保存した本人情報から失敗監査用の主体を準備し、従来の失敗traceを1件出して終了する。本文読み取り・buffer・外部network要求を追加しない。正常時は既存のGateway／Credential／query traceの発行回数を維持する。従来traceがなかった信頼した入口の403拒否だけは同じGateway監査を1件追加し、拒否条件とHTTP statusを変えない。
 
-各traceのJSONは識別項目の分だけ大きくなる。User-AgentとOperation templateには512文字の上限を設ける。[合成fixture](../../tests/test_audit_identification.py)の`run_fixture([], benchmark=True)`は、変更前のbaselineと主体snapshot・2件のGateway traceを比較し、ローカルの処理時間とJSONサイズの増分を返す。実行にはPowerShellとRoslynが必要である。Azure上の処理時間、LAWの取り込み量・費用は未計測であり、ローカルの合成測定から実環境の値を推測しない。保存設計や保持設定を変更せず、既存の診断・ログ転送の条件に従う。
+User-AgentとOperation templateには512文字の上限を設ける。[ローカル試験](../../tests/audit/test_audit_identification.py)はPowerShellとRoslynで実際のポリシー式を実行し、識別項目の長さ、正規化、認証済み主体の引継ぎを合成データで確認する。Azure上の処理時間とLAWの取り込み量・費用は未計測である。保存設計と保持設定は診断・ログ転送の条件に従う。
 
 queryはAPIM/AppGWの資源と時間区間を先に絞り、custom traceを展開した後、要求単位に集約してjoinする。候補のbagには上限を設け、body・URL/query・token・Cookie・任意headerを出力しない。資材や合成fixtureの検証を、対象環境への適用済み・性能検証済みとして報告しない。
 
-[照会fixture](../../tests/audit_identification_fixture.py)の`prepare_query()`は、正本のqueryへ独立した合成datatableと固定時間区間を渡し、要求単位の期待値を返す。fixtureの生成自体はAzureへ接続せず、KQLエンジンの実行を意味しない。エンジンで検証するときも、この合成版を使い、実ログの読み取りや設定変更と区別する。
+[照会fixture](../../tests/support/audit_identification_fixture.py)の`prepare_query()`は、正本のqueryへ独立した合成datatableと固定時間区間を渡し、要求単位の期待値を返す。fixtureの生成自体はAzureへ接続せず、KQLエンジンの実行を意味しない。エンジンで検証するときも、この合成版を使い、実ログの読み取りや設定変更と区別する。
 
 公式仕様: [APIM Gateway Logs](https://learn.microsoft.com/azure/azure-monitor/reference/tables/apimanagementgatewaylogs)、[AppGW Access Logs](https://learn.microsoft.com/azure/azure-monitor/reference/tables/agwaccesslogs)、[AppGWによる要求headerの追加](https://learn.microsoft.com/azure/application-gateway/how-application-gateway-works#modifications-to-the-request)。

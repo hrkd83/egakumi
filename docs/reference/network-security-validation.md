@@ -23,12 +23,12 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 試験 | 確認する内容 |
 | --- | --- |
-| [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py) | NSG正本の定義の展開一致、ACAの終端Deny、複数PE IP、priority、Firewallの基盤用途分割、直接経路向けFW規則の除去、ACA Dev宛先の固定生成 |
-| [test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py) | 構築サブネット・IPの所有境界、5 NSGとFirewallサブネットの非関連付け |
-| [test_grpc_fixed_infrastructure.py](../../tests/test_grpc_fixed_infrastructure.py) | gRPC専用設備の撤去、HTTPS保守保持、AppGW/API入口の構成 |
-| [test_credential_broker_initial_deployment.py](../../tests/test_credential_broker_initial_deployment.py) | Broker初期build/配備、source bundle、所有資源、再試行とcleanupの境界 |
-| [test_audit_storage_network.py](../../tests/test_audit_storage_network.py) | 監査Blob PEの全IP、DNS zone/group/linkとレコード照合、構築順序 |
-| [test_portal_gateway.py](../../tests/test_portal_gateway.py) | APIMとPortalのHTTPSプローブと検査用ルート照合 |
+| [test_nsg_rule_priorities.py](../../tests/network/test_nsg_rule_priorities.py) | NSG正本の定義の展開一致、ACAの終端Deny、複数PE IP、priority、Firewallの基盤用途分割、直接経路向けFW規則の除去、ACA Dev宛先の固定生成 |
+| [test_parameter_ip_ownership.py](../../tests/network/test_parameter_ip_ownership.py) | 構築サブネット・IPの所有境界、5 NSGとFirewallサブネットの非関連付け |
+| [test_gateway_https_infrastructure.py](../../tests/network/test_gateway_https_infrastructure.py) | gRPC専用設備の撤去、HTTPS保守保持、AppGW/API入口の構成 |
+| [test_credential_broker_initial_deployment.py](../../tests/deployment/test_credential_broker_initial_deployment.py) | Broker初期build/配備、source bundle、所有資源、再試行とcleanupの境界 |
+| [test_audit_storage_network.py](../../tests/audit/test_audit_storage_network.py) | 監査Blob PEの全IP、DNS zone/group/linkとレコード照合、構築順序 |
+| [test_portal_gateway.py](../../tests/portal/test_portal_gateway.py) | APIMとPortalのHTTPSプローブと検査用ルート照合 |
 
 旧外部NTP構成での上記8スイートの再実行結果は **102試験PASS、失敗0、エラー0、スキップ0**。当時の独立した文書照合でもNSG76規則のtupleに欠落・重複はなく、Firewallは6 RCG・11 collection・36規則（Network17、Application19）の名前集合が合成展開と一致した。全FW規則はAllow、全Application規則は`terminateTLS: false`であった。この過去記録は旧catalog v2の条件として保持し、管理VMのPHC化後のcatalog v4／75 NSG（Allow67、Deny6）／35 FW（Network14、Application21）や新しい同期確認のPASSへ転用しない。今回のAzure反映・実VM同期は未実施である。
 
@@ -40,9 +40,9 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 対象 | 試験 |
 | --- | --- |
-| PHC設定・Core前の先行証跡 | [Linux時刻設定](../../tests/test_management_linux.py)、[管理VM時刻gate](../../tests/test_management_host_time.py) |
-| NSG75／FW35とAPIM UDP123保全 | [Firewall](../../tests/test_firewall_diagnostics.py)、[IP所有境界](../../tests/test_parameter_ip_ownership.py)、[NSG正本](../../tests/test_nsg_rule_priorities.py) |
-| guest埋込とCore配備の依存関係 | [guest payload](../../tests/test_guest_deployment_payloads.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
+| PHC設定・Core前の先行証跡 | [Linux時刻設定](../../tests/management/test_management_linux.py)、[管理VM時刻gate](../../tests/management/test_management_host_time.py) |
+| NSG75／FW35とAPIM UDP123保全 | [Firewall](../../tests/audit/test_firewall_diagnostics.py)、[IP所有境界](../../tests/network/test_parameter_ip_ownership.py)、[NSG正本](../../tests/network/test_nsg_rule_priorities.py) |
+| guest埋込とCore配備の依存関係 | [guest payload](../../tests/management/test_guest_deployment_payloads.py)、[配備順序](../../tests/network/test_nsg_deployment_order.py) |
 
 合成VM IDの記述を独立生成値へ調整した後、移行／限定配備の2スイート39試験も再確認し、全件成功した（11.706秒、失敗・エラー・スキップ0）。別実行の件数を112へ加算しない。当時の文書のNSG2表は正本75件の名称と優先度に一致し、FW表は35件に一致した。今回のAzure反映、実VMでのPHC同期・時刻精度、再構築E2Eは未実施である。
 
@@ -50,19 +50,19 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 機能 | 公開実装・試験根拠 |
 | --- | --- |
-| ACAのFirewall経路 | [Core経路の保全試験](../../tests/test_network_preservation.py)。Firewallを迂回する公開宛経路の拒否と、所定の経路での再適用を確認する。 |
-| 固定NSGの構築と再開 | [配備前後の読戻し試験](../../tests/test_fixed_nsg_validation.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
-| Broker常設 | [Broker配備資材](../../apps/api-gateway/deploy/main.bicep)、[BrokerとSQL初期化の配備試験](../../tests/test_credential_pool_deployment.py) |
-| L7入口保護 | [AppGW資材](../../infra/modules/ingress/application-gateway.bicep)、[APIM共通policy](../../apps/api-gateway/policies/service.xml)、[trusted ingress](../../tests/test_trusted_ingress.py) |
-| 本文監査の専用経路 | [追加NSG正本](../../infra/modules/network/nsg/audit-evidence-rules.json)、[本文監査のネットワーク資材](../../infra/modules/audit-evidence/audit-evidence-network.bicep)、[資材試験](../../tests/test_audit_evidence_infra.py) |
-| 監査Blob閲覧 | [本人へ付与する保守権限](../operations/management-vm-access.md)、[管理VMクライアントのRBAC試験](../../tests/test_management_maintenance_rbac.py) |
-| ACA/保存ログの認可 | [maintenance roles](../../infra/modules/management/management-maintenance-roles.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py) |
-| ACA/保存ログの認可 | [ACAカスタムロール定義](../../infra/modules/management/management-maintenance-roles.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py)、[本人クライアント試験](../../tests/test_management_client.py) |
-| 保守clientと導入 | [management_client.py](../../scripts/operations/management_client.py)、[client試験](../../tests/test_management_client.py)、[導入試験](../../tests/test_management_client_install.py) |
-| SQL直接保守 | [本人への付与・回収](../operations/management-sql-access.md)、[SQL認可の資材試験](../../tests/test_sql_management_grants_infra.py)、[SQLクライアント試験](../../tests/test_management_sql_client.py) |
-| Serial初期準備 | [初期module](../../infra/modules/management/management-serial-initialization.bicep)、[初期処理試験](../../tests/test_serial_initialization.py)、[guest試験](../../tests/test_management_serial_guest.py) |
-| 管理VMのAzureホスト時刻 | [guest監査設定](../../infra/guest/configure-audit.sh)、[監査module](../../infra/modules/management/management-audit.bicep)、[Linux時刻試験](../../tests/test_management_linux.py)。PHC device／`clock_name`、唯一source、既知旧設定の移行、未知設定の拒否、同期確認失敗時の復旧を合成条件で検証する |
-| Core前の管理VM時刻gate | [読取gate](../../scripts/deployment/helpers/management_host_time.py)、[gate試験](../../tests/test_management_host_time.py)。既存VMの所有・現行script全文一致・RunCommand成功出力、VM作成／実行開始／終了のUTC時刻、旧VMや旧結果の拒否、厳密な整数HTTP404の新規構築判定を検証する。NSG限定移行の旧管理NTP削除にも適用する。先行適用証跡を現在精度の保証にしない |
+| ACAのFirewall経路 | [Core経路の保全試験](../../tests/network/test_network_preservation.py)。Firewallを迂回する公開宛経路の拒否と、所定の経路での再適用を確認する。 |
+| 固定NSGの構築と再開 | [配備前後の読戻し試験](../../tests/network/test_fixed_nsg_validation.py)、[配備順序](../../tests/network/test_nsg_deployment_order.py) |
+| Broker常設 | [Broker配備資材](../../apps/api-gateway/deploy/main.bicep)、[BrokerとSQL初期化の配備試験](../../tests/identity/test_credential_pool_deployment.py) |
+| L7入口保護 | [AppGW資材](../../infra/modules/ingress/application-gateway.bicep)、[APIM共通policy](../../apps/api-gateway/policies/service.xml)、[trusted ingress](../../tests/network/test_trusted_ingress.py) |
+| 本文監査の専用経路 | [追加NSG正本](../../infra/modules/network/nsg/audit-evidence-rules.json)、[本文監査のネットワーク資材](../../infra/modules/audit-evidence/audit-evidence-network.bicep)、[資材試験](../../tests/audit/test_audit_evidence_infra.py) |
+| 監査Blob閲覧 | [本人へ付与する保守権限](../operations/management-vm-access.md)、[管理VMクライアントのRBAC試験](../../tests/management/test_management_maintenance_rbac.py) |
+| ACA/保存ログの認可 | [maintenance roles](../../infra/modules/management/management-maintenance-roles.bicep)、[RBAC試験](../../tests/management/test_management_maintenance_rbac.py) |
+| ACA/保存ログの認可 | [ACAカスタムロール定義](../../infra/modules/management/management-maintenance-roles.bicep)、[RBAC試験](../../tests/management/test_management_maintenance_rbac.py)、[本人クライアント試験](../../tests/management/test_management_client.py) |
+| 保守clientと導入 | [management_client.py](../../scripts/operations/management_client.py)、[client試験](../../tests/management/test_management_client.py)、[導入試験](../../tests/management/test_management_client_install.py) |
+| SQL直接保守 | [本人への付与・回収](../operations/management-sql-access.md)、[SQL認可の資材試験](../../tests/management/test_sql_management_grants_infra.py)、[SQLクライアント試験](../../tests/management/test_management_sql_client.py) |
+| Serial初期準備 | [初期module](../../infra/modules/management/management-serial-initialization.bicep)、[初期処理試験](../../tests/deployment/test_serial_initialization.py)、[guest試験](../../tests/management/test_management_serial_guest.py) |
+| 管理VMのAzureホスト時刻 | [guest監査設定](../../infra/guest/configure-audit.sh)、[監査module](../../infra/modules/management/management-audit.bicep)、[Linux時刻試験](../../tests/management/test_management_linux.py)。PHC device／`clock_name`、唯一source、既知旧設定の移行、未知設定の拒否、同期確認失敗時の復旧を合成条件で検証する |
+| Core前の管理VM時刻gate | [読取gate](../../scripts/deployment/helpers/management_host_time.py)、[gate試験](../../tests/management/test_management_host_time.py)。既存VMの所有・現行script全文一致・RunCommand成功出力、VM作成／実行開始／終了のUTC時刻、旧VMや旧結果の拒否、厳密な整数HTTP404の新規構築判定を検証する。NSG限定移行の旧管理NTP削除にも適用する。先行適用証跡を現在精度の保証にしない |
 
 ## 実環境の実証結果の管理
 

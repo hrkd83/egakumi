@@ -1,0 +1,54 @@
+"""モデル別の公表上限と、可変・未対応を混同しない展開を検証する。"""
+import copy
+import unittest
+from tests import REPOSITORY
+
+CORE = REPOSITORY
+from catalog.model_capabilities import apply_model_capabilities, load_model_capabilities
+from catalog.standard_apis import load_api_definitions, API_DEFINITION_DIRECTORY
+from deployment.helpers.configuration import _apis, ConfigurationError
+from tests.gateway.publication.test_api_contract_configuration import contract, TENANT
+
+
+class ModelCapabilitiesTests(unittest.TestCase):
+    def test_model_settings_share_one_operation_capability_map(self):
+        apis = load_api_definitions(API_DEFINITION_DIRECTORY)
+        text = next(api for api in apis if api["name"] == "openai-inference-v1")
+        chat = text["authorization"]["operationConstraints"]["chat-completions"]
+        self.assertEqual(set(chat["modelSettings"]), set(chat["allowedModels"]))
+        self.assertEqual(chat["maxOutputTokensByModel"]["gpt-6.1-sol"], 128000)
+        self.assertEqual(chat["maxOutputTokensByModel"]["DeepSeek-V4-Flash"], 384000)
+        self.assertEqual(chat["maxOutputTokensByModel"]["model-router"], None)
+        self.assertEqual(chat["outputTokenLimitKinds"]["model-router"], "dynamic")
+        self.assertEqual(chat["modelSettings"]["gpt-6.1-sol"]["settingId"], "chat")
+        self.assertEqual(chat["modelSettings"]["DeepSeek-V4-Flash"]["outputTokenParameter"], "max_tokens")
+        for settings in chat["modelSettings"].values():
+            self.assertNotIn("maxOutputTokensByModel", settings)
+            self.assertNotIn("outputTokenLimitKinds", settings)
+        realtime = next(api for api in apis if api["name"] == "openai-realtime-control-v1")["authorization"]["operationConstraints"]["realtime-create"]
+        self.assertEqual(realtime["maxOutputTokens"], 4096)
+        self.assertEqual(realtime["initialOutputTokens"], 512)
+
+    def test_config_accepts_real_large_limits_but_validates_exact_models_and_null_reason(self):
+        api = contract()
+        outer = api["authorization"]["operationConstraints"]["chat-completions"]
+        outer.update(maxOutputTokens=128000, maxOutputTokensByModel={"text-model": 128000, "vision-model": None}, outputTokenLimitKinds={"text-model": "documented", "vision-model": "dynamic"})
+        result = _apis([api], TENANT, {"text-model", "vision-model"}, "https://gateway.example.com", {"subscriptionKeyHeader": "api-key"})[0]["authorization"]["operationConstraints"]["chat-completions"]
+        self.assertEqual(result["maxOutputTokens"], 128000)
+        self.assertEqual(result["maxOutputTokensByModel"], {"text-model": 128000, "vision-model": None})
+        self.assertNotIn("maxOutputTokensByModel", result["modelSettings"]["text-model"])
+        for change in [lambda item: item["maxOutputTokensByModel"].update(other=1), lambda item: item["maxOutputTokensByModel"].update({"text-model": None}), lambda item: item["outputTokenLimitKinds"].clear()]:
+            broken = copy.deepcopy(api); change(broken["authorization"]["operationConstraints"]["chat-completions"])
+            with self.assertRaises(ConfigurationError):
+                _apis([broken], TENANT, {"text-model", "vision-model"}, "https://gateway.example.com", {"subscriptionKeyHeader": "api-key"})
+
+    def test_missing_model_capability_is_not_replaced_with_512(self):
+        apis = load_api_definitions(API_DEFINITION_DIRECTORY)
+        caps = load_model_capabilities()
+        caps["entries"] = [entry for entry in caps["entries"] if entry["modelId"] != "gpt-6.1-sol"]
+        with self.assertRaisesRegex(ValueError, "no verified capability"):
+            apply_model_capabilities(apis, caps, {"VOICE_LIVE_MODEL": "gpt-6.1-sol", "VOICE_LIVE_CALLS_MODEL": "gpt-6.1-sol"})
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -61,7 +61,7 @@ PortalとCredential Brokerの共用ACAでは、必要な通信を明示してか
 
 証明書の[guest worker](../../infra/guest/certificate.ps1)は、IMDS要求に`Metadata: true`を付け、自動redirectを禁止してproxyを無効にする。Key Vault用はVMのSystemAssigned ID、Azure DNS更新用は構築時に割り当てた所定のUserAssigned IDを明示する。audienceの指定はトークンの対象サービスを示し、IMDS取得時にそのサービスへHTTPS接続する意味ではない。Key Vault、Azure DNSのARM操作、ACME発行先への通信は別要件である。
 
-[証明書保守helper](../../scripts/operations/certificate.py)の公開certificate metadata取得も、IMDS専用の`ProxyHandler({})`とredirect禁止を使用する。Vault HTTPS用openerは分離し、従来のproxy動作を維持する。秘密／PFXの取得はこのmetadata処理へ追加しない。[合成通信試験](../../tests/test_operations_certificate.py)は、環境proxyを設定してIMDSの直接接続、Vaultのproxy選択、両宛先のredirect拒否をソケット接続前に検証する。実VMのproxy設定や実障害を観測した試験ではない。
+[証明書保守helper](../../scripts/operations/certificate.py)の公開certificate metadata取得も、IMDS専用の`ProxyHandler({})`とredirect禁止を使用する。Vault HTTPS用openerは分離し、従来のproxy動作を維持する。秘密／PFXの取得はこのmetadata処理へ追加しない。[合成通信試験](../../tests/deployment/test_operations_certificate.py)は、環境proxyを設定してIMDSの直接接続、Vaultのproxy選択、両宛先のredirect拒否をソケット接続前に検証する。実VMのproxy設定や実障害を観測した試験ではない。
 
 運用では、構築管理IDと用途別RBAC、primary NIC／IP、DHCP、guest route／local Firewall、各MI利用処理と後続サービスの認可を確認する。SDKのcache周期や実token更新頻度は実測なしに固定しない。[AMAの管理ID・ネットワーク要件](https://learn.microsoft.com/en-us/azure/azure-monitor/agents/azure-monitor-agent-requirements)
 
@@ -123,7 +123,7 @@ guest Storage HTTPS443、ARMによる資源操作、Diskのimport／export、SAS
 
 `DESIGN-FIREWALL-SUBNET-NSG-001`として、`AzureFirewallSubnet`には顧客NSGを作成・関連付けしない。[公式FAQ](https://learn.microsoft.com/en-us/azure/firewall/firewall-faq)は、サービス中断を避けるためsubnet-level NSGを無効としている。[公式FAQソース](https://github.com/MicrosoftDocs/azure-docs/blob/main/articles/firewall/firewall-faq.yml)
 
-[ネットワーク資材](../../infra/modules/network/network.bicep)はFirewallサブネットに構築CIDRを配置し、NSGの関連付けを持たない。独自のNSG Inbound／Outbound規則・名前・優先度・作成switchを追加せず、この状態を再構築時にも維持する。[合成構築試験](../../tests/test_parameter_ip_ownership.py)は、5つの対象サブネットへのNSG関連付けとFirewallサブネットの非関連付けを確認する。
+[ネットワーク資材](../../infra/modules/network/network.bicep)はFirewallサブネットに構築CIDRを配置し、NSGの関連付けを持たない。独自のNSG Inbound／Outbound規則・名前・優先度・作成switchを追加せず、この状態を再構築時にも維持する。[合成構築試験](../../tests/network/test_parameter_ip_ownership.py)は、5つの対象サブネットへのNSG関連付けとFirewallサブネットの非関連付けを確認する。
 
 `network.subnetPrefixes.firewall`のCIDRと、Firewall自身のSKU／IDPS／Policyは既存の用途を維持する。利用者通信の制御と要件マッピングはFirewall Policy Network／Application ruleの別棚卸しで行う。Azureが管理する不可視NIC-level NSGを、顧客資材のルールとして採番しない。今回、Firewall管理サブネット、管理Public IP、強制トンネルや新しいUDRを追加する判断は行わない。
 

@@ -126,17 +126,28 @@
         "params/production.example.json",
         "params/test.example.json",
         "tests/audit_identification_fixture.py",
+        "tests/support/audit_identification_fixture.py",
         "tests/test_api_request_preparation.py",
+        "tests/gateway/policies/test_api_request_preparation.py",
         "tests/test_audit_identification.py",
+        "tests/audit/test_audit_identification.py",
         "tests/test_credential_provider_inputs.py",
+        "tests/identity/test_credential_provider_inputs.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_entra_publication_bootstrap.py",
+        "tests/gateway/publication/test_entra_publication_bootstrap.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py",
         "tests/test_prepare_credential_pool_config.py",
         "tests/test_portal_certificate_initialization.py",
+        "tests/certificates/test_portal_certificate_initialization.py",
         "tests/test_schema_helpers.py",
+        "tests/deployment/configuration/test_schema_helpers.py",
         "apps/portal/tests/client-assertion.test.ts",
         "tests/test_sql_connection_policy_operation.py",
         "tests/test_phase12_audit_checks.py"
@@ -148,15 +159,24 @@
       "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
       "paths": [
         "tests/audit_identification_fixture.py",
+        "tests/support/audit_identification_fixture.py",
         "tests/test_audit_identification.py",
+        "tests/audit/test_audit_identification.py",
         "tests/test_credential_provider_inputs.py",
+        "tests/identity/test_credential_provider_inputs.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_entra_named_value_refresh.py",
+        "tests/gateway/publication/test_entra_named_value_refresh.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py",
         "tests/test_prepare_credential_pool_config.py",
         "tests/test_portal_certificate_initialization.py",
+        "tests/certificates/test_portal_certificate_initialization.py",
         "apps/portal/tests/client-assertion.test.ts",
         "tests/test_sql_connection_policy_operation.py",
         "tests/test_sql_nsg_upgrade_operation.py",
@@ -170,17 +190,28 @@
       "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
       "paths": [
         "tests/audit_identification_fixture.py",
+        "tests/support/audit_identification_fixture.py",
         "tests/configuration_fixtures.py",
+        "tests/support/configuration_fixtures.py",
         "tests/test_audit_identification.py",
+        "tests/audit/test_audit_identification.py",
         "tests/test_credential_provider_inputs.py",
+        "tests/identity/test_credential_provider_inputs.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_entra_named_value_publication.py",
+        "tests/gateway/publication/test_entra_named_value_publication.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py",
         "tests/test_local_preparation_hooks.py",
+        "tests/deployment/test_local_preparation_hooks.py",
         "tests/test_prepare_credential_pool_config.py",
         "tests/test_portal_certificate_initialization.py",
+        "tests/certificates/test_portal_certificate_initialization.py",
         "tests/test_sql_connection_policy_operation.py",
         "tests/test_sql_policy_nsg_integration.py",
         "tests/test_phase12_audit_checks.py"
@@ -194,15 +225,24 @@
         "apps/credential-broker/tests/test_verified_user_caller.py",
         "apps/gateway/credential-broker/tests/test_verified_user_caller.py",
         "tests/audit_identification_fixture.py",
+        "tests/support/audit_identification_fixture.py",
         "tests/test_audit_identification.py",
+        "tests/audit/test_audit_identification.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_entra_named_value_publication.py",
+        "tests/gateway/publication/test_entra_named_value_publication.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_local_preparation_hooks.py",
+        "tests/deployment/test_local_preparation_hooks.py",
         "tests/test_prepare_credential_pool_config.py",
         "tests/test_portal_certificate_initialization.py",
+        "tests/certificates/test_portal_certificate_initialization.py",
         "tests/test_publication_source_generation.py",
+        "tests/gateway/publication/test_publication_source_generation.py",
         "tests/test_phase12_audit_checks.py"
       ]
     },
@@ -212,8 +252,11 @@
       "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
       "paths": [
         "tests/test_credential_provider_inputs.py",
+        "tests/identity/test_credential_provider_inputs.py",
         "tests/test_entra_authentication_configuration.py",
-        "tests/test_entra_gateway_authentication.py"
+        "tests/identity/test_entra_authentication_configuration.py",
+        "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -223,7 +266,8 @@
       "paths": [
         "apps/credential-broker/tests/test_verified_user_caller.py",
         "apps/gateway/credential-broker/tests/test_verified_user_caller.py",
-        "tests/test_gateway_limits_telemetry.py"
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py"
       ]
     },
     {
@@ -249,7 +293,8 @@
       "value": "MOCK-ACCESS-TOKEN-PRIVATE",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_integration_client.py"
+        "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py"
       ]
     },
     {
@@ -257,7 +302,8 @@
       "value": "OFFLINE_FIXTURE",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_tenant_configuration.py"
+        "tests/test_tenant_configuration.py",
+        "tests/deployment/configuration/test_tenant_configuration.py"
       ]
     },
     {
@@ -265,7 +311,8 @@
       "value": "PRIVATE_EPHEMERAL",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_realtime_browser.py"
+        "tests/test_realtime_browser.py",
+        "tests/clients/test_realtime_browser.py"
       ]
     },
     {
@@ -273,7 +320,8 @@
       "value": "PRIVATE_SENTINEL",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/cleanup_fixtures.py"
+        "tests/cleanup_fixtures.py",
+        "tests/support/cleanup_fixtures.py"
       ]
     },
     {
@@ -281,7 +329,8 @@
       "value": "SECRET_FIXTURE",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_lifecycle.py"
+        "tests/test_lifecycle.py",
+        "tests/deployment/test_lifecycle.py"
       ]
     },
     {
@@ -289,7 +338,8 @@
       "value": "SENTINEL_ACCESS_TOKEN",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_gateway_limits_telemetry.py"
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py"
       ]
     },
     {
@@ -297,7 +347,8 @@
       "value": "SENTINEL_SECRET_ABC",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/cap-offline.py"
+        "tests/cap-offline.py",
+        "tests/deployment/test_application_insights_cap.py"
       ]
     },
     {
@@ -305,7 +356,8 @@
       "value": "SYNTHETIC-ENTRA-DO-NOT-DISPLAY",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_prepare_secrets.py"
+        "tests/test_prepare_secrets.py",
+        "tests/deployment/test_prepare_secrets.py"
       ]
     },
     {
@@ -313,7 +365,8 @@
       "value": "SYNTHETIC-HOOK-ENTRA-DO-NOT-DISPLAY",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_local_preparation_hooks.py"
+        "tests/test_local_preparation_hooks.py",
+        "tests/deployment/test_local_preparation_hooks.py"
       ]
     },
     {
@@ -321,7 +374,8 @@
       "value": "SYNTHETIC-SELECTION-ENTRA-DO-NOT-DISPLAY",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_local_preparation_hooks.py"
+        "tests/test_local_preparation_hooks.py",
+        "tests/deployment/test_local_preparation_hooks.py"
       ]
     },
     {
@@ -329,7 +383,8 @@
       "value": "SYNTHETIC_KEY",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_common_authentication.py"
+        "tests/test_common_authentication.py",
+        "tests/gateway/policies/test_common_authentication.py"
       ]
     },
     {
@@ -337,7 +392,8 @@
       "value": "fixture-azure-secret",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_configuration.py"
+        "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -346,7 +402,9 @@
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
         "tests/certificate-offline.ps1",
-        "tests/test_configuration.py"
+        "tests/certificates/certificate-offline.ps1",
+        "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -362,7 +420,8 @@
       "value": "forbidden",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_common_authentication.py"
+        "tests/test_common_authentication.py",
+        "tests/gateway/policies/test_common_authentication.py"
       ]
     },
     {
@@ -370,7 +429,8 @@
       "value": "must-not-leave-broker",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_credential_login.py"
+        "tests/test_credential_login.py",
+        "tests/identity/test_credential_login.py"
       ]
     },
     {
@@ -386,7 +446,8 @@
       "value": "not-exposed",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_credential_login.py"
+        "tests/test_credential_login.py",
+        "tests/identity/test_credential_login.py"
       ]
     },
     {
@@ -394,7 +455,8 @@
       "value": "opaque-token",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_credential_login.py"
+        "tests/test_credential_login.py",
+        "tests/identity/test_credential_login.py"
       ]
     },
     {
@@ -411,7 +473,8 @@
       "value": "private-app-token",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_entra_signin.py"
+        "tests/test_entra_signin.py",
+        "tests/clients/test_entra_signin.py"
       ]
     },
     {
@@ -421,7 +484,8 @@
       "paths": [
         "apps/portal/tests/connection-session-client.test.ts",
         "clients/connection-session/typescript/connection-session.test.ts",
-        "tests/test_credential_client_v2.py"
+        "tests/test_credential_client_v2.py",
+        "tests/clients/test_credential_client_v2.py"
       ]
     },
     {
@@ -429,7 +493,8 @@
       "value": "private-refresh",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_entra_signin.py"
+        "tests/test_entra_signin.py",
+        "tests/clients/test_entra_signin.py"
       ]
     },
     {
@@ -446,7 +511,8 @@
       "value": "private-user-token",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_entra_signin.py"
+        "tests/test_entra_signin.py",
+        "tests/clients/test_entra_signin.py"
       ]
     },
     {
@@ -454,7 +520,8 @@
       "value": "sentinel-private-key",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_waf_probe.py"
+        "tests/test_waf_probe.py",
+        "tests/waf/test_waf_probe.py"
       ]
     },
     {
@@ -462,7 +529,8 @@
       "value": "signature-test-secret",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_configuration.py"
+        "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -470,7 +538,8 @@
       "value": "synthetic-pfx-password",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/certificate-rotation-offline.ps1"
+        "tests/certificate-rotation-offline.ps1",
+        "tests/certificates/certificate-rotation-offline.ps1"
       ]
     },
     {
@@ -497,7 +566,9 @@
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
         "tests/test_configuration.py",
-        "tests/test_ssh_keys.py"
+        "tests/deployment/configuration/test_configuration.py",
+        "tests/test_ssh_keys.py",
+        "tests/management/test_ssh_keys.py"
       ]
     },
     {
@@ -513,7 +584,8 @@
       "value": "/another/app",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_deploy_portal.py"
+        "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py"
       ]
     },
     {
@@ -546,7 +618,9 @@
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
         "tests/test_connections.py",
-        "tests/test_service_bindings.py"
+        "tests/identity/test_connections.py",
+        "tests/test_service_bindings.py",
+        "tests/deployment/test_service_bindings.py"
       ]
     },
     {
@@ -562,7 +636,8 @@
       "value": "another",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_credential_client_v2.py"
+        "tests/test_credential_client_v2.py",
+        "tests/clients/test_credential_client_v2.py"
       ]
     },
     {
@@ -578,7 +653,8 @@
       "value": "app-a",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_audit_usage.py"
+        "tests/test_audit_usage.py",
+        "tests/audit/test_audit_usage.py"
       ]
     },
     {
@@ -586,7 +662,8 @@
       "value": "app-b",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_audit_usage.py"
+        "tests/test_audit_usage.py",
+        "tests/audit/test_audit_usage.py"
       ]
     },
     {
@@ -594,7 +671,8 @@
       "value": "business-subscription",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_credential_client_v2.py"
+        "tests/test_credential_client_v2.py",
+        "tests/clients/test_credential_client_v2.py"
       ]
     },
     {
@@ -626,7 +704,8 @@
       "value": "existing-test",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_deploy_portal.py"
+        "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py"
       ]
     },
     {
@@ -692,7 +771,8 @@
       "value": "operator@example.invalid",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/cap-offline.py"
+        "tests/cap-offline.py",
+        "tests/deployment/test_application_insights_cap.py"
       ]
     },
     {
@@ -705,7 +785,9 @@
         "apps/credential-broker/tests/test_store.py",
         "apps/gateway/credential-broker/tests/test_store.py",
         "tests/test_credential_login.py",
-        "tests/test_grpc_network.py"
+        "tests/identity/test_credential_login.py",
+        "tests/test_grpc_network.py",
+        "tests/network/test_ingress_bootstrap.py"
       ]
     },
     {
@@ -713,7 +795,8 @@
       "value": "other-subscription",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_deploy_portal.py"
+        "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py"
       ]
     },
     {
@@ -721,7 +804,8 @@
       "value": "pii-system",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/configuration_fixtures.py"
+        "tests/configuration_fixtures.py",
+        "tests/support/configuration_fixtures.py"
       ]
     },
     {
@@ -731,6 +815,7 @@
       "paths": [
         "scripts/deployment/helpers/portal_api_keys.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_portal_api_keys_setup.py"
       ]
     },
@@ -747,7 +832,8 @@
       "value": "portal-fixture",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_subscription_usage.py"
+        "tests/test_subscription_usage.py",
+        "tests/audit/test_subscription_usage.py"
       ]
     },
     {
@@ -755,7 +841,9 @@
       "value": "readonly",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_portal_gateway.py"
+        "tests/test_portal_gateway.py",
+        "tests/portal/test_portal_gateway.py",
+        "tests/support/app_gateway_fixtures.py"
       ]
     },
     {
@@ -814,7 +902,8 @@
         "apps/gateway/credential-broker/tests/test_broker_http.py",
         "apps/credential-broker/tests/test_store.py",
         "apps/gateway/credential-broker/tests/test_store.py",
-        "tests/test_contract_rate_policy.py"
+        "tests/test_contract_rate_policy.py",
+        "tests/gateway/policies/test_contract_rate_policy.py"
       ]
     },
     {
@@ -822,7 +911,8 @@
       "value": "subscription-override",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/test_contract_rate_policy.py"
+        "tests/test_contract_rate_policy.py",
+        "tests/gateway/policies/test_contract_rate_policy.py"
       ]
     },
     {
@@ -843,7 +933,8 @@
       "value": "system-a",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "tests/configuration_fixtures.py"
+        "tests/configuration_fixtures.py",
+        "tests/support/configuration_fixtures.py"
       ]
     },
     {
@@ -890,7 +981,8 @@
       "value": "PRIVATE_FIXTURE@kv.vault.azure.net",
       "reason": "Existing synthetic negative-test input; exact path/value only",
       "paths": [
-        "tests/test_apim_hostname_preservation.py"
+        "tests/test_apim_hostname_preservation.py",
+        "tests/network/test_apim_hostname_preservation.py"
       ]
     },
     {
@@ -898,7 +990,8 @@
       "value": "PRIVATE_FIXTURE@management.azure.com",
       "reason": "Existing synthetic negative-test input; exact path/value only",
       "paths": [
-        "tests/test_grpc_network.py"
+        "tests/test_grpc_network.py",
+        "tests/network/test_ingress_bootstrap.py"
       ]
     },
     {
@@ -906,7 +999,8 @@
       "value": "PRIVATE_PASSWORD_FIXTURE@management.azure.com",
       "reason": "Existing synthetic negative-test input; exact path/value only",
       "paths": [
-        "tests/test_lifecycle_transport.py"
+        "tests/test_lifecycle_transport.py",
+        "tests/deployment/test_lifecycle_transport.py"
       ]
     },
     {
@@ -914,7 +1008,8 @@
       "value": "fixture@logic-apis-japaneast.consent.azure-apim.net",
       "reason": "Existing synthetic negative-test input; exact path/value only",
       "paths": [
-        "tests/test_credential_login_browser.py"
+        "tests/test_credential_login_browser.py",
+        "tests/identity/test_credential_login_browser.py"
       ]
     },
     {
@@ -922,7 +1017,8 @@
       "value": "operator@fresh-clone.example",
       "reason": "Existing synthetic negative-test input; exact path/value only",
       "paths": [
-        "tests/test_fresh_clone_readiness.py"
+        "tests/test_fresh_clone_readiness.py",
+        "tests/deployment/test_fresh_clone_readiness.py"
       ]
     },
     {
@@ -930,7 +1026,8 @@
       "value": "secret@graph.microsoft.com",
       "reason": "Existing synthetic negative-test input; exact path/value only",
       "paths": [
-        "tests/test_connection_configuration.py"
+        "tests/test_connection_configuration.py",
+        "tests/identity/test_connection_configuration.py"
       ]
     },
     {
@@ -949,7 +1046,8 @@
       "paths": [
         "scripts/waf_probe.py",
         "scripts/validation/waf_probe.py",
-        "tests/test_waf_probe.py"
+        "tests/test_waf_probe.py",
+        "tests/waf/test_waf_probe.py"
       ]
     },
     {
@@ -967,7 +1065,9 @@
         "scripts/waf_probe.py",
         "scripts/validation/waf_probe.py",
         "tests/certificate-network-boundary-offline.ps1",
+        "tests/certificates/certificate-network-boundary-offline.ps1",
         "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py",
         "infra/guest/portal-auth-certificate.ps1"
       ]
     },
@@ -988,8 +1088,11 @@
         "scripts/deployment/helpers/configuration.py",
         "tests/fixtures/external-api-definitions.json",
         "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_realtime_policy.py",
+        "tests/gateway/policies/test_realtime_policy.py",
         "apps/portal/lib/generated/model-api-definitions.json"
       ]
     },
@@ -998,7 +1101,8 @@
       "value": "aif-test-fixture.cognitiveservices.azure.com",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -1006,7 +1110,8 @@
       "value": "aif-test-fixture.openai.azure.com",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -1015,7 +1120,9 @@
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
         "tests/test_api_publication_size.py",
-        "tests/test_publish_apis.py"
+        "tests/gateway/publication/test_api_publication_size.py",
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -1023,7 +1130,8 @@
       "value": "aif-test.cognitiveservices.azure.com",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_document_analysis_policy.py"
+        "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py"
       ]
     },
     {
@@ -1039,7 +1147,8 @@
       "value": "another.azure-api.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_gateway_callback_waf.py"
+        "tests/test_gateway_callback_waf.py",
+        "tests/waf/test_gateway_callback_waf.py"
       ]
     },
     {
@@ -1047,7 +1156,8 @@
       "value": "api.enterprise.example",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_catalog_descriptions.py"
+        "tests/test_catalog_descriptions.py",
+        "tests/gateway/publication/test_catalog_descriptions.py"
       ]
     },
     {
@@ -1055,7 +1165,8 @@
       "value": "apic-test-egakumi.portal.eastus.azure-apicenter.ms",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_prepare_registration.py"
+        "tests/test_prepare_registration.py",
+        "tests/deployment/test_prepare_registration.py"
       ]
     },
     {
@@ -1073,7 +1184,8 @@
       "value": "apim-fixture.azure-api.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_ssml_waf.py"
+        "tests/test_ssml_waf.py",
+        "tests/waf/test_ssml_waf.py"
       ]
     },
     {
@@ -1082,7 +1194,9 @@
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
         "tests/test_gateway_callback_waf.py",
-        "tests/test_grpc_network.py"
+        "tests/waf/test_gateway_callback_waf.py",
+        "tests/test_grpc_network.py",
+        "tests/network/test_ingress_bootstrap.py"
       ]
     },
     {
@@ -1092,7 +1206,8 @@
       "paths": [
         "apps/portal/tests/pii-gateway.test.ts",
         "apps/portal/tests/pii-mcp.test.ts",
-        "tests/test_credential_login.py"
+        "tests/test_credential_login.py",
+        "tests/identity/test_credential_login.py"
       ]
     },
     {
@@ -1109,6 +1224,7 @@
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
         "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py",
         "tests/test_subscription_profile_deployment.py"
       ]
     },
@@ -1163,14 +1279,21 @@
         "apps/gateway/apim/policies/realtime-create.xml",
         "scripts/deployment/helpers/configuration.py",
         "tests/configuration_fixtures.py",
+        "tests/support/configuration_fixtures.py",
         "tests/test_api_contract_configuration.py",
+        "tests/gateway/publication/test_api_contract_configuration.py",
         "tests/test_api_migration.py",
         "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py",
         "tests/test_operation_backend_publication.py",
+        "tests/gateway/publication/test_operation_backend_publication.py",
         "tests/test_realtime_policy.py",
+        "tests/gateway/policies/test_realtime_policy.py",
         "tests/test_shared_mcp_configuration.py",
+        "tests/gateway/publication/test_shared_mcp_configuration.py",
         "apps/portal/lib/generated/model-api-definitions.json",
-        "tests/test_entra_publication.py"
+        "tests/test_entra_publication.py",
+        "tests/gateway/publication/test_entra_publication.py"
       ]
     },
     {
@@ -1229,7 +1352,8 @@
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
         "tests/test_api_migration.py",
-        "tests/test_credential_cleanup.py"
+        "tests/test_credential_cleanup.py",
+        "tests/identity/test_credential_cleanup.py"
       ]
     },
     {
@@ -1254,7 +1378,8 @@
       "value": "echoapi.cloudapp.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_apim_sample_cleanup.py"
+        "tests/test_apim_sample_cleanup.py",
+        "tests/gateway/publication/test_apim_sample_cleanup.py"
       ]
     },
     {
@@ -1262,7 +1387,8 @@
       "value": "elsewhere.example",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -1278,7 +1404,8 @@
       "value": "evil-logic-apis-japaneast.consent.azure-apim.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_credential_login_browser.py"
+        "tests/test_credential_login_browser.py",
+        "tests/identity/test_credential_login_browser.py"
       ]
     },
     {
@@ -1297,7 +1424,9 @@
       "value": "example.vault.azure.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_portal_gateway.py"
+        "tests/test_portal_gateway.py",
+        "tests/portal/test_portal_gateway.py",
+        "tests/support/app_gateway_fixtures.py"
       ]
     },
     {
@@ -1305,7 +1434,8 @@
       "value": "external.example",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_entra_signin.py"
+        "tests/test_entra_signin.py",
+        "tests/clients/test_entra_signin.py"
       ]
     },
     {
@@ -1330,7 +1460,8 @@
       "value": "fixture.services.ai.azure.com",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_api_protocols.py"
+        "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py"
       ]
     },
     {
@@ -1339,6 +1470,7 @@
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
         "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py",
         "tests/test_prepare_coverage.py"
       ]
     },
@@ -1359,7 +1491,8 @@
       "paths": [
         "apps/credential-broker/tests/test_broker_identity_cm.py",
         "apps/gateway/credential-broker/tests/test_broker_identity_cm.py",
-        "tests/test_integration_client.py"
+        "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py"
       ]
     },
     {
@@ -1367,7 +1500,8 @@
       "value": "gateway.example.com.attacker.example",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_credential_login.py"
+        "tests/test_credential_login.py",
+        "tests/identity/test_credential_login.py"
       ]
     },
     {
@@ -1391,7 +1525,8 @@
       "value": "identity.example",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_integration_client.py"
+        "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py"
       ]
     },
     {
@@ -1410,7 +1545,8 @@
         "apps/apim/deploy/api_publication.py",
         "apps/api-gateway/deploy/api_publication.py",
         "apps/gateway/deploy/api_publication.py",
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -1430,12 +1566,19 @@
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
         "tests/certificate-hostnames-offline.ps1",
+        "tests/certificates/certificate-hostnames-offline.ps1",
         "tests/certificate-network-boundary-offline.ps1",
+        "tests/certificates/certificate-network-boundary-offline.ps1",
         "tests/certificate-offline.ps1",
+        "tests/certificates/certificate-offline.ps1",
         "tests/certificate-rotation-offline.ps1",
+        "tests/certificates/certificate-rotation-offline.ps1",
         "tests/test_api_contract_configuration.py",
+        "tests/gateway/publication/test_api_contract_configuration.py",
         "tests/test_apim_hostname_preservation.py",
+        "tests/network/test_apim_hostname_preservation.py",
         "tests/test_ssml_waf.py",
+        "tests/waf/test_ssml_waf.py",
         "tests/test_subscription_profile_deployment.py"
       ]
     },
@@ -1445,7 +1588,9 @@
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
         "tests/test_api_publication_size.py",
-        "tests/test_publish_apis.py"
+        "tests/gateway/publication/test_api_publication_size.py",
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -1453,7 +1598,8 @@
       "value": "kv.vault.azure.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_apim_hostname_preservation.py"
+        "tests/test_apim_hostname_preservation.py",
+        "tests/network/test_apim_hostname_preservation.py"
       ]
     },
     {
@@ -1470,7 +1616,8 @@
       "value": "logic-apis-.consent.azure-apim.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_credential_login_browser.py"
+        "tests/test_credential_login_browser.py",
+        "tests/identity/test_credential_login_browser.py"
       ]
     },
     {
@@ -1478,7 +1625,8 @@
       "value": "logic-apis-japaneast.consent.azure-apim.com",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_credential_login_browser.py"
+        "tests/test_credential_login_browser.py",
+        "tests/identity/test_credential_login_browser.py"
       ]
     },
     {
@@ -1490,7 +1638,8 @@
         "apps/gateway/credential-broker/tests/_broker_support.py",
         "apps/credential-broker/tests/test_broker_identity_cm.py",
         "apps/gateway/credential-broker/tests/test_broker_identity_cm.py",
-        "tests/test_credential_login_browser.py"
+        "tests/test_credential_login_browser.py",
+        "tests/identity/test_credential_login_browser.py"
       ]
     },
     {
@@ -1514,7 +1663,8 @@
       "value": "other",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_live_api.py"
+        "tests/test_live_api.py",
+        "tests/gateway/policies/test_live_audio_policy.py"
       ]
     },
     {
@@ -1522,7 +1672,8 @@
       "value": "other-vault.vault.azure.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/certificate-network-boundary-offline.ps1"
+        "tests/certificate-network-boundary-offline.ps1",
+        "tests/certificates/certificate-network-boundary-offline.ps1"
       ]
     },
     {
@@ -1530,7 +1681,8 @@
       "value": "other.database.windows.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_deploy_portal.py"
+        "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py"
       ]
     },
     {
@@ -1539,7 +1691,9 @@
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
         "tests/test_cleanup.py",
-        "tests/test_connection_configuration.py"
+        "tests/deployment/test_cleanup.py",
+        "tests/test_connection_configuration.py",
+        "tests/identity/test_connection_configuration.py"
       ]
     },
     {
@@ -1547,7 +1701,8 @@
       "value": "other.vault.azure.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_grpc_network.py"
+        "tests/test_grpc_network.py",
+        "tests/network/test_ingress_bootstrap.py"
       ]
     },
     {
@@ -1566,7 +1721,8 @@
       "value": "portal.fixture.azurecontainerapps.io",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_ssml_waf.py"
+        "tests/test_ssml_waf.py",
+        "tests/waf/test_ssml_waf.py"
       ]
     },
     {
@@ -1586,7 +1742,8 @@
       "value": "private-backend.example",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_api_foundation.py"
+        "tests/test_api_foundation.py",
+        "tests/gateway/publication/test_api_foundation.py"
       ]
     },
     {
@@ -1685,7 +1842,8 @@
       "value": "provider.example",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_configuration.py"
+        "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -1709,7 +1867,8 @@
       "value": "registered-fixture.openai.azure.com",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_realtime_policy.py"
+        "tests/test_realtime_policy.py",
+        "tests/gateway/policies/test_realtime_policy.py"
       ]
     },
     {
@@ -1717,7 +1876,8 @@
       "value": "rpc.enterprise.example",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_catalog_descriptions.py"
+        "tests/test_catalog_descriptions.py",
+        "tests/gateway/publication/test_catalog_descriptions.py"
       ]
     },
     {
@@ -1733,7 +1893,8 @@
       "value": "sample.azurecontainerapps.io",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -1766,7 +1927,8 @@
       "value": "sql-test-sample.database.windows.net",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_deploy_portal.py"
+        "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py"
       ]
     },
     {
@@ -1808,7 +1970,8 @@
       "value": "unapproved.example",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
-        "tests/test_integration_client.py"
+        "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py"
       ]
     },
     {
@@ -1852,9 +2015,13 @@
         "scripts/deployment/helpers/configuration.py",
         "scripts/deployment/helpers/initial_configuration.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_parameter_ip_ownership.py",
-        "tests/test_split_configuration.py"
+        "tests/network/test_parameter_ip_ownership.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -1862,7 +2029,8 @@
       "value": "10.0.0.4",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_split_configuration.py"
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -1870,7 +2038,8 @@
       "value": "10.0.1.4",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_gateway_callback_waf.py"
+        "tests/test_gateway_callback_waf.py",
+        "tests/waf/test_gateway_callback_waf.py"
       ]
     },
     {
@@ -1878,7 +2047,8 @@
       "value": "10.1.1.4",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_split_configuration.py"
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -1905,7 +2075,9 @@
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
         "tests/test_configuration.py",
-        "tests/test_deploy_portal.py"
+        "tests/deployment/configuration/test_configuration.py",
+        "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py"
       ]
     },
     {
@@ -2013,8 +2185,11 @@
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_parameter_ip_ownership.py",
-        "tests/test_split_configuration.py"
+        "tests/network/test_parameter_ip_ownership.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -2030,7 +2205,8 @@
       "value": "10.40.0.3",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_configuration.py"
+        "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -2101,7 +2277,9 @@
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
         "tests/test_parameter_ip_ownership.py",
-        "tests/test_split_configuration.py"
+        "tests/network/test_parameter_ip_ownership.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -2227,7 +2405,9 @@
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
         "tests/test_parameter_ip_ownership.py",
-        "tests/test_split_configuration.py"
+        "tests/network/test_parameter_ip_ownership.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -2273,8 +2453,11 @@
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
         "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py",
         "tests/test_portal_configuration.py",
-        "tests/test_split_configuration.py"
+        "tests/portal/test_portal_configuration.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -2319,8 +2502,11 @@
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
         "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py",
         "tests/test_portal_configuration.py",
-        "tests/test_split_configuration.py"
+        "tests/portal/test_portal_configuration.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -2338,7 +2524,8 @@
       "value": "10.40.2.200",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_ssml_waf.py"
+        "tests/test_ssml_waf.py",
+        "tests/waf/test_ssml_waf.py"
       ]
     },
     {
@@ -2355,7 +2542,9 @@
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
         "tests/test_network_preservation.py",
-        "tests/test_route_preservation.py"
+        "tests/network/test_network_preservation.py",
+        "tests/test_route_preservation.py",
+        "tests/network/test_route_preservation.py"
       ]
     },
     {
@@ -2412,9 +2601,13 @@
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py",
         "tests/test_publish_apis.py",
-        "tests/test_split_configuration.py"
+        "tests/gateway/publication/test_publish_apis.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -2425,8 +2618,11 @@
         "docs/study/video-sample/episodes/02/diagrams/portal-dns-records-apim.svg",
         "docs/study/video-sample/episodes/02/portal-screens.mjs",
         "tests/test_network_preservation.py",
+        "tests/network/test_network_preservation.py",
         "tests/test_route_preservation.py",
-        "tests/test_ssml_waf.py"
+        "tests/network/test_route_preservation.py",
+        "tests/test_ssml_waf.py",
+        "tests/waf/test_ssml_waf.py"
       ]
     },
     {
@@ -2472,16 +2668,20 @@
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py",
         "tests/test_portal_configuration.py",
-        "tests/test_split_configuration.py"
+        "tests/portal/test_portal_configuration.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
       "rule": "nonpublic-ip",
       "value": "10.40.4.0",
       "reason": "Independent synthetic audit evidence subnet in the public parameter examples and their validation tests",
-      "paths": ["params/production.example.json", "params/test.example.json", "tests/test_parameter_ip_ownership.py", "tests/test_split_configuration.py"]
+      "paths": ["params/production.example.json", "params/test.example.json", "tests/test_parameter_ip_ownership.py", "tests/network/test_parameter_ip_ownership.py", "tests/test_split_configuration.py", "tests/deployment/configuration/test_split_configuration.py"]
     },
     {
       "rule": "nonpublic-ip",
@@ -2494,7 +2694,8 @@
         "params/test.example.json",
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2510,7 +2711,8 @@
       "value": "10.41.2.128",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_configuration.py"
+        "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -2527,7 +2729,8 @@
       "value": "10.70.0.0",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2535,7 +2738,8 @@
       "value": "10.70.0.1",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2543,7 +2747,8 @@
       "value": "10.70.1.4",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2551,7 +2756,8 @@
       "value": "10.70.1.5",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2559,7 +2765,8 @@
       "value": "10.70.2.128",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2567,7 +2774,8 @@
       "value": "10.70.2.132",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2575,7 +2783,8 @@
       "value": "10.70.2.4",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2583,7 +2792,8 @@
       "value": "10.70.2.5",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2591,7 +2801,8 @@
       "value": "10.70.2.64",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2599,7 +2810,8 @@
       "value": "10.70.3.128",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2607,7 +2819,8 @@
       "value": "10.71.2.128",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -2615,7 +2828,8 @@
       "value": "10.99.0.0",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/test_portal_configuration.py"
+        "tests/test_portal_configuration.py",
+        "tests/portal/test_portal_configuration.py"
       ]
     },
     {
@@ -2641,10 +2855,12 @@
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
         "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py",
         "docs/setup/05-config.md",
         "docs/reference/config-options.md",
         "schemas/options.schema.json",
-        "tests/test_split_configuration.py"
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -2662,8 +2878,11 @@
         "scripts/waf_probe.py",
         "scripts/validation/waf_probe.py",
         "tests/certificate-azure-identity-offline.ps1",
+        "tests/certificates/certificate-azure-identity-offline.ps1",
         "tests/certificate-network-boundary-offline.ps1",
+        "tests/certificates/certificate-network-boundary-offline.ps1",
         "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py",
         "infra/guest/portal-auth-certificate.ps1"
       ]
     },
@@ -2674,7 +2893,9 @@
       "paths": [
         "scripts/deployment/helpers/cleanup.py",
         "tests/arm_helpers.py",
-        "tests/cleanup_fixtures.py"
+        "tests/support/arm_helpers.py",
+        "tests/cleanup_fixtures.py",
+        "tests/support/cleanup_fixtures.py"
       ]
     },
     {
@@ -2700,7 +2921,8 @@
       "value": "::2",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "tests/arm_helpers.py"
+        "tests/arm_helpers.py",
+        "tests/support/arm_helpers.py"
       ]
     },
     {
@@ -2717,7 +2939,8 @@
       "value": "https://kv.vault.azure.net/secrets/cert?sig=PRIVATE_FIXTURE",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_apim_hostname_preservation.py"
+        "tests/test_apim_hostname_preservation.py",
+        "tests/network/test_apim_hostname_preservation.py"
       ]
     },
     {
@@ -2726,7 +2949,9 @@
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
         "tests/cap-offline.py",
+        "tests/deployment/test_application_insights_cap.py",
         "tests/test_portal_local_auth_preparation.py",
+        "tests/portal/test_portal_local_auth_preparation.py",
         "tests/test_preparation_inventory.py"
       ]
     },
@@ -2736,7 +2961,9 @@
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
         "tests/cap-offline.py",
+        "tests/deployment/test_application_insights_cap.py",
         "tests/test_portal_local_auth_preparation.py",
+        "tests/portal/test_portal_local_auth_preparation.py",
         "tests/test_preparation_inventory.py"
       ]
     },
@@ -2748,7 +2975,8 @@
         "apps/portal/components/api-keys/create-key-dialog.tsx",
         "scripts/waf_probe.py",
         "scripts/validation/waf_probe.py",
-        "tests/test_waf_probe.py"
+        "tests/test_waf_probe.py",
+        "tests/waf/test_waf_probe.py"
       ]
     },
     {
@@ -2866,53 +3094,96 @@
         "docs/setup/04-params.md",
         "docs/setup/07-params.md",
         "tests/certificate-azure-identity-offline.ps1",
+        "tests/certificates/certificate-azure-identity-offline.ps1",
         "tests/configuration_fixtures.py",
+        "tests/support/configuration_fixtures.py",
         "tests/test_api_contract_configuration.py",
+        "tests/gateway/publication/test_api_contract_configuration.py",
         "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py",
         "tests/test_api_publication_size.py",
+        "tests/gateway/publication/test_api_publication_size.py",
         "tests/test_apim_preflight.py",
+        "tests/gateway/publication/test_apim_preflight.py",
         "tests/test_apim_sample_cleanup.py",
+        "tests/gateway/publication/test_apim_sample_cleanup.py",
         "tests/test_audit_context.py",
+        "tests/audit/test_audit_context.py",
         "tests/test_audit_usage.py",
+        "tests/audit/test_audit_usage.py",
         "tests/test_azure_dns_identity.py",
+        "tests/certificates/test_azure_dns_identity.py",
         "tests/test_capacity.py",
+        "tests/deployment/test_capacity.py",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_configure_trial.py",
         "tests/test_contract_rate_configuration.py",
         "tests/test_credential_client.py",
+        "tests/clients/test_credential_client.py",
         "tests/test_credential_login.py",
+        "tests/identity/test_credential_login.py",
         "tests/test_decision_client.py",
+        "tests/clients/test_decision_client.py",
         "tests/test_deploy_applications.py",
         "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py",
         "tests/test_dns_selection.py",
+        "tests/certificates/test_dns_selection.py",
         "tests/test_fresh_clone_readiness.py",
+        "tests/deployment/test_fresh_clone_readiness.py",
         "tests/test_gateway_callback_waf.py",
+        "tests/waf/test_gateway_callback_waf.py",
         "tests/test_gateway_cleanup.py",
+        "tests/deployment/test_gateway_cleanup.py",
         "tests/test_grpc_network.py",
+        "tests/network/test_ingress_bootstrap.py",
         "tests/test_host_encryption_registration.py",
+        "tests/management/test_host_encryption_registration.py",
         "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py",
         "tests/test_lifecycle_transport.py",
+        "tests/deployment/test_lifecycle_transport.py",
         "tests/test_log_privacy.py",
+        "tests/audit/test_log_privacy.py",
         "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py",
         "tests/test_portal_authentication_infra.py",
+        "tests/portal/test_portal_authentication_infra.py",
         "tests/test_portal_gateway.py",
+        "tests/portal/test_portal_gateway.py",
+        "tests/support/app_gateway_fixtures.py",
         "tests/test_prepare_coverage.py",
         "tests/test_prepare_registration.py",
+        "tests/deployment/test_prepare_registration.py",
         "tests/test_prepare_secrets.py",
+        "tests/deployment/test_prepare_secrets.py",
         "tests/test_publication_diagnostics.py",
+        "tests/gateway/publication/test_publication_diagnostics.py",
         "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py",
         "tests/test_realtime_browser.py",
+        "tests/clients/test_realtime_browser.py",
         "tests/test_realtime_policy.py",
+        "tests/gateway/policies/test_realtime_policy.py",
         "tests/test_released_apis.py",
+        "tests/gateway/publication/test_released_apis.py",
         "tests/test_split_cli.py",
+        "tests/deployment/test_split_cli.py",
         "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py",
         "tests/test_standard_gateway_authorization.py",
+        "tests/gateway/policies/test_standard_gateway_authorization.py",
         "tests/test_subscription_profile_deployment.py",
         "tests/test_voice_client.py",
+        "tests/clients/test_voice_client.py",
         "apps/portal/tests/document-operation.test.ts",
         "tests/test_entra_publication.py",
+        "tests/gateway/publication/test_entra_publication.py",
         "tests/test_entra_authentication_configuration.py",
-        "tests/test_entra_gateway_authentication.py"
+        "tests/identity/test_entra_authentication_configuration.py",
+        "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -2924,7 +3195,9 @@
         "apps/portal/tests/pii-mcp-guide.test.ts",
         "clients/connection-session/typescript/connection-session.test.ts",
         "tests/test_credential_client.py",
-        "tests/test_credential_client_v2.py"
+        "tests/clients/test_credential_client.py",
+        "tests/test_credential_client_v2.py",
+        "tests/clients/test_credential_client_v2.py"
       ]
     },
     {
@@ -2941,6 +3214,7 @@
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
         "tests/test_contract_rate_policy.py",
+        "tests/gateway/policies/test_contract_rate_policy.py",
         "tests/test_portal_api_key_configuration.py"
       ]
     },
@@ -2949,7 +3223,8 @@
       "value": "12345678-1234-4234-8234-123456789000",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_portal_image.py"
+        "tests/test_portal_image.py",
+        "tests/portal/test_portal_image.py"
       ]
     },
     {
@@ -2958,7 +3233,9 @@
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
         "tests/test_credential_broker_initial_deployment.py",
-        "tests/test_portal_image.py"
+        "tests/deployment/test_credential_broker_initial_deployment.py",
+        "tests/test_portal_image.py",
+        "tests/portal/test_portal_image.py"
       ]
     },
     {
@@ -2966,7 +3243,8 @@
       "value": "12345678-1234-4234-8234-123456789002",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_credential_broker_initial_deployment.py"
+        "tests/test_credential_broker_initial_deployment.py",
+        "tests/deployment/test_credential_broker_initial_deployment.py"
       ]
     },
     {
@@ -2974,7 +3252,8 @@
       "value": "12345678-1234-4234-8234-123456789003",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_credential_broker_initial_deployment.py"
+        "tests/test_credential_broker_initial_deployment.py",
+        "tests/deployment/test_credential_broker_initial_deployment.py"
       ]
     },
     {
@@ -2982,7 +3261,8 @@
       "value": "12345678-1234-4234-8234-123456789004",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_credential_broker_initial_deployment.py"
+        "tests/test_credential_broker_initial_deployment.py",
+        "tests/deployment/test_credential_broker_initial_deployment.py"
       ]
     },
     {
@@ -2990,7 +3270,8 @@
       "value": "12345678-1234-4234-8234-123456789005",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_credential_broker_initial_deployment.py"
+        "tests/test_credential_broker_initial_deployment.py",
+        "tests/deployment/test_credential_broker_initial_deployment.py"
       ]
     },
     {
@@ -2999,7 +3280,9 @@
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
         "tests/test_credential_broker_initial_deployment.py",
-        "tests/test_portal_image.py"
+        "tests/deployment/test_credential_broker_initial_deployment.py",
+        "tests/test_portal_image.py",
+        "tests/portal/test_portal_image.py"
       ]
     },
     {
@@ -3052,35 +3335,60 @@
         "docs/setup/04-params.md",
         "docs/setup/07-params.md",
         "tests/cleanup_fixtures.py",
+        "tests/support/cleanup_fixtures.py",
         "tests/test_api_contract_configuration.py",
+        "tests/gateway/publication/test_api_contract_configuration.py",
         "tests/test_audit_context.py",
+        "tests/audit/test_audit_context.py",
         "tests/test_audit_usage.py",
+        "tests/audit/test_audit_usage.py",
         "tests/test_azure_dns_identity.py",
+        "tests/certificates/test_azure_dns_identity.py",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_configure_trial.py",
         "tests/test_credential_login.py",
+        "tests/identity/test_credential_login.py",
         "tests/test_credential_login_browser.py",
+        "tests/identity/test_credential_login_browser.py",
         "tests/test_deploy_applications.py",
         "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py",
         "tests/test_dns_selection.py",
+        "tests/certificates/test_dns_selection.py",
         "tests/test_fresh_clone_readiness.py",
+        "tests/deployment/test_fresh_clone_readiness.py",
         "tests/test_grpc_network.py",
+        "tests/network/test_ingress_bootstrap.py",
         "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py",
         "tests/test_portal_api_key_configuration.py",
         "tests/test_portal_authentication_infra.py",
+        "tests/portal/test_portal_authentication_infra.py",
         "tests/test_portal_cleanup.py",
+        "tests/portal/test_portal_cleanup.py",
         "tests/test_prepare_registration.py",
+        "tests/deployment/test_prepare_registration.py",
         "tests/test_prepare_secrets.py",
+        "tests/deployment/test_prepare_secrets.py",
         "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py",
         "tests/test_realtime_policy.py",
+        "tests/gateway/policies/test_realtime_policy.py",
         "tests/test_standard_apis.py",
+        "tests/deployment/configuration/test_standard_apis.py",
         "tests/test_standard_gateway_authorization.py",
+        "tests/gateway/policies/test_standard_gateway_authorization.py",
         "tests/test_subscription_profile_deployment.py",
         "tests/test_subscription_usage.py",
+        "tests/audit/test_subscription_usage.py",
         "tests/test_tenant_configuration.py",
+        "tests/deployment/configuration/test_tenant_configuration.py",
         "apps/portal/tests/document-operation.test.ts",
         "tests/test_entra_authentication_configuration.py",
-        "tests/test_entra_gateway_authentication.py"
+        "tests/identity/test_entra_authentication_configuration.py",
+        "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -3088,7 +3396,8 @@
       "value": "22222222-bbbb-4222-8222-222222222222",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_contract_rate_policy.py"
+        "tests/test_contract_rate_policy.py",
+        "tests/gateway/policies/test_contract_rate_policy.py"
       ]
     },
     {
@@ -3130,18 +3439,30 @@
         "apps/portal/tests/rerank-gateway.test.ts",
         "apps/portal/tests/speech-gateway.test.ts",
         "tests/test_audit_context.py",
+        "tests/audit/test_audit_context.py",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py",
         "tests/test_fresh_clone_readiness.py",
+        "tests/deployment/test_fresh_clone_readiness.py",
         "tests/test_grpc_network.py",
+        "tests/network/test_ingress_bootstrap.py",
         "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py",
         "tests/test_portal_authentication_infra.py",
+        "tests/portal/test_portal_authentication_infra.py",
         "tests/test_prepare_secrets.py",
+        "tests/deployment/test_prepare_secrets.py",
         "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py",
         "tests/test_realtime_policy.py",
+        "tests/gateway/policies/test_realtime_policy.py",
         "tests/test_standard_gateway_authorization.py",
+        "tests/gateway/policies/test_standard_gateway_authorization.py",
         "apps/portal/tests/document-operation.test.ts",
-        "tests/test_entra_gateway_authentication.py"
+        "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -3149,7 +3470,8 @@
       "value": "33333333-cccc-4333-8333-333333333333",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_contract_rate_policy.py"
+        "tests/test_contract_rate_policy.py",
+        "tests/gateway/policies/test_contract_rate_policy.py"
       ]
     },
     {
@@ -3181,18 +3503,30 @@
         "apps/portal/tests/realtime-webrtc.test.ts",
         "tests/api_definition_helpers.py",
         "tests/cleanup_fixtures.py",
+        "tests/support/cleanup_fixtures.py",
         "tests/configuration_fixtures.py",
+        "tests/support/configuration_fixtures.py",
         "tests/test_audit_context.py",
+        "tests/audit/test_audit_context.py",
         "tests/test_audit_usage.py",
+        "tests/audit/test_audit_usage.py",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_credential_pool_deployment.py",
+        "tests/identity/test_credential_pool_deployment.py",
         "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py",
         "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py",
         "tests/test_realtime_policy.py",
+        "tests/gateway/policies/test_realtime_policy.py",
         "tests/test_split_cli.py",
+        "tests/deployment/test_split_cli.py",
         "tests/test_standard_apis.py",
+        "tests/deployment/configuration/test_standard_apis.py",
         "apps/portal/tests/document-operation.test.ts",
-        "tests/test_entra_gateway_authentication.py"
+        "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -3208,18 +3542,31 @@
         "apps/portal/tests/auth-expiry.sql.test.ts",
         "apps/portal/tests/document-operation.test.ts",
         "tests/test_audit_context.py",
+        "tests/audit/test_audit_context.py",
         "tests/test_audit_subject_contract.py",
+        "tests/audit/test_audit_subject_contract.py",
         "tests/test_audit_usage.py",
+        "tests/audit/test_audit_usage.py",
         "tests/test_connection_configuration.py",
+        "tests/identity/test_connection_configuration.py",
         "tests/test_credential_identity.py",
+        "tests/identity/test_credential_identity.py",
         "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py",
         "tests/test_entra_authentication_configuration.py",
+        "tests/identity/test_entra_authentication_configuration.py",
         "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_management_cleanup.py",
+        "tests/management/test_management_cleanup.py",
         "tests/test_publication_source_generation.py",
-        "tests/test_publish_apis.py"
+        "tests/gateway/publication/test_publication_source_generation.py",
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -3229,14 +3576,23 @@
       "paths": [
         "apps/portal/tests/document-operation.test.ts",
         "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py",
         "tests/test_audit_context.py",
+        "tests/audit/test_audit_context.py",
         "tests/test_audit_usage.py",
+        "tests/audit/test_audit_usage.py",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py",
         "tests/test_publish_apis.py",
-        "tests/test_split_configuration.py"
+        "tests/gateway/publication/test_publish_apis.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -3254,14 +3610,22 @@
       "paths": [
         "apps/portal/tests/document-operation.test.ts",
         "tests/arm_helpers.py",
+        "tests/support/arm_helpers.py",
         "tests/test_api_publication_size.py",
+        "tests/gateway/publication/test_api_publication_size.py",
         "tests/test_audit_usage.py",
+        "tests/audit/test_audit_usage.py",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_credential_identity.py",
+        "tests/identity/test_credential_identity.py",
         "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_prepare_coverage.py",
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -3287,9 +3651,13 @@
       "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
       "paths": [
         "tests/test_credential_identity.py",
+        "tests/identity/test_credential_identity.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_publish_apis.py",
-        "tests/test_split_cli.py"
+        "tests/gateway/publication/test_publish_apis.py",
+        "tests/test_split_cli.py",
+        "tests/deployment/test_split_cli.py"
       ]
     },
     {
@@ -3297,7 +3665,8 @@
       "value": "8e3af657-a8ff-443c-a75c-2fe8c4bcb635",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -3315,12 +3684,19 @@
       "paths": [
         "apps/portal/tests/api-key-subscription-import.test.ts",
         "tests/arm_helpers.py",
+        "tests/support/arm_helpers.py",
         "tests/configuration_fixtures.py",
+        "tests/support/configuration_fixtures.py",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py",
         "tests/test_split_cli.py",
-        "tests/test_split_configuration.py"
+        "tests/deployment/test_split_cli.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -3357,25 +3733,43 @@
         "apps/portal/tests/model-stream.test.ts",
         "apps/portal/tests/pii-mcp.test.ts",
         "tests/test_apim_hostname_preservation.py",
+        "tests/network/test_apim_hostname_preservation.py",
         "tests/test_application_infrastructure_cleanup.py",
+        "tests/deployment/test_application_infrastructure_cleanup.py",
         "tests/test_cleanup.py",
+        "tests/deployment/test_cleanup.py",
         "tests/test_common_authentication.py",
+        "tests/gateway/policies/test_common_authentication.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py",
         "tests/test_grpc_network.py",
+        "tests/network/test_ingress_bootstrap.py",
         "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py",
         "tests/test_lifecycle.py",
+        "tests/deployment/test_lifecycle.py",
         "tests/test_lifecycle_transport.py",
+        "tests/deployment/test_lifecycle_transport.py",
         "tests/test_local_preparation_hooks.py",
+        "tests/deployment/test_local_preparation_hooks.py",
         "tests/test_network_preservation.py",
+        "tests/network/test_network_preservation.py",
         "tests/test_pii_policy.py",
+        "tests/gateway/policies/test_pii_policy.py",
         "tests/test_portal_api_keys_setup.py",
         "tests/test_entra_authentication_configuration.py",
+        "tests/identity/test_entra_authentication_configuration.py",
         "tests/test_audit_identification.py",
+        "tests/audit/test_audit_identification.py",
         "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py",
         "tests/test_api_request_preparation.py",
+        "tests/gateway/policies/test_api_request_preparation.py",
         "tests/test_gateway_query_guard.py",
         "tests/test_gateway_query_observation.py",
+        "tests/gateway/policies/test_gateway_query_observation.py",
         "tests/test_phase12_audit_checks.py"
       ]
     },
@@ -3387,6 +3781,7 @@
         "apps/portal/tests/connection-session-client.test.ts",
         "clients/connection-session/typescript/connection-session.test.ts",
         "tests/test_credential_client_v2.py",
+        "tests/clients/test_credential_client_v2.py",
         "tests/test_mcp_pii_request_id.py"
       ]
     },
@@ -3411,7 +3806,8 @@
       "value": "b24988ac-6180-42a0-ab88-20f7382dd24c",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -3422,12 +3818,18 @@
         "apps/portal/tests/graph-tool-server.test.ts",
         "apps/portal/tests/model-key-choices.test.ts",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py",
         "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py",
         "tests/test_pii_policy.py",
+        "tests/gateway/policies/test_pii_policy.py",
         "tests/test_portal_api_keys_setup.py",
         "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py",
         "tests/test_api_request_preparation.py",
+        "tests/gateway/policies/test_api_request_preparation.py",
         "tests/test_phase12_audit_checks.py"
       ]
     },
@@ -3449,8 +3851,11 @@
         "apps/portal/tests/helpers/api-key-service-fixture.ts",
         "apps/portal/tests/model-key-choices.test.ts",
         "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py",
         "tests/test_pii_policy.py",
+        "tests/gateway/policies/test_pii_policy.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_phase12_audit_checks.py"
       ]
     },
@@ -3459,7 +3864,8 @@
       "value": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_gateway_limits_telemetry.py"
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py"
       ]
     },
     {
@@ -3467,7 +3873,8 @@
       "value": "e022b0c1-759a-4c35-9cf1-926f5b851a56",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -3475,7 +3882,8 @@
       "value": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
-        "tests/test_pii_policy.py"
+        "tests/test_pii_policy.py",
+        "tests/gateway/policies/test_pii_policy.py"
       ]
     },
     {
@@ -3509,7 +3917,8 @@
       "value": "https://[invalid",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_credential_login_browser.py"
+        "tests/test_credential_login_browser.py",
+        "tests/identity/test_credential_login_browser.py"
       ]
     },
     {
@@ -3517,7 +3926,8 @@
       "value": "http://user@localhost:8400",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_entra_signin.py"
+        "tests/test_entra_signin.py",
+        "tests/clients/test_entra_signin.py"
       ]
     },
     {
@@ -3525,7 +3935,8 @@
       "value": "https://:PRIVATE_PASSWORD_FIXTURE@management.azure.com",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_lifecycle_transport.py"
+        "tests/test_lifecycle_transport.py",
+        "tests/deployment/test_lifecycle_transport.py"
       ]
     },
     {
@@ -3550,7 +3961,8 @@
       "value": "https://name:secret@graph.microsoft.com/v1.0/me",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_connection_configuration.py"
+        "tests/test_connection_configuration.py",
+        "tests/identity/test_connection_configuration.py"
       ]
     },
     {
@@ -3558,7 +3970,8 @@
       "value": "https://private:credential@",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_credential_cleanup.py"
+        "tests/test_credential_cleanup.py",
+        "tests/identity/test_credential_cleanup.py"
       ]
     },
     {
@@ -3566,7 +3979,8 @@
       "value": "https://secret@example.invalid",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_waf_probe.py"
+        "tests/test_waf_probe.py",
+        "tests/waf/test_waf_probe.py"
       ]
     },
     {
@@ -3574,7 +3988,8 @@
       "value": "https://secret@gateway.example.com/calls",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_realtime_browser.py"
+        "tests/test_realtime_browser.py",
+        "tests/clients/test_realtime_browser.py"
       ]
     },
     {
@@ -3582,7 +3997,8 @@
       "value": "https://user:PRIVATE_FIXTURE@kv.vault.azure.net/secrets/cert",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_apim_hostname_preservation.py"
+        "tests/test_apim_hostname_preservation.py",
+        "tests/network/test_apim_hostname_preservation.py"
       ]
     },
     {
@@ -3590,7 +4006,8 @@
       "value": "https://user:fixture@logic-apis-japaneast.consent.azure-apim.net/redirect",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_credential_login_browser.py"
+        "tests/test_credential_login_browser.py",
+        "tests/identity/test_credential_login_browser.py"
       ]
     },
     {
@@ -3690,7 +4107,8 @@
       "value": "https://user@",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_document_analysis_policy.py"
+        "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py"
       ]
     },
     {
@@ -3715,7 +4133,8 @@
       "value": "wss://user:secret@gateway.invalid",
       "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
       "paths": [
-        "tests/test_voice_client.py"
+        "tests/test_voice_client.py",
+        "tests/clients/test_voice_client.py"
       ]
     },
     {
@@ -3723,7 +4142,8 @@
       "value": "22222222-2222-4222-8222-222222222222",
       "reason": "Independent repeated-digit tenant fixture or authorize-only fake MSAL endpoint in offline tests; no real tenant.",
       "paths": [
-        "tests/test_credential_login_browser.py"
+        "tests/test_credential_login_browser.py",
+        "tests/identity/test_credential_login_browser.py"
       ]
     },
     {
@@ -3731,7 +4151,8 @@
       "value": "11111111-1111-4111-8111-111111111111",
       "reason": "Independent repeated-digit tenant fixture or authorize-only fake MSAL endpoint in offline tests; no real tenant.",
       "paths": [
-        "tests/test_integration_client.py"
+        "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py"
       ]
     },
     {
@@ -3739,7 +4160,8 @@
       "value": "33333333-3333-4333-8333-333333333333",
       "reason": "Independent repeated-digit tenant fixture or authorize-only fake MSAL endpoint in offline tests; no real tenant.",
       "paths": [
-        "tests/test_integration_client.py"
+        "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py"
       ]
     },
     {
@@ -3747,7 +4169,8 @@
       "value": "authorize",
       "reason": "Independent repeated-digit tenant fixture or authorize-only fake MSAL endpoint in offline tests; no real tenant.",
       "paths": [
-        "tests/test_entra_signin.py"
+        "tests/test_entra_signin.py",
+        "tests/clients/test_entra_signin.py"
       ]
     },
     {
@@ -3880,7 +4303,8 @@
       "value": "data:image/png;base64,AA==",
       "reason": "Exactly one NUL byte AA== in an intentionally invalid offline image-policy fixture; no private payload.",
       "paths": [
-        "tests/test_api_profile_policy.py"
+        "tests/test_api_profile_policy.py",
+        "tests/gateway/policies/test_api_profile_policy.py"
       ]
     },
     {
@@ -3907,7 +4331,8 @@
       "reason": "Azure API Management built-in Echo common backend; exact endpoint only, not a tenant-specific service. Restricted to default-sample recognition and its offline synthetic test.",
       "paths": [
         "scripts/deployment/helpers/apim_samples.py",
-        "tests/test_apim_sample_cleanup.py"
+        "tests/test_apim_sample_cleanup.py",
+        "tests/gateway/publication/test_apim_sample_cleanup.py"
       ]
     },
     {
@@ -3915,7 +4340,8 @@
       "value": "https://fixture!@echo.playground.azure-api.net/api",
       "reason": "Independent synthetic username-only URL tests rejection of userinfo on the recognized Echo backend. No real account, password or request.",
       "paths": [
-        "tests/test_apim_sample_cleanup.py"
+        "tests/test_apim_sample_cleanup.py",
+        "tests/gateway/publication/test_apim_sample_cleanup.py"
       ]
     },
     {
@@ -3947,7 +4373,8 @@
       "value": "kv-test-fixture.vault.azure.net",
       "reason": "Independently invented offline Key Vault fixture. Tests make no real network requests and verify the fixed Azure vault host format",
       "paths": [
-        "tests/test_operations_certificate.py"
+        "tests/test_operations_certificate.py",
+        "tests/deployment/test_operations_certificate.py"
       ]
     },
     {
@@ -3972,7 +4399,8 @@
       "value": "ca-test-fixture-portal.internal-fixture.azurecontainerapps.io",
       "reason": "Independent synthetic Entra/APIM publication fixture, or documented shared Azure audience. Exact test path and value only.",
       "paths": [
-        "tests/test_entra_publication.py"
+        "tests/test_entra_publication.py",
+        "tests/gateway/publication/test_entra_publication.py"
       ]
     },
     {
@@ -3980,7 +4408,8 @@
       "value": "ca-test-fixture-portal.other-fixture.azurecontainerapps.io",
       "reason": "Independent synthetic Entra/APIM publication fixture, or documented shared Azure audience. Exact test path and value only.",
       "paths": [
-        "tests/test_entra_publication.py"
+        "tests/test_entra_publication.py",
+        "tests/gateway/publication/test_entra_publication.py"
       ]
     },
     {
@@ -4005,7 +4434,8 @@
       "rule": "environment-identifier",
       "value": "SENTINEL",
       "paths": [
-        "tests/test_entra_authentication_configuration.py"
+        "tests/test_entra_authentication_configuration.py",
+        "tests/identity/test_entra_authentication_configuration.py"
       ],
       "reason": "Reviewed Entra template placeholder or malformed-input test sentinel; exact file and literal only, no deployment identity."
     },
@@ -4014,7 +4444,9 @@
       "value": "CONCURRENT_TOKEN_FIXTURE",
       "paths": [
         "tests/test_lifecycle_transport.py",
-        "tests/test_entra_snapshot_concurrency.py"
+        "tests/deployment/test_lifecycle_transport.py",
+        "tests/test_entra_snapshot_concurrency.py",
+        "tests/gateway/publication/test_entra_snapshot_concurrency.py"
       ],
       "reason": "Fixed dummy access-token string returned by local token mocks in offline ARM transport and snapshot integration tests; not a live credential."
     },
@@ -4026,7 +4458,8 @@
         "apps/apim/policies/fragments/authentication/core-common-authentication/core-common-authentication.xml",
         "apps/api-gateway/policies/fragments/authentication/core-common-authentication/core-common-authentication.xml",
         "apps/gateway/apim/policies/fragments/authentication/core-common-authentication/core-common-authentication.xml",
-        "tests/test_entra_gateway_authentication.py"
+        "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py"
       ],
       "reason": "APIM Named Value reference syntax in policy or offline reader tests; no resolved Entra tenant or application identifier is stored."
     },
@@ -4035,7 +4468,9 @@
       "value": "synthetic-subscription",
       "paths": [
         "tests/audit_identification_fixture.py",
+        "tests/support/audit_identification_fixture.py",
         "tests/test_audit_subject_contract.py",
+        "tests/audit/test_audit_subject_contract.py",
         "tests/test_phase12_audit_checks.py"
       ],
       "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
@@ -4044,7 +4479,8 @@
       "rule": "environment-identifier",
       "value": "invalid",
       "paths": [
-        "tests/test_entra_gateway_authentication.py"
+        "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py"
       ],
       "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
     },
@@ -4068,7 +4504,8 @@
       "rule": "environment-identifier",
       "value": "SENTINEL_FORGED_SUBSCRIPTION",
       "paths": [
-        "tests/test_gateway_limits_telemetry.py"
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py"
       ],
       "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
     },
@@ -4076,7 +4513,8 @@
       "rule": "environment-identifier",
       "value": "SENTINEL_UNVERIFIED_CLIENT",
       "paths": [
-        "tests/test_gateway_limits_telemetry.py"
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py"
       ],
       "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
     },
@@ -4084,7 +4522,8 @@
       "rule": "nonpublic-host",
       "value": "management.example",
       "paths": [
-        "tests/test_entra_membership_snapshot.py"
+        "tests/test_entra_membership_snapshot.py",
+        "tests/gateway/publication/test_entra_membership_snapshot.py"
       ],
       "reason": "RFC-reserved example domain used only in a synthetic backend-membership rejection test; not a deployed host."
     },
@@ -4092,7 +4531,8 @@
       "rule": "unknown-uuid",
       "value": "abcdefab-cdef-4abc-8def-abcdefabcdef",
       "paths": [
-        "tests/test_audit_subject_contract.py"
+        "tests/test_audit_subject_contract.py",
+        "tests/audit/test_audit_subject_contract.py"
       ],
       "reason": "Independent repeated/example UUID used by offline boundary or broker_fixture tests; not a live environment identifier."
     },
@@ -4126,7 +4566,8 @@
       "reason": "Microsoft-documented shared Azure platform endpoint for DNS/host services or VM IMDS, not a deployment address; see https://learn.microsoft.com/en-us/azure/virtual-network/what-is-ip-address-168-63-129-16 and https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service. Exact file/value only.",
       "paths": [
         "docs/reference/platform-communications.md",
-        "tests/test_operations_certificate.py"
+        "tests/test_operations_certificate.py",
+        "tests/deployment/test_operations_certificate.py"
       ]
     },
     {
@@ -4135,7 +4576,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4144,7 +4586,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4153,7 +4596,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4162,7 +4606,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4171,7 +4616,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4180,7 +4626,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4189,7 +4636,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4198,7 +4646,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4207,7 +4656,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4216,7 +4666,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4225,7 +4676,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4234,7 +4686,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4243,7 +4696,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4253,7 +4707,9 @@
       "paths": [
         "tests/test_fixed_nsg_migration.py",
         "tests/test_fixed_nsg_validation.py",
-        "tests/test_parameter_ip_ownership.py"
+        "tests/network/test_fixed_nsg_validation.py",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -4262,7 +4718,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4271,7 +4728,8 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4281,7 +4739,9 @@
       "paths": [
         "tests/test_fixed_nsg_migration.py",
         "tests/test_fixed_nsg_validation.py",
-        "tests/test_parameter_ip_ownership.py"
+        "tests/network/test_fixed_nsg_validation.py",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -4291,6 +4751,7 @@
       "paths": [
         "tests/test_fixed_nsg_migration.py",
         "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py",
         "tests/test_portal_backend_http.py"
       ]
     },
@@ -4299,7 +4760,8 @@
       "value": "169.254.169.254",
       "reason": "Microsoft-documented shared Azure platform endpoint for DNS/host services or VM IMDS, not a deployment address; see https://learn.microsoft.com/en-us/azure/virtual-network/what-is-ip-address-168-63-129-16 and https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service. Exact file/value only.",
       "paths": [
-        "tests/test_operations_certificate.py"
+        "tests/test_operations_certificate.py",
+        "tests/deployment/test_operations_certificate.py"
       ]
     },
     {
@@ -4331,7 +4793,8 @@
       "value": "other",
       "reason": "Independent invalid subscription marker used only to verify rejection of foreign maintenance inventory, not an environment identifier.",
       "paths": [
-        "tests/test_management_client_assets.py"
+        "tests/test_management_client_assets.py",
+        "tests/management/test_management_client_assets.py"
       ]
     },
     {
@@ -4342,7 +4805,8 @@
         "infra/guest/prepare-management-client.sh",
         "scripts/management_client.py",
         "scripts/operations/management_client.py",
-        "tests/test_management_client_install.py"
+        "tests/test_management_client_install.py",
+        "tests/management/test_management_client_install.py"
       ]
     },
     {
@@ -4352,7 +4816,8 @@
       "paths": [
         "scripts/management_client.py",
         "scripts/operations/management_client.py",
-        "tests/test_management_client.py"
+        "tests/test_management_client.py",
+        "tests/management/test_management_client.py"
       ]
     },
     {
@@ -4362,7 +4827,8 @@
       "paths": [
         "scripts/management_client.py",
         "scripts/operations/management_client.py",
-        "tests/test_management_client.py"
+        "tests/test_management_client.py",
+        "tests/management/test_management_client.py"
       ]
     },
     {
@@ -4370,7 +4836,8 @@
       "value": "eastus.azurecontainerapps.dev",
       "reason": "Official Azure Container Apps regional Dev API hostname format from the public Azure CLI source pinned in scripts/management_client.py; used only as an independent offline endpoint fixture.",
       "paths": [
-        "tests/test_management_client.py"
+        "tests/test_management_client.py",
+        "tests/management/test_management_client.py"
       ]
     },
     {
@@ -4380,6 +4847,7 @@
       "paths": [
         "scripts/operations/maintenance.py",
         "tests/test_audit_storage_network.py",
+        "tests/audit/test_audit_storage_network.py",
         "tests/test_maintenance_upgrade.py"
       ]
     },
@@ -4389,7 +4857,8 @@
       "reason": "Official Python Package Index origin for installing the pinned maintenance-client dependency, common public service endpoint: https://pypi.org/.",
       "paths": [
         "infra/guest/prepare-management-client.sh",
-        "tests/test_management_client_install.py"
+        "tests/test_management_client_install.py",
+        "tests/management/test_management_client_install.py"
       ]
     },
     {
@@ -4397,7 +4866,8 @@
       "value": "stfixtureaudit.blob.core.windows.net",
       "reason": "Independent synthetic Blob account hostname for offline maintenance-client URI construction; not copied or derived from an environment.",
       "paths": [
-        "tests/test_management_client.py"
+        "tests/test_management_client.py",
+        "tests/management/test_management_client.py"
       ]
     },
     {
@@ -4423,7 +4893,8 @@
       "value": "10.70.1.10",
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
-        "tests/test_management_client_assets_bicep.py"
+        "tests/test_management_client_assets_bicep.py",
+        "tests/management/test_management_client_assets_bicep.py"
       ]
     },
     {
@@ -4432,9 +4903,12 @@
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_audit_storage_network.py",
+        "tests/audit/test_audit_storage_network.py",
         "tests/test_fixed_nsg_migration.py",
         "tests/test_fixed_nsg_validation.py",
-        "tests/test_parameter_ip_ownership.py"
+        "tests/network/test_fixed_nsg_validation.py",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -4443,8 +4917,10 @@
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_audit_storage_network.py",
+        "tests/audit/test_audit_storage_network.py",
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4453,9 +4929,12 @@
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_audit_storage_network.py",
+        "tests/audit/test_audit_storage_network.py",
         "tests/test_fixed_nsg_migration.py",
         "tests/test_fixed_nsg_validation.py",
-        "tests/test_parameter_ip_ownership.py"
+        "tests/network/test_fixed_nsg_validation.py",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py"
       ]
     },
     {
@@ -4464,8 +4943,10 @@
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_audit_storage_network.py",
+        "tests/audit/test_audit_storage_network.py",
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4474,8 +4955,10 @@
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_audit_storage_network.py",
+        "tests/audit/test_audit_storage_network.py",
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4484,8 +4967,10 @@
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_audit_storage_network.py",
+        "tests/audit/test_audit_storage_network.py",
         "tests/test_fixed_nsg_migration.py",
-        "tests/test_fixed_nsg_validation.py"
+        "tests/test_fixed_nsg_validation.py",
+        "tests/network/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4493,7 +4978,8 @@
       "value": "10.70.1.6",
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
-        "tests/test_management_client_assets_bicep.py"
+        "tests/test_management_client_assets_bicep.py",
+        "tests/management/test_management_client_assets_bicep.py"
       ]
     },
     {
@@ -4509,7 +4995,8 @@
       "value": "10.70.2.128",
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
-        "tests/test_management_client_assets_bicep.py"
+        "tests/test_management_client_assets_bicep.py",
+        "tests/management/test_management_client_assets_bicep.py"
       ]
     },
     {
@@ -4517,7 +5004,8 @@
       "value": "10.70.2.192",
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
-        "tests/test_management_client_assets_bicep.py"
+        "tests/test_management_client_assets_bicep.py",
+        "tests/management/test_management_client_assets_bicep.py"
       ]
     },
     {
@@ -4525,7 +5013,8 @@
       "value": "10.70.2.196",
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
-        "tests/test_management_client_assets_bicep.py"
+        "tests/test_management_client_assets_bicep.py",
+        "tests/management/test_management_client_assets_bicep.py"
       ]
     },
     {
@@ -4533,7 +5022,8 @@
       "value": "10.70.2.64",
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
-        "tests/test_management_client_assets_bicep.py"
+        "tests/test_management_client_assets_bicep.py",
+        "tests/management/test_management_client_assets_bicep.py"
       ]
     },
     {
@@ -4545,7 +5035,9 @@
         "scripts/management_client.py",
         "scripts/operations/management_client.py",
         "tests/test_management_client.py",
-        "tests/test_management_client_install.py"
+        "tests/management/test_management_client.py",
+        "tests/test_management_client_install.py",
+        "tests/management/test_management_client_install.py"
       ]
     },
     {
@@ -4555,11 +5047,16 @@
       "paths": [
         "tests/test_maintenance_upgrade.py",
         "tests/test_management_client.py",
+        "tests/management/test_management_client.py",
         "tests/test_management_client_assets.py",
+        "tests/management/test_management_client_assets.py",
         "tests/test_management_client_install.py",
+        "tests/management/test_management_client_install.py",
         "tests/test_management_maintenance_inputs.py",
         "tests/test_management_maintenance_rbac.py",
-        "tests/test_serial_credentials.py"
+        "tests/management/test_management_maintenance_rbac.py",
+        "tests/test_serial_credentials.py",
+        "tests/deployment/test_serial_credentials.py"
       ]
     },
     {
@@ -4648,14 +5145,21 @@
       "reason": "Independent repeated-digit identity fixture for offline maintenance and ARM snapshot validation; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_entra_snapshot_concurrency.py",
+        "tests/gateway/publication/test_entra_snapshot_concurrency.py",
         "tests/test_lifecycle_serial.py",
+        "tests/deployment/test_lifecycle_serial.py",
         "tests/test_maintenance_upgrade.py",
         "tests/test_management_client.py",
+        "tests/management/test_management_client.py",
         "tests/test_management_client_assets.py",
+        "tests/management/test_management_client_assets.py",
         "tests/test_management_client_assets_bicep.py",
+        "tests/management/test_management_client_assets_bicep.py",
         "tests/test_management_maintenance_inputs.py",
         "tests/test_management_maintenance_rbac.py",
-        "tests/test_serial_credentials.py"
+        "tests/management/test_management_maintenance_rbac.py",
+        "tests/test_serial_credentials.py",
+        "tests/deployment/test_serial_credentials.py"
       ]
     },
     {
@@ -4664,9 +5168,12 @@
       "reason": "Independent repeated-digit identity fixture for offline maintenance validation; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_management_client.py",
+        "tests/management/test_management_client.py",
         "tests/test_management_client_assets_bicep.py",
+        "tests/management/test_management_client_assets_bicep.py",
         "tests/test_management_maintenance_inputs.py",
-        "tests/test_serial_credentials.py"
+        "tests/test_serial_credentials.py",
+        "tests/deployment/test_serial_credentials.py"
       ]
     },
     {
@@ -4677,7 +5184,8 @@
         "infra/modules/management-monitoring-bindings.bicep",
         "scripts/operations/maintenance.py",
         "tests/test_maintenance_upgrade.py",
-        "tests/test_management_maintenance_rbac.py"
+        "tests/test_management_maintenance_rbac.py",
+        "tests/management/test_management_maintenance_rbac.py"
       ]
     },
     {
@@ -4686,8 +5194,11 @@
       "reason": "Independent repeated-digit identity fixture for offline maintenance validation; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_management_client.py",
+        "tests/management/test_management_client.py",
         "tests/test_management_client_assets_bicep.py",
-        "tests/test_serial_credentials.py"
+        "tests/management/test_management_client_assets_bicep.py",
+        "tests/test_serial_credentials.py",
+        "tests/deployment/test_serial_credentials.py"
       ]
     },
     {
@@ -4696,8 +5207,11 @@
       "reason": "Independent repeated-digit identity fixture for offline maintenance validation; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/management_fixtures.py",
+        "tests/support/management_fixtures.py",
         "tests/test_management_client_install.py",
-        "tests/test_serial_credentials.py"
+        "tests/management/test_management_client_install.py",
+        "tests/test_serial_credentials.py",
+        "tests/deployment/test_serial_credentials.py"
       ]
     },
     {
@@ -4705,7 +5219,8 @@
       "value": "66666666-6666-4666-8666-666666666666",
       "reason": "Independent repeated-digit identity fixture for offline maintenance validation; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
-        "tests/management_fixtures.py"
+        "tests/management_fixtures.py",
+        "tests/support/management_fixtures.py"
       ]
     },
     {
@@ -4713,7 +5228,8 @@
       "value": "77777777-7777-4777-8777-777777777777",
       "reason": "Independent repeated-digit identity fixture for offline maintenance validation; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
-        "tests/test_management_client_assets.py"
+        "tests/test_management_client_assets.py",
+        "tests/management/test_management_client_assets.py"
       ]
     },
     {
@@ -4721,7 +5237,8 @@
       "value": "99999999-9999-4999-8999-999999999999",
       "reason": "Independent repeated-digit identity fixture for offline maintenance validation; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
-        "tests/test_management_client_install.py"
+        "tests/test_management_client_install.py",
+        "tests/management/test_management_client_install.py"
       ]
     },
     {
@@ -4730,7 +5247,8 @@
       "reason": "Independent repeated-digit identity fixture for offline maintenance validation; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_maintenance_upgrade.py",
-        "tests/test_management_maintenance_rbac.py"
+        "tests/test_management_maintenance_rbac.py",
+        "tests/management/test_management_maintenance_rbac.py"
       ]
     },
     {
@@ -4762,7 +5280,8 @@
       "value": "11111111-1111-4111-8111-111111111111",
       "reason": "Independently repeated-digit subscription fixture for offline Speech template expansion; not an environment identifier. Exact source path and value only.",
       "paths": [
-        "tests/test_deploy_gateway.py"
+        "tests/test_deploy_gateway.py",
+        "tests/deployment/test_deploy_gateway.py"
       ]
     },
     {
@@ -4770,7 +5289,8 @@
       "value": "10.70.0.0",
       "reason": "Independent offline configuration ownership fixture network; no real network information. Exact source path and value only.",
       "paths": [
-        "tests/test_split_configuration.py"
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -4786,7 +5306,8 @@
       "value": "https://user:private-input-marker@backend.example.com/v1",
       "reason": "Independent malformed URL with a literal synthetic input marker for rejection tests; not a credential. Exact source path and URL only.",
       "paths": [
-        "tests/test_configuration.py"
+        "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -4794,7 +5315,8 @@
       "value": "https://operator@gateway.example.com",
       "reason": "Independent malformed origin with an invented user component for offline rejection tests; not a live URL or credential. Exact source path and URL only.",
       "paths": [
-        "tests/test_deploy_portal.py"
+        "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py"
       ]
     },
     {
@@ -4802,7 +5324,8 @@
       "value": "backend",
       "reason": "Independent malformed DNS/URL fixture or fixed fragment for the control-character rejection test; not an environment host or URL. Exact source path and value only.",
       "paths": [
-        "tests/test_configuration.py"
+        "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -4810,7 +5333,8 @@
       "value": "back",
       "reason": "Independent malformed DNS/URL fixture or fixed fragment for the control-character rejection test; not an environment host or URL. Exact source path and value only.",
       "paths": [
-        "tests/test_configuration.py"
+        "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -4818,7 +5342,8 @@
       "value": "https://backend..example.com/v1",
       "reason": "Independent malformed DNS/URL fixture or fixed fragment for the control-character rejection test; not an environment host or URL. Exact source path and value only.",
       "paths": [
-        "tests/test_configuration.py"
+        "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py"
       ]
     },
     {
@@ -4835,7 +5360,8 @@
       "value": "sql-fixture.database.windows.net",
       "reason": "Independent fictional SQL server endpoint used only to inspect encrypted connection options in an offline driver mock; not a deployed host.",
       "paths": [
-        "tests/test_management_sql_client.py"
+        "tests/test_management_sql_client.py",
+        "tests/management/test_management_sql_client.py"
       ]
     },
     {
@@ -4844,7 +5370,8 @@
       "reason": "Microsoft ODBC Driver 18 public package version 18.7.1.1-1, not an IP address; pinned official Ubuntu package filename and offline installation contract.",
       "paths": [
         "infra/guest/prepare-management-client.sh",
-        "tests/test_management_sql_driver_install.py"
+        "tests/test_management_sql_driver_install.py",
+        "tests/management/test_management_sql_driver_install.py"
       ]
     },
     {
@@ -4891,7 +5418,8 @@
       "value": "55555555-5555-4555-8555-555555555555",
       "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
       "paths": [
-        "tests/test_management_sql_client.py"
+        "tests/test_management_sql_client.py",
+        "tests/management/test_management_sql_client.py"
       ]
     },
     {
@@ -4900,7 +5428,8 @@
       "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
       "paths": [
         "tests/test_management_maintenance_inputs.py",
-        "tests/test_management_sql_client.py"
+        "tests/test_management_sql_client.py",
+        "tests/management/test_management_sql_client.py"
       ]
     },
     {
@@ -4909,7 +5438,9 @@
       "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
       "paths": [
         "tests/test_deploy_gateway.py",
-        "tests/test_deploy_portal.py"
+        "tests/deployment/test_deploy_gateway.py",
+        "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py"
       ]
     },
     {
@@ -4917,7 +5448,8 @@
       "value": "99999999-9999-4999-8999-999999999999",
       "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
       "paths": [
-        "tests/test_management_sql_client.py"
+        "tests/test_management_sql_client.py",
+        "tests/management/test_management_sql_client.py"
       ]
     },
     {
@@ -4925,7 +5457,8 @@
       "value": "00000000-0000-4000-8000-000000000000",
       "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
       "paths": [
-        "tests/test_management_serial_guest.py"
+        "tests/test_management_serial_guest.py",
+        "tests/management/test_management_serial_guest.py"
       ]
     },
     {
@@ -4934,7 +5467,9 @@
       "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
       "paths": [
         "tests/test_management_serial_guest.py",
-        "tests/test_serial_initialization.py"
+        "tests/management/test_management_serial_guest.py",
+        "tests/test_serial_initialization.py",
+        "tests/deployment/test_serial_initialization.py"
       ]
     },
     {
@@ -4943,7 +5478,9 @@
       "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
       "paths": [
         "tests/test_management_serial_guest.py",
-        "tests/test_serial_initialization.py"
+        "tests/management/test_management_serial_guest.py",
+        "tests/test_serial_initialization.py",
+        "tests/deployment/test_serial_initialization.py"
       ]
     },
     {
@@ -4952,8 +5489,11 @@
       "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
       "paths": [
         "tests/test_management_serial_guest.py",
+        "tests/management/test_management_serial_guest.py",
         "tests/test_serial_initialization.py",
-        "tests/test_lifecycle_serial.py"
+        "tests/deployment/test_serial_initialization.py",
+        "tests/test_lifecycle_serial.py",
+        "tests/deployment/test_lifecycle_serial.py"
       ]
     },
     {
@@ -4962,7 +5502,9 @@
       "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
       "paths": [
         "tests/test_management_serial_guest.py",
-        "tests/test_lifecycle_serial.py"
+        "tests/management/test_management_serial_guest.py",
+        "tests/test_lifecycle_serial.py",
+        "tests/deployment/test_lifecycle_serial.py"
       ]
     },
     {
@@ -4971,7 +5513,9 @@
       "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
       "paths": [
         "tests/test_management_serial_guest.py",
-        "tests/test_serial_initialization.py"
+        "tests/management/test_management_serial_guest.py",
+        "tests/test_serial_initialization.py",
+        "tests/deployment/test_serial_initialization.py"
       ]
     },
     {
@@ -4995,7 +5539,8 @@
       "value": "synthetic-only-Original1!",
       "reason": "Independent synthetic password literal for offline Serial state-machine, stdin and subprocess-environment tests; never a live credential. Exact file/value only.",
       "paths": [
-        "tests/test_management_serial_guest.py"
+        "tests/test_management_serial_guest.py",
+        "tests/management/test_management_serial_guest.py"
       ]
     },
     {
@@ -5003,7 +5548,8 @@
       "value": "INITIAL_SERIAL_GENERATION_FIXTURE",
       "reason": "Non-secret synthetic generation label returned by the isolated lifecycle mock; Core receives no password. Exact file/value only.",
       "paths": [
-        "tests/test_lifecycle.py"
+        "tests/test_lifecycle.py",
+        "tests/deployment/test_lifecycle.py"
       ]
     },
     {
@@ -5015,9 +5561,13 @@
         "scripts/deployment/helpers/configuration.py",
         "scripts/deployment/helpers/initial_configuration.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_parameter_ip_ownership.py",
-        "tests/test_split_configuration.py"
+        "tests/network/test_parameter_ip_ownership.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -5029,9 +5579,13 @@
         "scripts/deployment/helpers/configuration.py",
         "scripts/deployment/helpers/initial_configuration.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_parameter_ip_ownership.py",
-        "tests/test_split_configuration.py"
+        "tests/network/test_parameter_ip_ownership.py",
+        "tests/test_split_configuration.py",
+        "tests/deployment/configuration/test_split_configuration.py"
       ]
     },
     {
@@ -5039,7 +5593,8 @@
       "value": "synthetic-private-id",
       "reason": "Independent synthetic OAuth client-ID test sentinel or fixed platform subscription-name prefix; contains no deployment or user identifier. Exact source paths only.",
       "paths": [
-        "tests/test_credential_provider_inputs.py"
+        "tests/test_credential_provider_inputs.py",
+        "tests/identity/test_credential_provider_inputs.py"
       ]
     },
     {
@@ -5047,7 +5602,8 @@
       "value": "synthetic-string-client-id",
       "reason": "Independent synthetic OAuth client-ID test sentinel or fixed platform subscription-name prefix; contains no deployment or user identifier. Exact source paths only.",
       "paths": [
-        "tests/test_credential_provider_inputs.py"
+        "tests/test_credential_provider_inputs.py",
+        "tests/identity/test_credential_provider_inputs.py"
       ]
     },
     {
@@ -5056,7 +5612,8 @@
       "reason": "Independent synthetic Key Vault hostname used only in offline Portal certificate/signature fixtures; not copied from any deployment. Exact source paths and value only.",
       "paths": [
         "apps/portal/tests/client-assertion.test.ts",
-        "tests/portal-auth-certificate-offline.ps1"
+        "tests/portal-auth-certificate-offline.ps1",
+        "tests/certificates/portal-auth-certificate-offline.ps1"
       ]
     },
     {
@@ -5064,7 +5621,8 @@
       "value": "kv-test-sample.vault.azure.net",
       "reason": "Independent synthetic Key Vault hostname paired with the existing test-sample foundation fixture for offline Portal deployment tests; not copied from a deployment. Exact source path and value only.",
       "paths": [
-        "tests/test_deploy_portal.py"
+        "tests/test_deploy_portal.py",
+        "tests/portal/test_deploy_portal.py"
       ]
     },
     {
@@ -5084,17 +5642,28 @@
         "params/production.example.json",
         "params/test.example.json",
         "tests/audit_identification_fixture.py",
+        "tests/support/audit_identification_fixture.py",
         "tests/test_api_request_preparation.py",
+        "tests/gateway/policies/test_api_request_preparation.py",
         "tests/test_audit_identification.py",
+        "tests/audit/test_audit_identification.py",
         "tests/test_credential_provider_inputs.py",
+        "tests/identity/test_credential_provider_inputs.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_entra_publication_bootstrap.py",
+        "tests/gateway/publication/test_entra_publication_bootstrap.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py",
         "tests/test_prepare_credential_pool_config.py",
         "tests/test_schema_helpers.py",
+        "tests/deployment/configuration/test_schema_helpers.py",
         "tests/test_agent_trace_policy.py",
+        "tests/audit/test_agent_trace_policy.py",
         "tests/test_mcp_pii_request_id.py"
       ]
     },
@@ -5104,15 +5673,24 @@
       "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
       "paths": [
         "tests/audit_identification_fixture.py",
+        "tests/support/audit_identification_fixture.py",
         "tests/test_audit_identification.py",
+        "tests/audit/test_audit_identification.py",
         "tests/test_credential_provider_inputs.py",
+        "tests/identity/test_credential_provider_inputs.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_entra_named_value_refresh.py",
+        "tests/gateway/publication/test_entra_named_value_refresh.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py",
         "tests/test_prepare_credential_pool_config.py",
-        "tests/test_agent_trace_policy.py"
+        "tests/test_agent_trace_policy.py",
+        "tests/audit/test_agent_trace_policy.py"
       ]
     },
     {
@@ -5121,17 +5699,28 @@
       "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
       "paths": [
         "tests/audit_identification_fixture.py",
+        "tests/support/audit_identification_fixture.py",
         "tests/configuration_fixtures.py",
+        "tests/support/configuration_fixtures.py",
         "tests/test_audit_identification.py",
+        "tests/audit/test_audit_identification.py",
         "tests/test_credential_provider_inputs.py",
+        "tests/identity/test_credential_provider_inputs.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_entra_named_value_publication.py",
+        "tests/gateway/publication/test_entra_named_value_publication.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py",
         "tests/test_local_preparation_hooks.py",
+        "tests/deployment/test_local_preparation_hooks.py",
         "tests/test_prepare_credential_pool_config.py",
-        "tests/test_agent_trace_policy.py"
+        "tests/test_agent_trace_policy.py",
+        "tests/audit/test_agent_trace_policy.py"
       ]
     },
     {
@@ -5142,14 +5731,22 @@
         "apps/credential-broker/tests/test_verified_user_caller.py",
         "apps/gateway/credential-broker/tests/test_verified_user_caller.py",
         "tests/audit_identification_fixture.py",
+        "tests/support/audit_identification_fixture.py",
         "tests/test_audit_identification.py",
+        "tests/audit/test_audit_identification.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_entra_named_value_publication.py",
+        "tests/gateway/publication/test_entra_named_value_publication.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
+        "tests/deployment/configuration/test_fixed_parameter_materials.py",
         "tests/test_local_preparation_hooks.py",
+        "tests/deployment/test_local_preparation_hooks.py",
         "tests/test_prepare_credential_pool_config.py",
-        "tests/test_publication_source_generation.py"
+        "tests/test_publication_source_generation.py",
+        "tests/gateway/publication/test_publication_source_generation.py"
       ]
     },
     {
@@ -5160,7 +5757,9 @@
         "apps/credential-broker/tests/test_verified_user_caller.py",
         "apps/gateway/credential-broker/tests/test_verified_user_caller.py",
         "tests/test_contract_rate_policy.py",
-        "tests/test_gateway_limits_telemetry.py"
+        "tests/gateway/policies/test_contract_rate_policy.py",
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py"
       ]
     },
     {
@@ -5168,7 +5767,8 @@
       "value": "subscription-other",
       "reason": "Independent synthetic subscription label used only for offline rate-limit counter separation; not copied from an environment. Exact value and source path only.",
       "paths": [
-        "tests/test_contract_rate_policy.py"
+        "tests/test_contract_rate_policy.py",
+        "tests/gateway/policies/test_contract_rate_policy.py"
       ]
     },
     {
@@ -5206,7 +5806,9 @@
         "scripts/waf_probe.py",
         "scripts/validation/waf_probe.py",
         "tests/certificate-network-boundary-offline.ps1",
-        "tests/test_publish_apis.py"
+        "tests/certificates/certificate-network-boundary-offline.ps1",
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -5227,9 +5829,13 @@
         "scripts/deployment/helpers/configuration.py",
         "tests/fixtures/external-api-definitions.json",
         "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py",
         "tests/test_audit_publication.py",
+        "tests/audit/test_audit_publication.py",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_realtime_policy.py",
+        "tests/gateway/policies/test_realtime_policy.py",
         "apps/portal/lib/generated/model-api-definitions.json"
       ]
     },
@@ -5287,15 +5893,23 @@
         "apps/gateway/apim/policies/operation-policies/realtime/realtime-create.xml",
         "scripts/deployment/helpers/configuration.py",
         "tests/configuration_fixtures.py",
+        "tests/support/configuration_fixtures.py",
         "tests/test_api_contract_configuration.py",
+        "tests/gateway/publication/test_api_contract_configuration.py",
         "tests/test_api_migration.py",
         "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py",
         "tests/test_audit_publication.py",
+        "tests/audit/test_audit_publication.py",
         "tests/test_operation_backend_publication.py",
+        "tests/gateway/publication/test_operation_backend_publication.py",
         "tests/test_realtime_policy.py",
+        "tests/gateway/policies/test_realtime_policy.py",
         "tests/test_shared_mcp_configuration.py",
+        "tests/gateway/publication/test_shared_mcp_configuration.py",
         "apps/portal/lib/generated/model-api-definitions.json",
-        "tests/test_entra_publication.py"
+        "tests/test_entra_publication.py",
+        "tests/gateway/publication/test_entra_publication.py"
       ]
     },
     {
@@ -5304,7 +5918,9 @@
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [
         "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py",
         "tests/test_api_publication_size.py",
+        "tests/gateway/publication/test_api_publication_size.py",
         "tests/test_prepare_coverage.py"
       ]
     },
@@ -5322,8 +5938,11 @@
         "scripts/waf_probe.py",
         "scripts/validation/waf_probe.py",
         "tests/certificate-azure-identity-offline.ps1",
+        "tests/certificates/certificate-azure-identity-offline.ps1",
         "tests/certificate-network-boundary-offline.ps1",
-        "tests/test_publish_apis.py"
+        "tests/certificates/certificate-network-boundary-offline.ps1",
+        "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py"
       ]
     },
     {
@@ -5333,15 +5952,25 @@
       "paths": [
         "apps/portal/tests/document-operation.test.ts",
         "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py",
         "tests/test_audit_context.py",
+        "tests/audit/test_audit_context.py",
         "tests/test_audit_usage.py",
+        "tests/audit/test_audit_usage.py",
         "tests/test_configuration.py",
+        "tests/deployment/configuration/test_configuration.py",
         "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py",
         "tests/test_fixed_initial_configuration.py",
+        "tests/deployment/test_fixed_initial_configuration.py",
         "tests/test_parameter_ip_ownership.py",
+        "tests/network/test_parameter_ip_ownership.py",
         "tests/test_publish_apis.py",
+        "tests/gateway/publication/test_publish_apis.py",
         "tests/test_split_configuration.py",
-        "tests/test_agent_trace_policy.py"
+        "tests/deployment/configuration/test_split_configuration.py",
+        "tests/test_agent_trace_policy.py",
+        "tests/audit/test_agent_trace_policy.py"
       ]
     },
     {
@@ -5354,28 +5983,49 @@
         "apps/portal/tests/model-stream.test.ts",
         "apps/portal/tests/pii-mcp.test.ts",
         "tests/test_apim_hostname_preservation.py",
+        "tests/network/test_apim_hostname_preservation.py",
         "tests/test_application_infrastructure_cleanup.py",
+        "tests/deployment/test_application_infrastructure_cleanup.py",
         "tests/test_cleanup.py",
+        "tests/deployment/test_cleanup.py",
         "tests/test_common_authentication.py",
+        "tests/gateway/policies/test_common_authentication.py",
         "tests/test_contract_rate_policy.py",
+        "tests/gateway/policies/test_contract_rate_policy.py",
         "tests/test_document_analysis_policy.py",
+        "tests/gateway/policies/test_document_analysis_policy.py",
         "tests/test_gateway_limits_telemetry.py",
+        "tests/gateway/policies/test_gateway_limits_telemetry.py",
         "tests/test_grpc_network.py",
+        "tests/network/test_ingress_bootstrap.py",
         "tests/test_integration_client.py",
+        "tests/clients/test_integration_client.py",
         "tests/test_lifecycle.py",
+        "tests/deployment/test_lifecycle.py",
         "tests/test_lifecycle_transport.py",
+        "tests/deployment/test_lifecycle_transport.py",
         "tests/test_live_api.py",
+        "tests/gateway/policies/test_live_audio_policy.py",
         "tests/test_local_preparation_hooks.py",
+        "tests/deployment/test_local_preparation_hooks.py",
         "tests/test_network_preservation.py",
+        "tests/network/test_network_preservation.py",
         "tests/test_pii_policy.py",
+        "tests/gateway/policies/test_pii_policy.py",
         "tests/test_portal_api_keys_setup.py",
         "tests/test_entra_authentication_configuration.py",
+        "tests/identity/test_entra_authentication_configuration.py",
         "tests/test_audit_identification.py",
+        "tests/audit/test_audit_identification.py",
         "tests/test_entra_gateway_authentication.py",
+        "tests/identity/test_entra_gateway_authentication.py",
         "tests/test_api_request_preparation.py",
+        "tests/gateway/policies/test_api_request_preparation.py",
         "tests/test_gateway_query_guard.py",
         "tests/test_gateway_query_observation.py",
-        "tests/test_mcp_argument_validation.py"
+        "tests/gateway/policies/test_gateway_query_observation.py",
+        "tests/test_mcp_argument_validation.py",
+        "tests/gateway/policies/test_mcp_argument_validation.py"
       ]
     },
     {
@@ -5384,7 +6034,9 @@
       "reason": "Exactly one NUL byte AA== in an intentionally invalid offline image-policy fixture; no private payload.",
       "paths": [
         "tests/test_api_profile_policy.py",
-        "tests/test_api_protocols.py"
+        "tests/gateway/policies/test_api_profile_policy.py",
+        "tests/test_api_protocols.py",
+        "tests/gateway/publication/test_api_protocols.py"
       ]
     },
     {

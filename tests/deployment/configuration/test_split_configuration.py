@@ -1,0 +1,531 @@
+"""paramsと標準configの読込・合成とSchemaを検証する。
+
+各JSONを基準にしたパス解決、オブジェクトの再帰合成、配列の置換、循環参照・多段参照・未知項目の拒否を確認する。
+"""
+import copy
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from tests.support.schema_helpers import local_schema_validator
+from tests.support.configuration_fixtures import bind_credential_fixture_id, fixture
+from tests import REPOSITORY
+
+CORE = REPOSITORY
+from deployment.helpers.configuration import (ConfigurationError, build_bicep_configuration,
+                           load_configuration, load_configuration_source,
+                           normalize_configuration, PARAMETER_OWNED_PATHS)
+
+
+NETWORK_IP_KEYS = ("addressSpaces", "subnetPrefixes")
+FIREWALL_IP_KEYS = ("snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings")
+
+
+def adopt_azure_dns_references(document):
+    """公開例の置換必須IDを、実環境から独立した合成登録情報へ置き換える。"""
+    dns = fixture()["certificate"]
+    for key in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
+        document["certificate"][key] = dns[key]
+    document["services"]["apimInstanceId"] = "abc123"
+    bind_credential_fixture_id(document)
+    providers = document.get("credentialProviders", {})
+    if isinstance(providers, dict):
+        providers["graphDelegated"]["clientId"] = "66666666-6666-4666-8666-666666666666"
+    else:
+        for provider in providers:
+            if provider["name"] == "graph-delegated":
+                provider["clientId"] = "66666666-6666-4666-8666-666666666666"
+                provider["oauthTenantId"] = document["entraTenantId"]
+
+
+class SplitConfigurationTests(unittest.TestCase):
+    """paramsと標準configの読込・合成とSchemaを検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name).resolve()
+        self.options = self.root / "defaults" / "config.json"
+        self.parameters = self.root / "inputs" / "test.local.json"
+
+    def write(self, path, value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value), encoding="utf-8")
+
+    def sources(self, options=None, parameters=None):
+        self.write(self.options, options or {})
+        self.write(self.parameters, {"configFile": "../defaults/config.json", **(parameters or {})})
+        return load_configuration_source(self.parameters)
+
+    def test_nested_parameters_merge_without_erasing_platform_options(self):
+        result = self.sources(
+            {"services": {"apimSkuName": "Developer", "apimCapacity": 1}},
+            {"services": {"publisherName": "Example", "publisherEmail": "owner@example.com"}},
+        )
+        self.assertEqual(result["services"], {
+            "apimSkuName": "Developer", "publisherName": "Example",
+            "apimCapacity": 1, "publisherEmail": "owner@example.com",
+        })
+        self.assertNotIn("configFile", result)
+
+    def test_common_key_is_fixed_and_personal_login_options_belong_to_config(self):
+        authentication = {"credentialLogin": {
+            "providerNames": ["graph-personal"], "idleTimeoutSeconds": 604800,
+            "transactionLifetimeSeconds": 300, "loginCallsPerMinute": 10}}
+        result = self.sources({"gateway": {"skuName": "WAF_v2", "authentication": authentication}})
+        self.assertEqual(result["gateway"]["authentication"]["credentialLogin"], authentication["credentialLogin"])
+        self.assertEqual(result["gateway"]["authentication"]["subscriptionKeyHeader"], "api-key")
+        self.assertEqual(result["gateway"]["skuName"], "WAF_v2")
+        with self.assertRaisesRegex(ConfigurationError, "unsupported field"):
+            self.sources(parameters={"gateway": {"authentication": authentication}})
+        for owner in ("options", "parameters"):
+            with self.subTest(owner=owner), self.assertRaisesRegex(ConfigurationError, "retired initial input"):
+                self.sources(**{owner: {"gateway": {"authentication": {"subscriptionKeyHeader": "api-key"}}}})
+
+    def test_initial_api_selection_is_fixed(self):
+        self.assertEqual(self.sources()["apiDefinitions"], [])
+        with self.assertRaisesRegex(ConfigurationError, "retired initial input"):
+            self.sources(parameters={"apiDefinitions": []})
+
+    def test_operator_login_grants_cannot_be_supplied_during_deployment(self):
+        for owner in ("options", "parameters"):
+            with self.subTest(owner=owner), self.assertRaisesRegex(
+                ConfigurationError, r"management\.loginAssignments: retired initial input"
+            ):
+                self.sources(**{owner: {"management": {"loginAssignments": []}}})
+
+    def test_references_resolve_from_the_enterprise_parameters_directory(self):
+        # 鍵や資格情報の保存先も企業入力です。標準configへコピーしません。
+        dns = {key: value for key, value in fixture()["certificate"].items()
+               if key in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId")}
+        graph_options = {"displayName": "Synthetic Graph", "scopes": ["User.Read"],
+                         "pool": {"count": 1, "capacity": 1}}
+        result = self.sources(
+            {"certificate": {"mode": "dnsPlugin"}, "credentialProviders": {"graphDelegated": graph_options}},
+            {"management": {"sshPublicKeyFile": "key.pub"},
+             "certificate": dns,
+             "entraTenantId": "99999999-9999-4999-8999-999999999999",
+             "credentialProviders": {"graphDelegated": {
+                 "clientId": "66666666-6666-4666-8666-666666666666", "clientSecretFile": "oauth.txt"}}},
+        )
+        # AzureのリソースIDは端末上のファイルパスへ変換しない。
+        self.assertEqual(result["certificate"]["azureDnsManagedIdentityResourceId"], dns["azureDnsManagedIdentityResourceId"])
+        self.assertEqual(result["certificate"]["azureDnsSubscriptionId"], dns["azureDnsSubscriptionId"])
+        self.assertEqual(result["management"]["sshPublicKeyFile"], str(self.parameters.parent / "key.pub"))
+        self.assertEqual(result["credentialProviders"][0]["clientSecretFile"], str(self.parameters.parent / "oauth.txt"))
+
+    def test_combined_internal_configuration_remains_supported(self):
+        self.write(self.parameters, {"management": {"sshPublicKeyFile": "key.pub"}})
+        result = load_configuration_source(self.parameters)
+        self.assertEqual(result["management"]["sshPublicKeyFile"], str(self.parameters.parent / "key.pub"))
+
+    def test_unknown_manifest_metadata_is_rejected(self):
+        with self.assertRaisesRegex(ConfigurationError, "unsupported field.*configFiles"):
+            self.sources(parameters={"configFiles": []})
+
+    def test_platform_settings_do_not_silently_expand_parameters_surface(self):
+        for settings in ({"network": {"operatorPorts": ["22"]}},
+                         {"network": {"firewall": {"sku": "Premium"}}},
+                         {"services": {"apimSkuName": "Premium"}},
+                         {"services": {"unexpectedSetting": "synthetic"}}):
+            with self.subTest(settings=settings), self.assertRaises(ConfigurationError):
+                self.sources(parameters=settings)
+
+    def test_no_recursive_includes_or_cycles(self):
+        for reference in ("../inputs/test.local.json", "other.json"):
+            with self.subTest(reference=reference), self.assertRaisesRegex(ConfigurationError, "must not include another"):
+                self.sources(options={"configFile": reference})
+
+    def test_self_reference_is_rejected(self):
+        self.write(self.parameters, {"configFile": "test.local.json"})
+        with self.assertRaisesRegex(ConfigurationError, "itself"):
+            load_configuration_source(self.parameters)
+
+    def test_invalid_reference_is_rejected_without_network_or_value_echo(self):
+        for reference in (None, [], "", "https://example.com/config.json", "settings.txt", "secret\x00.json"):
+            self.write(self.parameters, {"configFile": reference})
+            with self.subTest(reference=reference), self.assertRaises(ConfigurationError):
+                load_configuration_source(self.parameters)
+
+    def test_missing_file_and_invalid_json_are_actionable_errors(self):
+        for path in (self.parameters, self.options):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("{invalid-private-content", encoding="utf-8")
+            with self.assertRaisesRegex(ConfigurationError, "cannot read a valid JSON") as caught:
+                load_configuration_source(path)
+            self.assertNotIn("invalid-private-content", str(caught.exception))
+
+    def test_unrecognized_standard_config_fields_fail_before_merge(self):
+        with self.assertRaisesRegex(ConfigurationError, "unsupported field.*unknown"):
+            self.sources(options={"unknown": "value"})
+
+    def test_public_examples_load_and_normalize_both_modes(self):
+        for name in ("test", "production"):
+            raw = load_configuration_source(CORE / f"params/{name}.example.json")
+            raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
+            raw["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
+            raw["entraTenantId"] = raw["azureTenantId"]
+            adopt_azure_dns_references(raw)
+            self.write(self.parameters, raw)
+            with self.subTest(name=name):
+                loaded = load_configuration(self.parameters)
+                self.assertEqual(loaded["services"]["projectDisplayName"], "core-platform")
+                self.assertTrue(loaded["services"]["grantApimFoundryModelsAccess"])
+                self.assertEqual(loaded["management"]["sshPublicKeyFile"], str((CORE / "secrets/management-ssh.pub").resolve()))
+                arm = build_bicep_configuration(loaded)
+                self.assertNotIn("configFile", arm)
+                self.assertNotIn("$schema", arm)
+                self.assertNotIn("sshPublicKeyFile", arm["management"])
+                self.assertNotIn("pluginArgumentsFile", arm["certificate"])
+
+    def test_project_default_uses_core_platform(self):
+        raw = load_configuration_source(CORE / "params/test.example.json")
+        raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
+        raw["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
+        raw["entraTenantId"] = raw["azureTenantId"]
+        adopt_azure_dns_references(raw)
+        raw["services"].pop("projectDisplayName")
+        raw["services"].pop("projectDescription")
+        normalized = normalize_configuration(raw)
+        self.assertEqual(normalized["services"]["projectDisplayName"], "core-platform")
+        self.assertIn("Core platform", normalized["services"]["projectDescription"])
+
+    def test_ip_parameters_merge_with_operational_config_and_fixed_ranges(self):
+        result = self.sources({"network": {"firewall": {"sku": "Premium", "idpsMode": "Deny"}}},
+                              {"network": {"addressSpaces": ["10.70.0.0/16"]}})
+        self.assertEqual(result["network"]["firewall"]["sku"], "Premium")
+        self.assertEqual(result["network"]["firewall"]["idpsPrivateRanges"],
+                         ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "10.70.0.0/16"])
+        self.assertNotIn("dnsServers", result["network"])
+        self.assertNotIn("addressSpaces", self.sources(parameters={"network": {}})["network"])
+
+    def test_azure_dns_input_is_rejected_in_both_split_files_even_when_empty(self):
+        for owner in ("config", "params"):
+            for nested in (False, True):
+                for value in ([], ["192.0.2.53"]):
+                    network = {"firewall": {"dnsServers": value}} if nested else {"dnsServers": value}
+                    with self.subTest(owner=owner, nested=nested, value=value), self.assertRaisesRegex(ConfigurationError, "unsupported field.*(?:dnsServers|firewall)"):
+                        self.sources(options={"network": network} if owner == "config" else {}, parameters={"network": network} if owner == "params" else {})
+
+    def test_ip_fields_in_config_are_rejected_even_when_empty_or_overridden_by_params(self):
+        # 誤った環境のIPを隠して継承しない。値そのものを例外へ表示しません。
+        for keys, nested in ((NETWORK_IP_KEYS, False),):
+            for key in keys:
+                for value in ([], ["PRIVATE-INPUT-SENTINEL"]):
+                    network = {"firewall": {key: value}} if nested else {key: value}
+                    with self.subTest(key=key, nested=nested, value=value):
+                        with self.assertRaisesRegex(ConfigurationError, "move.*params.network") as caught:
+                            self.sources({"network": network}, {"network": network})
+                        self.assertNotIn("PRIVATE-INPUT-SENTINEL", str(caught.exception))
+        for owner in ("options", "parameters"):
+            for key in FIREWALL_IP_KEYS:
+                with self.subTest(owner=owner, key=key), self.assertRaisesRegex(ConfigurationError, "retired initial input"):
+                    self.sources(**{owner: {"network": {"firewall": {key: []}}}})
+            with self.assertRaisesRegex(ConfigurationError, "retired initial input"):
+                self.sources(**{owner: {"monitoring": {"auditAllowedIpAddresses": []}}})
+
+    def test_complete_split_configuration_requires_environment_cidrs(self):
+        options = json.loads((CORE / "config/test.json").read_text())
+        parameters = json.loads((CORE / "params/test.example.json").read_text())
+        for key in ("azureTenantId", "entraTenantId", "subscriptionId"): parameters[key] = "11111111-1111-4111-8111-111111111111"
+        adopt_azure_dns_references(parameters)
+        parameters.pop("configFile")
+        for key in ("addressSpaces", "subnetPrefixes"):
+            missing = copy.deepcopy(parameters); del missing["network"][key]
+            with self.subTest(missing=key):
+                merged = self.sources(options, missing)
+                with self.assertRaisesRegex(ConfigurationError, "network." + key): normalize_configuration(merged)
+
+    def test_combined_internal_ip_configuration_is_not_subject_to_split_ownership_rules(self):
+        internal = {"network": {"addressSpaces": ["10.0.0.0/16"], "firewall": {"snatPrivateRanges": ["10.0.0.0/16"]}},
+                    "monitoring": {"auditAllowedIpAddresses": ["198.51.100.1/32"]}}
+        self.write(self.parameters, internal)
+        self.assertEqual(load_configuration_source(self.parameters), internal)
+
+    def test_fixed_network_fields_are_absent_from_normalized_configuration(self):
+        normalized = normalize_configuration(fixture())
+        for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled", "operatorAddressPrefixes", "managementAdditionalSecurityRules", "dnsServers", "ntpFqdns", "ntpAddressPrefixes", "apimKeyVaultAccessEnabled"):
+            self.assertNotIn(key, normalized["network"])
+        self.assertNotIn("dnsServers", normalized["network"]["firewall"])
+        self.assertEqual(normalized["monitoring"]["auditAllowedIpAddresses"], [])
+
+    def test_appgw_rule_inputs_are_rejected_in_split_files_even_with_fixed_values(self):
+        options = json.loads((CORE / "config/test.json").read_text())
+        parameters = json.loads((CORE / "params/test.example.json").read_text())
+        parameters.pop("configFile")
+        for key in ("azureTenantId", "entraTenantId", "subscriptionId"):
+            parameters[key] = fixture()[key]
+        adopt_azure_dns_references(parameters)
+        self.sources(options, parameters)
+        loaded = load_configuration(self.parameters)
+        for output in (loaded, build_bicep_configuration(loaded)):
+            for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+                self.assertNotIn(key, output["network"])
+        cases = (
+            {"clientAddressPrefixes": ["0.0.0.0/0"]},
+            {"clientAddressPrefixes": ["203.0.113.10/32", "198.51.100.0/24"]},
+            {"clientAddressPrefixes": []},
+            {"clientAddressPrefixes": "PRIVATE-INPUT-SENTINEL"},
+            {"certificatePublicProbeEnabled": True},
+            {"certificatePublicProbeEnabled": False},
+            {"certificatePublicProbeEnabled": None},
+            {"clientAddressPrefixes": ["0.0.0.0/0"],
+             "certificatePublicProbeEnabled": True},
+        )
+        for owner in ("params", "config"):
+            for settings in cases:
+                selected_options = copy.deepcopy(options)
+                selected_parameters = copy.deepcopy(parameters)
+                target = selected_parameters if owner == "params" else selected_options
+                target["network"].update(settings)
+                self.write(self.options, selected_options)
+                self.write(self.parameters, {
+                    "configFile": "../defaults/config.json", **selected_parameters,
+                })
+                with self.subTest(owner=owner, settings=settings):
+                    with self.assertRaisesRegex(ConfigurationError,
+                                                r"network.*unsupported field") as caught:
+                        load_configuration(self.parameters)
+                    for key in settings:
+                        self.assertIn(key, str(caught.exception))
+                    self.assertNotIn("PRIVATE-INPUT-SENTINEL", str(caught.exception))
+
+    def test_public_environment_cidrs_stay_in_params_and_fixed_ranges_are_absent(self):
+        for name in ("test", "production"):
+            parameters = json.loads((CORE / "params" / (name + ".example.json")).read_text())
+            options = json.loads((CORE / "config" / (name + ".json")).read_text())
+            with self.subTest(sample=name):
+                self.assertLessEqual(set(NETWORK_IP_KEYS), parameters["network"].keys())
+                self.assertNotIn("firewall", parameters["network"])
+                self.assertNotIn("auditAllowedIpAddresses", parameters["monitoring"])
+                self.assertFalse(set(NETWORK_IP_KEYS) & set(options["network"]))
+                self.assertNotIn("dnsServers", options["network"])
+                self.assertNotIn("dnsServers", parameters["network"])
+                self.assertFalse(set(FIREWALL_IP_KEYS) & set(options["network"]["firewall"]))
+                self.assertNotIn("dnsServers", options["network"]["firewall"])
+                self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
+                self.assertEqual(options["network"]["firewall"]["sku"], "Premium")
+                self.assertEqual(options["network"]["firewall"]["idpsMode"], "Deny")
+                self.assertNotIn("operatorPorts", options["network"])
+                for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+                    self.assertNotIn(key, options["network"])
+                    self.assertNotIn(key, parameters["network"])
+
+    def test_every_environment_field_is_rejected_in_config_even_if_parameters_override_it(self):
+        for path in PARAMETER_OWNED_PATHS:
+            portal_section = path == ("portal",)
+            values = ({}, {"publicHostName": "portal.ENTERPRISE-VALUE-SENTINEL.example.com"}) if portal_section else (
+                [], "ENTERPRISE-VALUE-SENTINEL"
+            )
+            for value in values:
+                options, parameters = {}, {}
+                for target in (options, parameters):
+                    for key in path[:-1]:
+                        target = target.setdefault(key, {})
+                    target[path[-1]] = copy.deepcopy(value)
+                if portal_section:
+                    # Portal の配置制約を検査する前に、params の型で拒否されないようにします。
+                    parameters["portal"] = {"publicHostName": "portal.example.com"}
+                if path == ("codex",):
+                    # paramsを有効なオブジェクトにしてconfig側の配置制約まで到達させます。
+                    parameters["codex"] = {"clientId": fixture()["subscriptionId"]}
+                with self.subTest(path=".".join(path), empty=not value):
+                    with self.assertRaisesRegex(ConfigurationError, r"move.*params\.") as caught:
+                        self.sources(options, parameters)
+                    self.assertNotIn("ENTERPRISE-VALUE-SENTINEL", str(caught.exception))
+
+    def test_nested_params_expose_only_environment_fields_and_not_platform_options(self):
+        for settings in ({"gateway": {"authentication": {"entra": {"userLimits": {"enabled": False}}}}},
+                         {"certificate": {"renewBeforeDays": 10}},
+                         {"monitoring": {"enableLogAlerts": True}}):
+            with self.subTest(settings=settings), self.assertRaises(ConfigurationError):
+                self.sources(parameters=settings)
+
+    def test_params_cannot_select_grpc_switch_or_ports_even_with_fixed_values(self):
+        for key, values in (("enabled", (True, False)),
+                            ("publicPort", (8443, 9443)),
+                            ("backendPort", (443, 8443))):
+            for value in values:
+                with self.subTest(key=key, value=value), self.assertRaisesRegex(ConfigurationError, r"gateway.*unsupported field.*grpc"):
+                    self.sources(parameters={"gateway": {"grpc": {key: value}}})
+
+    def test_environment_regions_do_not_silently_fall_back_to_another_region(self):
+        raw = load_configuration_source(CORE / "params/test.example.json")
+        for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
+            raw[key] = "11111111-1111-4111-8111-111111111111"
+        adopt_azure_dns_references(raw)
+        for key in ("location", "foundryLocation", "apiCenterLocation"):
+            missing = copy.deepcopy(raw)
+            del missing[key]
+            with self.subTest(missing=key), self.assertRaisesRegex(ConfigurationError, key):
+                normalize_configuration(missing)
+
+    def test_canonical_config_has_no_local_or_example_variants(self):
+        # 実行時の派生設定と導入先入力は.local、config正本は2個だけです。
+        self.assertEqual({p.name for p in (CORE / "config").glob("*.json")}, {"test.json", "production.json"})
+
+
+class SplitSchemaTests(unittest.TestCase):
+    """paramsと標準configの読込・合成とSchemaを検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
+
+    def test_all_input_schemas_reject_appgw_rule_settings_including_fixed_values(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is available in the integration venv")
+        for name in ("params", "options", "configuration"):
+            schema = json.loads((CORE / "schemas" / (name + ".schema.json")).read_text())
+            if name == "params":
+                document = json.loads((CORE / "params/test.example.json").read_text())
+                for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
+                    document[key] = fixture()[key]
+                adopt_azure_dns_references(document)
+            elif name == "options":
+                document = json.loads((CORE / "config/test.json").read_text())
+            else:
+                document = fixture()
+            validator = local_schema_validator(schema)
+            validator.validate(document)
+            for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+                self.assertNotIn(key, schema["properties"]["network"]["properties"])
+                self.assertNotIn(key, document["network"])
+            for settings in (
+                {"clientAddressPrefixes": ["0.0.0.0/0"]},
+                {"clientAddressPrefixes": ["203.0.113.10/32", "198.51.100.0/24"]},
+                {"clientAddressPrefixes": ["203.0.113.10"]},
+                {"clientAddressPrefixes": []},
+                {"clientAddressPrefixes": None},
+                {"clientAddressPrefixes": "synthetic"},
+                {"certificatePublicProbeEnabled": True},
+                {"certificatePublicProbeEnabled": False},
+                {"certificatePublicProbeEnabled": None},
+                {"certificatePublicProbeEnabled": []},
+                {"certificatePublicProbeEnabled": "synthetic"},
+                {"clientAddressPrefixes": ["0.0.0.0/0"],
+                 "certificatePublicProbeEnabled": True},
+            ):
+                selected = copy.deepcopy(document)
+                selected["network"].update(settings)
+                with self.subTest(schema=name, settings=settings):
+                    self.assertFalse(validator.is_valid(selected))
+
+    def test_schema_editor_defaults_match_the_files_that_use_them(self):
+        # エディターが挿入するschema既定値も、JSON利用元から新配置へ解決します。
+        for filename, directory in (("params", "params"), ("options", "config")):
+            schema = json.loads((CORE / "schemas" / (filename + ".schema.json")).read_text())
+            reference = schema["properties"]["$schema"]["default"]
+            self.assertEqual((CORE / directory / reference).resolve(), CORE / "schemas" / (filename + ".schema.json"))
+        combined = json.loads((CORE / "schemas/configuration.schema.json").read_text())
+        # 合成出力先はCLIで変更できるため、不正確な固定相対パスを勧めません。
+        self.assertNotIn("default", combined["properties"]["$schema"])
+
+    def test_schemas_do_not_accept_apim_resource_name_overrides(self):
+        """サービス設定は既知の公開フィールドだけを受け付ける。"""
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is available in the integration venv")
+        for filename in ("options.schema.json", "configuration.schema.json"):
+            schema = json.loads((CORE / "schemas" / filename).read_text())
+            service = schema["properties"]["services"]
+            self.assertFalse(service.get("additionalProperties", True))
+            validator = jsonschema.Draft202012Validator(service)
+            self.assertFalse(validator.is_valid({"unexpectedSetting": "synthetic"}))
+
+    def test_samples_and_merged_configs_match_their_separate_schemas(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is available in the integration venv")
+        for name in ("test", "production"):
+            for kind in ("params", "config"):
+                path = CORE / (f"params/{name}.example.json" if kind == "params" else f"config/{name}.json")
+                value = json.loads(path.read_text())
+                if kind == "params":
+                    for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
+                        value[key] = "11111111-1111-4111-8111-111111111111"
+                    adopt_azure_dns_references(value)
+                schema = json.loads((path.parent / value["$schema"]).read_text())
+                with self.subTest(name=name, kind=kind):
+                    jsonschema.Draft202012Validator.check_schema(schema)
+                    local_schema_validator(schema).validate(value)
+            merged = load_configuration_source(CORE / f"params/{name}.example.json")
+            for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
+                merged[key] = "11111111-1111-4111-8111-111111111111"
+            adopt_azure_dns_references(merged)
+            schema = json.loads((CORE / "schemas/configuration.schema.json").read_text())
+            with self.subTest(name=name, kind="merged"):
+                local_schema_validator(schema).validate(merged)
+
+    def test_params_network_cidrs_are_required_and_firewall_inputs_are_removed(self):
+        try: import jsonschema
+        except ImportError: self.skipTest("jsonschema is available in the integration venv")
+        schema = json.loads((CORE / "schemas/params.schema.json").read_text())
+        sample = json.loads((CORE / "params/test.example.json").read_text())
+        for key in ("azureTenantId", "entraTenantId", "subscriptionId"): sample[key] = "11111111-1111-4111-8111-111111111111"
+        adopt_azure_dns_references(sample)
+        for key in ("network", "addressSpaces", "subnetPrefixes"):
+            invalid = copy.deepcopy(sample)
+            if key == "network": del invalid[key]
+            else: del invalid["network"][key]
+            with self.subTest(missing=key), self.assertRaises(jsonschema.ValidationError): local_schema_validator(schema).validate(invalid)
+        self.assertNotIn("firewall", schema["properties"]["network"]["properties"])
+        for value in ({}, {"sku": "Premium"}, {"idpsPrivateRanges": []}, {"bypassTrafficSettings": []}):
+            invalid = copy.deepcopy(sample)
+            invalid["network"]["firewall"] = value
+            with self.subTest(firewall=value), self.assertRaises(jsonschema.ValidationError):
+                local_schema_validator(schema).validate(invalid)
+
+    def test_options_schema_rejects_every_enterprise_owned_field_including_empty_values(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is available in the integration venv")
+        schema = json.loads((CORE / "schemas/options.schema.json").read_text())
+        validator = jsonschema.Draft202012Validator(schema)
+        for path in PARAMETER_OWNED_PATHS:
+            for empty in ([], {}, ""):
+                document = {}
+                target = document
+                for key in path[:-1]:
+                    target = target.setdefault(key, {})
+                target[path[-1]] = empty
+                with self.subTest(path=".".join(path), empty=empty):
+                    self.assertFalse(validator.is_valid(document))
+
+    def test_parameters_schema_requires_explicit_deployment_regions(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is available in the integration venv")
+        schema = json.loads((CORE / "schemas/params.schema.json").read_text())
+        sample = json.loads((CORE / "params/test.example.json").read_text())
+        for key in ("azureTenantId", "entraTenantId", "subscriptionId"):
+            sample[key] = "11111111-1111-4111-8111-111111111111"
+        adopt_azure_dns_references(sample)
+        for region in ("location", "foundryLocation", "apiCenterLocation"):
+            missing = copy.deepcopy(sample)
+            del missing[region]
+            with self.subTest(region=region), self.assertRaises(jsonschema.ValidationError):
+                local_schema_validator(schema).validate(missing)
+
+    def test_options_schema_rejects_ip_fields_and_merged_schema_keeps_sku_conditions(self):
+        try: import jsonschema
+        except ImportError: self.skipTest("jsonschema is available in the integration venv")
+        options = json.loads((CORE / "schemas/options.schema.json").read_text())
+        for key in NETWORK_IP_KEYS:
+            with self.subTest(network=key), self.assertRaises(jsonschema.ValidationError):
+                jsonschema.validate({"network": {key: []}}, options)
+        for key in FIREWALL_IP_KEYS:
+            with self.subTest(firewall=key), self.assertRaises(jsonschema.ValidationError):
+                jsonschema.validate({"network": {"firewall": {key: []}}}, options)
+        with self.assertRaises(jsonschema.ValidationError): jsonschema.validate({"monitoring": {"auditAllowedIpAddresses": []}}, options)
+        internal = json.loads((CORE / "schemas/configuration.schema.json").read_text())
+        firewall = internal["properties"]["network"]["properties"]["firewall"]
+        for key, nonempty in (("bypassTrafficSettings", [{}]), ("idpsPrivateRanges", ["10.0.0.0/8"]), ("signatureOverrides", [{}])):
+            with self.subTest(key=key):
+                jsonschema.validate({"sku": "Premium", "idpsMode": "Alert", key: nonempty}, firewall)
+                with self.assertRaises(jsonschema.ValidationError): jsonschema.validate({"sku": "Standard", "idpsMode": "Off", key: nonempty}, firewall)
+
+
+if __name__ == "__main__":
+    unittest.main()

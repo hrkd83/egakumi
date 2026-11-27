@@ -6,6 +6,6 @@
 /scripts/check_secrets.py @hrkd83
 /scripts/public-data-policy.json @hrkd83
 /scripts/install_git_hooks.py @hrkd83
-/tests/test_public_data_guard.py @hrkd83
-/tests/test_secret_check.py @hrkd83
+/tests/repository/test_public_data_guard.py @hrkd83
+/tests/repository/test_secret_check.py @hrkd83
 /AGENTS.md @hrkd83
