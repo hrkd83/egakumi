@@ -23,5 +23,9 @@ AIで実現したい仕事の体験から、それを支えるAzure上のAIゲ�
 | 第5回 | [システム経路とUDRの関係](https://youtu.be/1bhjNkxH4wM) |
 | 第6回 | [egakumiのUDR設定](https://youtu.be/UJGoEkp3K6A) |
 | 第7回 | [ネットワークセキュリティの仕組みとルール](https://youtu.be/wHVsYFJUt-k) |
+| 第8回 | [Application GatewayのNSG設定](https://youtu.be/_nSVGY_meW4) |
+| 第9回 | [API ManagementのNSG設定](https://youtu.be/t62SKNkOwD8) |
+| 第10回 | [Private EndpointのNSG設定](https://youtu.be/DrLPaGZDrw8) |
+| 第11回 | [ACAのNSG設定](https://youtu.be/UwFfmDfaSW0) |
 
 導入・構築は[リポジトリREADME](../README.md)、API・認証・接続の仕様は[参照資料](reference/platform.md)を参照してください。
