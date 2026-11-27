@@ -52,6 +52,10 @@
       __MCP_PII_ARGUMENTS_CSHARP__
     }" />
     <choose><when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayMcpArgumentError&quot;]))">
+      <set-variable name="gatewayAuditPhase" value="rejected" />
+      <set-variable name="gatewayAuditCode" value="INVALID_MCP_TOOL_ARGUMENTS" />
+      <set-variable name="gatewayAuditStatus" value="@(400)" />
+      <include-fragment fragment-id="core-gateway-telemetry" />
       <return-response><set-status code="400" reason="Invalid tool arguments" />
         <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
         <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>

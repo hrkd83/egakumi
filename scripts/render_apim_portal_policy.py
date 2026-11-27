@@ -153,7 +153,8 @@ def render_portal_policy(configuration):
     for marker, block in (("REGISTERED_ROUTES_XML", routes), ("BACKEND_AUTH_XML", backend_auth),
                           ("SUBSCRIPTION_PROFILE_XML", snippet("subscription-profile")), ("RATE_LIMIT_ERROR_XML", rate_error)):
         xml = insert_block(xml, f"__{marker}__", block)
-    xml = render_audit_policy(xml)
+    # C#の展開で字下げだけが入った空行を手動貼り付け用のXMLでは空行に揃える。
+    xml = re.sub(r"(?m)^[ \t]+$", "", render_audit_policy(xml))
     if len(xml.encode("utf-8")) > MAX_APIM_POLICY_BYTES:
         raise ValueError("The generated policy exceeds the APIM policy document size limit")
     if re.search(r"__[A-Z][A-Z0-9_]+__", xml) or not validate_api_settings_inheritance(ET.fromstring(xml)):

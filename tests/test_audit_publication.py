@@ -837,6 +837,11 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
   self.assertIn('new JProperty("code", -32602)',guard)
   branch,=[node for node in facade.findall('inbound/choose/when')
            if 'gatewayMcpArgumentError' in node.attrib.get('condition','')]
+  self.assertEqual([node.tag for node in branch],
+                   ['set-variable','set-variable','set-variable','include-fragment','return-response'])
+  self.assertEqual({node.get('name'):node.get('value') for node in branch.findall('set-variable')},
+                   {'gatewayAuditPhase':'rejected','gatewayAuditCode':'INVALID_MCP_TOOL_ARGUMENTS','gatewayAuditStatus':'@(400)'})
+  self.assertEqual(branch.find('include-fragment').get('fragment-id'),'core-gateway-telemetry')
   self.assertEqual(branch.find('return-response/set-status').attrib['code'],'400')
   body=branch.find('return-response/set-body')
   query_error=facade.find("inbound/choose[@id='core-query-rejection']/when/return-response/set-body")

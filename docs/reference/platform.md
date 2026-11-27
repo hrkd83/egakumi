@@ -34,16 +34,16 @@ APIMのnative REST-backed MCPは、REST側の上流エラーを`content[].text`�
 
 Azure資源・APIM MI・Key Vault・RBACは`azureTenantId`、OAuth接続の既定認証先は`entraTenantId`を使用します。同一・別テナントの両方に対応し、providerの明示的な`oauthTenantId`を保持します。
 
-API／Operationは通信契約、Productは利用範囲のまとまりです。標準は[正式19 API](api-design-proposal.md)（HTTP 13 API・19 Operation、WebSocket 6 API）で、Graph APIはCMを使います。PII生成MCPと、採用時のCM補助API2個は別計上します。
+API／Operationは通信契約、Productは利用範囲のまとまりです。標準は[正式19 API](api-design-proposal.md)（HTTP 13 API・20操作、WebSocket 6 API）です。PII生成MCPと、採用時のCM補助API2個は別計上します。
 
 | 通信 | 適用する認可・認証 |
 | --- | --- |
-| クライアントのサーバー → APIM | `api-key`（設定した購読キーヘッダー）で購読状態・Product/API範囲を検証 |
+| クライアントのサーバー → APIM | 購読キーで購読状態とProduct/API範囲を検証。キーの提示がなければEntraの本人Bearerを検証 |
 | APIM → Foundry／Key Vault | APIMのマネージドIDとAzure RBAC |
-| APIM → 本人の下流API | CMが保管・更新するtokenと、購読へ結び付けた本人接続セッション |
+| APIM → 本人の下流API | Graphプロフィールは、購読キーではCMの本人接続、BearerではBrokerによるGraph OBOを使う |
 | 固定サービス用CM接続 | 管理者が設定した`service`接続。個人接続と区別 |
 
-APIの`authorization.mode`は`subscriptionKey`です。`operationConstraints`に操作の基本設定と必要なモデル別設定を持ち、許可モデル・入力・出力・公開操作を検査します。本人接続が必要なAPIは、CMセッションの購読・所有者・接続・期限を照合します。
+`operationConstraints`は操作単位のサイズ上限、転送やデータ保護に必要な制約、該当するモデル別の上限・別名を定義します。通常のChat・埋め込み・リランクでは、モデルの利用可否や入力項目の適否は提供元が判定します。CMの本人接続を使うAPIは、接続セッションの購読・所有者・接続・期限を照合します。 [ポリシーの適用先](../../apps/apim/policies/portal-examples/scope-map.md)
 
 キーはバックエンドの秘密保管先へ置きます。Next.jsのサーバー処理、FastAPI、PHP、SaaS等は同じHTTP契約で呼びます。ブラウザー画面からはBFF等を経由し、キーをJavaScriptや公開設定へ含めません。APIキーだけを設定できる製品では、その製品の送信ヘッダー・パス・`api-version`・stream形式とGatewayの契約が一致することを実機で確認します。
 
@@ -67,35 +67,26 @@ APIMの`core-gateway`は検証済み購読ID、要求ID、API／操作、結果c
 
 ## 本人・共有キー・サービスの回数制限
 
-回数制限は明示的に有効化した場合だけAPIM購読IDごとに適用します。キーを更新しても同じ購読枠です。config正本の既定は無効（無制限）です。
+Bearer認証では、確認済みのテナントIDと本人IDの組み合わせごとに、configの`gateway.authentication.entra.userLimits.requestRate`を適用します。標準のテスト・本番は60秒に1,000回です。 [利用枠の設定](../setup/07-params.md)
 
-```json
-"rateLimits": {
-  "user": { "enabled": false, "calls": 60, "renewalPeriodSeconds": 60 },
-  "subscriptionKey": { "enabled": false, "calls": 60, "renewalPeriodSeconds": 60 },
-  "application": { "enabled": false, "calls": 60, "renewalPeriodSeconds": 60 }
-}
-```
+購読キー認証では、購読IDごとに計数します。主キー・副キーと更新後のキーは同じ購読枠を使います。Portalの購読利用枠を有効にした構成ではSQLの`requestRate`を適用し、明示的な`null`なら共通の回数制限を無効にします。利用枠を取得できない場合は503で停止します。手動追加用のREST／SSEひな型は、共通の購読回数制限が無効の場合にAPI専用の上限を適用します。 [手動追加のポリシー例](../../apps/apim/policies/portal-examples/README.md)
 
-`enabled: false`の間は`calls`や`renewalPeriodSeconds`の数値を適用せず、60回／分の制限も発生しません。共通制限が必要な場合だけ`subscriptionKey.enabled`を`true`にします。`user`／`application`の有効化は設定検査で拒否します。本人接続の有無やCMのtoken更新で、同じ購読の計数枠は変わりません。有効化時はparamsの`gateway.rateLimits.subscriptionKey.overrides`で`{"callerId":"subscription:sales-models","calls":120,"renewalPeriodSeconds":60}`のように上限を指定できます。利用範囲はProduct/APIの購読設定で管理します。
+Portalの購読利用枠を使わない構成では、`gateway.rateLimits.subscriptionKey`を適用します。既定は無効です。有効にした場合は`overrides`で購読別の回数・期間を指定できます。この設定の`user`／`application`の有効化は設定検査で拒否します。利用できるAPIの範囲はProduct/APIの購読設定で管理します。
 
 認可・操作制約の後、CM/MI・下流転送の前に即時計数します。超過は本文なし429・数値`Retry-After`・要求IDを返し、下流を呼びません。通常操作・一括処理・並列実行で採用する上限を確認してください。APIMの近似的な要求回数制限であり、料金上限やWAFの代替ではありません。
 
 HTTP/SSEは要求、WebSocketは初回握手を数えます。生成MCPは参照先RESTの実処理で1回計数します。登録済みの取消・終了操作の免除と、偽装した要求を免除しないことも確認します。[APIMの回数制限](https://learn.microsoft.com/en-us/azure/api-management/rate-limit-by-key-policy)
 
-## CMによるGraphの本人接続
+## Graphの本人接続
 
-`graph-profile-v1`の`/tools/graph/v1/me`は、購読キーとCMの本人接続セッションでGraphを呼びます。クライアントのサーバーがログイン取引を開始し、利用者がMicrosoftサインインを完了すると、APIMがGraphの`/me`で本人を確認します。接続セッションには購読・provider・本人・接続・期限を結び付けます。
+`graph-profile-v1`の`/tools/graph/v1/me`は、本人BearerではBrokerがGraph向けトークンをOBO交換して呼び出します。購読キーではCMの本人接続セッションを使います。クライアントのサーバーがログイン取引を開始し、利用者がMicrosoftサインインを完了すると、APIMがGraphの`/me`で本人を確認します。接続セッションには購読・provider・本人・接続・期限を結び付けます。
 
 APIの呼出時は、`X-Core-Connection-Session`を購読キーと合わせて送ります。APIMがセッションを照合し、CMの`get-authorization-context`で下流用tokenを取得します。本人接続のtoken取得・更新はCMが管理します。[CM共通接続手順](credential-manager-login.md)
 
 ## 初期モデルと公開API
 
 
-`services.modelDeployments` がモデルの正式名・版・SKU・配備容量を定義し、
-`apiDefinitions[].authorization.operationConstraints` が公開する配備名と要求上限を定義します。
-両者を揃えて変更してください。API の `model` はモデルカタログ名ではなく、
-この環境の配備名です。`Microsoft-Decision-1` は安全な配備名 `decision-1` を使います。
+`services.modelDeployments` がモデルの正式名・版・SKU・配備容量を定義します。APIの `model` には通常、この環境の配備名を指定します。固定接続先やモデル別の上限・別名を設定する操作は、API定義も対応する配備名に揃えます。`Microsoft-Decision-1` の配備名は `decision-1` です。
 
 初期構成は一つのFoundryに[選定した28モデル](foundry-model-catalog.md#初回配備する28モデル)を配備します。
 標準API定義には、初期28モデルの操作・接続に加え、PII・Graph /me・文書解析を含む19 APIがあります。Document Intelligenceはモデル配備とは別のFoundryサービスとして扱います。[文書解析の契約](document-analysis.md)

@@ -46,12 +46,6 @@
         </return-response>
       </when>
     </choose>
-    <choose><when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayProtocolModel&quot;]))">
-      <set-variable name="gatewayAuditSettings" value="@{
-      __PROTOCOL_AUDIT_MODEL_SETTING_CSHARP__
-    }" />
-    </when></choose>
-    <include-fragment fragment-id="core-audit-context" />
     <!-- 共通認可を終えた入口の資格情報を取り除き、下流用の認証を設定します。 -->
     <set-header name="Authorization" exists-action="delete" />
     <set-header name="__KEY_HEADER__" exists-action="delete" />
@@ -63,8 +57,26 @@
     <set-variable id="core-protocol-query-validation" name="gatewayProtocolQueryAllowed" value="@{
       __PROTOCOL_QUERY_VALIDATION_CSHARP__
     }" />
-    <choose><when condition="@(!(bool)context.Variables[&quot;gatewayProtocolQueryAllowed&quot;])"><return-response><set-status code="403" reason="Protocol target is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
+    <choose>
+      <when condition="@(!(bool)context.Variables[&quot;gatewayProtocolQueryAllowed&quot;])">
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="INVALID_PROTOCOL_QUERY" />
+        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="403" reason="Protocol target is not authorized" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        </return-response>
+      </when>
+    </choose>
     __STREAM_HANDSHAKE_QUERY_XML__
+    <!-- 拒否時の監査にはクライアントが指定した接続モデルを追加しません。 -->
+    <choose><when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayProtocolModel&quot;]))">
+      <set-variable name="gatewayAuditSettings" value="@{
+      __PROTOCOL_AUDIT_MODEL_SETTING_CSHARP__
+    }" />
+    </when></choose>
+    <include-fragment fragment-id="core-audit-context" />
     __STREAM_HANDSHAKE_SESSION_XML__
     <!-- WSは所有者検査を通した補助観測だけ、MCPは検査した取消/終了だけを免除します。 -->
     __RATE_LIMIT_CLEANUP_XML__
