@@ -8,7 +8,7 @@ import { readPiiResponse } from "../lib/pii-response.ts";
 const result = { redactedText: "連絡先は***********************です。", language: "ja", detectedCount: 1, modelVersion: PII_API.modelVersion, warningCodes: [], requestId: "f5235390-eec1-4803-986b-0901a5d6ba19" };
 
 test("PIIの公開パス・上限・モデル版は正本のAPI定義に一致する", () => {
-  const api = JSON.parse(readFileSync(new URL("../../apim/apis/pii-v1.json", import.meta.url), "utf8"));
+  const api = JSON.parse(readFileSync(new URL("../../api-gateway/apis/pii-v1.json", import.meta.url), "utf8"));
   const operation = api.operations.find((entry: { name: string }) => entry.name === PII_API.operationId);
   const limits = api.authorization.operationConstraints[PII_API.operationId];
   assert.equal(api.name, PII_API.apiId);
@@ -21,7 +21,7 @@ test("PIIの公開パス・上限・モデル版は正本のAPI定義に一致�
 });
 
 test("PIIの公開スキーマと表示スキーマの必須項目・型・言語が一致する", () => {
-  const source = JSON.parse(readFileSync(new URL("../../apim/schemas/pii.json", import.meta.url), "utf8")).schemas;
+  const source = JSON.parse(readFileSync(new URL("../../api-gateway/schemas/pii.json", import.meta.url), "utf8")).schemas;
   const request = getPiiRequestSchema(), response = getPiiResponseSchema();
   assert.deepEqual(request.required, source.PiiRedactRequest.required);
   assert.deepEqual(response.required, source.PiiRedactResult.required);

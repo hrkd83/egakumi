@@ -33,7 +33,7 @@ def operation_error_methods(xml,method,*,entra_enabled=True):
  from deployment.helpers.apim_common_authentication import (
   render_operation_entra_authentication_error,expand_operation_entra_authentication_error,
  )
- policies=CORE/'apps/apim/policies'
+ policies=CORE/'apps/api-gateway/policies'
  telemetry=render_audit_policy(policy_fixture_path(policies,'core-gateway-telemetry.xml').read_text(encoding='utf-8'))
  rate=render_audit_policy(policy_fixture_path(policies,'rate-limit-error.xml').read_text(encoding='utf-8')).replace('__GATEWAY_TELEMETRY_XML__',telemetry.replace('<fragment>','').replace('</fragment>',''))
  value=render_operation_entra_authentication_error(render_audit_policy(xml),entra_enabled=entra_enabled)
@@ -258,7 +258,7 @@ class CredentialPolicyTests(unittest.TestCase):
   self.assertIn('selection["ownerId"]',body)
   self.assertIn('context.Api.Id',body);self.assertIn('context.Operation.Id',body)
   self.assertNotIn('context.Request.Headers',body)
-  gateway=ET.fromstring((CORE/'apps/apim/policies/api-templates/rest/rest.xml').read_text(encoding='utf-8'))
+  gateway=ET.fromstring((CORE/'apps/api-gateway/policies/api-templates/rest/rest.xml').read_text(encoding='utf-8'))
   parent=gateway.find('inbound')
   self.assertEqual([node.get('fragment-id') for node in parent.findall('include-fragment')
                    if node.get('fragment-id').startswith('core-credential-')],
@@ -278,8 +278,8 @@ class CredentialExpressionTests(unittest.TestCase):
  def setUpClass(cls):
   CredentialPolicyTests.setUpClass()
   cls.roots=dict(CredentialPolicyTests.roots)
-  cls.roots["telemetry"]=ET.fromstring(render_audit_policy(policy_fixture_path(CORE/"apps/apim/policies","credential-telemetry.xml").read_text(encoding="utf-8")))
-  policies=CORE/"apps/apim/policies"
+  cls.roots["telemetry"]=ET.fromstring(render_audit_policy(policy_fixture_path(CORE/"apps/api-gateway/policies","credential-telemetry.xml").read_text(encoding="utf-8")))
+  policies=CORE/"apps/api-gateway/policies"
   cls.roots["caller-error"]=ET.parse(policies/"snippets/authentication/credential-caller-error/credential-caller-error.xml").getroot()
   cls.roots["common-telemetry"]=ET.fromstring(render_audit_policy(policy_fixture_path(policies,"core-gateway-telemetry.xml").read_text(encoding="utf-8")))
   cls.login=CredentialPolicyTests.login
@@ -403,7 +403,7 @@ class CredentialExpressionTests(unittest.TestCase):
   # HTTP/外部MCPの実引渡し式と直後の実拒否条件を、CMの実caller/selection式へ接続します。
   cls.handoff_policies={name:ET.fromstring(render_audit_policy(policy_fixture_path(policies, filename).read_text(encoding='utf-8')))
                         for name,filename in (('http','rest.xml'),('mcp','stream.xml'))}
-  http_handoff=(CORE/'apps/apim/policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.cs').read_text(encoding='utf-8')
+  http_handoff=(CORE/'apps/api-gateway/policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.cs').read_text(encoding='utf-8')
   for name,root in cls.handoff_policies.items():
    handoff='AuthenticationHandoff'+name
    source=http_handoff if name=='http' else expression(root.find("inbound/set-variable[@name='gatewayDecision']").get('value'))

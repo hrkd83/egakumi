@@ -17,7 +17,7 @@ from test_gateway_callback_waf import CONFIG, policy
 class AiContentTypeWafTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.controls = json.loads((ROOT / "apps/apim/waf-json-content-controls.json").read_text())
+        cls.controls = json.loads((ROOT / "apps/api-gateway/waf-json-content-controls.json").read_text())
         cls.profiles = {p["name"]: p for p in load_manifest()["profiles"]}
         cls.selected = {p["name"]: p for p in cls.controls["profiles"]}
 

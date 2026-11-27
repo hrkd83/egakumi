@@ -27,7 +27,7 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-sys.path.insert(0, str(ROOT / "apps/apim/deploy"))
+sys.path.insert(0, str(ROOT / "apps/api-gateway/deploy"))
 
 import api_publication
 import integration_client as probe

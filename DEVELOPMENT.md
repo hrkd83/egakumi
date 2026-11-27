@@ -83,7 +83,7 @@ protocol中継の回帰試験は[tests/fixtures/external-api-definitions.json](t
 
 変更内容に応じてローカル試験・型検査・lint・ビルドを実行し、不具合修正には再現条件を検証する回帰テストを追加・更新します。書式や説明文だけの変更は差分・参照先・整合性を確認します。実行した検査、失敗・スキップと理由、残る確認事項を変更説明へ記録します。
 
-試験対象は実施revisionの`config/`、`params/`、`apps/apim/apis/`から決めます。モデル名・版・件数を共通手順へ複写しません。試験実行と不具合修正・配備を区別し、ローカル成功を実環境での受入完了に読み替えません。
+試験対象は実施revisionの`config/`、`params/`、`apps/api-gateway/apis/`から決めます。モデル名・版・件数を共通手順へ複写しません。試験実行と不具合修正・配備を区別し、ローカル成功を実環境での受入完了に読み替えません。
 
 実環境の試験では以下を共通ルールとします。各試験の対象・具体的な受入条件・実行順は各仕様書に従います。
 
@@ -169,7 +169,7 @@ SQL統合試験は通常の `npm test` ではスキップします。[SQL統合�
 | 4 | [main.bicep](infra/main.bicep)・[資材一覧](infra/README.md) | 5RG、ネットワーク、ID、サービスの依存関係 |
 | 5 | [certificate.ps1](infra/guest/certificate.ps1)・[configure-audit.sh](infra/guest/configure-audit.sh)・[prepare-management-client.sh](infra/guest/prepare-management-client.sh) | 証明書Jobのワーカー、管理VMのOS監視、保守クライアントの準備 |
 | 6 | [deploy_applications.py](scripts/deploy_applications.py) | 基盤構築後のGateway→Portalの順次実行と、途中失敗時の停止 |
-| 7 | [Gateway配備資材](apps/apim/deploy/README.md)・[deploy_gateway.py](scripts/deploy_gateway.py)・[deploy_portal.py](scripts/deploy_portal.py) | 各アプリのDB・実行用ID・ジョブ・イメージと、API・製品・検証用購読の配備 |
+| 7 | [Gateway配備資材](apps/api-gateway/deploy/README.md)・[deploy_gateway.py](scripts/deploy_gateway.py)・[deploy_portal.py](scripts/deploy_portal.py) | 各アプリのDB・実行用ID・ジョブ・イメージと、API・製品・検証用購読の配備 |
 | 8 | [cleanup.py](scripts/deployment/helpers/cleanup.py) | モデル・APIM先削除、削除保護と所有照合 |
 | 9 | [tests](tests)・[Portalテスト](apps/portal/tests/) | ローカルで検査する契約と回帰テスト。実環境の受入条件は冒頭の各仕様書を参照 |
 
@@ -177,13 +177,13 @@ Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshe
 
 `scripts/`には構築以外の手動コマンドや疎通試験クライアントも含まれます。基盤のhookは`deployment/lifecycle.py`、アプリの個別配備は`deploy_gateway.py`と`deploy_portal.py`が担当し、補助処理は`deployment/helpers/`にまとめています。[用途別の一覧](scripts/README.md)で、構築時に使う処理とAPI登録・試験・運用で使う処理を確認できます。
 
-`infra/`は共通基盤です。Gatewayは`apps/apim/`と`apps/credential-broker/`の資材を統合配備し、Portalは`apps/portal/`から配備します。証明書Jobのワーカーと管理VMのOS設定・保守クライアントは[infra/guest/](infra/guest/)に置き、BrokerとPortalのイメージ構築は各アプリの`deploy/build-image.sh`に置きます。初回の`azd up`はAPIM、共通SQLサーバー、ネットワーク、Private Endpoint、ACA環境、非公開ACRを用意します。`azd provision`も同じCore工程を実行し、`postprovision`で認証用公開証明書2枚と入口設定を確認します。証明書のEntra登録とPortalアプリの登録後にGatewayを配備し、APIと製品の登録が成功したらPortalを配備します。
+`infra/`は共通基盤です。Gatewayは`apps/api-gateway/`と`apps/credential-broker/`の資材を統合配備し、Portalは`apps/portal/`から配備します。証明書Jobのワーカーと管理VMのOS設定・保守クライアントは[infra/guest/](infra/guest/)に置き、BrokerとPortalのイメージ構築は各アプリの`deploy/build-image.sh`に置きます。初回の`azd up`はAPIM、共通SQLサーバー、ネットワーク、Private Endpoint、ACA環境、非公開ACRを用意します。`azd provision`も同じCore工程を実行し、`postprovision`で認証用公開証明書2枚と入口設定を確認します。証明書のEntra登録とPortalアプリの登録後にGatewayを配備し、APIと製品の登録が成功したらPortalを配備します。
 
 初回構築では[空環境からの構築手順](docs/setup/08-provision-core.md)に沿って段階的に行います。標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は空配列やfalseでも拒否します。既存local paramsと非標準値を無断変換せず、[入力配置・移行条件](docs/setup/07-params.md#既存入力の移行を確認する)を確認します。基盤に必要なWAF・監査ログの情報も同じ正本から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
 
 構築済み環境の更新・途中失敗からの再開では、同じparamsとCoreの`.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。Portalの初回対話は`portalApiKeys.platformGroupId`と`groupNamePattern`だけを同じparamsへ保存します。非対話ならこの2項目を事前設定します。内部groups・検証購読は管理グループ1件、標準API正本の全製品、configのverificationMaxSubscriptions（初期5）から生成し、公開paramsへ書き戻しません。
 
-APIM全体ポリシーは[service.xml](apps/apim/policies/service.xml)、各APIのXMLは`apps/apim/policies/`、標準APIのJSONは[apps/apim/apis/](apps/apim/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。モデルの配備・SKU・容量は`config/test.json`または`config/production.json`、標準GraphのClient ID・秘密参照と環境固有値はparams、Graph表示名・scope・poolはconfigの`credentialProviders.graphDelegated`で管理します。追加providerは双方の`additional[]`を論理名で照合します。`apps/apim/api-publication.bicep`と`apps/apim/deploy/api_publication.py`が登録を担当し、`apps/credential-broker/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
+APIM全体ポリシーは[service.xml](apps/api-gateway/policies/service.xml)、各APIのXMLは`apps/api-gateway/policies/`、標準APIのJSONは[apps/api-gateway/apis/](apps/api-gateway/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。モデルの配備・SKU・容量は`config/test.json`または`config/production.json`、標準GraphのClient ID・秘密参照と環境固有値はparams、Graph表示名・scope・poolはconfigの`credentialProviders.graphDelegated`で管理します。追加providerは双方の`additional[]`を論理名で照合します。`apps/api-gateway/api-publication.bicep`と`apps/api-gateway/deploy/api_publication.py`が登録を担当し、`apps/credential-broker/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
 
 購読キーによる共通認可は全体ポリシーに集約し、資材固定の購読キーヘッダー`api-key`とAPIM標準の購読検証を使います。公開ヘッダー入力と`requiredScope`は廃止し、社員委任scopeは`Gateway.Invoke`へ固定します。API側は`<base />`で継承し、モデル・入力・出力等の操作制約と下流認証を設定します。API登録は子資源の配備成功を確認した後、ETag付きで共通ポリシーを統合・読戻し確認します。
 
@@ -193,7 +193,7 @@ configの`gateway.authentication.credentialLogin`へ共通セッション設定�
 
 ## APIM共通ポリシーを改修する
 
-共通認証・監査・ルーティング・継承順等の処理自体を変える場合は、開発者が[service.xml](apps/apim/policies/service.xml)と関連XMLを改修し、対象回帰と差分を確認します。通常の本文上限・許可モデル等は[API定義の変更手順](docs/operations/apim.md)でJSONを編集し、生成・反映します。
+共通認証・監査・ルーティング・継承順等の処理自体を変える場合は、開発者が[service.xml](apps/api-gateway/policies/service.xml)と関連XMLを改修し、対象回帰と差分を確認します。通常の本文上限・許可モデル等は[API定義の変更手順](docs/operations/apim.md)でJSONを編集し、生成・反映します。
 
 共通管理ブロックは`apim_authentication.py`がIDと内容を照合するため、`service.xml`を変えただけで稼働中の管理ブロックを自動上書きしません。次の確認XMLとソース差分をレビューし、APIMの「すべてのAPI」のポリシー画面で該当ブロックだけを整合させてからGateway個別配備で再照合します。既存の追加処理と同時編集を確認し、画面保存時の競合を無視しません。共通認可・要求IDや`<base />`の継承を保持します。確認XMLへ管理対象外の要素を加えただけでは、Gateway個別配備の反映対象は増えません。
 
@@ -208,7 +208,7 @@ python3 -B scripts/render_apim_policy.py --config "$DEPLOY_PARAMS_FILE" \
 
 ## 設定生成と独立した回帰確認
 
-通常の構築・更新は[準備コマンド](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で公開例から作成した環境別paramsと、その参照先configを使います。[標準API定義](apps/apim/apis/)を常用で読み、Gateway配備時にCoreの実outputsから接続先を解決します。標準導入で回帰用の合成設定やbindingsを別に作る必要はありません。
+通常の構築・更新は[準備コマンド](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で公開例から作成した環境別paramsと、その参照先configを使います。[標準API定義](apps/api-gateway/apis/)を常用で読み、Gateway配備時にCoreの実outputsから接続先を解決します。標準導入で回帰用の合成設定やbindingsを別に作る必要はありません。
 
 設定を変更するときは [params](docs/setup/07-params.md)・[config](docs/reference/config-options.md)・Schemaを揃え、[ローカル確認](#ローカル確認)を実行します。配備・API公開・撤去では同じ正本設定を使います。
 

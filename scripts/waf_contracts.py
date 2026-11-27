@@ -21,8 +21,8 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-CATALOG = 'apps/apim/waf-input-contracts.json'
-MANIFEST = 'apps/apim/waf-data-exclusions.json'
+CATALOG = 'apps/api-gateway/waf-input-contracts.json'
+MANIFEST = 'apps/api-gateway/waf-data-exclusions.json'
 DATA_TYPES = frozenset({'text', 'schema-json', 'tool-arguments', 'json-data', 'opaque', 'media-url', 'control'})
 APP_GROUPS = frozenset({
     'REQUEST-930-APPLICATION-ATTACK-LFI', 'REQUEST-931-APPLICATION-ATTACK-RFI',
@@ -167,7 +167,7 @@ def contract_fields(profile_name, root=ROOT):
 
 
 def _apis(root):
-    return [_read(p) for p in sorted((Path(root) / 'apps/apim/apis').glob('*.json'))]
+    return [_read(p) for p in sorted((Path(root) / 'apps/api-gateway/apis').glob('*.json'))]
 
 
 def _operation(api, binding):
@@ -351,7 +351,7 @@ def approved_group_scopes(root=ROOT):
 def contract_inventory(root=ROOT):
     """All current model × operation × transport rows; model IDs are test inputs."""
     catalog = load_contracts(root)
-    public_bindings = _read(Path(root) / 'apps/apim/public-bindings.json')['bindings']
+    public_bindings = _read(Path(root) / 'apps/api-gateway/public-bindings.json')['bindings']
     bindings = [(p['name'], b) for p in catalog['profiles'] for b in p.get('bindings', [])]
     result = []
     for api in _apis(root):

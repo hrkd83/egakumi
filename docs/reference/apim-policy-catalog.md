@@ -18,7 +18,7 @@ API登録処理は、APIの配備成功を確認してから共通ポリシー�
 
 ### 現行正本と棚卸履歴の境界
 
-有限候補の13正本を、固定区画と全message所有を合わせた36の実処理へ結線した。短い固定組立て2式はXML維持と判断し、予定の29追加区画を実績に読み替えない。管理図・同名XML／C#・生成と保護source・説明・リンクは[現行の管理構成](../../apps/apim/policies/README.md)へ揃えた。MOD-145ではBicepの認証失敗監査readerを現在のraw引用符へ揃え、Pythonと同じ失敗主体の参照を回復した。当該有限候補とMOD-145のローカル検証・独立レビューは閉じた。旧認証互換15 XML・依存C#と旧形式の再生成処理は公開資材から撤去し、現在の正本・canonical派生inlineと、実旧sourceの限定した説明差分照合を残す。対象環境の反映・実受入は保護記録で別に確認する。
+有限候補の13正本を、固定区画と全message所有を合わせた36の実処理へ結線した。短い固定組立て2式はXML維持と判断し、予定の29追加区画を実績に読み替えない。管理図・同名XML／C#・生成と保護source・説明・リンクは[現行の管理構成](../../apps/api-gateway/policies/README.md)へ揃えた。MOD-145ではBicepの認証失敗監査readerを現在のraw引用符へ揃え、Pythonと同じ失敗主体の参照を回復した。当該有限候補とMOD-145のローカル検証・独立レビューは閉じた。旧認証互換15 XML・依存C#と旧形式の再生成処理は公開資材から撤去し、現在の正本・canonical派生inlineと、実旧sourceの限定した説明差分照合を残す。対象環境の反映・実受入は保護記録で別に確認する。
 
 以降のMODごとの維持条件と検証結果は、その時点の棚卸履歴である。Responsesの旧Item／ID加工・file ID拒否の結果を現在の透過契約へ転用しない。現在のChat／Responsesは対象操作へstore:falseを設定し、Responsesのinput／ID／typeを保持する。Hosted／ツールの目的別制限と、指定時conversation／backgroundの保存防止はそれぞれの現行説明に従う。
 
@@ -30,9 +30,9 @@ MOD-95の関連47件は13.156sで成功（失敗・error・skipなし）しま�
 
 CMの固定設定検査（MOD-94）は、配備前に検査済みのproviderName形式・service接続名形式・personal方式の再確認3条件だけを撤去しました。正式構成の正規化が値と登録先の対応を検査し、HTTP／外部MCPへBicepが毎要求固定値を渡します。enabledの型・無効化403、内部caller欠落500、service／personalの実行分岐と外部Broker／CM／Graph／SQLの本人・秘密・期限・失効・世代条件は維持します。保存した変更前XMLから3行を除いた値が変更後と改行込みで完全一致しました。正規fragments/authentication/core-credential-connectionの配置とAzure名、同名caller C#は維持し、説明を更新しました。既存関連37件は13.851sで全件成功（失敗・error・skipなし）し、新規試験は追加していません。本文なし外部応答の分類と内部設定の読取り不備は別の続く棚卸で扱います。工程1／2全体は未完了、Azure未反映です。
 
-Realtimeの開始・終了は[operation-policies/realtime](../../apps/apim/policies/operation-policies/realtime/README.md)、補助接続は[core-realtime-observer](../../apps/apim/policies/fragments/authentication/core-realtime-observer/README.md)の同名XML／C#を正本とする（MOD-93）。[owner受取りsnippet](../../apps/apim/policies/snippets/authentication/realtime-owner-context/README.md)を生成時inlineし、確認済みcallerから既存v3／v4を引き継ぎ、社員JSON・認証印・GUID・購読との再照合を省く。外部チケットの署名・本人・方式・通話・期限・queryは維持する。内部owner／TTL受取り・ticket処理の限定IDだけ監査付き本文なし500に分け、別IDの既存分類を維持する。配備／保護source／Python rendererは同じ正本を使い、旧3XMLは撤去した。関連30件、別実行の配置等13件とsource／容量1件は成功し、独立レビュー所見なし。実行中の失敗と修正はテンプレート説明へ個別に記録した。Azure未反映である。
+Realtimeの開始・終了は[operation-policies/realtime](../../apps/api-gateway/policies/operation-policies/realtime/README.md)、補助接続は[core-realtime-observer](../../apps/api-gateway/policies/fragments/authentication/core-realtime-observer/README.md)の同名XML／C#を正本とする（MOD-93）。[owner受取りsnippet](../../apps/api-gateway/policies/snippets/authentication/realtime-owner-context/README.md)を生成時inlineし、確認済みcallerから既存v3／v4を引き継ぎ、社員JSON・認証印・GUID・購読との再照合を省く。外部チケットの署名・本人・方式・通話・期限・queryは維持する。内部owner／TTL受取り・ticket処理の限定IDだけ監査付き本文なし500に分け、別IDの既存分類を維持する。配備／保護source／Python rendererは同じ正本を使い、旧3XMLは撤去した。関連30件、別実行の配置等13件とsource／容量1件は成功し、独立レビュー所見なし。実行中の失敗と修正はテンプレート説明へ個別に記録した。Azure未反映である。
 
-提供元の要求IDの退避は[core-backend-audit](../../apps/apim/policies/fragments/audit/core-backend-audit/README.md)の同名XML／C#を正本とする。Azure名とgatewayBackendResponseIdsを維持し、各APIのoutbound/baseより前で既知ヘッダー3名・単一値・GUID／既存req_形式を確認する。これは外部応答の受入検査なので維持し、認証・所有者確認には使わない。本文を読まず、監査の出力は後続部品が行う。旧backend-audit.xmlは撤去し、BicepとPython renderer、配備と保護sourceの双方が同じ正本を参照する。
+提供元の要求IDの退避は[core-backend-audit](../../apps/api-gateway/policies/fragments/audit/core-backend-audit/README.md)の同名XML／C#を正本とする。Azure名とgatewayBackendResponseIdsを維持し、各APIのoutbound/baseより前で既知ヘッダー3名・単一値・GUID／既存req_形式を確認する。これは外部応答の受入検査なので維持し、認証・所有者確認には使わない。本文を読まず、監査の出力は後続部品が行う。旧backend-audit.xmlは撤去し、BicepとPython renderer、配備と保護sourceの双方が同じ正本を参照する。
 
 共通Inboundは、次の連番で処理を説明する。見出しにA／Bの枝番は付けない。
 
@@ -95,7 +95,7 @@ SQL profile取得は、生成時snippetを共有APIへinlineで差し込む。�
 | --- | --- | --- | --- |
 | SQL購読profile | `snippets/quota/subscription-profile/subscription-profile.xml` | `snippets/quota/subscription-profile/subscription-profile.cs`（gatewayFetchedProfile式のみ） | MOD-66はローカル実装・関連検証済み。この取得snippetのローカルInboundは一区切り。別供給経路の受入検査・503監査／応答・30秒cache・社員分岐・明示null・inline方式を維持する。実SQL経路の受入と工程1全体は未完了、Azure未反映 |
 
-表のパスは`apps/apim/policies/`を起点とする。共通フローの`service.xml`は直下に置き、初めて棚卸または改修する部品は、その作業時に`fragments/`の下で監査（`audit`）、入口確認（`ingress`）、認証（`authentication`）、API要求の準備・判定（`request`）、利用枠の計数（`quota`）へ分ける。Azureの部品名・部品フォルダ・XML・直接埋め込むC#式の名前を揃え、同じ部品フォルダにXMLとC#を置く。各C#の直接使用先は同名XMLひとつに限定する。XMLは部品全体のフローを、C#はそこから分離した式を所有する。`core-trusted-ingress.cs`は入口の判定条件、`core-gateway-telemetry.cs`は認証主体の読取部分であり、XMLの処理全体をC#へ移した意味ではない。短いXML式だけの部品には空のC#を作らない。フォルダ全体の役割と移設手順は[管理構成](../../apps/apim/policies/README.md)を参照する。
+表のパスは`apps/api-gateway/policies/`を起点とする。共通フローの`service.xml`は直下に置き、初めて棚卸または改修する部品は、その作業時に`fragments/`の下で監査（`audit`）、入口確認（`ingress`）、認証（`authentication`）、API要求の準備・判定（`request`）、利用枠の計数（`quota`）へ分ける。Azureの部品名・部品フォルダ・XML・直接埋め込むC#式の名前を揃え、同じ部品フォルダにXMLとC#を置く。各C#の直接使用先は同名XMLひとつに限定する。XMLは部品全体のフローを、C#はそこから分離した式を所有する。`core-trusted-ingress.cs`は入口の判定条件、`core-gateway-telemetry.cs`は認証主体の読取部分であり、XMLの処理全体をC#へ移した意味ではない。短いXML式だけの部品には空のC#を作らない。フォルダ全体の役割と移設手順は[管理構成](../../apps/api-gateway/policies/README.md)を参照する。
 
 `core-common-authentication.cs`の5つの名前付き区画は、同名XMLの各式へ個別に埋め込む。キー検査からBearer検査までを全要求で一括実行する意味ではない。キー／Bearer共通の成功を`gatewayCommonAuthenticationValidated`、Bearerのトークン・本人・会社設定までの成功を`gatewayEntraAuthenticationValidated`で後続に伝える。2変数は要求ごとの検証結果であり、配備設定の有効／無効を示すスイッチではない。
 
@@ -113,7 +113,7 @@ C#は生成時にXML属性用へ変換し、APIMは`include-fragment`の位置�
 
 生成元照合は、参照名だけでなく部品の内容、配置、一度だけの実行、変数の追加書き込みを確認する。実式テストでは現在の監査と入口確認の部品を展開してからC#を実行する。旧テンプレートを再生成する照合方式は撤去し、保存した過去rawの完全照合と、検証済みcurrent scopeを分ける。
 
-STEP3では、CMのログイン開始画面・受付と、認証後の戻り先（callback）用APIへのアクセスかを判定する。通常の画面遷移・フォーム送信・認証後のリダイレクトではAPI用のキー／Bearerヘッダーが送られないため、専用APIの起動画面、起動受付、本人認証の戻り先、接続完了の戻り先と完全一致する要求だけを例外にする。STEP4は判定結果がtrueの場合に従来の匿名フラグを設定し、共通のキー／Bearer検証を省略する。モデル・ツール等の通常APIは引き続きキー／Bearerを検証し、例外となる受付でもEntraへのサインインや各受付・Broker・CMによる取引・本人の確認を省略しない。詳しくは[受付の説明](../../apps/apim/policies/fragments/authentication/core-credential-browser-exception/README.md)を参照する。
+STEP3では、CMのログイン開始画面・受付と、認証後の戻り先（callback）用APIへのアクセスかを判定する。通常の画面遷移・フォーム送信・認証後のリダイレクトではAPI用のキー／Bearerヘッダーが送られないため、専用APIの起動画面、起動受付、本人認証の戻り先、接続完了の戻り先と完全一致する要求だけを例外にする。STEP4は判定結果がtrueの場合に従来の匿名フラグを設定し、共通のキー／Bearer検証を省略する。モデル・ツール等の通常APIは引き続きキー／Bearerを検証し、例外となる受付でもEntraへのサインインや各受付・Broker・CMによる取引・本人の確認を省略しない。詳しくは[受付の説明](../../apps/api-gateway/policies/fragments/authentication/core-credential-browser-exception/README.md)を参照する。
 
 OBOの採否は、共通STEP4の入口認証とSTEP5の認証済み利用者情報を確認した後、個別APIのCM本人接続・下流認証を棚卸する段階で判断する。この受付の部品化ではOBOを実装しない。
 
@@ -173,9 +173,9 @@ HTTP APIの`gatewayDecision`では、共通認証が作った社員情報JSONを
 
 HTTP APIとprotocol／生成MCP（MOD-44）が認証結果を引き継げない場合は停止を維持し、500・`policy-error`・`AUTHENTICATION_PROCESSING_ERROR`として記録する。対象はBearer認証の完了記録の欠落・falseと、内部の社員情報JSONの読取りなどで発生する例外である。応答理由は`Gateway processing failed`とし、要求IDと`Cache-Control: no-store`を返し、応答本文は付けない。例外の詳細や生JSONは出力しない。正常時の認証結果と、共通認証の401、後段の`gatewayTargetDecision`による403は変えない。操作・モデル設定の準備結果を読む処理の例外や、共通の`on-error`の扱いは、この失敗分岐と別に扱う。
 
-棚卸済みの組み立てコードは`fragments/authentication/core-api-authentication-result/`の同名XML・C#へ分離する。HTTPテンプレートはその部品を呼び、短い失敗監査・500応答のフローは直後に残す。XML・C#・Azureフラグメントの名前を揃え、C#の説明コメントを生成XMLへ保持する。この部品へ他の監査ソースを展開せず、フラグメント同士の入れ子も作らない。[本体と入出力](../../apps/apim/policies/fragments/authentication/core-api-authentication-result/README.md)を参照する。
+棚卸済みの組み立てコードは`fragments/authentication/core-api-authentication-result/`の同名XML・C#へ分離する。HTTPテンプレートはその部品を呼び、短い失敗監査・500応答のフローは直後に残す。XML・C#・Azureフラグメントの名前を揃え、C#の説明コメントを生成XMLへ保持する。この部品へ他の監査ソースを展開せず、フラグメント同士の入れ子も作らない。[本体と入出力](../../apps/api-gateway/policies/fragments/authentication/core-api-authentication-result/README.md)を参照する。
 
-続く`core-model-limits`の資材は、初回棚卸時に`fragments/request/core-model-limits/`の同名XML・C#へ移し、直下の旧`model-limits.xml`を撤去する。Azure登録名は維持し、説明とコード内コメントを日本語へ揃える。冒頭の`gatewayOperationConstraint`の取得・JSON解析を独立した失敗処理へ分け、例外時は500・`LIMITS_NOT_CONFIGURED`を返す。上限設定`maxRequestBytes`は整数・1〜500 MiBの条件を維持し、`Int64.TryParse`で一度だけ`long`へ変換して使い回す。変換失敗や桁あふれ・範囲外も、本文を読む前に設定不備500へ揃える。先行処理が確認する操作共通上限と、ここで確認する選択後の上限は保証範囲が異なる。本文超過413を維持し、想定外の例外は既存`on-error`へ委ねる。配置・名前・コメントの整備を、この部品の全制御の棚卸完了とは扱わない。[現在の処理と棚卸状態](../../apps/apim/policies/fragments/request/core-model-limits/README.md)を参照する。
+続く`core-model-limits`の資材は、初回棚卸時に`fragments/request/core-model-limits/`の同名XML・C#へ移し、直下の旧`model-limits.xml`を撤去する。Azure登録名は維持し、説明とコード内コメントを日本語へ揃える。冒頭の`gatewayOperationConstraint`の取得・JSON解析を独立した失敗処理へ分け、例外時は500・`LIMITS_NOT_CONFIGURED`を返す。上限設定`maxRequestBytes`は整数・1〜500 MiBの条件を維持し、`Int64.TryParse`で一度だけ`long`へ変換して使い回す。変換失敗や桁あふれ・範囲外も、本文を読む前に設定不備500へ揃える。先行処理が確認する操作共通上限と、ここで確認する選択後の上限は保証範囲が異なる。本文超過413を維持し、想定外の例外は既存`on-error`へ委ねる。配置・名前・コメントの整備を、この部品の全制御の棚卸完了とは扱わない。[現在の処理と棚卸状態](../../apps/api-gateway/policies/fragments/request/core-model-limits/README.md)を参照する。
 
 続く棚卸で、HTTPの出力トークン項目名・整数型・最小値・最大値の独自検査と、そのための能力表照合・本文JSON読取りを撤去する。`integerLimits`による必須・整数型・上下限の400も撤去し、指定値を書き換えず提供元へ委ねる。OpenAI画像生成は整数検査だけのJSON読取りを省く。FLUXでも、続く汎用文字列検査の撤去により専用JSON読取りを省くが、必要な先行モデル選択の解析は残り、後段のmodel型確認だけの解析は撤去する。追加APIでも専用検査だけがJSONを読んでいた場合、その読取りはなくなり、入力不備も利用回数制限・受付記録を経て提供元へ進み得る。本文サイズと413、認証と利用枠は維持する。
 
@@ -215,11 +215,11 @@ HTTP APIの`core-model-limits`呼出し元では、失敗結果のstatusを監�
 
 TTSでは、従来のSSML検査対象から生成した`gatewayControlSettings.speechSsmlOperationIds`をHTTP APIが読み、`core-speech-ssml-guard`を共有サイズ検査直後、利用枠・下流認証準備・`accepted`監査より前で呼ぶ。旧Operation側の`<base />`後には重ねて呼ばない。同名XML／C#を正規フォルダへ置き、直下の旧`speech-ssml-guard.xml`は撤去する。部品は本文を一度だけ保持して読み、検証済みの`gatewayOperationConstraint.maxRequestBytes`との実サイズ比較を文字列化前に行い、通過後に既存のSSML宣言を走査する。結果は`gatewaySpeechSsmlDecision`の`allowed`・`status`・`code`へ保存する。成功`SPEECH_MARKUP_ALLOWED`、実サイズ超過`REQUEST_TOO_LARGE`／413、宣言拒否`INVALID_SPEECH_MARKUP`／400を区別し、監査・HTTP応答はAPI側へ残す。内部JSON読取り等の例外はAPIの既存`on-error`へ進め、同じ上限設定の検査や部品専用の設定500コードは追加しない。
 
-この集約で、TTSの共有サイズ確認とSSML確認による本文の二重読取りを一度にする。UTF-8／16／32の判別、コメント・CDATA等を除外した宣言検査、公開400`InvalidSpeechMarkup`、元本文の保持を維持する。全文の文字列化・小文字化は残り、XMLパーサーや実体解決は追加しない。TTS集約時点ではDocument・JSONの未棚卸処理やWAFを変更していない。TTSのAzure反映・読戻しは完了した。キー／BearerのTTS正常WAV応答とDTD宣言の400、および対応する監査照合を確認した。実サイズ超過413など残る異常系は未実施である。[TTS部品の処理と対象](../../apps/apim/policies/fragments/request/core-speech-ssml-guard/README.md)を参照する。
+この集約で、TTSの共有サイズ確認とSSML確認による本文の二重読取りを一度にする。UTF-8／16／32の判別、コメント・CDATA等を除外した宣言検査、公開400`InvalidSpeechMarkup`、元本文の保持を維持する。全文の文字列化・小文字化は残り、XMLパーサーや実体解決は追加しない。TTS集約時点ではDocument・JSONの未棚卸処理やWAFを変更していない。TTSのAzure反映・読戻しは完了した。キー／BearerのTTS正常WAV応答とDTD宣言の400、および対応する監査照合を確認した。実サイズ超過413など残る異常系は未実施である。[TTS部品の処理と対象](../../apps/api-gateway/policies/fragments/request/core-speech-ssml-guard/README.md)を参照する。
 
 Speech実本文超過413の理由文整理（MOD-30）はローカル実装済みである。HTTP APIが`core-speech-ssml-guard`の実受信サイズ超過を返す枝の理由文だけを、`Request limit validation failed`から共有サイズ応答と同じ`Request too large`へ揃える。HTTP状態413、公開JSONの`REQUEST_TOO_LARGE`とrequestId、`apim-request-id`、監査の`rejected`／`REQUEST_TOO_LARGE`／413、`Cache-Control: no-store`、上限と拒否条件は維持する。DTD／ENTITYによる400応答は変更しない。差分確認済み、Azure未反映であり、現行理由文の実HTTP応答と実サイズ超過413の受入は未確認である。
 
-HTTP APIの後段判定は、最初の棚卸で`fragments/request/core-api-target-validation/`の同名XML・C#へ分離する。部品は準備済みの`gatewayOperationConstraint`を直接JSONとして読み、API定義のBase64復元、変数の存在確認と操作定義へのfallback、直後のnull確認を省く。先行する操作設定準備と共有サイズ確認が内部JSONを取得できた場合だけここへ進み、この間に設定を書き換えない。モデル・本文・tools・操作の判定結果は部品が返し、短い拒否監査とHTTP応答はAPIテンプレートへ残す。XML・C#・Azure登録名を揃え、日本語の説明コメントを整える。この分離と読取り集約はローカル実装・関連検証完了、Azure未反映である。protocol・MCPが使うBase64生成処理は維持する。[後段判定部品の現在の契約](../../apps/apim/policies/fragments/request/core-api-target-validation/README.md)を参照する。
+HTTP APIの後段判定は、最初の棚卸で`fragments/request/core-api-target-validation/`の同名XML・C#へ分離する。部品は準備済みの`gatewayOperationConstraint`を直接JSONとして読み、API定義のBase64復元、変数の存在確認と操作定義へのfallback、直後のnull確認を省く。先行する操作設定準備と共有サイズ確認が内部JSONを取得できた場合だけここへ進み、この間に設定を書き換えない。モデル・本文・tools・操作の判定結果は部品が返し、短い拒否監査とHTTP応答はAPIテンプレートへ残す。XML・C#・Azure登録名を揃え、日本語の説明コメントを整える。この分離と読取り集約はローカル実装・関連検証完了、Azure未反映である。protocol・MCPが使うBase64生成処理は維持する。[後段判定部品の現在の契約](../../apps/api-gateway/policies/fragments/request/core-api-target-validation/README.md)を参照する。
 
 続く棚卸で、内部操作設定JSONの取得・解析失敗だけを500・`OPERATION_SETTINGS_INVALID`へ分ける整理を承認した。読取りの小さい`catch`を独立させ、結果は`gatewayTargetDecision`の内部JSONにallowed・status・codeで保存する。この分類整理の時点では、設定読取り後の残る本文条件の拒否やHosted／A2A等の本文例外は403・`AUTHORIZATION_DENIED`、正常は200・`TARGET_ALLOWED`とした。Responsesの本文読取り失敗は続く棚卸で400へ分け、Hostedの読取り不備も現在はMOD-37に従い400へ分ける。API側は実結果のstatus・codeを使い、500を`policy-error`／`Gateway processing failed`、403を`rejected`／`API target is not authorized`として記録・応答する。本文なしと`apim-request-id`を維持し、新しい結果形式の再検査や設定は追加しない。この内部JSONの分類整理では各判定条件を追加せず、その他の設定項目や本文側の拒否分類は続く棚卸対象である。この内部JSON読取り分類と結果引渡しはローカル実装・関連検証完了、Azure未反映である。
 
@@ -362,7 +362,7 @@ MOD-40～42の本人再照合と、MOD-43までのgatewayDecision直後の不許
 | 画像編集 | `/models/openai-images/v1/deployments/{deployment}/edits` | `/openai/deployments/{deployment}/images/edits` |
 | ファイル文字起こし | `/models/openai-audio/v1/deployments/{deployment}/transcriptions` | `/openai/deployments/{deployment}/audio/transcriptions` |
 
-⑬の版の正本は[Document公開Schema](../../apps/apim/schemas/document-analysis.json)のapiVersion.enumの単一値である。標準API定義の版2か所の重複を削除し、Python正規化で開始・状態取得へ補完する。明示不一致は配備前に拒否する。Bicepは正規化済み`entry.constraint.apiVersion`を`__DOCUMENT_API_VERSION__`から開始URI・受付URL照合・状態GETへ展開し、⑱では結果照合が、共通APIの準備済み`gatewayOperationConstraint`から`apiVersion`・`maxResponseBytes`を既存outbound try内で直接読む。Status専用`documentSettings`と埋込みBase64の復元・Bicep展開を撤去し、baseURL・API版markerと上限・版・チケット・結果の条件を維持する。⑲ではStatusの操作設定`gatewayOperationConstraint`の取得・JSON解析失敗だけを500へ分類し、応答前に既存`core-gateway-telemetry`で`policy-error`・`OPERATION_SETTINGS_INVALID`・500を1回記録する。㉙では開始・状態取得の認証結果`gatewayDecision`の取得・JSON解析と認証方式・owner引渡し不備だけを500・`policy-error`／`AUTHENTICATION_PROCESSING_ERROR`へ分け、⑲の操作設定不備と区別する。提供元本文・版・容量などの既存502は維持し、網羅的な再検査は追加しない。Portalの公開表示・結果検査も既存生成物を通じて同じ版を使う。対応版・公開仕様・チケット形式は維持し、実行時の追加読取りや検査は増やさない。
+⑬の版の正本は[Document公開Schema](../../apps/api-gateway/schemas/document-analysis.json)のapiVersion.enumの単一値である。標準API定義の版2か所の重複を削除し、Python正規化で開始・状態取得へ補完する。明示不一致は配備前に拒否する。Bicepは正規化済み`entry.constraint.apiVersion`を`__DOCUMENT_API_VERSION__`から開始URI・受付URL照合・状態GETへ展開し、⑱では結果照合が、共通APIの準備済み`gatewayOperationConstraint`から`apiVersion`・`maxResponseBytes`を既存outbound try内で直接読む。Status専用`documentSettings`と埋込みBase64の復元・Bicep展開を撤去し、baseURL・API版markerと上限・版・チケット・結果の条件を維持する。⑲ではStatusの操作設定`gatewayOperationConstraint`の取得・JSON解析失敗だけを500へ分類し、応答前に既存`core-gateway-telemetry`で`policy-error`・`OPERATION_SETTINGS_INVALID`・500を1回記録する。㉙では開始・状態取得の認証結果`gatewayDecision`の取得・JSON解析と認証方式・owner引渡し不備だけを500・`policy-error`／`AUTHENTICATION_PROCESSING_ERROR`へ分け、⑲の操作設定不備と区別する。提供元本文・版・容量などの既存502は維持し、網羅的な再検査は追加しない。Portalの公開表示・結果検査も既存生成物を通じて同じ版を使う。対応版・公開仕様・チケット形式は維持し、実行時の追加読取りや検査は増やさない。
 
 Document入力の棚卸①〜㉝では、MIME一覧・先頭バイト・独自の空本文・Content-Encodingの拒否と、サイズ確認だけの全量読取りを撤去する。共有の申告サイズ500,000,000 bytes超の413は維持し、共通Content-Type宣言検査には追加しない。原本と提供元JSONを本文変換なしで送り、文書とモデルの利用可否は提供元が判定する。modelの必須・単一値・非空と`.`／`..`の400を残し、2モデル一覧による拒否と、そのためだけの設定JSON再読取りは撤去する。model入力不備は400・`DocumentInvalidInput`、内部変数のモデル引渡し失敗は500・`OPERATION_SETTINGS_INVALID`／`DocumentAnalysisUnavailable`へ分け、利用回数制限・下流接続準備・`accepted`監査より前に止める。先行する操作設定・共有サイズ設定の検査と、固定接続先・チケット・返却URIとのモデル照合・応答の構造条件は維持する。開始と状態取得の操作ポリシーは`operation-policies/document-analysis/`へまとめる。他クエリの有無による一律400を撤去し、開始POSTではmodelをクエリから削除した後、pathだけの標準URI書換えと`copy-unmatched-params=true`でpages・featuresなどを転送した後、標準`set-query-parameter`でapi-versionは対応版へ上書きし、stringIndexTypeは`exists-action=skip`で指定値を保持して未指定時だけ`unicodeCodePoint`を補完する。API版は公開Schemaの単一値（現在`2024-11-30`）へ一元化し、⑭で文字位置の単位の指定を受け付け、不正値・複数値の適否は提供元へ任せる形へ整理する。㉑では状態取得GETの追加クエリを無視して同じジョブを取得し、クエリの有無だけで403にしない。チケット・UUID・本人・期限の照合、固定URI・対応版とURLへのAPIキー指定の共通拒否は維持する。㉒では`copy-unmatched-params=false`による未使用クエリの非転送を維持し、目的コメントを整える。対応版の結果取得GETはapi-versionのみを使う。将来正式なGET追加クエリが必要になれば、公開結果契約と合わせて見直す。WAF設定やクエリ名・値の監査出力を追加しない。①〜㉝の変更はAzure反映・読戻し照合を完了した。独立して作成した小文書の原本・Base64入力は、キー／Bearerで202受付から本文なしGETの200まで一部確認した。申告サイズ境界・内部障害500・期限切れ410など残る受入は未実施である。Portalの原本アップロード・2モデル選択・BFF制約は今回変更しない。[公開契約](document-analysis.md)を参照する。
 
@@ -370,7 +370,7 @@ Document入力の棚卸①〜㉝では、MIME一覧・先頭バイト・独自�
 
 クライアントはprofileを選ばず、API・操作とモデル名を指定する。旧ヘッダーは下流転送前に削除する。内部profiles・defaultProfile・modalitiesも撤去し、一つのモデルから一つの設定を取得する。FLUXの固定URIを維持し、出力token項目とモデル上限の設定はPortal表示・要求生成などの用途へ残す。任意の`settingId`を既存監査の`decision.profileId`へ明示転記する。購読利用枠profileやCMの`profileName`は変更対象外である。
 
-構造整理後の棚卸で、モデル選択部品の登録一覧による先行403と、出力上限のための`core-model-limits`の能力表照合をローカルで撤去した。続く完全撤廃の承認で、`core-api-target-validation`の本文モデル一覧403も撤去する。同じ接続先・API形式の登録外モデルは、個別差分がなくても操作の基本設定を使う。FLUX等の異なる接続パスに必要な固定URI選択、本文・toolsの別条件は維持する。提供元のモデル追加だけで同じ経路を使うローカル対照と、Azure反映・読戻し・実疎通は区別する。[操作設定の部品](../../apps/apim/policies/fragments/request/core-api-operation-settings/README.md)を参照する。
+構造整理後の棚卸で、モデル選択部品の登録一覧による先行403と、出力上限のための`core-model-limits`の能力表照合をローカルで撤去した。続く完全撤廃の承認で、`core-api-target-validation`の本文モデル一覧403も撤去する。同じ接続先・API形式の登録外モデルは、個別差分がなくても操作の基本設定を使う。FLUX等の異なる接続パスに必要な固定URI選択、本文・toolsの別条件は維持する。提供元のモデル追加だけで同じ経路を使うローカル対照と、Azure反映・読戻し・実疎通は区別する。[操作設定の部品](../../apps/api-gateway/policies/fragments/request/core-api-operation-settings/README.md)を参照する。
 
 共有fragmentとAPIポリシーを同じ資材の構成にそろえて配備する。今回の移行は新しい設定fragmentを先に登録し、次に各APIの初期化を切り替える。後続が参照する2変数と共通認証は変えず、移行途中の旧APIも同じ2変数を準備する。全APIの更新後に、分離した設定を使うことと、キー・Bearer両方式の接続を確認する。監査設定には制御項目を格納しない。
 
@@ -403,9 +403,9 @@ Agentの通常オプションと保存防止（MOD-75）はローカル実装・
 
 ## 生成元出力と資源配備の分離
 
-`api-publication.bicep`は単一の正本を保ち、正式CLIの[publication_templates.py](../../apps/apim/deploy/publication_templates.py)がコンパイル結果を二つのARM要求へ分ける。生成専用は既存APIMを参照して完成XML・設定を出力し、資源配備は同じAPI・操作・部品を登録する。実配備には完成XMLを再度出力せず、`publicationSourceGenerationId`だけを出力して使った生成元を示す。
+`api-publication.bicep`は単一の正本を保ち、正式CLIの[publication_templates.py](../../apps/api-gateway/deploy/publication_templates.py)がコンパイル結果を二つのARM要求へ分ける。生成専用は既存APIMを参照して完成XML・設定を出力し、資源配備は同じAPI・操作・部品を登録する。実配備には完成XMLを再度出力せず、`publicationSourceGenerationId`だけを出力して使った生成元を示す。
 
-大きなJSONを出力から省くことと、生成元の完全照合を省くことは別である。保存コードのexport、入力、生成時のManaged Identity、成功した実配備との結び付きを照合し、監査・認証・ポリシー本文の確認は維持する。生成が失敗した段階ではAPIM資源を更新しない。新規構築・更新・復旧の順序は[登録用資材の説明](../../apps/apim/README.md)を参照する。
+大きなJSONを出力から省くことと、生成元の完全照合を省くことは別である。保存コードのexport、入力、生成時のManaged Identity、成功した実配備との結び付きを照合し、監査・認証・ポリシー本文の確認は維持する。生成が失敗した段階ではAPIM資源を更新しない。新規構築・更新・復旧の順序は[登録用資材の説明](../../apps/api-gateway/README.md)を参照する。
 
 所属を1件ずつ変更する際の中間読取りでは、全API本体・全APIの操作／Product／revision／schema／tool一覧、共有ポリシー・fragment・Named Value・backend・Product、外部の事前条件を再照合する。個別定義とXMLは、変更対象APIとMCPの操作参照でつながるAPIを両方向・推移的に照合し、無関係APIの個別子資源への反復読取りを省く。保存した全snapshotは保持し、staging前後・共通認証切替後の生成元照合と、全所属変更後の全件照合を続ける。無関係な個別子資源の変更は次の当該API確認または最終全件照合で拒否し、今回追加した所属だけを解除して、正常完了にはしない。未知の構造・未完の生成元は全件読取りに戻し、回復処理と旧構成の明示的整合も従来の全件読取りを使う。この選択は内部処理で行い、params／configの切替フラグは追加しない。
 
@@ -424,7 +424,7 @@ Agentの通常オプションと保存防止（MOD-75）はローカル実装・
 | 信頼した入口 | AppGW経由の識別値を通常HTTP(S)で常設確認。gRPC専用の入口免除は廃止 | `fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml`、`service.xml` |
 | 購読キー | 設定済みヘッダーが1個で空でないこと、`context.Subscription.Id`の存在を確認。URLのキーを拒否 | `service.xml` |
 | Entraアクセストークン | キーヘッダーがない要求で署名・期限、認証用テナント、API audience、v2、`Gateway.Invoke`を検証。クライアントアプリIDは認可の制限に使わない | `fragments/authentication/core-common-authentication/core-common-authentication.xml`、`service.xml` |
-| 呼出主体 | キーは`subscription:<購読ID>`、Bearerは`user:<テナントID>:<ユーザーObject ID>`。同じ購読または同じユーザーの利用枠を共有 | [各APIテンプレート](../../apps/apim/policies/api-templates/README.md) |
+| 呼出主体 | キーは`subscription:<購読ID>`、Bearerは`user:<テナントID>:<ユーザーObject ID>`。同じ購読または同じユーザーの利用枠を共有 | [各APIテンプレート](../../apps/api-gateway/policies/api-templates/README.md) |
 | 要求ID | 正常応答・例外応答へ監査と同じ`apim-request-id`を設定 | `service.xml` |
 | CM補助 | キーまたはBearerで検証した主体を内部brokerへ渡す。個人APIではSQL台帳の本人セッションと同じ主体を照合 | `credential_login.py`、`credential-login/*.xml`、`fragments/authentication/core-credential-connection/` |
 
@@ -448,7 +448,7 @@ Bearer要求のProductが存在し、専用Productであることは共通認証
 
 ## APIごとのポリシー
 
-APIと操作のスコープに登録するテンプレートは、[REST、WebSocket、外部MCP、生成MCP](../../apps/apim/policies/api-templates/README.md)に分かれる。全体スコープには`service.xml`を登録する。
+APIと操作のスコープに登録するテンプレートは、[REST、WebSocket、外部MCP、生成MCP](../../apps/api-gateway/policies/api-templates/README.md)に分かれる。全体スコープには`service.xml`を登録する。
 
 | 処理 | 実施内容 |
 | --- | --- |
@@ -458,12 +458,12 @@ APIと操作のスコープに登録するテンプレートは、[REST、WebSoc
 | 回数制限 | キーは検証済み購読、Bearerは検証済みユーザーのcounterを使用。CMの追加資格情報で入口の利用枠を切り替えない |
 | queryの観測 | `core-query-observation`がAPIの明示した参照から観測ラベルを選び、有無・複数値だけを記録用JSONへまとめる。標準3ラベルと対象を維持し、modeや共有Named Valueは使わない |
 | 操作の入力契約 | query観測の後、本文読取りより前に`core-api-input-validation`が対象表`inputContracts`を選び、共通のContent-Type宣言条件を確認する。対象13操作は`inputContract={}`、生成表の対象値も`{}`。会社のMIME一覧比較・メソッド再確認・query拒否は撤去する |
-| 利用枠の設定 | キーは[SQL購読profileのsnippet](../../apps/apim/policies/snippets/quota/subscription-profile/subscription-profile.xml)でPortalのSQL設定を内部APIから取得し、正常な値を30秒キャッシュする。Bearerは[社員profileの正本](../../apps/apim/policies/fragments/quota/core-entra-user-profile/core-entra-user-profile.xml)から共通認証が確認した社員利用枠を後段へ渡す。取得障害や不完全な設定を無制限へ変換しない |
+| 利用枠の設定 | キーは[SQL購読profileのsnippet](../../apps/api-gateway/policies/snippets/quota/subscription-profile/subscription-profile.xml)でPortalのSQL設定を内部APIから取得し、正常な値を30秒キャッシュする。Bearerは[社員profileの正本](../../apps/api-gateway/policies/fragments/quota/core-entra-user-profile/core-entra-user-profile.xml)から共通認証が確認した社員利用枠を後段へ渡す。取得障害や不完全な設定を無制限へ変換しない |
 | LLMトークン上限 | `token-limit.xml`を対応HTTP APIだけから参照。検証済み利用枠の毎分・期間内トークン数をAPIM標準ポリシーへ渡す。明示した制限なしの設定と設定欠落を区別する |
 | 下流認証 | Foundry等はMI、外部サービスは登録済みの認証設定。キー・入口のユーザートークン・本人sessionを下流へ流さない |
 | 監査 | 要求ID、呼出主体、認証方式、購読またはユーザー・テナント・クライアント、API、Operation、モデル、状態、使用量を記録。本文・token・keyを含めない |
 
-各APIの先頭で棚卸・承認した3処理は、内部用の`X-Core-Caller-Id`／`X-Core-Subscription-Id`を削除して続行、`x-ms-client-request-id`をAPIM要求IDで上書き、共通認証の完了を確認する方針で維持する。XMLだけのleaf fragmentへまとめ、通常HTTP・WebSocketの接続開始・MCPの3テンプレートから呼び出す。認証の再実行やCMブラウザー受付の変更は含めず、後段の要求ID再設定とBearer側の再確認は別の棚卸で扱う。[要求準備の説明](../../apps/apim/policies/fragments/request/core-api-request-preparation/README.md)を参照する。
+各APIの先頭で棚卸・承認した3処理は、内部用の`X-Core-Caller-Id`／`X-Core-Subscription-Id`を削除して続行、`x-ms-client-request-id`をAPIM要求IDで上書き、共通認証の完了を確認する方針で維持する。XMLだけのleaf fragmentへまとめ、通常HTTP・WebSocketの接続開始・MCPの3テンプレートから呼び出す。認証の再実行やCMブラウザー受付の変更は含めず、後段の要求ID再設定とBearer側の再確認は別の棚卸で扱う。[要求準備の説明](../../apps/api-gateway/policies/fragments/request/core-api-request-preparation/README.md)を参照する。
 
 棚卸⑦ではquery部品を観測専用にする方針を承認した。HTTP操作の`queryObservation`、生成MCPの`mcp.queryObservation`、外部MCPの`mcpProxy.endpoints[].queryObservation`から、Bicepが`gatewayControlSettings`の操作ID辞書`queryObservations`と、メソッド・公開相対path辞書`mcpQueryObservations`を作る。サービス・モデル形式・入力制約kindに依存せず、未指定の入口は対象外である。標準対象はLive・Realtimeの作成とPIIのMCP表口、ラベルは`liveCreate`・`realtimeCreate`・`piiMcp`を保持する。外部MCPでは公開pathと下流の`uriTemplate`を区別し、API登録と同じ公開path関数を使う。
 
@@ -473,7 +473,7 @@ APIと操作のスコープに登録するテンプレートは、[REST、WebSoc
 
 旧`gateway.queryGuards`、APIの`queryGuard`参照、`core-query-guard`fragment、`core-query-guard-modes` Named Valueは廃止対象であり、現行設定として使わない。④・⑤までのmode補完・設定不備で停止する方式は移行前の設計となる。新fragmentと参照APIのAzure反映・全graph照合・読戻し、正本checkpoint更新は完了した。キー／BearerのResponses JSON・SSEと対応する監査照合を確認した。旧fragment・旧Named Valueは参照不在を確認して退役し、読戻しで不在を確認した。現行生成元・構築入力・正本checkpoint・通常配備の期待値にも旧資材を含まない。所有・currentの一般照合と過去の保護証跡は維持する。query観測・転送や他の経路の受入は未完である。
 
-外部MCPの観測用フローは`api-templates/mcp/external.xml`が所有する。WebSocketの受信queryと固定queryの制御は`api-templates/ws/ws.xml`で管理する。各設定の確認は[query観測部品](../../apps/apim/policies/fragments/request/core-query-observation/README.md)と[運用時の確認](../operations/apim.md)を参照する。
+外部MCPの観測用フローは`api-templates/mcp/external.xml`が所有する。WebSocketの受信queryと固定queryの制御は`api-templates/ws/ws.xml`で管理する。各設定の確認は[query観測部品](../../apps/api-gateway/policies/fragments/request/core-query-observation/README.md)と[運用時の確認](../operations/apim.md)を参照する。
 
 その後に承認したPIIの除外分割は、App GatewayのWAF設定として別に管理する。現行構成はRESTの`g-pii-rest`で`text`、MCPの`g-pii-mcp`で`params.arguments.text`だけを`RequestArgValues / Equals`から除外し、`p-pii-redact`は維持する。このWAF変更はAPIMの入力検査とは独立し、認証・モデル機能・OBO・URI制約・他のWAF規則を変更しない。Azure反映・読戻しと正常REST／MCPの通過・マスキング確認を完了し、旧`g-pii-redact`は参照不在を確認して退役した。未実施の異常系と同名queryへの除外の挙動は残件である。通常reconcileによる旧資源の自動削除へは変更せず、移行中の旧binding保持・復旧と成功後の退役を区別する。[WAF側の設定・移行手順](../testing/waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)を参照する。
 
@@ -481,7 +481,7 @@ HTTPの`operations[].inputContract = {}`で検査対象を明示し、Bicepが`g
 
 Content-Typeの存在・単一値確認は`TryGetValue`による一度の取得で行い、唯一の値を`;`で分けた先頭のMIME部分が、空白除去後も空でないことを確認する。空値・空MIME部分は拒否し、会社の許可一覧とは比較しない。新しい構文パーサーを追加せず、HTTP／WAFの既存構文保護を維持する。単一値はAPIM解析後の配列の確認であり、元のHTTPに重複ヘッダー行がなかった証明ではない。
 
-対象選択と部品構成の整理、query制限・メソッド再確認の撤去、取得処理の簡潔化、入口のMIME許可一覧比較の撤去を承認した。不備時の監査と400応答を維持し、結果変数を`gatewayApiInputValidationPassed`、監査理由を`INVALID_CONTENT_TYPE_HEADER`、応答理由を`Invalid Content-Type header`へ改名する方針も承認済みである。短い拒否フローは共有HTTP APIテンプレートに残し、本文なし400、APIM要求IDを持つ`apim-request-id`、`Cache-Control: no-store`を維持する。入口検査と不備時の400監査のAzure反映・読戻しは完了した。空本文でContent-Type未指定の400と対応する拒否監査を確認した。空値・空MIME部分・重複値など追加異常系は未実施である。未知メソッドの実APIM照合はローカルC#検証と分けて確認する。query観測・URL資格情報拒否は今回変更しない。後続の`core-model-limits`のMIME許可一覧比較と415も撤去した。`operationConstraints.contentTypes`は個別処理などで使うため残し、未棚卸の本文／モデル制約・URI書換え、Speech転送・WAFの形式制御は保持する。Document入力の現在の整理は上記の専用部品を参照する。残存制御は後の適用順で棚卸し、関連受入を別に整理する。共有部品の比較撤去だけで任意形式の下流受付やquery転送が保証されたとは扱わない。まとめ反映・読戻しとキー／BearerのResponses JSON・SSE、および対応する監査照合は完了した。他モデル・transportや残る異常系の受入は未完である。[入力検査の使い方と13操作の範囲](../../apps/apim/policies/fragments/request/core-api-input-validation/README.md)を参照する。
+対象選択と部品構成の整理、query制限・メソッド再確認の撤去、取得処理の簡潔化、入口のMIME許可一覧比較の撤去を承認した。不備時の監査と400応答を維持し、結果変数を`gatewayApiInputValidationPassed`、監査理由を`INVALID_CONTENT_TYPE_HEADER`、応答理由を`Invalid Content-Type header`へ改名する方針も承認済みである。短い拒否フローは共有HTTP APIテンプレートに残し、本文なし400、APIM要求IDを持つ`apim-request-id`、`Cache-Control: no-store`を維持する。入口検査と不備時の400監査のAzure反映・読戻しは完了した。空本文でContent-Type未指定の400と対応する拒否監査を確認した。空値・空MIME部分・重複値など追加異常系は未実施である。未知メソッドの実APIM照合はローカルC#検証と分けて確認する。query観測・URL資格情報拒否は今回変更しない。後続の`core-model-limits`のMIME許可一覧比較と415も撤去した。`operationConstraints.contentTypes`は個別処理などで使うため残し、未棚卸の本文／モデル制約・URI書換え、Speech転送・WAFの形式制御は保持する。Document入力の現在の整理は上記の専用部品を参照する。残存制御は後の適用順で棚卸し、関連受入を別に整理する。共有部品の比較撤去だけで任意形式の下流受付やquery転送が保証されたとは扱わない。まとめ反映・読戻しとキー／BearerのResponses JSON・SSE、および対応する監査照合は完了した。他モデル・transportや残る異常系の受入は未完である。[入力検査の使い方と13操作の範囲](../../apps/api-gateway/policies/fragments/request/core-api-input-validation/README.md)を参照する。
 
 ## モデル・Operation固有のポリシー
 
@@ -503,7 +503,7 @@ Content-Typeの存在・単一値確認は`TryGetValue`による一度の取得�
 
 通常のAI APIの`maxRequestBytes`設定はAPIM Classicのバッファー上限**500 MiB（524,288,000 bytes）**に揃える。本文を読み出す検査では、JSONはBase64や構造を含むUTF-8本文全体、multipartはファイル以外の境界・項目も含む実サイズを比較する。音声認識・音声ファイルの文字起こし・画像編集・音声合成は`requestBodySizeCheck=declared`とし、共有部品による申告サイズの早期413を残す。前の3操作は共有部品による実サイズの読取り・比較を行わず、音声合成は専用SSML部品で実サイズも比較する。提供元のモデル・形式・料金プランによる上限が小さい場合は提供元が拒否するため、500 MiBは各モデルの受付保証ではない。Content-Lengthは必須化しない。`actual`または未指定の操作とTTSの専用部品は、chunked入力も実受信サイズで検査する。申告のみの操作でAzureが適用する技術制約は、この部品の実サイズ検査とは区別する。[APIMの技術上限](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#api-management-gateway-runtime-limits)
 
-出力能力値の正本は [model-capabilities.json](../../apps/apim/model-capabilities.json)で、Portalの表示・要求生成・入力検査などに使う。HTTPの要求では出力トークン項目を省略でき、`core-model-limits`は指定された項目名・値・最大値を独自に検査せず、本文を書き換えずに提供元へ委ねるローカル実装へ整理した。Azureへの反映と提供元での実受入は未確認である。不明な固定上限を作らない。Realtime WebRTCの作成時の512は初期設定であり、モデル上限4,096とは区別する。WebSocket確立後やWebRTCのDataChannelはAPIMポリシーで検査しないため、Portalが送信する設定と、Gatewayが全クライアントへ強制する制限は同一ではない。
+出力能力値の正本は [model-capabilities.json](../../apps/api-gateway/model-capabilities.json)で、Portalの表示・要求生成・入力検査などに使う。HTTPの要求では出力トークン項目を省略でき、`core-model-limits`は指定された項目名・値・最大値を独自に検査せず、本文を書き換えずに提供元へ委ねるローカル実装へ整理した。Azureへの反映と提供元での実受入は未確認である。不明な固定上限を作らない。Realtime WebRTCの作成時の512は初期設定であり、モデル上限4,096とは区別する。WebSocket確立後やWebRTCのDataChannelはAPIMポリシーで検査しないため、Portalが送信する設定と、Gatewayが全クライアントへ強制する制限は同一ではない。
 
 WAFは対象AI完全パスだけ2000 KiBまで本文を検査し、サイズ超過だけでは拒否しない。認証・管理系の既定防御は維持する。AppGWは既存の設定可能な600秒、FWの通信先・ポート・IDPSは変更しない。Chat／Responsesの同期・SSEも維持する。[WAFの範囲](../testing/waf-compatibility.md)
 
@@ -525,7 +525,7 @@ Portalは通常HTTP／SSEに独自の総処理時間枠を設けない。Node HT
 | **文字起こしWSS** | 購読キーまたはBearer検証・固定上流・`intent=transcription`・接続回数上限 | `session.update`でモデルを指定、音声入力・途中／確定テキスト |
 | Voice Live | Speechサービス用の固定接続先・query・MI認証 | Voice Live固有の音声・WebRTC制御 |
 
-Live作成は共通の500 MiB枠と型・SDP形式を検査し、instructionsの独自文字数枠を設けない。初期voiceは`marin`。失敗入力は400、形式が不正な上流の成功応答は502へ整える。[Live作成のXML](../../apps/apim/policies/operation-policies/live/live-create.xml)
+Live作成は共通の500 MiB枠と型・SDP形式を検査し、instructionsの独自文字数枠を設けない。初期voiceは`marin`。失敗入力は400、形式が不正な上流の成功応答は502へ整える。[Live作成のXML](../../apps/api-gateway/policies/operation-policies/live/live-create.xml)
 
 WSSの`websocket.session.models`は接続後イベントで使うモデルのクライアント契約を表す。APIMが検査するのは接続開始時の要求である。frame内のモデル・音声・設定とセッション継続時間は、アプリと上流サービスで管理・検査する。HTTP要求回数と音声セッションの利用量は別に計測する。[Microsoft公式のWebSocket制約](https://learn.microsoft.com/en-us/azure/api-management/websocket-api)
 
@@ -547,7 +547,7 @@ CMは、必要なAPIが利用する共通の下流OAuth機能である。`graph-
 
 ## ポータルで追加するAPI
 
-初期構築では[API定義](../../apps/apim/apis/README.md)から、操作、固定バックエンド、個別制御を宣言します。[Bicep](../../apps/apim/api-publication.bicep)がXMLとC#を組み立て、同じ生成元を公開後の読戻しに使います。[適用先一覧](../../apps/apim/policies/portal-examples/scope-map.md)では、標準APIの公開パス、操作ID、Azureのスコープ、個別XMLを確認できます。
+初期構築では[API定義](../../apps/api-gateway/apis/README.md)から、操作、固定バックエンド、個別制御を宣言します。[Bicep](../../apps/api-gateway/api-publication.bicep)がXMLとC#を組み立て、同じ生成元を公開後の読戻しに使います。[適用先一覧](../../apps/api-gateway/policies/portal-examples/scope-map.md)では、標準APIの公開パス、操作ID、Azureのスコープ、個別XMLを確認できます。
 
 | 資材 | Azureポータルでの適用先 | 対象 |
 | --- | --- | --- |
@@ -579,7 +579,7 @@ RESTの `bodyModel`、`textEmbeddings`、`rerank` は、適用済みの操作設
 
 ### 構築後のAPIMとWAF
 
-手動追加APIは[REST／SSEのポリシー例](../../apps/apim/policies/portal-examples/README.md)から、専用API ID、固定バックエンド、Operation IDとパス、利用枠を設定します。購読キーは専用の購読必須Product、本人Bearerを提供する場合は `manual-` で始まるAPIを購読不要の `manual-entra-users` に関連付けます。共通認証は同じテナント・audience・委任scope・本人を確認します。管理対象Productのメンバーシップには標準構築時の照合があるため、手動追加には独立したProductを使います。各Operationで `Calculate effective policy` を開き、入口・認証・利用枠・監査・認証情報の除去・固定転送先を確認します。 [APIMでのポリシー継承](https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-policies)
+手動追加APIは[REST／SSEのポリシー例](../../apps/api-gateway/policies/portal-examples/README.md)から、専用API ID、固定バックエンド、Operation IDとパス、利用枠を設定します。購読キーは専用の購読必須Product、本人Bearerを提供する場合は `manual-` で始まるAPIを購読不要の `manual-entra-users` に関連付けます。共通認証は同じテナント・audience・委任scope・本人を確認します。管理対象Productのメンバーシップには標準構築時の照合があるため、手動追加には独立したProductを使います。各Operationで `Calculate effective policy` を開き、入口・認証・利用枠・監査・認証情報の除去・固定転送先を確認します。 [APIMでのポリシー継承](https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-policies)
 
 AppGWでは新しいパスに実際に効くWAFとAPIMへのHTTPS経路を確認します。標準ではGateway側の既定経路と共通WAFを使います。パス別WAFを追加する際は、既定ポリシーに代わってそのパスで有効になる設定と、信頼済み入口ヘッダーの書換えを照合します。本文形式に固有の例外が必要な場合は、実際に遮断した正常要求からパス、項目、管理ルールを特定します。 [WAFの関連付けと優先順位](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/policy-overview)
 
@@ -601,11 +601,11 @@ XMLには処理の目的・入力・失敗時の動作を説明する日本語�
 監査出力の認証主体、要求context、AppGWログとの相関とqueryの採用規則は[監査の識別情報](audit-identification.md)を参照する。監査出力の追加と保存設計、資材の実装と対象環境の適用・受入を分けて扱う。
 
 
-CM呼出者IDの整理（MOD-76）はローカル実装・関連検証済みです。[接続部品](../../apps/apim/policies/fragments/authentication/core-credential-connection/README.md)は確認済みgatewayDecision.callerIdを使い、社員JSON・GUID整形・認証結果の再照合を省きます。Azure名とCM固有の所有者・session・Graph本人・期限・失効照合、内部空callerの既存403を維持します。実式・Python／実Bicep生成・保護source・構文と独立レビューを確認しました。追加raw XML Razorクラスは公式DLL未指定でスキップし、実行別の結果を部品READMEへ記録しています。内部不備分類・CM全体と工程1全体は未完了、Azure未反映です。
+CM呼出者IDの整理（MOD-76）はローカル実装・関連検証済みです。[接続部品](../../apps/api-gateway/policies/fragments/authentication/core-credential-connection/README.md)は確認済みgatewayDecision.callerIdを使い、社員JSON・GUID整形・認証結果の再照合を省きます。Azure名とCM固有の所有者・session・Graph本人・期限・失効照合、内部空callerの既存403を維持します。実式・Python／実Bicep生成・保護source・構文と独立レビューを確認しました。追加raw XML Razorクラスは公式DLL未指定でスキップし、実行別の結果を部品READMEへ記録しています。内部不備分類・CM全体と工程1全体は未完了、Azure未反映です。
 
 
-CMの内部callerエラー分類（MOD-77）はローカル実装・関連検証済みです。既存の空ID停止条件だけを500へ分け、[API展開用snippet](../../apps/apim/policies/snippets/authentication/credential-caller-error/README.md)でpolicy-error／AUTHENTICATION_PROCESSING_ERROR／500の監査と要求ID・no-store付き本文なし応答を返します。監査全文をCMfragmentへ複製せず、本人接続の拒否と資格情報の取得・所有者照合を維持します。関連164件が初回から全件成功（39.283s、失敗・スキップなし）。初期容量precheck失敗と調整後の確認は部品READMEで別記録とします。工程1／2全体は未完了、Azure未反映です。
+CMの内部callerエラー分類（MOD-77）はローカル実装・関連検証済みです。既存の空ID停止条件だけを500へ分け、[API展開用snippet](../../apps/api-gateway/policies/snippets/authentication/credential-caller-error/README.md)でpolicy-error／AUTHENTICATION_PROCESSING_ERROR／500の監査と要求ID・no-store付き本文なし応答を返します。監査全文をCMfragmentへ複製せず、本人接続の拒否と資格情報の取得・所有者照合を維持します。関連164件が初回から全件成功（39.283s、失敗・スキップなし）。初期容量precheck失敗と調整後の確認は部品READMEで別記録とします。工程1／2全体は未完了、Azure未反映です。
 
-MOD-78は承認済みのCM重複3点をローカル実装・関連検証済みです。正規配置・維持する照合と処理・検証結果は[本人セッション部品](../../apps/apim/policies/fragments/authentication/core-credential-session-use/README.md)へまとめます。CM全体・工程1／2全体は未完了、Azure未反映です。
+MOD-78は承認済みのCM重複3点をローカル実装・関連検証済みです。正規配置・維持する照合と処理・検証結果は[本人セッション部品](../../apps/api-gateway/policies/fragments/authentication/core-credential-session-use/README.md)へまとめます。CM全体・工程1／2全体は未完了、Azure未反映です。
 
-MOD-79はローカル実装・関連検証済みです。9操作で共通トークン検証の失敗だけを既存401へ渡し、その他のエラー契約を維持します。有効／無効の生成・正本一致・限定したscope・容量と実式を確認しました。初回fixture不備とskipの補完は[部品README](../../apps/apim/policies/fragments/authentication/core-entra-authentication-error/README.md)へ別実行として記録しています。工程1／2全体は未完了、Azure未反映です。
+MOD-79はローカル実装・関連検証済みです。9操作で共通トークン検証の失敗だけを既存401へ渡し、その他のエラー契約を維持します。有効／無効の生成・正本一致・限定したscope・容量と実式を確認しました。初回fixture不備とskipの補完は[部品README](../../apps/api-gateway/policies/fragments/authentication/core-entra-authentication-error/README.md)へ別実行として記録しています。工程1／2全体は未完了、Azure未反映です。

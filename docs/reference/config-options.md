@@ -124,7 +124,7 @@ Core構築後、AzureポータルのGUIからモデルを配備し、APIMにもA
 
 公開入口はAppGWのHTTP／HTTPSです。AppGWが`X-Core-L7-Ingress`を上書きし、APIMの共通ポリシーが入口証明を常設で検査します。APIMへ直接届く要求の拒否は実機試験でも確認します。
 
-WAFの用途別ポリシーとデータ欄の除外は[WAFの公開仕様](../testing/waf-compatibility.md#用途別のポリシー構成)で確認します。Chatの画像URL、ResponsesのPDF入力などの条件は`apps/apim/waf-data-exclusions.json`を正本とし、APIの入力profileから別のポリシーや除外を自動追加しません。
+WAFの用途別ポリシーとデータ欄の除外は[WAFの公開仕様](../testing/waf-compatibility.md#用途別のポリシー構成)で確認します。Chatの画像URL、ResponsesのPDF入力などの条件は`apps/api-gateway/waf-data-exclusions.json`を正本とし、APIの入力profileから別のポリシーや除外を自動追加しません。
 
 
 APIMの常設L7入口証明／Realtime所有者署名のKey Vault参照は、APIM自身のシステム割り当てマネージドIDを使い、対象KVだけに組み込みのKey Vault Secrets Userを付与します。APIMのHTTPS保守は既定の`<APIM_NAME>.azure-api.net`をPrivate DNSで内部VIPへ解決し、同名のHost／SNIとMicrosoft管理の既定証明書を使います。gRPC専用だったAPIMの公開名customProxyと公開証明書参照は撤去します。[KV firewall有効時にAPIMのユーザー割り当てIDを使用できない制約](https://learn.microsoft.com/azure/api-management/api-management-howto-use-managed-service-identity)に合わせた構成です。AppGWは証明書用のユーザー割り当てIDを引き続き使います。IDの権限とPE経由の到達性は別々に実機確認します。
@@ -229,7 +229,7 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 
 #### モデル配列の要素（services.modelDeployments[]）
 
-この表の短い名前はconfigの`services.modelDeployments[]`配下です。[初期モデル](../reference/platform.md#初期モデルと公開api)の28モデルの配備設定は、テスト・本番configが正本です。[標準API定義](../../apps/apim/apis/)は19 APIを1ファイルずつ管理し、モデル配備の設定を重複して持ちません。API側には、そのAPIで呼び出しを許可するモデル名・操作・要求上限を定義します。外部サンプルAPIやTools/Hosted Agent用bindingsは含みません。版・SKU・利用枠名の一覧はconfigを参照してください。
+この表の短い名前はconfigの`services.modelDeployments[]`配下です。[初期モデル](../reference/platform.md#初期モデルと公開api)の28モデルの配備設定は、テスト・本番configが正本です。[標準API定義](../../apps/api-gateway/apis/)は19 APIを1ファイルずつ管理し、モデル配備の設定を重複して持ちません。API側には、そのAPIで呼び出しを許可するモデル名・操作・要求上限を定義します。外部サンプルAPIやTools/Hosted Agent用bindingsは含みません。版・SKU・利用枠名の一覧はconfigを参照してください。
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |

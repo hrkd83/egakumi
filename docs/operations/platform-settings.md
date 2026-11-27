@@ -26,7 +26,7 @@
 
 既存のデータ用ポリシーについて、正常入力が誤って拒否された原因を直す。
 入口は[WAF保守CLI](../../scripts/operations/waf.py)、データ項目の正本は
-[manifest](../../apps/apim/waf-data-exclusions.json)である。
+[manifest](../../apps/api-gateway/waf-data-exclusions.json)である。
 GatewayとPortalでは本文の形とCookieの扱いが異なるため、
 [互換性と適用範囲](../testing/waf-compatibility.md)も確認する。
 
@@ -124,7 +124,7 @@ Azure反映後は、通常API、SSE、WebSocket、MCPと、Portalのヘルス・
 ## APIバックエンドに必要な外向き許可を追加する
 
 対象は、API定義に登録する外部バックエンドの固定TLS宛先である。
-[公開処理](../../apps/apim/deploy/api_publication.py)は、APIM送信元の
+[公開処理](../../apps/api-gateway/deploy/api_publication.py)は、APIM送信元の
 HTTPS／443・FQDN許可を既存Firewall規則へ追加する。
 任意サブネット、任意ポート、全インターネットを許可する入口ではない。
 
@@ -210,7 +210,7 @@ API公開へ進む。途中で失敗しても追加許可が既に反映され�
 
 1. 変更前のparamsと、Gの正常な計画を保護保存する。既定の計画保存先は
    `state/gateway-plan.json`である。API定義を変える前に保存し、後続の計画で上書きしない。
-2. [API正本](../../apps/apim/apis/)の現在のファイル集合とrevisionを保護記録へ控える。
+2. [API正本](../../apps/api-gateway/apis/)の現在のファイル集合とrevisionを保護記録へ控える。
    計画の`parameters.configuration.apiDefinitions`は生成済み内部配列であり、paramsへ
    コピーしない。公開`apiDefinitions`・`publishApis`は空やfalseでも拒否する。
    API正本へ実環境のURL・ID・secretを転記せず、上記の公式共通URLを使う追加だけを扱う。

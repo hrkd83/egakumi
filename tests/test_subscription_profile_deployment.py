@@ -62,7 +62,7 @@ def named(suffix):
 
 TARGET_APIS = [{'name': 'fixture-model', 'apiType': 'http'}]
 PROFILE_INLINE = render_audit_policy(
-    policy_fixture_path(ROOT / 'apps/apim/policies', 'subscription-profile.xml').read_text(encoding='utf-8')
+    policy_fixture_path(ROOT / 'apps/api-gateway/policies', 'subscription-profile.xml').read_text(encoding='utf-8')
 ).replace('<fragment>', '').replace('</fragment>', '')
 PROFILE_POLICY = '<policies><inbound>' + PROFILE_INLINE + '<include-fragment fragment-id="core-rate-limit" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
 
@@ -635,7 +635,7 @@ class SubscriptionProfileGatewayContractTests(unittest.TestCase):
         from arm_helpers import compiled_policy_value
         from test_api_protocols import bound_external_coverage, configuration
 
-        template = compile_bicep('apps/apim/api-publication.bicep')
+        template = compile_bicep('apps/api-gateway/api-publication.bicep')
         config = configuration.normalize_configuration(bound_external_coverage(), base_directory=ROOT / 'config')
         parameters = {'apiDefinitions': config['apiDefinitions'], 'credentialLogin': {},
             'publicHostName': config['gateway']['publicHostName'], 'entraTenantId': config['entraTenantId'],

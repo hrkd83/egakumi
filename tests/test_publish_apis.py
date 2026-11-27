@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/apim/deploy"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/api-gateway/deploy"))
 import api_publication as publish
 from deployment.helpers.configuration import build_bicep_configuration
 from deployment.helpers.apim_authentication import render_service_policy, validate_common_authentication_policy

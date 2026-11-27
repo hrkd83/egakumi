@@ -4,6 +4,12 @@
 
 CoreのAPIM、共通SQL、非公開ACR、ACA環境を使い、BrokerとCredential Managerの本人接続基盤を配備する。その後、APIMのAPI定義、バックエンド、ポリシー、製品、購読を登録する。本文監査が有効な環境では、この工程で中継と保存ワーカーも配備する。[本文監査の構成と受入条件](../reference/request-body-audit.md)
 
+| `apps` 配下の資材 | Gateway個別配備での役割 |
+| --- | --- |
+| [api-gateway](../../apps/api-gateway/README.md) | 統合配備のBicep、Credential Manager設定、API定義、APIMポリシー、Gateway入口のWAF設定 |
+| [credential-broker](../../apps/credential-broker/README.md) | Broker本体、credentials DB、SQL初期化、定期照合ジョブ |
+| [audit-relay](../../apps/audit-relay/) | 本文監査が有効なときに起動する中継アプリと保存ワーカー。標準のテスト・本番設定では有効 |
+
 対応表をAzure SQLで管理し、同じ本人には同じCM接続を再利用する。クライアントは論理名`graph-delegated`を指定し、基盤が設定されたプールから割当先を選ぶ。共通configの初期`pool.count=12`・`pool.capacity=8000`を使い、内部の物理名`graph-delegated-a`〜`graph-delegated-l`を保持する。UPNは表示と初期命名に使い、本人確認にはEntraのテナントID・オブジェクトIDを使う。
 
 本書は[第07章](07-params.md)で作成した`DEPLOY_PARAMS_FILE`と、第1章で決めた`DEPLOY_ENVIRONMENT`を使う。別のターミナルでは、実際に構築した環境の値を設定し直す。
@@ -62,7 +68,7 @@ python3 scripts/deploy_gateway.py \
 6. SQL初期化に成功してからContainer Appと定期照合ジョブを配備し、認証窓口の正常起動を確認する。新しいStartup・Readiness・Liveness probeは`/health/gateway-caller-v1`でSQL版4とユーザー主体用の列を毎回検査する。初期化に失敗した場合はアプリ更新とAPI登録に進まない。
 7. API・バックエンド・Product・購読・ポリシーを登録する。必要な診断ログと初期サンプルの整理も行う。
 
-本人接続を使わない設定では認証窓口の配備を省略し、APIの登録を行う。標準19 API正本を常用で解決する。計画と反映は個別コマンドの`--execute`で区別し、公開paramsの切替フラグを使わない。
+標準19 API正本を常用で解決する。計画と反映は個別コマンドの`--execute`で区別し、公開paramsの切替フラグを使わない。
 
 本人接続のDB名は`sqldb-<stem>-credentials`、SQL初期化ジョブ名は`caj-<stem>-schema`、定期照合ジョブ名は`caj-<stem>-recon`。SQLの容量・バックアップ・ゾーン冗長化は`credentialBroker`設定を使う。保存データの暗号化はAzure SQL Databaseのサービス管理TDEを使う。[MicrosoftのTDE仕様](https://learn.microsoft.com/azure/azure-sql/database/transparent-data-encryption-tde-overview)
 
@@ -80,7 +86,7 @@ API登録は手順4に含まれるため、別の登録コマンドは不要。�
 
 [本人接続の手順](../reference/credential-manager-login.md)に沿って、購読キーを付けたGraph APIの呼び出しから始める。セッションがないときの409に含まれる認証URLを利用者へ案内し、アプリのバックエンドで完了確認・本人セッションの保存・元要求の再実行まで確認する。全体の疎通は[第13章](13-verify-deployment.md)で確認する。
 
-共通ポリシーの反映先は、APIMの「API」→「すべてのAPI」のポリシー。定義は`apps/apim/policies/service.xml`、適用処理は`apps/apim/deploy/api_publication.py`、認証関連の生成処理は`scripts/deployment/helpers/apim_authentication.py`にある。
+共通ポリシーの反映先は、APIMの「API」→「すべてのAPI」のポリシー。定義は`apps/api-gateway/policies/service.xml`、適用処理は`apps/api-gateway/deploy/api_publication.py`、認証関連の生成処理は`scripts/deployment/helpers/apim_authentication.py`にある。
 
 - 有効な本人セッションでは認証画面を挟まずGraphを実行できること。
 - セッション未指定・期限切れ・CM再認証時には、同じGraph APIの応答から認証を開始できること。

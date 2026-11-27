@@ -23,7 +23,7 @@ from deployment.helpers.paths import LocalPaths, REPOSITORY, private_output, pri
 from deployment.helpers.private_permissions import check_private_permissions, protect_new_path
 
 
-POLICIES = REPOSITORY / "apps/apim/policies"
+POLICIES = REPOSITORY / "apps/api-gateway/policies"
 IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9_-]{0,79}")
 STATIC_PATH = re.compile(r"/[A-Za-z0-9._~/-]*")
 DNS_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"

@@ -38,7 +38,7 @@ class SplitCliTests(unittest.TestCase):
         private_parent(self.output_directory / "synthetic.json", self.root)
         # lifecycleの実行ROOTも合成repoへ揃える。公開資材だけをコピーし、実値領域を含めない。
         shutil.copytree(SCRIPTS, self.root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
-        shutil.copytree(CORE / "apps/apim", self.root / "apps/apim",
+        shutil.copytree(CORE / "apps/api-gateway", self.root / "apps/api-gateway",
                         ignore=shutil.ignore_patterns("__pycache__"))
         for relative in ("infra/modules/monitoring/log-privacy.json", "infra/modules/network/nsg/core-rules.json"):
             target = self.root / relative
@@ -120,7 +120,7 @@ class SplitCliTests(unittest.TestCase):
     def test_coverage_template_cli_uses_split_parameters_without_azure(self):
         output = self.output_directory / "bindings.json"
         receipt = self.run_cli("prepare_coverage.py", "--base", self.source,
-                               "--overlay", self.root / "apps/apim/apis",
+                               "--overlay", self.root / "apps/api-gateway/apis",
                                "--bindings-template", "--output", output)
         bindings = json.loads(output.read_text())
         self.assertIn("OPENAI_RESOURCE_BASE_URL", bindings)
@@ -139,7 +139,7 @@ class SplitCliTests(unittest.TestCase):
                      "--cm-client-secret-file", "../nonexistent-secret/connection.txt")
         binding_file = self.output_directory / "standard-bindings.json"
         self.run_cli("prepare_coverage.py", "--base", self.source,
-                     "--overlay", self.root / "apps/apim/apis",
+                     "--overlay", self.root / "apps/api-gateway/apis",
                      "--bindings-template", "--output", binding_file)
         bindings = json.loads(binding_file.read_text())
         self.assertFalse(any(key.startswith(("TOOLS_", "HOSTED_AGENT_")) for key in bindings))
@@ -151,7 +151,7 @@ class SplitCliTests(unittest.TestCase):
             "LIVE_WS_BASE_URL": "wss://provider.example.com/openai/v1/live/sessions",
             "TRANSCRIPTION_WS_BASE_URL": "wss://provider.example.com/openai/v1/realtime",
             "STT_LANGUAGE": "en-US",
-            **json.loads((CORE / "apps/apim/public-bindings.json").read_text())["bindings"],
+            **json.loads((CORE / "apps/api-gateway/public-bindings.json").read_text())["bindings"],
         }
         for key in bindings:
             bindings[key] = known.get(key) or (
@@ -161,7 +161,7 @@ class SplitCliTests(unittest.TestCase):
         binding_file.write_text(json.dumps(bindings))
         output = self.output_directory / "formal-standard.json"
         receipt = self.run_cli("prepare_coverage.py", "--base", self.source,
-                               "--overlay", self.root / "apps/apim/apis",
+                               "--overlay", self.root / "apps/api-gateway/apis",
                                "--bindings", binding_file, "--output", output)
         compiled = json.loads(output.read_text())
         self.assert_composed_paths(compiled, output)
@@ -169,7 +169,7 @@ class SplitCliTests(unittest.TestCase):
         self.assertEqual(compiled["azureTenantId"], TENANT)
         self.assertEqual(compiled["entraTenantId"], entra_tenant)
         self.assertEqual({api["name"] for api in definitions},
-                         {file.stem for file in (CORE / "apps/apim/apis").glob("*.json")})
+                         {file.stem for file in (CORE / "apps/api-gateway/apis").glob("*.json")})
         self.assertTrue(all(api["serviceClass"] == "platform" for api in definitions))
         self.assertFalse(any(api["name"].startswith("sample-") for api in definitions))
         self.assertEqual(receipt["resourceMutations"], 0)
@@ -188,7 +188,7 @@ class SplitCliTests(unittest.TestCase):
     def test_foundation_cli_preserves_models_and_paths_when_compiling_to_another_folder(self):
         template = self.output_directory / "foundation-bindings.json"
         self.run_cli("prepare_coverage.py", "--base", self.source,
-                     "--overlay", self.root / "apps/apim/apis", "--phase", "foundation",
+                     "--overlay", self.root / "apps/api-gateway/apis", "--phase", "foundation",
                      "--bindings-template", "--output", template)
         bindings = json.loads(template.read_text())
         models = {model["modelFormat"] + "/" + model["name"]: model
@@ -212,7 +212,7 @@ class SplitCliTests(unittest.TestCase):
         template.write_text(json.dumps(bindings))
         output = self.output_directory / "foundation.local.json"
         receipt = self.run_cli("prepare_coverage.py", "--base", self.source,
-                               "--overlay", self.root / "apps/apim/apis",
+                               "--overlay", self.root / "apps/api-gateway/apis",
                                "--phase", "foundation", "--bindings", template, "--output", output)
         compiled = json.loads(output.read_text())
         self.assert_composed_paths(compiled, output)

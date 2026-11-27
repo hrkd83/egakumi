@@ -94,7 +94,7 @@ ACAの公開HTTPSでは、NSGの`Internet`タグを固定`0.0.0.0/0` UDRと組�
 | `allow-aca-arm` | A・HTTPS443 | Portal用・Broker用のACA → `management.azure.com` | [`FLOW-ACA-ARM`](network-communication-requirements.md#flow-aca-arm)。購読管理とCredential Manager等の管理API | 両環境の`allow-arm-https-egress` |
 | `allow-mgmt-vm-python-build` | A・HTTPS443 | 管理VM → `PYTHON-BUILD`宛先群 | [`FLOW-MGMT-PYTHON-BUILD`](network-communication-requirements.md#flow-mgmt-python-build)。BrokerのPython依存・build | 管理VM `allow-internet-egress`。Node／Docker側の配布先と用途を分離 |
 
-Brokerは初期構築の常設構成要素とし、`credentialProfiles`が空であることを理由にこのRCGを不作成にはしない。Gatewayの内部 `deployApplication` はDB初期化→アプリ配備という工程の段階を表すもので、公開のBroker／FW作成スイッチではない。[Gateway配備入口](../../apps/apim/deploy/main.bicep)
+Brokerは初期構築の常設構成要素とし、`credentialProfiles`が空であることを理由にこのRCGを不作成にはしない。Gatewayの内部 `deployApplication` はDB初期化→アプリ配備という工程の段階を表すもので、公開のBroker／FW作成スイッチではない。[Gateway配備入口](../../apps/api-gateway/deploy/main.bicep)
 
 ### rcg-portal-gateway / portal-gateway
 

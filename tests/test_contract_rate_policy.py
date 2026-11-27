@@ -22,7 +22,7 @@ sys.path.insert(0, str(CORE / "scripts"))
 from deployment.helpers.apim_audit import render_audit_policy
 from test_common_authentication import compile_inbound
 
-POLICIES = CORE / "apps/apim/policies"
+POLICIES = CORE / "apps/api-gateway/policies"
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 if not PWSH:
     candidate = CORE / ".tools/powershell/7.6.7/pwsh"

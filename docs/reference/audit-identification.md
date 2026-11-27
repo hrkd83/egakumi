@@ -10,7 +10,7 @@
 
 STEP4の認証本体は`fragments/authentication/core-common-authentication/`に置く。同名XMLが分岐と検証順序を示し、同名C#の5区画を対応する式へ生成時に埋め込む。認証成功を示す2変数と確認済みの内部JSONを、後続の監査部品が照合する。標準Entra検証が失敗した場合は、共通`on-error`の`core-entra-authentication-error`が失敗を記録して401を返す。短いXML式だけのため、このエラー部品にC#ファイルは置かない。
 
-監査の3部品は`policies/fragments/audit/<部品名>/`、入口確認は`policies/fragments/ingress/core-trusted-ingress/`へ置く。各部品フォルダには同名のXMLとC#を置き、`core-gateway-telemetry.cs`は同名XMLの認証主体の読取処理を担当する。query監査は`fragments/audit/core-query-telemetry/`の専用XML／C#へ整理する。CM拒否監査は`snippets/audit/credential-telemetry/`、接続応答の監査は`fragments/authentication/core-credential-connection-outbound/`の同名XML／C#が各messageと主体投影を所有する。配置先と移設手順は[管理構成](../../apps/apim/policies/README.md)を参照する。
+監査の3部品は`policies/fragments/audit/<部品名>/`、入口確認は`policies/fragments/ingress/core-trusted-ingress/`へ置く。各部品フォルダには同名のXMLとC#を置き、`core-gateway-telemetry.cs`は同名XMLの認証主体の読取処理を担当する。query監査は`fragments/audit/core-query-telemetry/`の専用XML／C#へ整理する。CM拒否監査は`snippets/audit/credential-telemetry/`、接続応答の監査は`fragments/authentication/core-credential-connection-outbound/`の同名XML／C#が各messageと主体投影を所有する。配置先と移設手順は[管理構成](../../apps/api-gateway/policies/README.md)を参照する。
 
 C#は生成時にXMLへ組み込み、APIM内で実行するため、新しい外部通信は発生しない。部品化とフォルダ移設で、出力項目、未確認の扱い、長さ・形式の確認、保存先・保持期間を変更しない。
 

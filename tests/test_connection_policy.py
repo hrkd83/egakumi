@@ -10,7 +10,7 @@ from test_credential_login import settings
 from policy_fixture_paths import policy_fixture_path
 
 CORE=Path(__file__).resolve().parents[1]
-POLICIES=CORE/"apps/apim/policies"
+POLICIES=CORE/"apps/api-gateway/policies"
 
 
 class ConnectionPolicyTests(unittest.TestCase):
@@ -57,7 +57,7 @@ class ConnectionPolicyTests(unittest.TestCase):
         parent=next(node for node in gateway.iter() if connection in list(node))
         self.assertEqual(list(parent)[list(parent).index(connection)+1].get('fragment-id'),'core-credential-session-use')
         # 外部MCPも同じsnippetを同じ接続→sessionの間に展開します。
-        publication=(CORE/'apps/apim/api-publication.bicep').read_text(encoding='utf-8')
+        publication=(CORE/'apps/api-gateway/api-publication.bicep').read_text(encoding='utf-8')
         mcp=next(line for line in publication.splitlines() if line.lstrip().startswith('credentialInbound:'))
         self.assertLess(mcp.index('core-credential-connection'),mcp.index('${credentialCallerErrorXml}'))
         self.assertLess(mcp.index('${credentialCallerErrorXml}'),mcp.index('core-credential-session-use'))

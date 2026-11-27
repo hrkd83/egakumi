@@ -11,7 +11,7 @@ from deployment.helpers.waf_body import ai_body_settings, managed_ai_paths
 
 
 def api(name):
-    return json.loads((ROOT / "apps/apim/apis" / (name + ".json")).read_text(encoding="utf-8"))
+    return json.loads((ROOT / "apps/api-gateway/apis" / (name + ".json")).read_text(encoding="utf-8"))
 
 
 class AiWafBodyTests(unittest.TestCase):

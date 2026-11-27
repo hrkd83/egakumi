@@ -18,7 +18,7 @@ LastError.PolicyId が core-entra-token-validation か確認
 
 失敗したトークンから本人を推測せず、アクセストークンや例外の詳細を応答・監査へ載せない。会社設定の不備や内部処理による500の分類は、`core-common-authentication` 側が担当する。このフラグメントは標準Entraトークン検証の失敗だけを扱う。
 
-生成・完全照合は `scripts/deployment/helpers/apim_common_authentication.py`、IaCへの登録は `apps/apim/api-publication.bicep` が担当する。読戻しでは、共通認証本文・呼出位置・標準検証とこの失敗処理の同時存在も確認する。
+生成・完全照合は `scripts/deployment/helpers/apim_common_authentication.py`、IaCへの登録は `apps/api-gateway/api-publication.bicep` が担当する。読戻しでは、共通認証本文・呼出位置・標準検証とこの失敗処理の同時存在も確認する。
 
 ## MOD-79：個別操作の共通トークン検証失敗
 

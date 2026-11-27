@@ -36,7 +36,7 @@ SELECTORS = (('urlSource',), ('input.content.file_url', 'input.output.file_url')
 
 class WafSourceUrlTests(unittest.TestCase):
     def test_manifest_and_lookup_select_only_the_three_approved_values_and_rule(self):
-        manifest = json.loads((ROOT / 'apps/apim/waf-source-url-exclusions.json').read_text(encoding='utf-8'))
+        manifest = json.loads((ROOT / 'apps/api-gateway/waf-source-url-exclusions.json').read_text(encoding='utf-8'))
         self.assertEqual(len(manifest['profiles']), 2)
         self.assertEqual({profile['name'] for profile in manifest['profiles']},
                          {profile['name'] for profile in PROFILES})

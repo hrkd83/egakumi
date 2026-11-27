@@ -54,8 +54,8 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | --- | --- |
 | ACAのFirewall経路 | [Core経路の保全試験](../../tests/test_network_preservation.py)。Firewallを迂回する公開宛経路の拒否と、所定の経路での再適用を確認する。 |
 | 固定NSGの構築と再開 | [配備前後の読戻し試験](../../tests/test_fixed_nsg_validation.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
-| Broker常設 | [Broker配備資材](../../apps/apim/deploy/main.bicep)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py)の`test_broker_resources_are_always_selected_independently_of_business_profiles` |
-| L7入口保護 | [AppGW資材](../../infra/modules/ingress/application-gateway.bicep)、[APIM共通policy](../../apps/apim/policies/service.xml)、[trusted ingress](../../tests/test_trusted_ingress.py) |
+| Broker常設 | [Broker配備資材](../../apps/api-gateway/deploy/main.bicep)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py)の`test_broker_resources_are_always_selected_independently_of_business_profiles` |
+| L7入口保護 | [AppGW資材](../../infra/modules/ingress/application-gateway.bicep)、[APIM共通policy](../../apps/api-gateway/policies/service.xml)、[trusted ingress](../../tests/test_trusted_ingress.py) |
 | 本文監査の専用経路 | [追加NSG正本](../../infra/modules/network/nsg/audit-evidence-rules.json)、[本文監査のネットワーク資材](../../infra/modules/audit-evidence/audit-evidence-network.bicep)、[資材試験](../../tests/test_audit_evidence_infra.py) |
 | 監査Blob閲覧 | [本人へ付与する保守権限](../operations/management-vm-access.md)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py) |
 | ACA/保存ログの認可 | [maintenance roles](../../infra/modules/management/management-maintenance-roles.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py) |

@@ -187,8 +187,8 @@ class StandardApiTests(unittest.TestCase):
         # 正規化はモデル能力とWAF入力契約も検査します。読込回数・順序に
         # 依存せず、すべてのAPIと必要な公開正本だけを読む境界を守ります。
         contracts = {
-            CORE / "apps/apim/model-capabilities.json",
-            CORE / "apps/apim/waf-input-contracts.json",
+            CORE / "apps/api-gateway/model-capabilities.json",
+            CORE / "apps/api-gateway/waf-input-contracts.json",
         }
         self.assertEqual(set(reads).intersection(templates), templates)
         self.assertFalse(set(reads) - templates - contracts)

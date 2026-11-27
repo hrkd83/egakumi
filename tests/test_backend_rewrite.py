@@ -19,10 +19,10 @@ class BackendRewriteDeploymentTests(unittest.TestCase):
     """公開APIのURLを、承認済みの下流URLへ書き換える条件を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep('apps/apim/api-publication.bicep')
+        cls.template = compile_bicep('apps/api-gateway/api-publication.bicep')
 
     def test_compiled_operation_policy_keeps_auth_and_fixed_query_contract(self):
-        definition = CORE / 'apps/apim/apis/blackforest-images-v1.json'
+        definition = CORE / 'apps/api-gateway/apis/blackforest-images-v1.json'
         api = json.loads(definition.read_text(encoding='utf-8'))
         api.update(apiType='http', backendUrl='https://backend.example.invalid')
         relay = {'url': 'https://relay.example.invalid', 'audience': 'api://example-relay'}

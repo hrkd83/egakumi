@@ -52,7 +52,7 @@ def fixture():
 
 def speech_fixture():
     """正規化後のCLI境界を使うため、未展開tokenを独立した合成URLへ置き換える。"""
-    definition = (ROOT / 'apps/apim/apis/azure-speech-v1.json').read_text(encoding='utf-8')
+    definition = (ROOT / 'apps/api-gateway/apis/azure-speech-v1.json').read_text(encoding='utf-8')
     for marker, value in {
         '__SPEECH_TTS_BASE_URL__': 'https://speech-tts.example.invalid',
         '__SPEECH_STT_BASE_URL__': 'https://speech-stt.example.invalid',
@@ -483,7 +483,7 @@ class GatewayDeploymentTests(unittest.TestCase):
     def test_document_waf_follows_publication_and_is_required_for_success(self):
         config,state=fixture()
         config['gateway']['authentication'].pop('credentialLogin')
-        config['apiDefinitions'].append(json.loads((ROOT/'apps/apim/apis/document-analysis-v1.json').read_text(encoding='utf-8')))
+        config['apiDefinitions'].append(json.loads((ROOT/'apps/api-gateway/apis/document-analysis-v1.json').read_text(encoding='utf-8')))
         events=[]
         document=mock.Mock(side_effect=lambda *args: events.append('document-waf') or {'paths':['/tools/documents/v1/analyze']})
         transport = mock.Mock()
@@ -505,7 +505,7 @@ class GatewayDeploymentTests(unittest.TestCase):
 
     def test_offline_plan_includes_document_waf_without_writing_azure(self):
         config,state=fixture()
-        config['apiDefinitions'].append(json.loads((ROOT/'apps/apim/apis/document-analysis-v1.json').read_text(encoding='utf-8')))
+        config['apiDefinitions'].append(json.loads((ROOT/'apps/api-gateway/apis/document-analysis-v1.json').read_text(encoding='utf-8')))
         with self.isolated_cli(config,state) as (arguments,observed):
             arguments.remove('--execute')
             self.assertEqual(gateway.main(arguments),0)

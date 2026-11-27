@@ -43,12 +43,12 @@ WebSocketとMCPも[RESTと同じTLS context](../deployment/helpers/client_tls.py
 
 ## WebSocketの確認対象
 
-正本は[API定義](../../apps/apim/apis/)です。6個のWebSocket API、外部WSS backend、公開定義上の論理操作`GET invoke /`、購読キーヘッダーを照合します。APIMが実際に登録・実行する接続操作IDは`onHandshake`です。transport結果の論理名`invoke`と分け、管理読戻しとnative監査は公開Bicepに定義した`onHandshake`へ対応付けます。接続先は選択環境の公開HTTPS originをWSSへ変換し、API pathと末尾`/`を加えます。backendへ直接接続しません。次のモデルやAPI版は、公開宣言と選択環境の配備モデルから決めます。
+正本は[API定義](../../apps/api-gateway/apis/)です。6個のWebSocket API、外部WSS backend、公開定義上の論理操作`GET invoke /`、購読キーヘッダーを照合します。APIMが実際に登録・実行する接続操作IDは`onHandshake`です。transport結果の論理名`invoke`と分け、管理読戻しとnative監査は公開Bicepに定義した`onHandshake`へ対応付けます。接続先は選択環境の公開HTTPS originをWSSへ変換し、API pathと末尾`/`を加えます。backendへ直接接続しません。次のモデルやAPI版は、公開宣言と選択環境の配備モデルから決めます。
 
 | API ID | 公開パス | 実施する確認 |
 | --- | --- | --- |
 | `openai-realtime-ws-v1` | `/models/openai-realtime/v1/ws/` | 宣言済みdefault modelをqueryへ設定。101、最初の`session.created`、正常closeを確認 |
-| `azure-voice-live-ws-v1` | `/models/voice-live/v1/ws/` | [public-bindings.json](../../apps/apim/public-bindings.json)のmodelとapi-versionをqueryへ設定。101、最初の`session.created`、正常closeを確認 |
+| `azure-voice-live-ws-v1` | `/models/voice-live/v1/ws/` | [public-bindings.json](../../apps/api-gateway/public-bindings.json)のmodelとapi-versionをqueryへ設定。101、最初の`session.created`、正常closeを確認 |
 | `openai-live-ws-v1` | `/models/openai-live/v1/ws/` | model queryを付けず、Portalと同じ`session.start`で配備モデルを送る。`session.started`、`session.close`に対する`session.closed`、正常closeを確認 |
 | `openai-transcription-ws-v1` | `/models/openai-transcription/v1/ws/` | queryは`intent=transcription`。配備モデルを`session.update`の音声入力設定へ送り、`session.updated`と正常closeを確認。最初の`session.created`も許容 |
 | `openai-realtime-observer-v1` | `/models/openai-realtime/v1/observer/` | 未実施。既存callに本人が紐づくowner-bound ticketが必要 |

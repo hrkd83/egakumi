@@ -48,7 +48,7 @@ PENDING = ("Accepted", "Creating", "Updating", "InProgress")
 OPEN_PRODUCT_PROPERTIES = {"displayName": "Core Entra model users", "description": "core-owned-entra-model-users-v1",
                            "subscriptionRequired": False, "state": "notPublished"}
 OPEN_PRODUCT_POLICY = '<policies><inbound><base /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
-PRM_GUARD = (REPOSITORY / 'apps/apim/policies/snippets/request/mcp-metadata-guard/mcp-metadata-guard.xml').read_text(encoding='utf-8')
+PRM_GUARD = (REPOSITORY / 'apps/api-gateway/policies/snippets/request/mcp-metadata-guard/mcp-metadata-guard.xml').read_text(encoding='utf-8')
 # 読戻しで、独立した旧生成元と完全一致する従来guardだけを照合します。
 # 新配備へこのXMLを差し込まず、現行正本への置換にも使いません。
 PREVIOUS_PRM_GUARD = '<choose><when condition="@(context.Request.OriginalUrl.Path.IndexOf(&quot;/.well-known/oauth-protected-resource&quot;, StringComparison.OrdinalIgnoreCase) &gt;= 0)"><return-response><set-status code="404" reason="Not Found" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>'

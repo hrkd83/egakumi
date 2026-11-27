@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1] / "scripts"),
-               str(Path(__file__).resolve().parents[1] / "apps/apim/deploy")]
+               str(Path(__file__).resolve().parents[1] / "apps/api-gateway/deploy")]
 import entra_publication as publication
 from deployment.helpers.apim_api_settings import render_api_settings_fragment
 

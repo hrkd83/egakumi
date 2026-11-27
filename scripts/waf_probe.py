@@ -157,7 +157,7 @@ def _literal_assignments(path: Path, names: Iterable[str]) -> dict:
 def load_routes(root: Path = ROOT) -> list[Route]:
     """Derive public operations from their existing contracts, including MCP/auth."""
     routes = []
-    for path in sorted((root / "apps/apim/apis").glob("*.json")):
+    for path in sorted((root / "apps/api-gateway/apis").glob("*.json")):
         api = json.loads(path.read_text(encoding="utf-8"))
         source = path.relative_to(root).as_posix()
         for operation in api["operations"]:
@@ -1786,9 +1786,9 @@ def published_model_matrix(root: Path = ROOT) -> list[dict]:
     selection or require a duplicated list in the WAF policy.
     """
     result = []
-    bindings_path = root / "apps/apim/public-bindings.json"
+    bindings_path = root / "apps/api-gateway/public-bindings.json"
     public_bindings = json.loads(bindings_path.read_text(encoding="utf-8")).get("bindings", {}) if bindings_path.exists() else {}
-    for path in sorted((root / "apps/apim/apis").glob("*.json")):
+    for path in sorted((root / "apps/api-gateway/apis").glob("*.json")):
         api = json.loads(path.read_text(encoding="utf-8"))
         if not api.get("released"):
             continue
@@ -2570,7 +2570,7 @@ def main(argv: list[str] | None = None) -> int:
         "selected_case_count": len(cases), "suite": args.suite,
         "wire_shape_audit": audit_wire_shapes(),
         "published_model_acceptance_plan": published_model_matrix(),
-        "exclusion_presence": exclusion_coverage(cases, json.loads((ROOT / "apps/apim/waf-data-exclusions.json").read_text(encoding="utf-8")))}
+        "exclusion_presence": exclusion_coverage(cases, json.loads((ROOT / "apps/api-gateway/waf-data-exclusions.json").read_text(encoding="utf-8")))}
     if args.list or args.dry_run:
         report["results"] = [metadata(case) for case in cases]
         if args.output:

@@ -16,7 +16,7 @@
 次の例では、正式な準備手順で作成した環境の`generated/`を使います。`rest.example.json`をコピーし、公開例と異なるID・値があればコピー側を編集します。worktreeから主チェックアウトの保護領域を使う場合は、`--runtime-root`で主チェックアウトの絶対パスを指定します。
 
 ```sh
-install -m 600 apps/apim/policies/portal-examples/rest.example.json .local/test/generated/manual-api.json
+install -m 600 apps/api-gateway/policies/portal-examples/rest.example.json .local/test/generated/manual-api.json
 python3 -B scripts/render_apim_portal_policy.py --environment test \
   --config .local/test/generated/manual-api.json \
   --output .local/test/generated/manual-api.xml

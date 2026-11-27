@@ -47,7 +47,7 @@ def render_trusted_ingress_fragment(*, source_comments: str = "full") -> str:
 
 
 def _render_trusted_ingress_fragment(filename: str, source_comments: str) -> str:
-    directory = REPOSITORY / "apps/apim/policies"
+    directory = REPOSITORY / "apps/api-gateway/policies"
     telemetry = (directory / "fragments/audit/core-gateway-telemetry/core-gateway-telemetry.xml").read_text(encoding="utf-8")
     telemetry = telemetry.replace("<fragment>", "").replace("</fragment>", "")
     telemetry = credential_login.key_only_gateway_telemetry(telemetry, source_comments=source_comments)

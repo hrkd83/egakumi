@@ -6,7 +6,7 @@ from .paths import REPOSITORY
 
 
 DOCUMENT_INPUT_VALIDATION_FRAGMENT_ID = "core-document-input-validation"
-_DIRECTORY = REPOSITORY / "apps/apim/policies/fragments/request" / DOCUMENT_INPUT_VALIDATION_FRAGMENT_ID
+_DIRECTORY = REPOSITORY / "apps/api-gateway/policies/fragments/request" / DOCUMENT_INPUT_VALIDATION_FRAGMENT_ID
 
 
 def render_document_input_validation_fragment() -> str:

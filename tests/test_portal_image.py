@@ -142,7 +142,7 @@ class PortalImageTests(unittest.TestCase):
         (source / 'app/page.tsx').write_bytes(b'page\r\n')
         (source / 'sql').mkdir()
         (source / 'sql/001_initial.sql').write_bytes(b'CREATE TABLE portal;\r\n')
-        definitions = root / 'apps/apim/apis'
+        definitions = root / 'apps/api-gateway/apis'
         definitions.mkdir(parents=True)
         (definitions / 'model.json').write_text(json.dumps({'name': 'model', 'path': 'models/openai/v1', 'operations': []}))
         (definitions.parent / 'model-capabilities.json').write_text(json.dumps({'schemaVersion': 1, 'entries': []}))
@@ -159,7 +159,7 @@ class PortalImageTests(unittest.TestCase):
             stale = source / image.MODEL_CATALOG_PATH
             stale.parent.mkdir(parents=True)
             stale.write_text('{"stale":true}')
-            canonical = root / 'apps/apim/apis/model.json'
+            canonical = root / 'apps/api-gateway/apis/model.json'
             data, checksum = image.source_bundle(root)
             with tarfile.open(fileobj=io.BytesIO(data), mode='r:xz') as archive:
                 self.assertEqual(archive.getnames().count(image.MODEL_CATALOG_PATH), 1)
@@ -177,7 +177,7 @@ class PortalImageTests(unittest.TestCase):
             stale = source / image.DOCUMENT_CONTRACT_PATH
             stale.parent.mkdir(parents=True)
             stale.write_text('{"apiVersion":"stale-version"}')
-            canonical = root / 'apps/apim/schemas/document-analysis.json'
+            canonical = root / 'apps/api-gateway/schemas/document-analysis.json'
             data, checksum = image.source_bundle(root)
             with tarfile.open(fileobj=io.BytesIO(data), mode='r:xz') as archive:
                 self.assertEqual(archive.getnames().count(image.DOCUMENT_CONTRACT_PATH), 1)
@@ -213,7 +213,7 @@ class PortalImageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             self.make_source(root)
-            folder = root / 'apps/apim'
+            folder = root / 'apps/api-gateway'
             values = {'VOICE_LIVE_MODEL': 'gpt-6.1-sol', 'VOICE_LIVE_CALLS_MODEL': 'gpt-6.1-sol',
                       'VOICE_LIVE_API_VERSION': '2026-04-10', 'VOICE_LIVE_CALLS_API_VERSION': '2026-01-01-preview'}
             bindings = folder / 'public-bindings.json'

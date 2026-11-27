@@ -23,7 +23,7 @@ class QueryGuardOrderTests(unittest.TestCase):
         from configuration_fixtures import CORE
         for filename, name in (("rest.xml", "model"), ("generated.xml", "native-mcp")):
             with self.subTest(template=filename):
-                value = policy_fixture_path(CORE / "apps/apim/policies", filename).read_text(encoding="utf-8")
+                value = policy_fixture_path(CORE / "apps/api-gateway/policies", filename).read_text(encoding="utf-8")
                 validate_query_observation_scope({APIM + "/apis/" + name + "/policies/policy": value,
                                            PREPARATION: render_api_request_preparation_fragment()}, APIM)
 

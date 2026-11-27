@@ -22,7 +22,7 @@ from waf_policy import canonical_gateway, canonical_policy, desired_policy, load
 
 
 def contracts():
-    return [json.loads((ROOT / 'apps/apim/apis' / (name + '.json')).read_text(encoding='utf-8'))
+    return [json.loads((ROOT / 'apps/api-gateway/apis' / (name + '.json')).read_text(encoding='utf-8'))
             for name in ('openai-images-v1', 'openai-audio-v1')]
 
 
@@ -124,7 +124,7 @@ class ModelWafRouteTests(unittest.TestCase):
                     require_source_routes(apis)
 
     def fixture(self):
-        all_apis = [json.loads(path.read_text(encoding='utf-8')) for path in sorted((ROOT / 'apps/apim/apis').glob('*.json'))]
+        all_apis = [json.loads(path.read_text(encoding='utf-8')) for path in sorted((ROOT / 'apps/api-gateway/apis').glob('*.json'))]
         config = {**copy.deepcopy(CONFIG), 'apiDefinitions': all_apis}
         source = gateway(path_based=True)
         mapping = next(m['properties'] for m in source['properties']['urlPathMaps'] if m['name'] == 'pathmap-protocols')

@@ -109,7 +109,7 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 
 ### 基盤作成とAPI利用を分けて選ぶ
 
-標準APIは[API正本](../../apps/apim/apis/)から常用で解決します。公開`apiDefinitions`と`publishApis`による置換・切替は廃止しました。解決したAPI配列や環境固有URLをparamsへ書き戻しません。
+標準APIは[API正本](../../apps/api-gateway/apis/)から常用で解決します。公開`apiDefinitions`と`publishApis`による置換・切替は廃止しました。解決したAPI配列や環境固有URLをparamsへ書き戻しません。
 
 | 入口 | 実行範囲 |
 | --- | --- |
@@ -418,7 +418,7 @@ configは`portalApiKeys.verificationMaxSubscriptions:5`を共通初期値にし�
 
 ## API・権限の記述形式
 
-標準APIの内容は[API正本](../../apps/apim/apis/)で管理します。以下の詳細契約を公開params入力の一覧と混同しません。独自APIの追加・変更は対象限定の運用計画で扱い、接続先・認証・WAF・監査と既存APIへの影響を確認します。
+標準APIの内容は[API正本](../../apps/api-gateway/apis/)で管理します。以下の詳細契約を公開params入力の一覧と混同しません。独自APIの追加・変更は対象限定の運用計画で扱い、接続先・認証・WAF・監査と既存APIへの影響を確認します。
 
 #### API正本の定義
 

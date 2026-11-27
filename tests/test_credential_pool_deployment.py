@@ -101,7 +101,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         self.assertGreater(public['credentialBroker']['minReplicas'], 0)
 
     def test_compiled_broker_resource_graph_is_always_present_and_keeps_sql_phase_gate(self):
-        gateway = compile_bicep('apps/apim/deploy/main.bicep')
+        gateway = compile_bicep('apps/api-gateway/deploy/main.bicep')
         for suffix in ('identity', 'database', 'access', 'broker'):
             with self.subTest(module=suffix):
                 module, = [item for item in gateway['resources']
@@ -119,7 +119,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         reconciliation, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/jobs'
                            and item['properties']['configuration']['triggerType'] == 'Schedule']
         self.assertEqual(reconciliation['condition'], '[parameters(\'deployApplication\')]')
-        apim = compile_bicep('apps/apim/deploy/apim-settings.bicep')
+        apim = compile_bicep('apps/api-gateway/deploy/apim-settings.bicep')
         for resource in apim['resources']:
             if 'credential-broker' in resource['name']:
                 self.assertNotIn('condition', resource)
@@ -259,7 +259,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
     def test_broker_application_and_apim_url_match_with_the_longest_supported_stem(self):
         """有効な最大長入力を短縮せず、ACA作成・出力・参照先・Pythonの名前を照合する。"""
         broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
-        gateway = compile_bicep('apps/apim/deploy/main.bicep')
+        gateway = compile_bicep('apps/api-gateway/deploy/main.bicep')
         app, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/containerapps']
         deployment, = [item for item in gateway['resources'] if "-gateway-broker'" in item['name']]
         settings, = [item for item in gateway['resources']

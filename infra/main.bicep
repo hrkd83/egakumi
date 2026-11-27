@@ -89,7 +89,7 @@ var signedOperationWafPaths = concat(
 // API名・公開prefix・操作名・method・template・kind・本文形式・パラメーターの一致で選びます。
 // 任意のtemplateをwildcardへ変換せず、他の配備名付き操作は従来の有限生成を維持します。
 // 正本catalogの小さい2署名だけを読取り、型定義全体をIaCへ重複して埋め込みません。
-var deploymentOperationWafContracts = loadJsonContent('../apps/apim/waf-input-contracts.json', '$.modelOperationWafRoutes')
+var deploymentOperationWafContracts = loadJsonContent('../apps/api-gateway/waf-input-contracts.json', '$.modelOperationWafRoutes')
 var approvedDeploymentWafRoutes = filter(deploymentOperationWafContracts, contract => length(filter(infrastructureApis, api => (api.?name ?? '') == contract.api && api.path == contract.path && (api.?apiType ?? 'http') == contract.apiType && length(filter(api.operations, operation => operation.name == contract.operation && operation.method == contract.method && operation.urlTemplate == contract.urlTemplate && api.authorization.operationConstraints[operation.name].kind == contract.kind && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? '') == contract.bodyFormat && (api.authorization.operationConstraints[operation.name].?parameter ?? '') == contract.parameter && string(api.authorization.operationConstraints[operation.name].?contentTypes ?? []) == string(contract.contentTypes))) > 0)) > 0)
 var deploymentOperationWafPaths = map(approvedDeploymentWafRoutes, contract => contract.wafPath)
 // 上の正式一致が成立した2操作はprefixへ置換し、モデル別の完全パスを重ねて生成しません。
@@ -243,7 +243,7 @@ module services 'modules/services/services.bicep' = if (deployCore) {
 }
 
 // 共通policyの設定はAPI公開より先に用意し、Gateway配備と同じ生成元を使います。
-module entraSettings '../apps/apim/deploy/entra-named-values.bicep' = if (deployCore && contains(gatewayConfig.authentication, 'entra')) {
+module entraSettings '../apps/api-gateway/deploy/entra-named-values.bicep' = if (deployCore && contains(gatewayConfig.authentication, 'entra')) {
   name: '${stem}-core-entra-settings'
   scope: svcGroup
   params: {

@@ -23,7 +23,7 @@ from operations.common import OperationError, lock_environment
 
 
 PROVIDER = "aigateway"
-RESPONSES_API = REPOSITORY / "apps/apim/apis/openai-inference-v1.json"
+RESPONSES_API = REPOSITORY / "apps/api-gateway/apis/openai-inference-v1.json"
 HOST_PATTERN = re.compile(r"(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?", re.ASCII)
 
 

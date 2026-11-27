@@ -89,8 +89,8 @@ def managed_ai_paths(config):
 
 
 CONTENT_TYPE_RULE_ID = "920420"
-RAW_CONTROLS = REPOSITORY / "apps/apim/waf-raw-body-controls.json"
-JSON_CONTROLS = REPOSITORY / "apps/apim/waf-json-content-controls.json"
+RAW_CONTROLS = REPOSITORY / "apps/api-gateway/waf-raw-body-controls.json"
+JSON_CONTROLS = REPOSITORY / "apps/api-gateway/waf-json-content-controls.json"
 
 
 def speech_content_policy(source):

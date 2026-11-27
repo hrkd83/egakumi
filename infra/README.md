@@ -16,4 +16,4 @@
 
 空のAzure環境に [正式手順](../docs/setup/08-provision-core.md) で構築します。この資材での構築を再開するときは、NSGカタログが対象とするサブネットの作成済みルールを読み取り、現行の定義と照合します。規則名・通信条件が一致しない場合は、Coreのネットワーク配備に進む前に停止します。
 
-GatewayのAPI・ポリシー・アプリ配備は [apps/apim/deploy](../apps/apim/deploy/)、Portal本体の配備は [apps/portal/deploy](../apps/portal/deploy/) にあります。
+GatewayのAPI・ポリシー・アプリ配備は [apps/api-gateway/deploy](../apps/api-gateway/deploy/)、Portal本体の配備は [apps/portal/deploy](../apps/portal/deploy/) にあります。

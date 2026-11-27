@@ -26,7 +26,7 @@ APIMが付与する要求IDで、本文と従来のメタデータ監査を照�
 | OpenAI Chat Completions・Responses | 中継で、APIMの制御を反映した提供元向け入力と、JSON／SSEの応答を採る |
 | 埋め込み・リランク・画像・音声・意思決定・Graph・PII・Document | 認証・認可・利用枠を通過した要求では、APIMの変換前の入力と公開用の応答を同じ監査基盤へ送る。PIIとDocumentは、APIMの変換後の応答を採る。Documentの結果取得用チケットは除く |
 | PIIの生成MCP | ツールが呼んだREST側でPIIの業務入出力を採る。外側のJSON-RPC／SSEを読むとストリーミングに影響するため、MCP接続の要求IDとREST処理の要求IDで照合する |
-| 手動追加するClaude Messages・Count Tokens | Coreと同じFoundryに配備したモデルを使い、中継でJSON／SSEを採る。Claudeを追加する場合に中継IDへ対象Foundryの推論権限を付与する。 [Claude公開手順](../../apps/apim/policies/portal-examples/claude-messages.md) |
+| 手動追加するClaude Messages・Count Tokens | Coreと同じFoundryに配備したモデルを使い、中継でJSON／SSEを採る。Claudeを追加する場合に中継IDへ対象Foundryの推論権限を付与する。 [Claude公開手順](../../apps/api-gateway/policies/portal-examples/claude-messages.md) |
 | Realtime・Live制御 | 基盤では作成・認可・接続・停止等のメタデータを採る。業務テキスト・文字起こしは呼び出し側で扱う |
 
 初回構築は標準HTTP 20操作のうち、OpenAI中継の2操作とAPIMが本文を提出する15操作が対象。残り3操作はRealtime／Liveの制御用である。APIMで停止した要求の本文は、認可後の本文送信より手前にあるためメタデータで確認する。外部MCPや独自ストリーミングAPIを追加する場合は、対応する業務本文の採取先と、セッション・逐次配信を維持する経路の確認を公開前に行う。 [MCPポリシーの制約](https://learn.microsoft.com/en-us/azure/api-management/export-rest-mcp-server#configure-policies-for-the-mcp-server)

@@ -7,7 +7,7 @@ Tool Gatewayは、既存のFoundryリソース（`AIServices`）をAPIMのマネ
 `POST https://gateway.example.com/tools/documents/v1/analyze?model=prebuilt-layout`（ホストは合成例）
 
 - 認証: `api-key`にこのAPIを含む製品の有効な購読キーを指定するか、`Authorization: Bearer <ENTRA_ACCESS_TOKEN>`で社員認証を行います。
-- `Content-Type`: 提供元の入力方式に合う値を送ります。原本の代表的なMIMEは[API定義のcontentTypes](../../apps/apim/apis/document-analysis-v1.json)を参照。JSON入力には`application/json`を使います。APIMはDocumentのMIME一覧比較や、ヘッダーの欠落・複数値・空欄を確認する独自の検査を行いません。
+- `Content-Type`: 提供元の入力方式に合う値を送ります。原本の代表的なMIMEは[API定義のcontentTypes](../../apps/api-gateway/apis/document-analysis-v1.json)を参照。JSON入力には`application/json`を使います。APIMはDocumentのMIME一覧比較や、ヘッダーの欠落・複数値・空欄を確認する独自の検査を行いません。
 - 本文: 原本ファイルのraw binary、または提供元のJSON入力`urlSource`／`base64Source`。APIMは本文を解析・変換せず転送します。`urlSource`の文書はDocument Intelligenceが取得します。Portalのアップロード画面は、引き続き原本ファイルを送る方式です。
 - `Content-Length`は必須にしません。読み取れた申告サイズが**500,000,000 bytes**を超える場合は、共有処理が早期413で止めます。サイズ確認のためだけに本文全体を読み出す検査は行いません。
 - `model`: 提供元のモデルIDを、空でない1値で指定します。URL階層を変える`.`／`..`は400にします。Gateway独自の2モデル一覧による拒否は撤去し、モデルの利用可否は提供元が判定します。`prebuilt-read`（文字認識）や`prebuilt-layout`（文字とレイアウト・表）は利用例です。
@@ -32,7 +32,7 @@ curl 'https://gateway.example.com/tools/documents/v1/analyze?model=prebuilt-layo
 
 ## 応答と処理
 
-対応API版の正本は[公開Schema](../../apps/apim/schemas/document-analysis.json)の`DocumentAnalysisResult.analyzeResult.apiVersion.enum`の単一値で、現在は`2024-11-30`です。標準API定義の開始・状態取得に版を重複記載せず、配備前のPython正規化で両操作へ補完します。明示された版が正本と異なる場合は配備前に拒否します。同じ値をBicepから開始URI、受付URLの照合、状態GETへ渡します。⑱では結果照合が、共通APIの準備済み設定`gatewayOperationConstraint`から`apiVersion`と`maxResponseBytes`を直接読みます。Status専用の設定変数・埋込みBase64の復元を撤去し、上限・版・チケット・結果の条件は維持します。⑲ではStatusの操作設定`gatewayOperationConstraint`の取得・JSON解析失敗だけを500・`DocumentAnalysisUnavailable`へ分類し、`policy-error`・`OPERATION_SETTINGS_INVALID`・500の監査を1回記録します。提供元本文・版・容量などの不備は既存502を維持し、要求IDと`Cache-Control: no-store`も維持します。網羅的な再検査は追加しません。Portalの公開表示・結果検査も既存生成物を通じて同じ版を使います。実行時の追加読取りや再検査は行わず、公開仕様・対応版・チケット形式は維持します。
+対応API版の正本は[公開Schema](../../apps/api-gateway/schemas/document-analysis.json)の`DocumentAnalysisResult.analyzeResult.apiVersion.enum`の単一値で、現在は`2024-11-30`です。標準API定義の開始・状態取得に版を重複記載せず、配備前のPython正規化で両操作へ補完します。明示された版が正本と異なる場合は配備前に拒否します。同じ値をBicepから開始URI、受付URLの照合、状態GETへ渡します。⑱では結果照合が、共通APIの準備済み設定`gatewayOperationConstraint`から`apiVersion`と`maxResponseBytes`を直接読みます。Status専用の設定変数・埋込みBase64の復元を撤去し、上限・版・チケット・結果の条件は維持します。⑲ではStatusの操作設定`gatewayOperationConstraint`の取得・JSON解析失敗だけを500・`DocumentAnalysisUnavailable`へ分類し、`policy-error`・`OPERATION_SETTINGS_INVALID`・500の監査を1回記録します。提供元本文・版・容量などの不備は既存502を維持し、要求IDと`Cache-Control: no-store`も維持します。網羅的な再検査は追加しません。Portalの公開表示・結果検査も既存生成物を通じて同じ版を使います。実行時の追加読取りや再検査は行わず、公開仕様・対応版・チケット形式は維持します。
 
 開始POSTは上流の[非同期解析API](https://learn.microsoft.com/rest/api/aiservices/document-models/analyze-document?view=rest-aiservices-v4.0%20(2024-11-30))を1回だけ呼び、受付後に**202**と`operationId`・`model`・`statusPath`・`ticket`・`expiresAt`を返します。内部のFoundry URL・`Operation-Location`は公開しません。
 
@@ -50,13 +50,13 @@ curl 'https://gateway.example.com/tools/documents/v1/analyze?model=prebuilt-layo
 
 Portal画面のモデル選択は`prebuilt-read`／`prebuilt-layout`の2種類を維持し、BFFの制約も今回変更しません。画面はFileをraw本文で送り、BFFは形式判別用の先頭と受信byte数だけを検査してGatewayへストリーミングします。ファイル全体をBFFメモリーへ集約せず、元ファイルを一度だけ送信し、以後は状態確認を自動実行します。旧multipart入口も互換用に残します。ブラウザーへ渡すのは本人と選択キーの台帳IDに束縛した暗号化handleです。中止・一時的な通信障害・同じタブの再読込後も状態確認を再開でき、原本や平文チケットは保存しません。画面の中止は上流ジョブの取消を意味しません。最初のPOSTの結果が不明な場合は、二重処理・追加料金を避けるため自動再送しません。
 
-残すDocumentの入力検査は、利用回数制限・下流接続の準備・`accepted`監査より前で実行します。正本は[core-document-input-validation](../../apps/apim/policies/fragments/request/core-document-input-validation/README.md)にまとめ、解析開始の操作ポリシーは`policies/operation-policies/document-analysis/document-analysis.xml`に置きます。`model`の存在・単一値・非空と`.`／`..`の拒否は維持し、2モデル一覧による拒否と、そのためだけの操作設定JSON再読取りは撤去します。先行する設定・共有サイズの検査、チケット・返却URIとのモデル照合、固定接続先は維持します。開始POSTのstringIndexTypeと状態取得GETのクエリ非転送は⑭・㉒で整理済みです。Document固有inboundの棚卸はここで区切り、対象APIM資材のまとめ反映・読戻し照合を完了しました。実経路の受入は小文書の入力方式を一部確認し、容量境界・内部障害・期限切れなどの残件を維持します。開始側の受付・チケット発行、応答変換、`on-error`の残る条件は続く棚卸の対象です。開始POSTの追加クエリ転送に合わせたWAF変更や、クエリ名・値の監査への追加記録は行いません。
+残すDocumentの入力検査は、利用回数制限・下流接続の準備・`accepted`監査より前で実行します。正本は[core-document-input-validation](../../apps/api-gateway/policies/fragments/request/core-document-input-validation/README.md)にまとめ、解析開始の操作ポリシーは`policies/operation-policies/document-analysis/document-analysis.xml`に置きます。`model`の存在・単一値・非空と`.`／`..`の拒否は維持し、2モデル一覧による拒否と、そのためだけの操作設定JSON再読取りは撤去します。先行する設定・共有サイズの検査、チケット・返却URIとのモデル照合、固定接続先は維持します。開始POSTのstringIndexTypeと状態取得GETのクエリ非転送は⑭・㉒で整理済みです。Document固有inboundの棚卸はここで区切り、対象APIM資材のまとめ反映・読戻し照合を完了しました。実経路の受入は小文書の入力方式を一部確認し、容量境界・内部障害・期限切れなどの残件を維持します。開始側の受付・チケット発行、応答変換、`on-error`の残る条件は続く棚卸の対象です。開始POSTの追加クエリ転送に合わせたWAF変更や、クエリ名・値の監査への追加記録は行いません。
 
 提供元の400／415／422は、現行の応答変換によりGatewayの422・`DocumentRejected`になります。独立した小さい試験文書による空本文・短い本文・別MIME・gzip宣言の要求では、Gatewayの422・`DocumentRejected`を確認しました。Content-Type欠落の403は原因を未切り分けで、空値など未実施の条件へ結果を広げません。APIMの申告サイズ超過は共有の413・`REQUEST_TOO_LARGE`、提供元の413は`DocumentInputTooLarge`、modelの欠落・複数値・空値と`.`／`..`は400・`DocumentInvalidInput`で返します。内部変数のモデル情報を引き継げない失敗は停止を維持して500・`DocumentAnalysisUnavailable`へ分け、監査は`OPERATION_SETTINGS_INVALID`とします。Portal BFFの原本ファイル検査と、その`DocumentUnsupportedMediaType`などの固定失敗コードは維持します。㉜ではGETのチケット・認証結果確認の拒否を応答前に1回監査し、403は`rejected`／`DOCUMENT_OPERATION_DENIED`（文書チケット段階の拒否）、410は`rejected`／`DOCUMENT_OPERATION_EXPIRED`（期限切れ）、500は`policy-error`／`AUTHENTICATION_PROCESSING_ERROR`を記録します。既存の拒否条件・公開body・status・要求ID・no-storeは維持し、生チケット・JSON・例外は出力しません。共通認可・流量制限の拒否は、Gatewayの共通エラー契約に従います。入力原本・抽出本文・上流の診断本文は監査ログへ含めません。
 
 ## 配備と保護
 
-`apps/apim/apis/document-analysis-v1.json`を標準APIとして自動読込し、`released-apis`製品へ関連付けます。既存の検証製品は`pii-users`を使います。`scripts/deploy_gateway.py`がAPI公開に続いて、文書受付の完全パスだけへ専用WAFポリシーを関連付けます。
+`apps/api-gateway/apis/document-analysis-v1.json`を標準APIとして自動読込し、`released-apis`製品へ関連付けます。既存の検証製品は`pii-users`を使います。`scripts/deploy_gateway.py`がAPI公開に続いて、文書受付の完全パスだけへ専用WAFポリシーを関連付けます。
 
 Gatewayの`/tools/documents/v1/analyze`とPortalの`/api/tools/documents`の専用WAFはPreventionと本文検査を維持し、先頭**2000 KiB**まで検査します。本文・ファイルのサイズ強制は解除し、検査枠を超える部分は検査せず受け付けます。受付MIMEの`920420`とraw本文の`930110`だけを調整し、URI・query・header・cookieのtraversalは4本のBlock規則で補完します。`920470`・`930100`などの他規則、認証・管理経路の厳格なポリシーは維持します。Portal BFFは原本のMIME・先頭形式・受信サイズを確認し、APIMは申告サイズの早期413と残るmodelの条件を確認します。文書の形式・内容・実サイズの受付可否は提供元が判定します。[WAFの適用範囲](../testing/waf-compatibility.md)
 

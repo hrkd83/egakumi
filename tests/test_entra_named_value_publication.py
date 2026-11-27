@@ -253,7 +253,7 @@ class EntraNamedValueInfrastructureTests(unittest.TestCase):
                     if isinstance(resource.get("properties"), dict) and resource["properties"].get("template") == expected)
 
     def test_shared_module_compiles_only_four_nonsecret_named_values_from_existing_config(self):
-        template = compile_bicep("apps/apim/deploy/entra-named-values.bicep")
+        template = compile_bicep("apps/api-gateway/deploy/entra-named-values.bicep")
         _, plan, _ = configured()
         entra = {key: value for key, value in plan["entraAuthentication"].items() if key in ("audience", "requiredScope", "userLimits")}
         parameters = {"apimName": "fixture", "tenantId": plan["entraTenantId"], "entra": entra}
@@ -276,10 +276,10 @@ class EntraNamedValueInfrastructureTests(unittest.TestCase):
         self.assertEqual(validate_entra_named_values(actual), plan["entraNamedValues"])
 
     def test_formal_entrances_use_same_module_before_api_publication(self):
-        shared = compile_bicep("apps/apim/deploy/entra-named-values.bicep")
+        shared = compile_bicep("apps/api-gateway/deploy/entra-named-values.bicep")
         foundation = compile_bicep("infra/main.bicep")
-        gateway = compile_bicep("apps/apim/deploy/main.bicep")
-        settings = compile_bicep("apps/apim/deploy/apim-settings.bicep")
+        gateway = compile_bicep("apps/api-gateway/deploy/main.bicep")
+        settings = compile_bicep("apps/api-gateway/deploy/apim-settings.bicep")
         foundation_entry = self.module(foundation, shared)
         gateway_entry = self.module(gateway, settings)
         settings_entry = self.module(settings, shared)

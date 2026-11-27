@@ -12,7 +12,7 @@ from test_gateway_limits_telemetry import LIMIT_EXPRESSION, PWSH, expression
 import test_pii_policy as fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICIES = ROOT / "apps/apim/policies"
+POLICIES = ROOT / "apps/api-gateway/policies"
 
 
 class PiiApiLimitContractTests(unittest.TestCase):
@@ -20,8 +20,8 @@ class PiiApiLimitContractTests(unittest.TestCase):
     def setUpClass(cls):
         if not PWSH:
             raise unittest.SkipTest("PowerShell is required for real C# expressions")
-        template = compile_bicep("apps/apim/api-publication.bicep")
-        api = json.loads((ROOT / "apps/apim/apis/pii-v1.json").read_text())
+        template = compile_bicep("apps/api-gateway/api-publication.bicep")
+        api = json.loads((ROOT / "apps/api-gateway/apis/pii-v1.json").read_text())
         # 配備normalizerがPOST操作に補う本文形式を、生読込みfixtureにも用意します。
         api["authorization"]["operationConstraints"]["pii_redact_text"].setdefault("bodyFormat", "json")
         api.update(apiType="http", backendUrl="https://backend.example.com",
@@ -160,7 +160,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
         limits = next(i for i, item in enumerate(inbound) if item.get("fragment-id") == "core-model-limits")
         self.assertLess(base, limits)
         self.assertEqual(list(self.operation.find("inbound"))[0].tag, "base")
-        self.assertIn("apiPolicies", compile_bicep("apps/apim/api-publication.bicep")["resources"]["operationPolicies"]["dependsOn"])
+        self.assertIn("apiPolicies", compile_bicep("apps/api-gateway/api-publication.bicep")["resources"]["operationPolicies"]["dependsOn"])
         response = self.mapping.find("return-response")
         self.assertEqual(response.find("set-status").get("code"), "413")
         self.assertEqual(response.find("./set-header[@name='Cache-Control']/value").text, "no-store")
