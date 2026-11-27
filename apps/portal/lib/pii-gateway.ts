@@ -3,7 +3,8 @@ import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 import { containsModelCredential } from "./model-credential.ts";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
-import { getApiKeyService } from "./api-keys/service.ts";
+import { apiAuthenticationFailure, resolveGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
+import type { PortalBearer } from "./api-auth/service.ts";
 import { getModelGatewayEnvironment, type ModelGatewayEnvironment } from "./model-gateway.ts";
 import { readEmbeddingBody } from "./embedding-response.ts";
 import { PII_API, buildPiiRequest, piiExecutionSchema, piiResponseSchema } from "./pii-contract.ts";
@@ -16,6 +17,7 @@ export type PiiGatewayDependencies = {
   readSession: () => Promise<ApiKeyActor | null>; readPortalOrigin: () => string;
   readGatewayEnvironment?: () => Promise<ModelGatewayEnvironment>;
   resolveSubscriptionKey?: (actor: ApiKeyActor, apiKeyId: string, apiId: string) => Promise<string>;
+  resolveBearer?: () => Promise<PortalBearer>;
   fetch?: typeof globalThis.fetch; timeoutMs?: number;
 };
 
@@ -49,16 +51,19 @@ export async function handlePiiRedaction(request: Request, dependencies: PiiGate
     const origin = new URL(gateway.origin);
     if (origin.protocol !== "https:" || origin.origin !== gateway.origin || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) throw new TypeError("Invalid gateway origin");
   } catch { return failure("GatewayNotConfigured", 503); }
-  let key: string;
+  let credential: GatewayCredential;
   try {
-    key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId)))(actor, input.apiKeyId, PII_API.apiId);
-    if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new TypeError("Invalid subscription key");
-  } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
+    credential = await resolveGatewayCredential(request, actor, input, PII_API.apiId, gateway.origin,
+      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+  } catch (error) {
+    const apiAuth = apiAuthenticationFailure(error);
+    if (apiAuth) return failure(apiAuth.code, apiAuth.status);
+    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
   const timeout = modelDeadline(dependencies.timeoutMs), signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();
   let identifier: string | undefined;
   try {
-    const response = await (dependencies.fetch ?? globalThis.fetch)(new URL(PII_API.path, gateway.origin), { method: "POST", redirect: "error", cache: "no-store", signal, headers: { "Content-Type": "application/json", Accept: "application/json", "api-key": key }, body });
+    const response = await (dependencies.fetch ?? globalThis.fetch)(new URL(PII_API.path, gateway.origin), { method: "POST", redirect: "error", cache: "no-store", signal, headers: { "Content-Type": "application/json", Accept: "application/json", ...credential.headers }, body });
     const id = response.headers.get("apim-request-id");
     if (id && /^[a-zA-Z0-9_-]{1,128}$/.test(id)) identifier = id;
     const details = identifier ? { requestId: identifier } : {};
@@ -71,7 +76,7 @@ export async function handlePiiRedaction(request: Request, dependencies: PiiGate
     }
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") { await response.body?.cancel(); return failure("GenerationFailed", 502, details); }
     const raw = await readEmbeddingBody(response.body, MAX_BUFFERED_BODY_BYTES, signal), value: unknown = JSON.parse(raw);
-    if (containsModelCredential(value, key, raw)) throw new TypeError("Unexpected credential reflection");
+    if (containsModelCredential(value, credential.value, raw)) throw new TypeError("Unexpected credential reflection");
     const result = piiResponseSchema.parse(value);
     if (result.language !== input.language) throw new TypeError("Unexpected language");
     return Response.json({ result, durationMs: Math.round(performance.now() - started) }, { headers: responseHeaders });

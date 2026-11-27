@@ -10,6 +10,8 @@ import { ArrowUpRight, Check, CheckCircle2, Code2, Copy, LoaderCircle, Play, Shi
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ApiDocumentationLayout, ApiSchemaReference } from "@/components/api-documentation-layout";
+import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+import { startPortalApiAuthorization } from "@/lib/api-auth/browser";
 import type { GraphToolDictionary } from "@/lib/i18n/graph-tool";
 import type { Locale } from "@/lib/i18n/config";
 import { GRAPH_TOOL_PATH, GRAPH_TOOL_PROFILE_FIELDS, graphToolProfileValue, type GraphToolKey } from "@/lib/graph-tool-contracts";
@@ -47,15 +49,27 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
   const [view, setView] = useState<"request" | "schema" | "response">("request");
   const [keys, setKeys] = useState<{ status: "loading" | "ready" | "error"; items: GraphToolKey[] }>({ status: "loading", items: [] });
   const [keyRefresh, setKeyRefresh] = useState(0);
+  const [reauthenticating, setReauthenticating] = useState(false);
+  const [reauthenticationFailed, setReauthenticationFailed] = useState(false);
   const request = useRef<AbortController | null>(null);
   const pollNow = useRef<(() => void) | null>(null);
   const selectedKey = keys.status === "ready" ? keys.items.find((key) => key.id === state.apiKeyId) : undefined;
+  const authentication = useTryAuthentication(selectedKey?.id);
+  const authSelection = authentication.store;
+  const bearerMode = authentication.selection.mode === "bearer";
+  const bearerConnected = authentication.selection.status === "connected";
   const running = state.phase === "running";
 
   useEffect(() => () => deactivatePanelRequest(request, (pending) => { if (pending) store.getState().selectKey(store.getState().apiKeyId); }), [store]);
 
+  useEffect(() => authSelection.subscribe((current, previous) => {
+    if (current.mode === previous.mode &&
+      !(current.mode === "bearer" && previous.status === "connected" && current.status !== "connected")) return;
+    deactivatePanelRequest(request, () => store.getState().selectKey(store.getState().apiKeyId));
+  }), [authSelection, store]);
+
   useEffect(() => {
-    if (view !== "response") return;
+    if (view !== "response" || bearerMode) return;
     const controller = new AbortController();
     void loadGraphToolKeys(controller.signal).then((items) => {
       if (controller.signal.aborted) return;
@@ -64,25 +78,30 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
       if (previous && !items.some((key) => key.id === previous)) store.getState().selectKey("");
     }).catch(() => { if (!controller.signal.aborted) setKeys({ status: "error", items: [] }); });
     return () => controller.abort();
-  }, [keyRefresh, store, view]);
+  }, [bearerMode, keyRefresh, store, view]);
 
   /** APIへの通常要求は1回だけ送り、認証完了後の読み取りだけを一度再開します。 */
   const execute = useCallback(async (resuming = false) => {
     if (request.current) return;
     const apiKeyId = store.getState().apiKeyId;
-    if (!apiKeyId) return;
+    const selected = authSelection.getState();
+    const credential = selected.mode === "bearer"
+      ? selected.status === "connected" ? { authentication: "bearer" as const } : undefined
+      : apiKeyId || undefined;
+    if (!credential) return;
+    setReauthenticationFailed(false);
     const controller = new AbortController();
     request.current = controller;
     const revision = store.getState().begin();
     try {
-      const result = await executeGraphTool(apiKeyId, gatewayOrigin, controller.signal);
+      const result = await executeGraphTool(credential, gatewayOrigin, controller.signal);
       if (controller.signal.aborted) return;
       if (resuming && result.status === "need_login") throw new GraphToolResponseError({ error: { code: "GraphReauthenticationRequired" } });
       store.getState().receive(revision, result, Date.now());
     } catch (error) {
       if (!controller.signal.aborted) store.getState().fail(revision, error instanceof GraphToolResponseError ? error.failure : { error: { code: "GatewayUnavailable" } });
     } finally { if (request.current === controller) request.current = null; }
-  }, [gatewayOrigin, store]);
+  }, [authSelection, gatewayOrigin, store]);
 
   useEffect(() => {
     if (state.phase !== "waiting" || state.deadline === null) return;
@@ -91,15 +110,16 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
   }, [state.phase, state.deadline, state.revision, store]);
 
   useEffect(() => {
-    if (state.phase !== "waiting" || state.deadline === null || state.pollFailed) return;
+    if (state.phase !== "waiting" || state.deadline === null || state.pollFailed || (bearerMode && !bearerConnected)) return;
+    const credential = bearerMode ? { authentication: "bearer" as const } : state.apiKeyId;
     const poller = createGraphToolPoller({
       deadline: state.deadline,
-      poll: (signal) => checkGraphToolConnection(state.apiKeyId, signal),
+      poll: (signal) => checkGraphToolConnection(credential, signal),
       visible: () => document.visibilityState === "visible",
       onComplete: () => { if (canResumeGraphTool(store.getState(), state.revision, state.apiKeyId)) return execute(true); },
       onExpired: () => store.getState().expire(state.revision),
       onFailure: (error) => {
-        if (error instanceof GraphToolResponseError && error.failure.error.code === "ConnectionIdentityMismatch") store.getState().fail(state.revision, error.failure);
+        if (error instanceof GraphToolResponseError && ["ConnectionIdentityMismatch", "ApiAuthenticationRequired"].includes(error.failure.error.code)) store.getState().fail(state.revision, error.failure);
         else store.getState().markPollFailed(state.revision, true);
       },
     });
@@ -107,7 +127,7 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
     document.addEventListener("visibilitychange", poller.requestNow);
     poller.requestNow();
     return () => { poller.stop(); if (pollNow.current === poller.requestNow) pollNow.current = null; document.removeEventListener("visibilitychange", poller.requestNow); };
-  }, [state.phase, state.deadline, state.apiKeyId, state.revision, state.pollFailed, execute, store]);
+  }, [bearerConnected, bearerMode, state.phase, state.deadline, state.apiKeyId, state.revision, state.pollFailed, execute, store]);
 
   /** キー変更時は進行中の旧要求を取り消し、以前の認証URL・応答を破棄します。 */
   function selectKey(id: string) {
@@ -118,10 +138,21 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
   /** 権限を再確認する間は古い候補で実行しないよう、一覧を読み込み状態にします。 */
   function refreshKeys() { setKeys({ status: "loading", items: [] }); setKeyRefresh((value) => value + 1); }
 
+  /** Graphが要求した追加条件で、試用のEntra認証だけを取り直します。 */
+  async function reauthenticateGraph(claims: string) {
+    setReauthenticating(true);
+    setReauthenticationFailed(false);
+    try { await startPortalApiAuthorization(window.location.pathname, claims); }
+    catch { setReauthenticationFailed(true); }
+    finally { setReauthenticating(false); }
+  }
+
+  const claims = bearerMode ? state.failure?.claims : undefined;
   const result = state.result;
   const settings = <div className="space-y-5">
     <section className="space-y-5">
-      <div className="space-y-3">
+      <TryAuthenticationPicker model={authentication} locale={locale} />
+      {!bearerMode && <div className="space-y-3">
         <div className="flex items-center justify-between gap-3"><label htmlFor={formId("graph-api-key")} className="text-xs font-medium">{text.key}</label><Button variant="ghost" size="sm" disabled={running || state.phase === "waiting" || keys.status === "loading"} className="h-7 text-xs" onClick={refreshKeys}>{text.refreshKeys}</Button></div>
         <Select value={selectedKey?.id ?? ""} disabled={running || keys.status !== "ready" || !keys.items.length} onValueChange={selectKey}>
           <SelectTrigger id={formId("graph-api-key")} className="h-10 w-full min-w-0 bg-white text-xs" aria-describedby={formId("graph-api-key-help")}><SelectValue placeholder={text.chooseKey} className="min-w-0 flex-1 overflow-hidden text-left" /></SelectTrigger>
@@ -131,9 +162,9 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
         {keys.status === "loading" && <p role="status" className="text-xs text-muted-foreground">{text.loadingKeys}</p>}
         {keys.status === "error" && <p role="alert" className="text-xs text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
         {keys.status === "ready" && !keys.items.length && <p role="status" className="text-xs leading-6 text-muted-foreground">{text.noKeys} <Link href={`/${locale}/api-keys`} className="font-medium text-primary underline underline-offset-4">{text.manageKeys}</Link></p>}
-      </div>
+      </div>}
       <div className="space-y-2 rounded-lg border border-border bg-white p-3"><h3 className="flex items-center gap-2 text-xs font-semibold"><Code2 className="size-4 text-primary" />{text.fixedRequest}</h3><p className="break-all font-mono text-xs leading-6"><span className="mr-2 font-semibold text-primary">GET</span>{gatewayOrigin ?? "https://gateway.example.com"}{GRAPH_TOOL_PATH}</p><p className="text-xs leading-6 text-muted-foreground">{text.fixedNote}</p></div>
-      <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-xl text-xs leading-6 text-muted-foreground">{text.loginNote}</p><Button type="button" size="sm" disabled={!selectedKey || running || state.phase === "waiting"} onClick={() => { void execute(); }}>{running ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}{running ? text.running : text.execute}</Button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-xl text-xs leading-6 text-muted-foreground">{text.loginNote}</p><Button type="button" size="sm" disabled={!authentication.credential || running || reauthenticating || state.phase === "waiting"} onClick={() => { void execute(); }}>{running ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}{running ? text.running : text.execute}</Button></div>
     </section>
 
     {state.phase === "waiting" && state.loginUrl && <section className="space-y-4 rounded-xl border border-blue-200 bg-blue-50/60 p-5" aria-live="polite">
@@ -142,7 +173,10 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
       {state.pollFailed && <p role="status" className="text-xs leading-6 text-amber-800">{text.timedOut}</p>}
     </section>}
     {state.phase === "expired" && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-900">{text.expired}</p>}
-    {state.failure && <div role="alert" className="space-y-2 rounded-xl border border-destructive/20 bg-destructive/4 p-4 text-sm leading-7 text-destructive"><p>{text.errors[state.failure.error.code]}</p>{state.failure.requestId && <p className="break-all font-mono text-xs">{text.requestId}: {state.failure.requestId}</p>}</div>}
+    {state.failure && <div role="alert" className="space-y-2 rounded-xl border border-destructive/20 bg-destructive/4 p-4 text-sm leading-7 text-destructive"><p>{text.errors[state.failure.error.code]}</p>{state.failure.requestId && <p className="break-all font-mono text-xs">{text.requestId}: {state.failure.requestId}</p>}
+      {claims && <Button size="sm" variant="outline" type="button" disabled={reauthenticating}
+        onClick={() => { void reauthenticateGraph(claims); }}>{text.reauthenticate}</Button>}
+      {reauthenticationFailed && <p>{text.errors.ApiAuthenticationUnavailable}</p>}</div>}
 
   </div>;
   const response = <div className="space-y-4" aria-busy={running}>

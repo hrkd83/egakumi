@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from .caller import UserCaller
 from .cm import CmClient
 from .identity import OidcClient
+from .obo import GraphOboClient, GraphOboError
 from .service import BrokerError, BrokerService, COOKIE_NAME, browser_cookie
 from .settings import Settings
 
@@ -19,20 +20,27 @@ from .settings import Settings
 def create_app(service=None):
     @asynccontextmanager
     async def lifespan(app):
+        graph_obo = None
         try:
             if service is None:
                 from .store import SqlStore
                 settings = Settings.from_environment()
                 store = SqlStore.from_environment()
                 store.ensure_ready()
-                app.state.broker = BrokerService(settings, store, OidcClient(settings.public_origin), CmClient(settings))
+                if settings.graph_obo:
+                    graph_obo = GraphOboClient.from_settings(settings)
+                app.state.broker = BrokerService(settings, store, OidcClient(settings.public_origin), CmClient(settings), graph_obo=graph_obo)
             else:
                 service.store.ensure_ready()
                 app.state.broker = service
         except Exception:
             # 起動失敗時も、SQL接続文字列や認証処理の詳細をログへ出しません。
             raise RuntimeError("Credential broker initialization failed") from None
-        yield
+        try:
+            yield
+        finally:
+            if graph_obo is not None:
+                graph_obo.close()
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     # HTTPライブラリの詳細ログへOAuth queryや内部資格情報を出しません。
@@ -183,6 +191,24 @@ def create_app(service=None):
         value, sub = await session_body(request, ("profileName", "verifiedOwnerId", "apiId", "operationId"))
         return await run_in_threadpool(app.state.broker.use, value["connectionSession"], sub,
             value["profileName"], value["verifiedOwnerId"], value["apiId"], value["operationId"])
+
+    @app.post("/v1/graph/obo")
+    async def graph_obo_exchange(request: Request):
+        caller = trusted_caller(request)
+        if not isinstance(caller, UserCaller):
+            raise BrokerError("ConnectionNotAuthorized", 403)
+        if request.url.query:
+            raise BrokerError("InvalidRequest", 400)
+        value = await body(request, ("assertion",))
+        try:
+            token = await run_in_threadpool(app.state.broker.graph_token, value["assertion"], caller)
+        except GraphOboError as error:
+            codes = {401: "GraphReauthenticationRequired", 403: "GraphAccessDenied", 503: "GraphOboUnavailable"}
+            result = {"error": {"code": codes[error.status]}, "requestId": request.state.request_id}
+            if error.claims:
+                result["claims"] = error.claims
+            return JSONResponse(result, status_code=error.status)
+        return {"accessToken": token}
 
     @app.post("/v2/session/commit")
     async def commit_rotation(request: Request):

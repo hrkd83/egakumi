@@ -12,6 +12,8 @@ param apiDefinitions array = []
 param credentialLogin object = {}
 @description('Managed Entra settings; controller opens Product membership only after raw readback.')
 param entraAuthentication object = {}
+@description('Graph /meのBearer経路に、準備済みの専用OBO署名鍵を使います。')
+param graphOboEnabled bool = false
 @description('基盤と各APIで照合済みの購読キーヘッダー名。診断の秘密マスクにも使います。')
 param subscriptionKeyHeader string = 'api-key'
 @description('APIMが検証した購読IDごとの共通要求回数制限。')
@@ -591,9 +593,27 @@ var backendHeadersXml = [for api in apiDefinitions: empty(operationBackendSelect
 // CM未設定のHTTP APIは、未使用の設定代入と到達しないfragment参照を生成元にも残しません。
 // 接続設定のあるAPIはInboundで接続/sessionを直接呼び、Outboundの既存分岐も維持します。
 func replaceCredentialBranch(policy string, startMarker string, endMarker string, fallback string) string => '${split(policy, startMarker)[0]}${fallback}${split(policy, endMarker)[1]}'
-func selectHttpCredentialPolicy(api object, policy string) string => api.apiType != 'http' || contains(api, 'credentialConnection') ? policy
+func graphOboApi(api object) bool => api.apiType == 'http' && api.name == 'graph-profile-v1'
+func graphOboRegistrationMatches(api object) bool => api.path == 'tools/graph/v1' && api.backendUrl == 'https://graph.microsoft.com/v1.0' && api.backendAuthentication.mode == 'none' && (api.?credentialConnection.?providerName ?? '') == 'graph-delegated' && empty(operationBackendSelection(api)) && empty(backendHeaderPolicy(api)) && length(api.operations) == 1 && length(filter(api.operations, operation => operation.name == 'graph_profile_self' && operation.method == 'GET' && operation.urlTemplate == '/me' && (operation.?backendUrlTemplate ?? '') == '/me?$select=displayName,givenName,surname,userPrincipalName,id,jobTitle,companyName,department,employeeId,officeLocation,mail,accountEnabled')) == 1
+var graphOboSource = loadTextContent('policies/snippets/authentication/graph-obo/graph-obo.cs')
+var graphOboTemplate = loadTextContent('policies/snippets/authentication/graph-obo/graph-obo.xml')
+var graphOboSlots = [
+  { marker: '__GRAPH_OBO_BROKER_RESULT_CSHARP__', section: 'broker-result', body: false, trimmed: true, indent: '        ' }
+  { marker: '__GRAPH_OBO_BACKEND_RESULT_CSHARP__', section: 'backend-result', body: false, trimmed: true, indent: '        ' }
+]
+var graphOboXml = renderPolicyTemplate(graphOboTemplate, graphOboSource, graphOboSlots)
+func graphOboSection(section string) string => split(split(graphOboXml, '<!-- graph-obo-${section}-start -->')[1], '<!-- graph-obo-${section}-end -->')[0]
+func wrapGraphOboBranch(policy string, section string, graphBranch string) string => replaceCredentialBranch(policy,
+  '<!-- core-http-credential-${section}-start -->', '<!-- core-http-credential-${section}-end -->',
+  '<choose><when condition="@((bool)context.Variables[&quot;gatewayGraphObo&quot;])">${graphBranch}</when><otherwise>${split(split(policy, '<!-- core-http-credential-${section}-start -->')[1], '<!-- core-http-credential-${section}-end -->')[0]}</otherwise></choose>')
+func selectGraphOboPolicy(api object, policy string, enabled bool) string => enabled && graphOboApi(api) ? replace(
+  wrapGraphOboBranch(wrapGraphOboBranch(policy, 'inbound',
+    replace(replace(graphOboSection('inbound'), '__GRAPH_OBO_ERROR_XML__', graphOboSection('error')), '__GRAPH_OBO_REGISTRATION_VALID__', string(graphOboRegistrationMatches(api)))),
+    'outbound', replace(graphOboSection('outbound'), '__GRAPH_OBO_ERROR_XML__', graphOboSection('error'))),
+  '__GRAPH_OBO_ASSERTION_XML__', graphOboSection('assertion')) : replace(policy, '    __GRAPH_OBO_ASSERTION_XML__\n', '')
+func selectHttpCredentialPolicy(api object, policy string, graphOboEnabled bool) string => api.apiType != 'http' || contains(api, 'credentialConnection') || (graphOboEnabled && graphOboApi(api)) ? policy
   : replaceCredentialBranch(replaceCredentialBranch(policy, '<!-- core-http-credential-inbound-start -->', '<!-- core-http-credential-inbound-end -->', '__BACKEND_AUTHENTICATION_XML__'), '<!-- core-http-credential-outbound-start -->', '<!-- core-http-credential-outbound-end -->', '')
-func baseApiPolicy(api object, policyTemplate string, backendAuthentication string, backendHeaders string, credentialCallerError string) string => replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectHttpCredentialPolicy(api, policyTemplate),
+func baseApiPolicy(api object, policyTemplate string, backendAuthentication string, backendHeaders string, credentialCallerError string, graphOboEnabled bool) string => replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectGraphOboPolicy(api, selectHttpCredentialPolicy(api, policyTemplate, graphOboEnabled), graphOboEnabled),
   '__AUTHORIZATION_BASE64__', base64(string(api.authorization))),
   '__WEBSOCKET_SETTINGS_BASE64__', api.apiType == 'websocket' ? base64(string(api.websocket)) : ''),
   '__KEY_HEADER__', api.subscriptionKeyHeader),
@@ -641,6 +661,7 @@ var mcpMetadataGuardXml = loadTextContent('policies/snippets/request/mcp-metadat
 // Keep only small per-API substitutions in variables. Storing every final XML
 // here and again in resources/source would exceed ARM's expanded size budget.
 var policySettings = [for (api, index) in apiDefinitions: {
+  graphOboEnabled: graphOboEnabled
   authentication: backendAuthenticationXml[index]
   headers: backendHeadersXml[index]
   cleanup: protocolRateCleanupXml[index]
@@ -655,7 +676,7 @@ var policySettings = [for (api, index) in apiDefinitions: {
 }]
 func apiPolicyValue(api object, template string, errorXml string, values object) string =>
   replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectBackendPolicy(api,
-    replace(replace(replace(baseApiPolicy(api, template, values.authentication, values.headers, values.credentialCallerError),
+    replace(replace(replace(baseApiPolicy(api, template, values.authentication, values.headers, values.credentialCallerError, values.graphOboEnabled),
       '__RATE_LIMIT_ERROR_XML__', errorXml), '__RATE_LIMIT_CLEANUP_XML__', values.cleanup),
       '__API_SETTINGS_BASE64__', base64(apiSettings(api, '', false)))),
     '__PROTOCOL_QUERY_XML__', values.queries), '__WEBSOCKET_QUERY_BASE64__', values.websocketQuery),

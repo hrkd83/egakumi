@@ -6,21 +6,18 @@
 
 ## 1. Entraの戻り先を確認する
 
-[Entraの事前準備](02-entra.md)で作成した共用アプリの「認証」→「Web」に、次の戻り先が登録されていることを確認する。
+[Entraの事前準備](02-entra.md)でToolsとCredentialを分け、それぞれのWeb戻り先を確認する。
 
-```text
-https://authorization-manager.consent.azure-apim.net/redirect/apim/<APIM_NAME>
-https://<GATEWAY_HOST>/auth/connections/browser/identity-callback
-https://<PORTAL_HOST>/api/auth/callback/microsoft
-```
+| アプリ | 戻り先 | 用途 |
+| --- | --- | --- |
+| egakumi-tools | `https://authorization-manager.consent.azure-apim.net/redirect/apim/<APIM_NAME>` | 購読キー利用者のGraph委任接続とCMの更新 |
+| egakumi-credential | `https://<GATEWAY_HOST>/auth/connections/browser/identity-callback` | 接続窓口の本人確認 |
 
-`<APIM_NAME>`・`<GATEWAY_HOST>`・`<PORTAL_HOST>`は対象環境の名前に置き換える。認証窓口・CM・Portalは同じアプリを共用し、Graphの委任権限、Portalのグループ所属照会用アプリケーション権限、有効なclient secretを準備する。
-
-![WebプラットフォームにCM・本人確認・Portalの公開用戻り先3件が登録された画面](../images/entra-cm-setup/04-web-redirect.png)
+両者のclient secretを別々の保護ファイルへ入力する。GraphのBearer呼び出しでは、そのトークンの宛先のegakumi-apiに登録した証明書をBrokerで使う。Portalの戻り先と署名証明書は[Portal登録](entra-portal.md)を参照する。
 
 ## 2. 本人接続の設定を確認する
 
-公開paramsの`credentialProviders.graphDelegated`にはClient IDと`clientSecretFile`を設定する。共通configの同slotには表示名・scope・pool、`config.gateway.authentication.credentialLogin`にはprovider選択とセッション設定を置く。標準の論理名`graph-delegated`とtenantは固定資材から導出する。追加providerは双方の`additional[]`で定義と登録を論理名照合する。今回の配置整理だけで既存アプリID・secret・本人確認fallbackを切り替えず、現在の認証先と設定を検査する。Portalの`portalAuthentication.credentialProviderName`も同じ論理プロファイルを使う。
+公開paramsの`credentialProviders.graphDelegated`にはClient IDと`clientSecretFile`を設定する。共通configの同slotには表示名・scope・pool、`config.gateway.authentication.credentialLogin`にはprovider選択とセッション設定を置く。標準の論理名`graph-delegated`とtenantは固定資材から導出する。追加providerは双方の`additional[]`で定義と登録を論理名照合する。最終構成の本人確認には`gateway.authentication.credentialLogin.identity`を必須とする。Portalの`portalAuthentication.credentialProviderName`も同じ論理プロファイルを使う。
 
 ```bash
 python3 scripts/deployment/lifecycle.py validate --config "$DEPLOY_PARAMS_FILE"
@@ -30,16 +27,9 @@ SQLの容量・バックアップ・ゾーン冗長化は`config/test.json`ま�
 
 ## 3. 初期構築を実行する
 
-新規構築は、同じparamsで共通基盤→Gateway→Portalの順にまとめて実行する。Entraの戻り先・秘密ファイル・公開DNSを準備する。Portalの管理グループObject IDと表示名正規表現だけを初回の対話で入力するか、無人実行なら [Portalの配備手順](portal.md#配備の実行)に従って事前設定する。
+[空環境からの構築](06-deploy.md)に従い、`azd provision`でAPIM本体、共通SQL、Private Endpoint、専用ID、ACR、ACA、Key Vault、公開証明書を準備する。egakumi-apiにOBO用の公開証明書を登録し、Graphの委任`User.Read`へ管理者同意してから、次節のGatewayを配備する。その後[Portal配備](portal.md)を行う。
 
-```bash
-export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
-azd up --environment "$DEPLOY_ENVIRONMENT"
-```
-
-`azd up` はAPIM本体、共通SQLサーバー、SQL初期化用ID、Private Endpoint、ACA環境・ACR、Key Vaultと共有Entra secretを準備する。`postprovision` が実出力と入口設定を整え、`postup` が `scripts/deploy_applications.py --execute` を通じてGateway配備、Portal配備の順に実行する。credentials DB、CMプロバイダー、認証窓口の実行用ID・Container App・ジョブ・専用鍵・APIMバックエンドはGateway工程が担当する。初期構築では、次節の個別コマンドを重ねて実行する必要はない。
-
-標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は廃止した。旧項目は空配列やfalseでも拒否する。既存入力・非標準値を無断変換せず、[移行条件](04-params.md#既存入力の移行を確認する)を先に確認する。基盤だけを準備する場合は`azd provision`を使う。今回の入力整理のAzure反映と全環境再構築E2Eは未実施である。
+共通基盤とGatewayの設定は同じparams・保護stateを使う。credentials DB、CM、Broker、照合ジョブ、APIM APIはGateway工程が担当する。既存アプリから移行する場合の事前確認は[工程8](../reference/entra-app-rollout-plan.md#工程8旧共用アプリと移行設定を撤去する)を参照する。
 
 SQLサーバーは`sql-<stem>`、Private Endpointは`pe-<stem>-sql`。`<stem>`には環境名とプロダクト名が入る。SQLへの公開アクセスとSQLパスワード認証は無効とし、後続のジョブとアプリはマネージドIDで接続する。
 
@@ -93,7 +83,7 @@ API登録は手順4に含まれるため、別の登録コマンドは不要。�
 - 別の人では別の接続になること。
 - 別購読のセッションを使用すると拒否されること。
 - 更新前後で既存のキー認証と保存済み`cs2`セッションが利用できること。
-- GatewayのBearer認証でも同じGraph APIを呼べること。CMでGatewayと異なる本人へサインインすると拒否され、別利用者やキー経路のセッションを流用できないこと。
+- GatewayのBearer認証でGraph OBOを使い、同じAPIを呼べること。キー経路では、CMでGatewayと異なる本人にサインインした場合や、別利用者のセッションを流用した場合に拒否されること。
 - CMの切断・削除時に他の資格情報へ切り替わらず、再認証が必要になること。
 - DBへの到達不能時に、本人接続APIが利用を許可しないこと。
 - キー不正・権限不足・SQLや外部通信の障害を認証のやり直しに置き換えないこと。
@@ -119,7 +109,7 @@ APIだけを更新する処理は、対応するReadiness probeと最新Ready re
 
 SQL版4への移行後、旧imageだけへ戻しても旧Brokerのhealthは回復しない。対応版のSQL・image・定期ジョブを揃えて同じparamsから再試行し、前進して復旧する。DBを戻す判断が必要な場合は、本書の時点復元手順に従う。SQLの復元はCM側の状態を巻き戻さない。
 
-既存キー用の`cs2`は保持する。Bearer利用へ切り替えるときは、その検証済みユーザーに結び付く新しい`cs2`を取得する。同じテナント・本人のCM接続は再利用するが、キー用とユーザー用のセッションは相互に流用できない。SQL版3から4への移行は実SQLでは未試験であり、配備前に専用SQLで移行・データ保持・既存キーの継続利用を確認する。
+既存キー用の`cs2`は保持する。分離済みGraph APIのBearerは検証済み本人をOBOで引き継ぐ。CMを採用した他のBearer対応APIでは検証済み本人に対応する`cs2`を使う。同じテナント・本人のCM接続は再利用するが、キー用とユーザー用のセッションは相互に流用できない。SQL版3から4への移行は実SQLでは未試験であり、配備前に専用SQLで移行・データ保持・既存キーの継続利用を確認する。
 
 SQLの実行用ユーザーはマネージドIDのクライアントIDをSIDとして登録する。Azure RBACの割当で使うオブジェクトIDとは用途が異なる。[Microsoft公式のCREATE USERの例](https://learn.microsoft.com/en-us/sql/t-sql/statements/create-user-transact-sql?view=azuresqldb-current#k-create-a-contained-database-user-from-a-microsoft-entra-principal-without-validation)に従う。
 

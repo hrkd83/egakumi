@@ -6,7 +6,7 @@ const maximumFrameCharacters = MODEL_MAX_EVENT_CHARACTERS;
 const errorCodes = new Set<ModelGatewayErrorCode>([
   "InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable",
   "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout",
-  "GenerationFailed", "OutputLimitReached", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable",
+  "GenerationFailed", "OutputLimitReached", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable",
 ]);
 
 /** 応答の読取り失敗を、画面で翻訳可能な公開エラーに統一します。 */

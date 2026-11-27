@@ -14,7 +14,7 @@ Portalへログインする仕組みは工程3のBetter Authを維持し、API�
 4. 各Tryの要求をAPIキー／Bearerの型に分け、開始・結果取得・接続終了まで本人と認証方式を維持する。
 5. logout／API接続解除を複数instanceへ反映する。進行中のWebRTC停止に必要な場合だけ、停止専用のアクセストークンを最大60秒、暗号化して保持する。通常APIや更新には使わない。
 
-合意の対象は工程4の実装方針である。初回のEntra登録内容を[手動登録手順](../setup/entra-portal.md)へ確定し、一度の手動作成・設定で工程3を受入する。工程4の正式実装は工程3の受入後に進める。Azure適用・Portal認証切替では、その時点の具体的な差分と復旧手順を提示する。
+合意の対象は工程4の実装方針である。初回のEntra登録内容を[手動登録手順](../setup/entra-portal.md)へ確定し、一度の手動作成・設定で工程3を受入する。初回構築の手順は[配備手順](../setup/06-deploy.md)に従う。Azure・Entraでの工程3、工程4の認証は順に受け入れる。
 
 ## アプリとトークンの役割
 
@@ -22,7 +22,7 @@ Portalへログインする仕組みは工程3のBetter Authを維持し、API�
 | --- | --- |
 | 新しいPortal用Entraアプリ | Webクライアント。Portalログイン、Graph管理、API用Authorization Codeのクライアント認証を、KVの証明書client assertionで行う |
 | 既存のAPI用Entraアプリ | Gateway APIを表すリソース。`Gateway.Invoke`を公開し、APIMがこのAPIのaudienceを検証する |
-| 既存のCM用アプリ | CMの本人接続を担当する。既存secretと保存領域を維持する |
+| egakumi-tools | 購読キー経路のCM本人接続を担当する。専用secretを使用 |
 | PortalのACA | サーバー処理とブラウザー向け画面を実行する。共有資材で枠を準備し、登録結果を受け取った後に本体イメージを配備する |
 
 ```mermaid
@@ -36,23 +36,23 @@ flowchart LR
   Portal -->|管理用の別トークン| Graph[Microsoft Graph]
 ```
 
-PortalのID tokenはPortal利用者の確認、GraphのApplication tokenはグループ・ユーザー管理、APIのaccess tokenはGateway呼出しに使う。API tokenをGraphへ転送せず、ID tokenやGraph管理tokenをAPIへ送らない。Graphの本人接続は既存CMを維持し、OBOは工程5の別判断とする。
+PortalのID tokenはPortal利用者の確認、GraphのApplication tokenはグループ・ユーザー管理、APIのaccess tokenはGateway呼出しに使う。API tokenをGraphへ転送せず、ID tokenやGraph管理tokenをAPIへ送らない。Graphでは購読キーに本人のCM接続、BearerにAPIアプリによるOBOを使う。
 
 PortalとGatewayの利用者認証は同じ認証tenantを前提とし、署名検証した`tid`と`oid`を一致させる。KV・ACA・SQLのAzure tenantは同一・別tenantの双方を扱う。Gatewayの認証tenantがPortalと異なる構成を、メールやゲストの別Object IDで自動対応したものとして扱わない。
 
-## 通常の構築手順と開発中の段階
+## 新規構築の順序
 
-工程3・4の実装が完成した資材を使う通常の新規構築は、次の流れにする。API／CM用アプリの従来の事前準備は別アプリの前提として維持する。
+[5アプリの登録計画](../setup/02-entra.md)と合わせて次の順に構築する。
 
 | 順序 | 作業 | 担当 |
 | --- | --- | --- |
-| 1 | 共有資源、Portal ACAの初期サンプル、KV内の認証鍵・証明書、API保存暗号鍵を準備。管理VMの初期化workerと構築hookが終了・保存まで確認 | 構築資材 |
+| 1 | 共通基盤・Portal ACA初期サンプルを配備し、専用ACA JobでPortal認証用の鍵と公開証明書を準備 | 構築資材 |
 | 2 | 新しいPortal用Entraアプリを作成し、公開`.cer`、2つのWeb戻り先、必要な権限、管理者同意を同じ依頼で設定 | Entra管理チームの手動操作 |
-| 3 | 登録結果を保護paramsへ設定し、完成済みのPortalイメージをビルド・配備。工程3・4を受入 | Portal配備資材と受入担当 |
+| 3 | 登録結果を保護paramsへ設定し、Gatewayの成功後にPortalを配備。Portal配備時にAPI保存暗号鍵とSQLを準備し、ログインとAPI試用を受入 | Portal配備資材と受入担当 |
 
 Azureポータルの画面操作は「新規登録→証明書・権限等の設定」になるが、途中に資材構築やPortal配備を挟まない。Portalアプリの作成だけを先に依頼し、工程4のために別の編集依頼を後から追加する手順にはしない。
 
-現在の開発・受入では、工程3を受入してから工程4を正式実装し、追加イメージを配備する。この開発中の段階配備を、完成後の新規構築で毎回行う実装作業と混同しない。API保存暗号鍵の初期化・専用IDは、この設計で追加する予定資材であり、既存の証明書準備workerの実装済み範囲ではない。
+登録・保護入力・配備の照合を終えた後、実AzureではPortalのログイン・Graph管理と、API試用の本人認可・更新・失効を確認する。
 
 ## 一度のEntra登録に必要な設定
 
@@ -122,7 +122,7 @@ flowchart TD
 
 ## SQL・暗号鍵・保存期限
 
-SQLは既存Portal DBとTedious/KyselyのProxy接続を維持する。専用テーブルを追加し、CM用の保存領域と鍵を使わない。現時点のmigration最大番号は`010`であり、次番号は実装・統合時に再照合する。
+SQLは既存Portal DBとTedious/KyselyのProxy接続を維持する。専用テーブルを追加し、CM用の保存領域と鍵を使わない。Portal SQLのmigrationは、API用の認証状態を扱う専用テーブルを作る。
 
 | 提案テーブル | 保存するもの・寿命 |
 | --- | --- |
@@ -140,11 +140,11 @@ AES-256-GCMを使う。新しい保存用32-byte鍵をKV secretへ置き、versi
 | 認証RSA秘密鍵 | KVの非exportable鍵。Portal・Graph jobは署名を要求する。private key/PFXを取り出さない |
 | API保存暗号鍵 | 認証鍵・Cookie鍵・CM鍵と別用途のKV secret。暗号処理のためPortalサーバーのメモリーに入るがブラウザーへ出さない。Entra client secretではない |
 | API保存用UAMI | Azure資材で新規作成しPortal本体だけへ関連付ける。対象secret名scopeの読取りだけを許可。Graph jobへ関連付けず、既存の署名専用IDのsign権限を広げない |
-| 初期化worker | 管理VMで暗号鍵をメモリー内生成しKVへ保存。既存secretの由来・形式・版を照合して再利用し、再実行で毎回更新しない。値を出力・保存入力・イメージへ残さない |
+| 初期化 | 構築端末のプロセスが暗号鍵を生成し、ARM経由でKey Vaultへ保存する。鍵は構築資材へ出力せず、Portal本体が専用の実行IDで読み取る |
 
-初期化に必要な管理VMのsecret操作は、対象名へ限定して設計・実装する。API保存用ID、secret読取割当、初期化workerと必要権限、metadata収集をCore/hookへ組み込む。既存環境用の限定追加と、全体構築から自動実行する経路を両方確認する。現在の証明書初期発行の承認範囲へ、この追加変更を混ぜない。
+Portal配備時は対象のKey Vaultとsecretの所有・参照先を照合し、同じ環境の再実行で既存の暗号鍵を再利用する。署名用の鍵とAPIトークンの暗号鍵は用途別に管理する。
 
-暗号鍵の更新では新versionを準備し、現行/旧versionを読める配備から新鍵で暗号化する。残存行・取引・cleanupの旧versionがなくなったことと全instanceの参照を確認してから旧版を無効化する。証明書更新とは別運用で、Entraアプリの追加編集を要求しない。
+暗号鍵の更新では新versionを準備し、現行/旧versionを読める配備から新鍵で暗号化する。残存行・取引・cleanupの旧versionがなくなったことと全instanceの参照を確認してから旧版を無効化する。証明書更新とは別運用で、Entraアプリの追加編集を要求しない。現行の配備コマンドは初回固定版の作成と再利用に対応する。旧版と新版を運用中に併用する計画更新は、この設計条件に沿って別途検証する。
 
 ## 競合・失効・エラーの契約
 
@@ -220,4 +220,4 @@ SQLはProxy/TCP1433、KV PE・EntraへのHTTPS443を使う。外部CAの通信�
 | 6. ローカル品質・適用案 | TypeScript型検査・lint・build、関連試験、依存変更時audit、文書参照・混入検査。確認済み共有コミットを統合し、Azure差分と復旧手順を提示 |
 | 7. 実適用・受入 | 判断済み差分だけを適用し、Entra設定、実コード交換、全Try両方式、Graph/CM、更新・再認証・失効・停止・rollback・通常の新規構築手順を確認 |
 
-API保存用資材・API OAuth本体・全Try接続はこの設計の予定作業であり、合成ライブラリ9ケースの成功で完成扱いにしない。実値・資格情報・実受入の証跡は、各checkout直下の`.local/`と`.azure/`だけで扱う。
+API用OAuth、暗号鍵、各Tryの受入は、対象環境で上記の確認が通った結果を記録する。実値・資格情報・実受入の証跡は、各checkout直下の`.local/`と`.azure/`だけで扱う。

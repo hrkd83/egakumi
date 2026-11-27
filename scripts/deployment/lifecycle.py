@@ -2028,6 +2028,7 @@ def require_certificate_job_cutover(config, outputs, transport):
 def finish_certificate_core(config, outputs, transport, serial_password, l7_secret, firewall_root_ca):
     """Coreの依存先を記録し、初回発行・公開・DNSを同じ順序で完了する。"""
     from .helpers.certificate_jobs import complete_initial_certificates
+    from .helpers.gateway_obo_certificate import store_initial as store_gateway_obo_certificate
     from .helpers.portal_auth_certificate import store_initial_certificate
     from operations.common import OperationContext, OperationError
 
@@ -2044,6 +2045,8 @@ def finish_certificate_core(config, outputs, transport, serial_password, l7_secr
             issued = complete_initial_certificates(config, outputs, transport, protected_json,
                                                    workspace=workspace, repository=ROOT)
             store_initial_certificate(config, workspace, issued["portal"], protected_json)
+            if "gatewayObo" in issued:
+                store_gateway_obo_certificate(config, workspace, issued["gatewayObo"], protected_json)
             pending_path = workspace.state / "public-ingress-pending.json"
             pending = {key: config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem", "resourceGroupNames")}
             pending.update(apimInstanceId=apim_instance_id(config), gatewayPlan=outputs["gatewayPlan"],
@@ -2146,6 +2149,8 @@ def main(argv=None) -> int:
             report = capacity_preflight(config, transport, previous.get("properties", {}).get("outputs", {}))
             print(json.dumps(report))
         elif args.command == "preup":
+            if config.get("codex"):
+                raise DeploymentError("The five-app setup starts with azd provision. Register both public certificates in Entra, then deploy Gateway and Portal separately.")
             if config["publishApis"] is not True:
                 raise DeploymentError("azd up requires publishApis=true to deploy Gateway and Portal. Use azd provision for foundation-only deployment.")
             _assert_current_apim_instance(config)

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomBytes, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { ApiKeyError } from "../lib/api-keys/contracts.ts";
 import { openRealtimeCallHandle, sealRealtimeCallHandle, type RealtimeCallHandle } from "../lib/realtime-call-handle.ts";
@@ -44,7 +45,7 @@ test("停止参照は暗号化され、改変・別本人・別鍵・期限切�
   const now = Date.now(); const value: RealtimeCallHandle = { version: 1, ...actor, apiKeyId, modelId: realtime.id, callId, ticket: ticket(), expiresAt: now + 300_000 };
   const first = sealRealtimeCallHandle(value, handleSecret, now); const second = sealRealtimeCallHandle(value, handleSecret, now);
   assert.notEqual(first, second); assert.ok(!first.includes(callId)); assert.deepEqual(openRealtimeCallHandle(first, handleSecret, actor, now), value);
-  assert.throws(() => openRealtimeCallHandle(`${first.slice(0, 8)}X${first.slice(9)}`, handleSecret, actor, now));
+  assert.throws(() => openRealtimeCallHandle(`${first.slice(0, 8)}${first[8] === "X" ? "Y" : "X"}${first.slice(9)}`, handleSecret, actor, now));
   assert.throws(() => openRealtimeCallHandle(first, handleSecret + "changed", actor, now));
   assert.throws(() => openRealtimeCallHandle(first, handleSecret, { ...actor, objectId: "44444444-4444-4444-8444-444444444444" }, now));
   assert.throws(() => openRealtimeCallHandle(first, handleSecret, actor, now + 300_000));
@@ -347,4 +348,67 @@ test("停止参照は本人と現在の購読権限を再確認し、固定hangu
   assert.equal((await handleRealtimeStop(stop(), dependencies({ readSession: async () => ({ ...actor, objectId: "44444444-4444-4444-8444-444444444444" }) }))).status, 400);
   assert.equal((await handleRealtimeStop(stop(), dependencies({ resolveSubscriptionKey: async () => { throw new ApiKeyError("Forbidden", 403); } }))).status, 403);
   const failed = await handleRealtimeStop(stop(), dependencies({ fetch: async () => new Response(null, { status: 404 }) })); assert.equal(failed.status, 502); assert.deepEqual(await failed.json(), { stopStatus: "unconfirmed" });
+});
+
+test("Bearerのv4所有チケットでobserverを開き、同じ本人の固定hangupを一度だけ実行する", async () => {
+  const access = randomBytes(32).toString("base64url");
+  const bearer = { value: access, expiresAt: Date.now() + 600_000, accessExpiresAt: Date.now() + 700_000, generation: 3,
+    binding: { ...actor, sessionId: randomUUID(), hash: "a".repeat(64) } };
+  const signedTicket = `${Buffer.from(JSON.stringify({
+    v: 4, subscriptionId: "", callerId: `user:${actor.tenantId}:${actor.objectId}`,
+    callId, exp: Math.floor(Date.now() / 1000) + 500,
+  })).toString("base64url")}.test-only-signature`;
+  const actions: string[] = [];
+  function checkHeaders(input: HeadersInit | undefined) {
+    const headers = new Headers(input);
+    assert.equal(headers.get("Authorization"), `Bearer ${access}`);
+    assert.equal(headers.get("api-key"), null);
+    return headers;
+  }
+  const response = await handleRealtimeWebRtc(request(realtime, { authentication: "bearer", apiKeyId: undefined }), dependencies({
+    resolveBearer: async () => bearer,
+    resolveSubscriptionKey: async () => { throw new Error("Unexpected subscription lookup"); },
+    bearerOperations: {
+      sealOperation: async (credential, kind, id, value) => {
+        assert.equal(credential.generation, 3);
+        assert.equal(kind, "realtime");
+        assert.match(id, /^[0-9a-f-]{36}$/);
+        assert.equal((value as { version: number }).version, 2);
+        actions.push("seal");
+        return "opaque".repeat(11);
+      },
+      openOperation: async () => { throw new Error("Unexpected handle replay"); },
+      stopRealtimeCall: async (credential, call, send) => {
+        assert.equal(credential, bearer);
+        assert.equal(call.callId, callId);
+        assert.ok(credential.accessExpiresAt > credential.expiresAt);
+        return send(access, call.ticket, AbortSignal.timeout(100));
+      },
+    },
+    fetch: async (url, options) => {
+      const headers = checkHeaders(options?.headers);
+      if (String(url).endsWith("/hangup")) {
+        actions.push("hangup");
+        assert.equal(headers.get("X-Core-Call-Ticket"), signedTicket);
+        return new Response(null, { status: 204 });
+      }
+      actions.push("create");
+      return new Response(sdp, { status: 201, headers: {
+        "Content-Type": "application/sdp", "X-Core-Call-Id": callId, "X-Core-Call-Ticket": signedTicket,
+      } });
+    },
+    connectWebSocket: async (_url, headers) => {
+      assert.equal(checkHeaders(headers).get("X-Core-Call-Ticket"), signedTicket);
+      actions.push("observer");
+      return socket([], () => { actions.push("observer-close"); });
+    },
+    timeoutMs: 35,
+  }));
+  assert.equal(response.status, 200);
+  const emitted = await events(response);
+  assert.deepEqual(actions, ["create", "seal", "observer", "observer-close", "hangup"]);
+  assert.equal(emitted.some((event) => event.type === "answer" && event.handle?.startsWith("r2.")), true);
+  assert.equal(emitted.some((event) => event.type === "complete" && event.stopStatus === "confirmed"), true);
+  const serialized = JSON.stringify(emitted);
+  assert.ok(!serialized.includes(access) && !serialized.includes(signedTicket));
 });

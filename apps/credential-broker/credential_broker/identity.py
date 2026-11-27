@@ -52,7 +52,7 @@ class OidcClient:
         identity = profile.identity_app
         return msal.ConfidentialClientApplication(identity.client_id, client_credential=identity.client_secret,
             authority="https://login.microsoftonline.com/" + identity.tenant_id,
-            token_cache=msal.TokenCache())
+            token_cache=msal.TokenCache(), exclude_scopes=["offline_access"])
 
     def begin(self, profile):
         try:

@@ -9,6 +9,8 @@ param credentialProviderSecrets object = {}
 @secure()
 @description('独立したOIDC本人確認アプリのsecret。CM providerのsecretとは別の入力です。')
 param credentialIdentitySecret string = ''
+@description('Graph OBO用のEntraアプリとKey Vault署名鍵。')
+param graphObo object = {}
 @secure()
 @description('初回だけ生成する内部通信の共有鍵。空の場合は既存の鍵を保持します。')
 param brokerKey string = ''
@@ -48,6 +50,7 @@ module access '../../credential-broker/deploy/broker-access.bicep' = {
     brokerKey: brokerKey
     credentialIdentitySecret: credentialIdentitySecret
     identityConfigured: identityConfigured
+    oboKeyName: empty(graphObo) ? '' : split(graphObo.keyUrl, '/')[4]
   }
 }
 
@@ -102,6 +105,7 @@ module broker '../../credential-broker/deploy/broker.bicep' = {
     apimName: foundation.apimName
     brokerKeySecretUri: access.outputs.keySecretUri
     oidcSecrets: oidcSecrets
+    graphObo: graphObo
     idleTimeoutSeconds: session.idleTimeoutSeconds
     absoluteLifetimeSeconds: session.absoluteLifetimeSeconds
     rotationIntervalSeconds: session.rotationIntervalSeconds

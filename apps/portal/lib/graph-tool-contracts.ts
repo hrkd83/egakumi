@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiKeyIdSchema } from "./api-keys/contracts.ts";
+import { tryApiKeyFields, tryBearerFields, tryCredentialSchema } from "./api-auth/try-credential.ts";
 
 /** Graph疎通確認で固定して呼び出す、公開済みのGateway APIです。 */
 export const GRAPH_TOOL_PATH = "/tools/graph/v1/me";
@@ -21,11 +22,14 @@ export const graphToolKeysSchema = z.object({ keys: z.array(z.object({
 /** Graph APIを利用できる、本人の所属グループ所有の購読です。 */
 export type GraphToolKey = z.infer<typeof graphToolKeysSchema>["keys"][number];
 
-/** ブラウザーからは購読の台帳IDだけを指定し、本人や取引の秘密値を指定させません。 */
-export const graphToolInputSchema = z.object({ apiKeyId: apiKeyIdSchema }).strict();
+/** ブラウザーは認証方式と必要な場合の台帳IDを指定し、秘密値を送りません。 */
+export const graphToolInputSchema = tryCredentialSchema;
 
 /** 本人接続の完了確認要求です。接続先・取引の選択はサーバーが担当します。 */
-export const graphToolConnectionInputSchema = graphToolInputSchema.extend({ action: z.literal("status") }).strict();
+export const graphToolConnectionInputSchema = z.union([
+  z.strictObject({ ...tryApiKeyFields, action: z.literal("status") }),
+  z.strictObject({ ...tryBearerFields, action: z.literal("status") }),
+]);
 
 /** Graphの固定 $select に対応する公開項目です。未設定・権限などによる省略とnullを区別せず受け取ります。 */
 export const graphToolProfileSchema = z.object({
@@ -68,6 +72,7 @@ export const graphToolStatusSchema = z.object({ status: z.enum(["pending", "comp
 /** 画面へ表示する失敗の固定コードと問い合わせ用IDです。 */
 export const graphToolErrorCodeSchema = z.enum([
   "AuthenticationRequired", "AuthenticationUnavailable", "RequestNotAllowed", "InvalidRequest", "GatewayNotConfigured",
+  "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable",
   "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "GatewayUnavailable", "GatewayResponseInvalid", "GraphAccessDenied",
   "GraphReauthenticationRequired", "RateLimitExceeded", "ConnectionIdentityMismatch", "ConnectionStateUnavailable", "SessionUpdateRequired",
 ]);
@@ -79,7 +84,8 @@ export type GraphToolErrorCode = z.infer<typeof graphToolErrorCodeSchema>;
 export const graphToolErrorSchema = z.object({
   error: z.object({ code: graphToolErrorCodeSchema }).strict(),
   requestId: z.string().max(256).optional(),
-}).strict();
+  claims: z.string().max(4_096).regex(/^[A-Za-z0-9_-]+$/).optional(),
+}).strict().refine(({ claims, error }) => claims === undefined || error.code === "GraphReauthenticationRequired");
 
 /** 実行に成功した、プロフィールと計測情報です。 */
 export type GraphToolComplete = z.infer<typeof graphToolCompleteSchema>;

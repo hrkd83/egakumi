@@ -4,7 +4,8 @@ import { isAllowedPortalQuery } from "./portal-query.ts";
 
 import { z } from "zod";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
-import { getApiKeyService } from "./api-keys/service.ts";
+import { apiAuthenticationFailure, gatewayExecutionHeaders, resolveGatewayCredential, type GatewayCredential, watchGatewayCredential } from "./api-auth/gateway-credential.ts";
+import type { PortalBearer } from "./api-auth/service.ts";
 import { getTextGenerationModels } from "./model-catalog.ts";
 import { buildTextGenerationRequest, getTextGenerationHeaders } from "./model-integration.ts";
 import { textGenerationExecutionSchema, MODEL_MAX_UPSTREAM_JSON_BYTES } from "./model-request.ts";
@@ -36,6 +37,7 @@ export type ModelGenerationDependencies = {
   readPortalOrigin: () => string;
   readGatewayEnvironment?: () => Promise<ModelGatewayEnvironment>;
   resolveSubscriptionKey?: (actor: ApiKeyActor, apiKeyId: string, apiId: string) => Promise<string>;
+  resolveBearer?: () => Promise<PortalBearer>;
   readModels?: () => readonly TextGenerationModel[] | Promise<readonly TextGenerationModel[]>;
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
@@ -186,7 +188,7 @@ export async function handleTextGeneration(request: Request, dependencies: Model
     return failure("InvalidRequest", 415);
   }
   if (Number(request.headers.get("content-length") ?? 0) > maximumInputBytes) return failure("InvalidRequest", 413);
-  let input: TextGenerationInput & { apiKeyId: string };
+  let input: ReturnType<typeof textGenerationExecutionSchema.parse>;
   try { input = textGenerationExecutionSchema.parse(JSON.parse(await readLimitedBody(request.body, maximumInputBytes))); }
   catch { return failure("InvalidRequest", 400); }
   let model: TextGenerationModel | undefined;
@@ -200,12 +202,13 @@ export async function handleTextGeneration(request: Request, dependencies: Model
   let gateway: ModelGatewayEnvironment;
   try { gateway = await (dependencies.readGatewayEnvironment ?? getModelGatewayEnvironment)(); }
   catch { return failure("GatewayNotConfigured", 503); }
-  let subscriptionKey: string;
+  let credential: GatewayCredential;
   try {
-    const resolve = dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId));
-    subscriptionKey = await resolve(actor, input.apiKeyId, model.apiId);
-    if (!/^[\x21-\x7e]{16,512}$/.test(subscriptionKey)) throw new Error("Invalid subscription key");
+    credential = await resolveGatewayCredential(request, actor, input, model.apiId, gateway.origin,
+      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
   } catch (error) {
+    const apiAuth = apiAuthenticationFailure(error);
+    if (apiAuth) return failure(apiAuth.code, apiAuth.status);
     return error instanceof ApiKeyError && error.status < 500
       ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503);
   }
@@ -217,7 +220,7 @@ export async function handleTextGeneration(request: Request, dependencies: Model
   try {
     const upstream = await (dependencies.fetch ?? globalThis.fetch)(new URL(model.path, gateway.origin), {
       method: "POST", redirect: "error", cache: "no-store", signal,
-      headers: { ...getTextGenerationHeaders(input.stream), "api-key": subscriptionKey },
+      headers: gatewayExecutionHeaders(getTextGenerationHeaders(input.stream), credential),
       body,
     });
     identifier = requestId(upstream.headers);
@@ -226,7 +229,7 @@ export async function handleTextGeneration(request: Request, dependencies: Model
       if (upstream.status === 400 && upstream.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() === "application/json") {
         const raw = await readLimitedBody(upstream.body, maximumErrorBytes, signal);
         const error: unknown = JSON.parse(raw);
-        if (!containsModelCredential(error, subscriptionKey, raw) && isOutputLimitFailure(error)) {
+        if (!containsModelCredential(error, credential.value, raw) && isOutputLimitFailure(error)) {
           return failure("OutputLimitReached", 400, details);
         }
         return failure("GenerationFailed", 502, details);
@@ -245,8 +248,8 @@ export async function handleTextGeneration(request: Request, dependencies: Model
         return failure("GenerationFailed", 502, details);
       }
       return new Response(relayModelStream({
-        body: upstream.body, operation: model.operationId, signal, timeoutSignal: timeout,
-        requestSignal: request.signal, abortUpstream: () => upstreamAbort.abort(), requestId: identifier, credential: subscriptionKey,
+        body: upstream.body, operation: model.operationId, signal: watchGatewayCredential(credential, signal), timeoutSignal: timeout,
+        requestSignal: request.signal, abortUpstream: () => upstreamAbort.abort(), requestId: identifier, credential: credential.value,
       }), { headers: {
         ...responseHeaders, "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform",
         ...(identifier ? { "apim-request-id": identifier } : {}),
@@ -259,7 +262,7 @@ export async function handleTextGeneration(request: Request, dependencies: Model
     if (Number(upstream.headers.get("content-length") ?? 0) > maximumResponseBytes) { await upstream.body?.cancel(); return failure("GenerationFailed", 502, details); }
     const raw = await readLimitedBody(upstream.body, maximumResponseBytes, signal);
     const data: unknown = JSON.parse(raw);
-    if (containsModelCredential(data, subscriptionKey, raw)) throw new Error("Unexpected credential reflection");
+    if (containsModelCredential(data, credential.value, raw)) throw new Error("Unexpected credential reflection");
     const result = generationResult(data, model, Math.round(performance.now() - started), identifier);
     return Response.json(result, { headers: responseHeaders });
   } catch {

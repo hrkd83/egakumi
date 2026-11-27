@@ -2,6 +2,7 @@ import {
   graphToolCompleteSchema, graphToolErrorSchema, graphToolKeysSchema, graphToolLoginSchema, graphToolStatusSchema,
   type GraphToolFailure, type GraphToolKey, type GraphToolResult,
 } from "../../lib/graph-tool-contracts.ts";
+import type { TryCredential } from "../../lib/api-auth/try-credential.ts";
 
 /** HTTPや通信の生の詳細を画面へ持ち出さない、公開エラーです。 */
 export class GraphToolResponseError extends Error {
@@ -49,8 +50,8 @@ export function isGraphToolLoginUrl(value: string, gatewayOrigin: string | null)
 }
 
 /** APIを先に実行し、本人接続が必要な場合だけ認証案内として扱います。 */
-export async function executeGraphTool(apiKeyId: string, gatewayOrigin: string | null, signal: AbortSignal): Promise<GraphToolResult> {
-  const response = await request("profile", signal, { apiKeyId });
+export async function executeGraphTool(credential: string | TryCredential, gatewayOrigin: string | null, signal: AbortSignal): Promise<GraphToolResult> {
+  const response = await request("profile", signal, typeof credential === "string" ? { apiKeyId: credential } : credential);
   const raw: unknown = await response.json().catch(() => null);
   if (response.status === 200) {
     const parsed = graphToolCompleteSchema.safeParse(raw);
@@ -64,8 +65,8 @@ export async function executeGraphTool(apiKeyId: string, gatewayOrigin: string |
 }
 
 /** 認証済みPortal利用者に紐づく、サーバー保存済み取引の状態だけを確認します。 */
-export async function checkGraphToolConnection(apiKeyId: string, signal: AbortSignal): Promise<"pending" | "complete" | "expired"> {
-  const response = await request("connection", signal, { apiKeyId, action: "status" });
+export async function checkGraphToolConnection(credential: string | TryCredential, signal: AbortSignal): Promise<"pending" | "complete" | "expired"> {
+  const response = await request("connection", signal, { ...(typeof credential === "string" ? { apiKeyId: credential } : credential), action: "status" });
   if (!response.ok) return failure(response);
   const parsed = graphToolStatusSchema.safeParse(await response.json().catch(() => null));
   if (!parsed.success) throw new GraphToolResponseError({ error: { code: "GatewayResponseInvalid" } });

@@ -54,6 +54,19 @@ class IdentityTests(unittest.TestCase):
         self.assertIn("profile", query["scope"][0].split())
         self.assertNotIn("access_token", envelope["msalFlow"])
 
+    def test_credential_login_uses_only_oidc_scopes_and_its_fixed_callback(self):
+        from unittest.mock import patch
+
+        real_application = msal.ConfidentialClientApplication
+        with patch.object(msal, "ConfidentialClientApplication", side_effect=lambda *args, **kwargs:
+                real_application(*args, **kwargs, instance_discovery=False, http_client=MetadataClient())):
+            client = OidcClient(SETTINGS.public_origin)
+            flow = client.begin(PROFILE)
+        request = parse_qs(urlsplit(flow["auth_uri"]).query)
+        self.assertEqual(set(request["scope"][0].split()), {"openid", "profile"})
+        self.assertEqual(request["client_id"], [PROFILE.identity_app.client_id])
+        self.assertEqual(request["redirect_uri"], [SETTINGS.public_origin + "/auth/connections/browser/identity-callback"])
+
     def test_signed_id_token_rejects_wrong_audience_issuer_nonce_expiry_and_key(self):
         private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         wrong_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

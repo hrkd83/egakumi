@@ -1,5 +1,7 @@
 "use client";
 
+import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+
 import { waitForDocumentAnalysis, documentAnalysisPendingSchema, type DocumentAnalysisPending } from "@/lib/document-analysis-client";
 import { useFieldIds } from "@/lib/use-field-ids";
 import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
@@ -44,6 +46,7 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
   const [choices, setChoices] = useState<{ status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] }>({ status: "loading", keys: [] });
   const [refresh, setRefresh] = useState(0); const request = useRef<AbortController | null>(null);
   const selectedKey = choices.status === "ready" ? choices.keys.find((key) => key.id === state.apiKeyId) : undefined;
+  const authentication = useTryAuthentication(selectedKey?.id);
   const origin = gatewayOrigin ?? "https://gateway.example.com";
   useEffect(() => {
     try {
@@ -60,10 +63,10 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
     if (!storageReady.current) return;
     const current = store.getState();
     try {
-      if (current.pending) sessionStorage.setItem("document-analysis-operation", JSON.stringify({ apiKeyId: current.apiKeyId, operation: current.pending }));
+      if (current.pending && authentication.selection.mode === "api-key") sessionStorage.setItem("document-analysis-operation", JSON.stringify({ apiKeyId: current.apiKeyId, operation: current.pending }));
       else sessionStorage.removeItem("document-analysis-operation");
     } catch { /* ファイル・本文・結果・購読キーは保存しません。 */ }
-  }, [store, state.pending, state.apiKeyId]);
+  }, [store, state.pending, state.apiKeyId, authentication.selection.mode]);
   useEffect(() => () => deactivatePanelRequest(request, (pending) => store.setState({ loading: false, ...(pending ? { cancelled: true } : {}) })), [store]);
   useEffect(() => {
     const controller = new AbortController();
@@ -77,7 +80,7 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
   /** ファイルを送る直前に形式を確認し、選択キーの台帳IDだけをBFFへ渡します。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (request.current || !state.file && !state.pending || !selectedKey || !gatewayOrigin) return;
+    if (request.current || !state.file && !state.pending || !authentication.credential || !gatewayOrigin) return;
     const controller = new AbortController(); request.current = controller;
     store.setState({ loading: true, cancelled: false, failure: null, result: null });
     try {
@@ -86,10 +89,12 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
       if (state.pending) response = Response.json(state.pending, { status: 202 });
       else {
         signal.throwIfAborted();
-        const query = new URLSearchParams({ model: state.model, apiKeyId: selectedKey.id });
+        const query = new URLSearchParams(authentication.credential.authentication === "bearer"
+          ? { model: state.model, authentication: "bearer" }
+          : { model: state.model, apiKeyId: authentication.credential.apiKeyId });
         response = await fetch(`/api/tools/documents?${query}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": state.file!.type }, body: state.file!, signal });
       }
-      const result = await waitForDocumentAnalysis(response, state.model, selectedKey.id, signal, { onPending: (pending) => { if (!signal.aborted) store.setState({ pending }); } });
+      const result = await waitForDocumentAnalysis(response, state.model, authentication.credential, signal, { onPending: (pending) => { if (!signal.aborted) store.setState({ pending }); } });
       if (!controller.signal.aborted) store.setState({ loading: false, pending: null, result });
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -101,7 +106,8 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
   }
 
   const settings = <form onSubmit={execute} className="space-y-5">
-    <div className="space-y-2"><div className="flex items-center justify-between gap-3"><label htmlFor={formId("document-api-key")} className="text-sm font-medium">{text.apiKey}</label><Button type="button" size="sm" variant="ghost" disabled={state.loading || choices.status === "loading"} onClick={() => { setChoices({ status: "loading", keys: [] }); setRefresh((value) => value + 1); }}>{guide.refreshKeys}</Button></div>
+    <TryAuthenticationPicker model={authentication} locale={locale} disabled={state.loading} onModeChange={() => update({})} />
+    <div className="space-y-2" hidden={authentication.selection.mode === "bearer"}><div className="flex items-center justify-between gap-3"><label htmlFor={formId("document-api-key")} className="text-sm font-medium">{text.apiKey}</label><Button type="button" size="sm" variant="ghost" disabled={state.loading || choices.status === "loading"} onClick={() => { setChoices({ status: "loading", keys: [] }); setRefresh((value) => value + 1); }}>{guide.refreshKeys}</Button></div>
       <Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => update({ apiKeyId })}><SelectTrigger id={formId("document-api-key")} className="w-full min-w-0"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block truncate">{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
       <p className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
       {choices.status === "loading" && <p role="status" className="text-sm text-muted-foreground">{guide.loadingKeys}</p>}
@@ -114,7 +120,7 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
       else update({ file });
     }} /><p id={formId("document-file-help")} className="text-sm leading-7 text-muted-foreground">{text.fileHelp}</p>{state.file && <p className="break-words text-sm">{state.file.name} · {(state.file.size / 1024).toFixed(1)} KiB</p>}</div>
     <p className="text-sm leading-7 text-muted-foreground">{text.privacy}</p>
-    <div className="flex flex-wrap gap-3">{state.loading && <Button type="button" variant="outline" onClick={() => { request.current?.abort(); request.current = null; store.setState({ loading: false, cancelled: true }); }}><Square className="size-4" />{common.cancel}</Button>}<Button type="submit" disabled={state.loading || !state.file && !state.pending || !selectedKey || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}{state.loading ? text.running : state.pending ? text.resume : text.execute}</Button></div>
+    <div className="flex flex-wrap gap-3">{state.loading && <Button type="button" variant="outline" onClick={() => { request.current?.abort(); request.current = null; store.setState({ loading: false, cancelled: true }); }}><Square className="size-4" />{common.cancel}</Button>}<Button type="submit" disabled={state.loading || !state.file && !state.pending || !authentication.credential || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}{state.loading ? text.running : state.pending ? text.resume : text.execute}</Button></div>
   </form>;
 
   const result = state.result;

@@ -26,6 +26,32 @@ def physical_providers(configuration: dict) -> list[dict]:
     return result
 
 
+def verify_existing_provider_registrations(configuration: dict, apim_id: str, transport) -> None:
+    """接続を持つCM providerのアプリ登録を上書きする前に停止する。"""
+    for expected in physical_providers(configuration):
+        provider_id = apim_id + "/authorizationProviders/" + expected["name"]
+        response = transport.request("GET", provider_id + "?api-version=2024-05-01")
+        status = response.get("statusCode")
+        if status == 404:
+            continue
+        if status != 200:
+            raise ValueError("Existing Credential Manager provider could not be verified")
+        try:
+            provider = response["body"]
+            properties = provider["properties"]
+            grant = properties["oauth2"]["grantTypes"]["authorizationCode"]
+            kind = expected["identityProvider"]
+            client_matches = (grant["clientId"].casefold() == expected["clientId"].casefold()
+                              if kind == "aad" else grant["clientId"] == expected["clientId"])
+            tenant_matches = kind != "aad" or grant["tenantId"].casefold() == expected["oauthTenantId"].casefold()
+            matches = (provider["id"].casefold() == provider_id.casefold()
+                       and properties["identityProvider"] == kind and client_matches and tenant_matches)
+        except (AttributeError, KeyError, TypeError):
+            raise ValueError("Existing Credential Manager provider registration could not be verified") from None
+        if not matches:
+            raise ValueError("Existing Credential Manager provider uses a different registration; prepare a separate provider for migration")
+
+
 def logical_profiles(configuration: dict) -> dict:
     login = configuration.get("gateway", {}).get("authentication", {}).get("credentialLogin", {})
     selected = login.get("providerNames", [])

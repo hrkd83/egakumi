@@ -14,7 +14,7 @@
 
 本人は検証済みの`tenantId + oid`で識別する。UPN申告だけで本人を確定しない。アプリ自身が検証したログイン利用者と、認証完了応答の`tenantId + ownerId`を比較し、別利用者のセッションを使い回さない。保存先も`Gateway origin + 検証済み購読IDまたはユーザー主体 + 論理プロファイル + 検証済みtid/oid`で分離する。
 
-Bearer利用では、APIMが検証した`user:<TENANT_ID>:<OBJECT_ID>`を呼出主体とし、CMの認証開始時からその本人を固定する。CMでサインインした本人と、業務APIが照合した本人が一致するときだけ許可する。購読キーからBearerへ切り替える場合はユーザー主体用の新しい`cs2`を取得する。同じ本人のCM接続は再利用できるが、キー用とユーザー用のセッションは相互に流用できない。
+5アプリ構成のGraph /meでは、購読キーを選ぶと以下のCM接続を使い、Bearerを選ぶとBrokerがGateway用トークンをGraph向けにOBO交換する。CMを使う業務APIでは、APIMが検証した`user:<TENANT_ID>:<OBJECT_ID>`を認証開始から固定し、CMでサインインした本人との一致を確認する。キー用とユーザー用のセッションは相互に流用できない。
 
 ## 有効期限と設定
 
@@ -50,16 +50,11 @@ Bearer利用では、APIMが検証した`user:<TENANT_ID>:<OBJECT_ID>`を呼出�
 
 ## Entraと基盤の準備
 
-[Entraの事前準備](02-entra.md)で同じWebアプリに次を設定する。
-
-- 委任権限：`openid`・`profile`・`email`・`offline_access`・`User.Read`
-- CM標準のWeb戻り先
-- 本人確認のWeb戻り先：`https://<gateway-host>/auth/connections/browser/identity-callback`
-- 有効なclient secret
+[Entraの事前準備](02-entra.md)で、ToolsにはCMの戻り先とGraph委任権限、Credentialには本人確認の戻り先とOIDC権限を設定する。本人確認は`openid profile`を要求する。両アプリに専用のclient secretを用意し、Webの戻り先と構築時の保護ファイル参照を対応付ける。
 
 論理プロファイル`graph-delegated`に対して、初期値は`graph-delegated-a`〜`graph-delegated-l`の12プール、各8,000件。プールと接続名をクライアントに選択させない。[接続台帳とプールの設計](../reference/credential-pool-design.md)を参照する。
 
-`azd up`のGateway工程、または個別の`deploy_gateway.py --execute`で、SQL・Broker・APIMのAPIとポリシーまで配備する。[Gatewayの配備](credential-sql.md)を参照する。組み込みロールを使用し、カスタムロールは作らない。
+Gatewayの個別配備でSQL・Broker・APIMのAPIとポリシーを用意する。BrokerのGraph OBO署名は対象のKey Vault鍵に限定する。[Gatewayの配備](credential-sql.md)を参照する。
 
 ### 本人確認callbackのWAF調整
 

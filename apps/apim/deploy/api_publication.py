@@ -171,6 +171,11 @@ def prepare_plan(config: dict, state: dict) -> dict:
         "realtimeTicketSecretIdentifier": vault_base + grpc_lifecycle.TICKET_NAME if ticket_on else ""}
     if entra["enabled"]:
         params["entraAuthentication"] = entra
+        obo_configured = config.get("codex") or config.get("gateway", {}).get("authentication", {}).get("entra", {}).get("obo")
+        if obo_configured and any(api["name"] == "graph-profile-v1" for api in resolved):
+            if "graph-delegated" not in params["credentialLogin"].get("providerNames", ()):
+                raise ValueError("Graph OBO also requires the personal Graph Credential Manager route for API keys")
+            params["graphOboEnabled"] = True
     policy_id = _scope(config, "nw") + "/providers/Microsoft.Network/firewallPolicies/afwp-" + stem
     result = {"schemaVersion": 1, "subscriptionId": config["subscriptionId"], "azureTenantId": config["azureTenantId"],
         "entraTenantId": entra_tenant_id(config),
@@ -1116,6 +1121,18 @@ def verify_credential_login(config, plan, apim, transport):
             "complete the matching SQL and broker deployment before "
             "publishing APIs"
         )
+    if plan.get("parameters", {}).get("graphOboEnabled", {}).get("value") is True:
+        from deployment.helpers.gateway_obo_certificate import deployment_settings, runtime_environment
+        from deployment.helpers.paths import local_paths
+
+        obo_environment = runtime_environment(deployment_settings(config, local_paths(config, ROOT)))
+        if not obo_environment:
+            raise ValueError("Prepare the Graph OBO signing certificate before publishing the Graph API")
+        for container in (containers[0], ready_containers[0]):
+            rows = [row for row in container.get("env", []) if row.get("name", "").startswith("BROKER_OBO_")]
+            if len(rows) != len(obo_environment) or any(row.get("secretRef") for row in rows) or {
+                    row["name"]: row.get("value") for row in rows} != obo_environment:
+                raise ValueError("Deploy the exact Graph OBO certificate binding to the ready Broker revision before publishing")
     broker_url = "https://" + host
     backend = require_success(transport.request("GET", plan["apimId"] + "/backends/credential-broker?api-version=" + APIM_API), "Read credential broker backend")
     if backend.get("properties", {}).get("url") != broker_url:

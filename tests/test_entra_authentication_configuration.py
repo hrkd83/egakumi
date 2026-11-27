@@ -321,10 +321,13 @@ class EntraSchemaTests(unittest.TestCase):
         auth = lambda schema: schema["properties"]["gateway"]["properties"]["authentication"]
         self.assertEqual(auth(params)["properties"]["entra"], {"$ref": "#/$defs/entraAuthentication"})
         self.assertEqual(auth(combined)["properties"]["entra"], {"$ref": "#/$defs/entraAuthentication"})
-        self.assertEqual(set(params["$defs"]["entraAuthentication"]["properties"]), {"audience"})
+        public = params["$defs"]["entraAuthentication"]
+        resolved = combined["$defs"]["entraAuthentication"]
+        self.assertEqual(set(public["properties"]), {"audience", "obo"})
         self.assertEqual(set(auth(options)["properties"]["entra"]["properties"]), {"userLimits"})
-        self.assertEqual(set(combined["$defs"]["entraAuthentication"]["properties"]),
-                         {"audience", "requiredScope", "userLimits"})
+        self.assertEqual(set(resolved["properties"]), {"audience", "requiredScope", "userLimits", "obo"})
+        self.assertEqual(public["properties"]["obo"], resolved["properties"]["obo"])
+        self.assertCountEqual(public["properties"]["obo"]["required"], ["keyId", "certificateThumbprint"])
         self.assertIn("entra", configuration.PARAMETER_GATEWAY_NESTED_KEYS["authentication"])
 
     def test_internal_schema_requires_complete_definition_without_a_public_toggle(self):

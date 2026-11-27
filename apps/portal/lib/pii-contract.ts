@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
-import { apiKeyIdSchema } from "./api-keys/contracts.ts";
+import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
 
 /** 公開済みPII操作の固定契約です。正本API定義との一致は契約テストで確認します。 */
 export const PII_API = {
@@ -17,7 +17,7 @@ export const piiInputSchema = z.object({
 /** 試行画面とコード例で共有する入力です。 */
 export type PiiInput = z.infer<typeof piiInputSchema>;
 /** 実行時のみ、本人が選んだSQL台帳の購読IDを受け取ります。 */
-export const piiExecutionSchema = piiInputSchema.extend({ apiKeyId: apiKeyIdSchema });
+export const piiExecutionSchema = z.union([piiInputSchema.safeExtend(tryApiKeyFields), piiInputSchema.safeExtend(tryBearerFields)]);
 
 /** Gatewayが公開するマスキング済みの本文と、安全なメタデータだけを許可します。 */
 export const piiResponseSchema = z.object({

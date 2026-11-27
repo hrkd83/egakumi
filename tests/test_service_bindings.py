@@ -100,7 +100,11 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
         # Coreの保守用カスタムロールと、CM用provider権限を分けて確認する。
         roles.clear()
         walk(self.templates["gateway"])
-        self.assertEqual(roles, [])
+        signer, = roles
+        self.assertEqual(signer["condition"], "[not(empty(parameters('oboKeyName')))]")
+        permission, = signer["properties"]["permissions"]
+        self.assertEqual(permission["actions"], [])
+        self.assertEqual(permission["dataActions"], ["Microsoft.KeyVault/vaults/keys/sign/action"])
         # APIMがトークンを取得し、brokerが接続を作成するため、それぞれ同じ限定ロールを使います。
         self.assertEqual(len(login_templates), 2)
         self.assertEqual(login_templates[0], login_templates[1])

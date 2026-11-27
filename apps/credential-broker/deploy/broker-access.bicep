@@ -10,6 +10,7 @@ param brokerKey string = ''
 @secure()
 param credentialIdentitySecret string = ''
 param identityConfigured bool = false
+param oboKeyName string = ''
 resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: vaultName }
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: registryName }
 resource key 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(brokerKey)) {
@@ -36,4 +37,20 @@ resource registryAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
   name: guid(registry.id, identity.principalId, acrPull)
   properties: { roleDefinitionId: acrPull, principalId: identity.principalId, principalType: 'ServicePrincipal' }
 }]
+resource oboKey 'Microsoft.KeyVault/vaults/keys@2023-07-01' existing = { parent: vault, name: oboKeyName }
+resource oboSigner 'Microsoft.Authorization/roleDefinitions@2022-04-01' = if (!empty(oboKeyName)) {
+  name: guid(resourceGroup().id, 'gateway-graph-obo-signer')
+  properties: {
+    roleName: 'Gateway Graph OBO signer ${resourceGroup().name}'
+    description: 'Sign Entra client assertions with the Gateway Graph OBO key.'
+    type: 'CustomRole'
+    assignableScopes: [resourceGroup().id]
+    permissions: [{ actions: [], notActions: [], dataActions: ['Microsoft.KeyVault/vaults/keys/sign/action'], notDataActions: [] }]
+  }
+}
+resource oboAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(oboKeyName)) {
+  scope: oboKey
+  name: guid(oboKey.id, runtimeIdentity.principalId, oboSigner!.id)
+  properties: { roleDefinitionId: oboSigner!.id, principalId: runtimeIdentity.principalId, principalType: 'ServicePrincipal' }
+}
 output keySecretUri string = '${vault.properties.vaultUri}secrets/core-credential-broker-key'

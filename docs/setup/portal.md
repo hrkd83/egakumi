@@ -43,7 +43,7 @@ scripts/deploy_portal.py     手元とCIから共通で使う配備コマンド
 | `azd up` | 共有基盤・Gateway・Portal初期サンプル・KV自己署名認証証明書を準備 |
 | Portal配備工程 | Portal専用DB、Cookie署名・購読profileの秘密と読み取り権限、認証証明書の署名権限、SQL初期化ジョブ、認証・APIキー台帳と実行用SQL権限、管理グループと標準API正本から生成する製品承認・検証用APIM購読の作成・台帳登録、APIMの購読管理権限、Portalイメージ、既存Container Appの本体 |
 
-新規構築は`azd up`で共有資源・Gateway・Portal ACA初期サンプルと認証証明書を準備します。`postprovision`が専用ACA Jobの発行結果を照合し、公開証明書と固定参照を保護保存します。`postup`は`deploy_applications.py --gateway-only --execute`でGatewayだけを配備します。[専用Portalアプリの手動登録](entra-portal.md)後、以下の個別配備でPortal本体をビルドしてサンプルを更新します。`azd provision`ではGateway本体も未配備です。
+空環境では[段階構築](06-deploy.md)に従って`azd provision`で共有資源と認証証明書を準備します。`postprovision`が専用ACA Jobの発行結果を照合し、公開証明書と固定参照を保護保存します。[専用Portalアプリの手動登録](entra-portal.md)とGateway配備を終えてから、Portal本体をビルドして初期サンプルを更新します。
 
 **Portal専用DBはPortal配備資材で管理します。構築済み基盤のPortalだけを更新・再試行するときは、`deploy_portal.py --execute` を使えます。** 共通SQLサーバー`sql-<環境>-<製品>`を再利用し、その中へ`sqldb-<環境>-<製品>-portal`を作成します。CM用の`...-credentials` DBとは分離します。
 
@@ -65,7 +65,7 @@ https://<PORTAL_HOST>/api/auth/callback/microsoft
 
 CM用アプリは[従来のEntra事前準備](02-entra.md)で管理します。標準Graphの登録値はparamsの`credentialProviders.graphDelegated.clientId`・`clientSecretFile`に置き、共通表示名・scope・poolはconfigに置きます。内部の論理名`graph-delegated`、秘密参照名と選択profile、CMの既存Client ID・secretは維持します。移行対象の旧Portalが使う共用アプリ・secret参照は新Portalの実受入まで復旧用に保持し、受入後にPortal用途の参照を撤去します。
 
-PortalのSQLには利用者・アカウントの対応・ログインセッションと、暗号化したGraph本人接続のクライアント状態を保存します。Microsoftのアクセストークン・更新トークン・IDトークンは保存しません。Graphのトークン管理はCMが担当し、`X-Core-Connection-Session`はPortalログインとは別の期限・用途です。BFFが確認済みtid/oidと購読に紐付け、ブラウザーへ秘密値を公開しません。
+PortalのSQLには利用者・アカウントの対応、ログインセッション、暗号化したCM本人接続状態を保存します。Bearer試用のGateway向けアクセストークンと更新トークンは、試用専用のKey Vault版付き鍵で暗号化し、Portalサーバーで扱います。Graphの下流トークンは購読キー利用時はCM、Bearer利用時はBrokerのOBOにより取得します。BFFは本人のtid/oidと用途を照合し、ブラウザーへこれらのトークンを公開しません。
 
 ## 配備の実行
 
@@ -75,7 +75,7 @@ PortalのSQLには利用者・アカウントの対応・ログインセッシ�
 
 ```sh
 export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
-azd up --environment "$DEPLOY_ENVIRONMENT"
+azd provision --environment "$DEPLOY_ENVIRONMENT"
 ```
 
 標準APIは正本から常用で解決し、公開`apiDefinitions`・`publishApis`入力は廃止しました。旧入力は空配列やfalseでも拒否します。基盤だけを準備するときは`azd provision`を使い、アプリの計画／反映は個別コマンドの`--execute`で区別します。既存paramsは自動変換せず、[移行条件](04-params.md#既存入力の移行を確認する)を先に確認します。
@@ -293,7 +293,11 @@ APIMは検証済み購読IDを使って専用の内部APIへ照会し、正常�
 - グループ所有の購読を発行・表示・停止／再開・棚卸・削除でき、別グループの利用者からは参照できない。
 - 対象外接頭辞・セキュリティグループ以外の候補は、URLや本文でIDを直接指定しても発行・移管先に指定できない。
 
-### Tool GatewayのGraph本人接続
+### API試用とTool GatewayのGraph本人接続
+
+- 各試用画面で購読キーと「本人のアクセストークン」を選び、同じGateway APIで受理されることを確認します。
+- Bearer試用で追加のEntra認証を完了し、同じ本人に結び付くこと、失効後に再認証へ戻ること、Portalログアウトで保存した試用状態を使えなくなることを確認します。
+- GraphはBearerのOBOと購読キーのCM接続を別々に確認します。条件付きアクセスが追加認証を要求した場合は、同じ本人への再認証が完了してから再試行します。
 
 GatewayのGraph APIは`graph-profile-v1.json`の`$select`で、本人の表示名・名・姓・UPN・ID・役職・会社・部署・従業員ID・勤務先所在地・メール・アカウントの有効状態の12項目に固定します。Portalで任意のGraph URLや取得項目を入力させません。GatewayのAPI定義を更新してからPortalを配備します。
 

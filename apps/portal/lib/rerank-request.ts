@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
-import { apiKeyIdSchema } from "./api-keys/contracts.ts";
+import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
 
 /** 単独フィールドの安全上限です。本文全体はGatewayのUTF-8バイト上限でも検査します。 */
 export const MAX_RERANK_TEXT_CHARACTERS = MAX_RUNTIME_STRING_CHARACTERS;
@@ -18,7 +18,7 @@ export const rerankInputSchema = z.object({
 export type RerankInput = z.infer<typeof rerankInputSchema>;
 
 /** 実行時だけ台帳IDを受け取り、現在の所属・購読権限をサーバー側で再確認します。 */
-export const rerankExecutionSchema = rerankInputSchema.extend({ apiKeyId: apiKeyIdSchema });
+export const rerankExecutionSchema = z.union([rerankInputSchema.safeExtend(tryApiKeyFields), rerankInputSchema.safeExtend(tryBearerFields)]);
 
 /** 元の候補文書との対応を失わないリランク応答です。 */
 export const rerankResultSchema = z.object({

@@ -5,6 +5,7 @@ import { buildRealtimeSessionEvent, RealtimeProtocol } from "./realtime-protocol
 import { realtimeInputSchema, realtimeStreamEventSchema, resolveRealtimeOutputTokens, REALTIME_MAX_DURATION_MS, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
 import type { ModelGatewayErrorCode } from "./model-request.ts";
 import type { RealtimeModel } from "./model-types.ts";
+import type { GatewayCredential } from "./api-auth/gateway-credential.ts";
 import { resolveRealtimeVoice } from "./realtime-voices.ts";
 
 /** 認可を終えた接続が受け付ける操作です。上流のイベント・URL・キー実値は受け取りません。 */
@@ -33,14 +34,18 @@ export class RealtimeConversationError extends Error { readonly code: ModelGatew
  * @remarks Nextの内部認可routeで検証したmodel・endpoint・キーだけを受け取るサーバー専用処理です。
  * 応答完了ではソケットを閉じません。音声・イベント・時間・送信待ちには明示的な上限を設けます。
  */
-export async function runRealtimeConversation(model: RealtimeModel, input: RealtimeInput, endpoint: string, key: string,
+export async function runRealtimeConversation(model: RealtimeModel, input: RealtimeInput, endpoint: string, credential: string | GatewayCredential,
   signal: AbortSignal, emit: (event: RealtimeStreamEvent) => void, registerInput: RegisterRealtimeInput, dependencies: RealtimeConversationDependencies = {}): Promise<void> {
   if (typeof window !== "undefined") throw new RealtimeConversationError("RequestNotAllowed");
   validateRealtimeModel(model); realtimeInputSchema.parse(input);
   const url = new URL(endpoint); const origin = `${url.protocol === "wss:" ? "https:" : "http:"}//${url.host}`;
   resolveRealtimeOutputTokens(model, input);
   resolveRealtimeVoice(model, input);
-  if (model.transport !== "websocket" || input.modelId !== model.id || getRealtimeEndpoint(model, origin) !== endpoint || !/^[\x21-\x7e]{16,512}$/.test(key)) throw new RealtimeConversationError("InvalidRequest");
+  const key = typeof credential === "string" ? credential : credential.value;
+  const header = typeof credential === "string" ? { "api-key": credential } : credential.headers;
+  const validCredential = typeof credential !== "string" && credential.scheme === "bearer"
+    ? /^[A-Za-z0-9._~+\/-]{16,16384}={0,2}$/.test(key) : /^[!-~]{16,512}$/.test(key);
+  if (model.transport !== "websocket" || input.modelId !== model.id || getRealtimeEndpoint(model, origin) !== endpoint || !validCredential) throw new RealtimeConversationError("InvalidRequest");
   const now = dependencies.now ?? (() => performance.now());
   const started = now(); const protocol = new RealtimeProtocol(model); const elapsed = () => Math.max(0, Math.round(now() - started));
   let socket: WebSocket | undefined; let settled = false; let stopping = false; let inputAudioBytes = 0;
@@ -117,7 +122,7 @@ export async function runRealtimeConversation(model: RealtimeModel, input: Realt
         catch { finish(new RealtimeConversationError("GatewayTimeout")); }
       }, Math.min(dependencies.timeoutMs ?? REALTIME_MAX_DURATION_MS, REALTIME_MAX_DURATION_MS));
       publish({ type: "status", stage: "connecting", elapsedMs: elapsed() });
-      socket = (dependencies.connect ?? ((target, options) => new WebSocket(target, options)))(endpoint, { headers: { "api-key": key, "User-Agent": "egakumi-portal-realtime/1.0" }, maxPayload: 262144, followRedirects: false, handshakeTimeout: 10_000, perMessageDeflate: false });
+      socket = (dependencies.connect ?? ((target, options) => new WebSocket(target, options)))(endpoint, { headers: { ...header, "User-Agent": "egakumi-portal-realtime/1.0" }, maxPayload: 262144, followRedirects: false, handshakeTimeout: 10_000, perMessageDeflate: false });
       socket.on("open", () => {
         if (settled) { socket?.terminate(); return; }
         try {

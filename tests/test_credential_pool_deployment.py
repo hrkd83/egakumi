@@ -6,12 +6,15 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 sys.path.insert(0, str(ROOT / 'apps/apim/deploy'))
 sys.path.insert(0, str(ROOT / 'apps/credential-broker/deploy'))
-from deployment.helpers.credential_pools import broker_session_settings, physical_providers, logical_profiles, resource_names
+from deployment.helpers.credential_pools import (
+    broker_session_settings, logical_profiles, physical_providers, resource_names, verify_existing_provider_registrations,
+)
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration, ConfigurationError, load_configuration_source
 from prepare_credential_pool_config import transform
@@ -53,6 +56,34 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         profile = logical_profiles(config)['graph-delegated']
         self.assertEqual(profile['clientSecretEnv'], 'OIDC_SECRET_0')
         self.assertEqual(profile['pools'][0], {'name':'graph-delegated-a', 'capacity':8000})
+
+    def test_provider_preflight_allows_absence_and_prevents_in_place_registration_replacement(self):
+        config = configured()
+        config['credentialProviders'][0]['pool']['count'] = 2
+        apim = '/subscriptions/synthetic/resourceGroups/rg-fixture/providers/Microsoft.ApiManagement/service/apim-fixture'
+        first = apim + '/authorizationProviders/graph-delegated-a'
+        second = apim + '/authorizationProviders/graph-delegated-b'
+        existing = {'statusCode': 200, 'body': {'id': first.upper(), 'properties': {
+            'identityProvider': 'aad', 'oauth2': {'grantTypes': {'authorizationCode': {
+                'clientId': config['credentialProviders'][0]['clientId'], 'tenantId': config['entraTenantId'],
+            }}},
+        }}}
+        transport = mock.Mock()
+        transport.request.side_effect = [existing, {'statusCode': 404}]
+        verify_existing_provider_registrations(config, apim, transport)
+        self.assertEqual(transport.request.call_args_list, [
+            mock.call('GET', path + '?api-version=2024-05-01') for path in (first, second)
+        ])
+
+        existing['body']['properties']['oauth2']['grantTypes']['authorizationCode']['clientId'] = 'SYNTHETIC-CHANGED'
+        for response, error in ((existing, 'different registration'), ({'statusCode': 403}, 'could not be verified')):
+            with self.subTest(error=error):
+                transport.reset_mock()
+                transport.request.side_effect = [response]
+                with self.assertRaisesRegex(ValueError, error) as raised:
+                    verify_existing_provider_registrations(config, apim, transport)
+                transport.request.assert_called_once_with('GET', first + '?api-version=2024-05-01')
+                self.assertNotIn('SYNTHETIC-CHANGED', str(raised.exception))
 
     def test_empty_business_login_keeps_internal_broker_defaults_without_inventing_authentication(self):
         raw = raw_fixture()

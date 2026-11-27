@@ -2,6 +2,7 @@ import { getGatewayProfileSettings } from "@/lib/api-keys/gateway-profile";
 import { getApiKeyLimitRepository } from "@/lib/api-keys/limit-repository";
 import { getCompanyRepository } from "@/lib/company-administration/repository";
 import { assertConnectionSessionStoreReady } from "@/lib/connection-session/store";
+import { scheduleApiAuthCleanup } from "@/lib/api-auth/service";
 import { connection } from "next/server";
 
 let expiresAt = 0;
@@ -17,6 +18,7 @@ function readiness(): Promise<boolean> {
       await getApiKeyLimitRepository().getGatewayProfile(settings.tenantId, "profile-readiness");
       await getCompanyRepository().assertReady();
       await assertConnectionSessionStoreReady();
+      scheduleApiAuthCleanup();
       return true;
     } catch { return false; }
   })().finally(() => { expiresAt = Date.now() + 5_000; });

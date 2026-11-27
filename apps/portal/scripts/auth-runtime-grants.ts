@@ -21,6 +21,10 @@ export const portalRuntimePermissions = {
   portalCompanyAudit: "SELECT, INSERT",
   portalSubscriptionSyncAudit: "SELECT, INSERT",
   portalConnectionState: "SELECT, INSERT, UPDATE",
+  portalApiAuthContext: "SELECT, INSERT, UPDATE",
+  portalApiAuthorizationTransaction: "SELECT, INSERT, UPDATE, DELETE",
+  portalApiActiveOperation: "SELECT, INSERT, DELETE",
+  portalApiCallCleanup: "SELECT, INSERT, UPDATE, DELETE",
 } as const;
 
 /** 観測と初回登録だけを許すストアドプロシージャです。承認設定全体の更新権限は付けません。 */

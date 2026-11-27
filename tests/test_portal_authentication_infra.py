@@ -1,5 +1,6 @@
 """Portal配備がDBを所有し、共通基盤を変更しないことを確認する。"""
 from bicep_helpers import compile_bicep
+from test_ssml_waf import GatewayExpression
 
 import copy
 import json
@@ -150,25 +151,29 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         assignment = next(item for item in resources if item['type'].endswith('/roleAssignments'))
         self.assertIn('Microsoft.KeyVault/vaults/keys', assignment['scope'])
 
-    def test_management_key_operator_uses_supported_data_actions_on_the_key_scope(self):
+    def test_certificate_worker_can_disable_a_portal_key_but_only_read_the_obo_key(self):
         storage = compile_bicep('infra/modules/certificate-storage.bicep')
         modules = storage['resources']
         if isinstance(modules, dict):
             modules = modules.values()
         key_module = next(item for item in modules if '-portal-job-key-operations' in item.get('name', ''))
         self.assertEqual(key_module['properties']['parameters']['principalId'], {'value': "[parameters('portalPrincipalId')]"})
-        resources = key_module['properties']['template']['resources']
+        template = key_module['properties']['template']
+        resources = template['resources']
         if isinstance(resources, dict):
             resources = resources.values()
         role = next(item for item in resources if item['type'].endswith('/roleDefinitions'))
         permission, = role['properties']['permissions']
-        # keys/write is a control-plane Action; the KV update REST API uses update/action.
-        # https://learn.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations#microsoftkeyvault
         self.assertEqual(permission['actions'], [])
-        self.assertEqual(permission['dataActions'], [
-            'Microsoft.KeyVault/vaults/keys/read',
-            'Microsoft.KeyVault/vaults/keys/update/action',
-        ])
+        granted = GatewayExpression(permission['dataActions'], template['variables'])
+        self.assertIs(template['parameters']['allowDisable']['defaultValue'], True)
+        self.assertEqual(granted.evaluate({'allowDisable': True}), [
+            'Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/update/action'])
+        obo = next(item for item in modules if '-gateway-obo-key-reader' in item.get('name', ''))
+        self.assertEqual(obo['properties']['parameters']['keyName']['value'], 'gateway-obo')
+        configured = obo['properties']['parameters']['allowDisable']['value']
+        self.assertIs(configured, False)
+        self.assertEqual(granted.evaluate({'allowDisable': configured}), ['Microsoft.KeyVault/vaults/keys/read'])
         assignment = next(item for item in resources if item['type'].endswith('/roleAssignments'))
         self.assertIn('Microsoft.KeyVault/vaults/keys', assignment['scope'])
         self.assertEqual(assignment['properties']['principalType'], 'ServicePrincipal')

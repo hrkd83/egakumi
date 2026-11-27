@@ -12,6 +12,8 @@ from .waf_names import policy_id as waf_policy_id
 
 NETWORK_API = "2024-05-01"
 CALLBACK_PATH = "/api/auth/callback/microsoft"
+API_CALLBACK_PATH = "/api/api-auth/callback"
+CALLBACK_PATHS = (CALLBACK_PATH, API_CALLBACK_PATH)
 CALLBACK_RULE_IDS = ["942430", "942440", "942450"]
 
 
@@ -279,22 +281,23 @@ def _callback_gateway(config, body, expected, policy_id, *, portal_host=None):
         maps.append({"name": "pathmap-portal-auth", "properties": path_properties})
     rules = path_properties.setdefault("pathRules", [])
     matches = [item for item in rules if item.get("name") == "microsoft-auth-callback"
-               or CALLBACK_PATH in item.get("properties", {}).get("paths", [])]
+               or any(path in item.get("properties", {}).get("paths", []) for path in CALLBACK_PATHS)]
     desired_rule = {"name": "microsoft-auth-callback", "properties": {
-        "paths": [CALLBACK_PATH], "firewallPolicy": {"id": policy_id},
+        "paths": list(CALLBACK_PATHS), "firewallPolicy": {"id": policy_id},
         "backendAddressPool": pool, "backendHttpSettings": backend,
     }}
     if len(matches) > 1 or (matches and matches[0].get("name") != desired_rule["name"]):
         raise ValueError("Portal callback path has another owner")
     if matches:
         current = matches[0]["properties"]
-        if (current.get("paths") != [CALLBACK_PATH] or not same_ref(current.get("backendAddressPool"), pool)
+        if (current.get("paths") not in ([CALLBACK_PATH], list(CALLBACK_PATHS)) or not same_ref(current.get("backendAddressPool"), pool)
                 or not same_ref(current.get("backendHttpSettings"), backend)):
             raise ValueError("Portal callback path has another backend or path")
         current_policy = current.get("firewallPolicy", {}).get("id")
         if current_policy and current_policy.casefold() not in {
                 base_policy.casefold(), portal_policy.casefold(), policy_id.casefold()}:
             raise ValueError("Portal callback path uses another WAF policy")
+        current["paths"] = list(CALLBACK_PATHS)
         if not same_ref(current.get("firewallPolicy"), {"id": policy_id}):
             current["firewallPolicy"] = {"id": policy_id}
     else:
@@ -382,7 +385,7 @@ def configure_portal_callback_waf(config, transport, *, timeout=1200, sleep=time
             sleep(10)
         else:
             raise ValueError("Portal callback routing update is still pending")
-    return {"resourceId": expected, "policyId": policy_id, "path": CALLBACK_PATH,
+    return {"resourceId": expected, "policyId": policy_id, "path": CALLBACK_PATH, "paths": list(CALLBACK_PATHS),
             "excludedArgument": "code", "excludedRuleIds": list(CALLBACK_RULE_IDS),
             "sessionPolicyId": portal_policy_id,
             "sessionPolicyUpdated": any(identifier == portal_policy_id for identifier, _, _ in changes),

@@ -4,11 +4,15 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { z } from "zod";
 import { apiKeyIdSchema, type ApiKeyActor } from "./api-keys/contracts.ts";
 
-const handleSchema = z.object({
-  version: z.literal(1), tenantId: z.uuid(), objectId: z.uuid(), apiKeyId: apiKeyIdSchema,
+const callFields = {
   modelId: z.string().min(1).max(200), callId: z.string().regex(/^[A-Za-z0-9_-]{1,160}$/),
   ticket: z.string().regex(/^[A-Za-z0-9_.-]{1,4096}$/), expiresAt: z.number().int().positive(),
-}).strict();
+};
+const handleSchema = z.strictObject({ version: z.literal(1), tenantId: z.uuid(), objectId: z.uuid(), apiKeyId: apiKeyIdSchema, ...callFields });
+/** API接続の失効世代を追加で検証するBearer通話の内容です。 */
+export const bearerRealtimeCallSchema = z.strictObject({ version: z.literal(2), ...callFields });
+/** キーとBearerの停止データで共通する、提供元との固定契約です。 */
+export type RealtimeCall = z.infer<typeof handleSchema> | z.infer<typeof bearerRealtimeCallSchema>;
 const associatedData = Buffer.from("egakumi.portal.realtime.cleanup.v1");
 
 /** 通話停止の再試行に必要な最小限の情報です。購読キーそのものは含めません。 */

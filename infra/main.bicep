@@ -64,6 +64,7 @@ var servicesConfig = configuration.services
 var managementConfig = configuration.management
 var monitoringConfig = configuration.monitoring
 var portalConfig = configuration.portal
+var entraRolloutEnabled = configuration.?entraRolloutEnabled ?? false
 var gatewayConfig = configuration.gateway
 // 公開API配列は変更せず、基盤に必要な経路・本文形式だけを参照します。
 var infrastructureApis = configuration.?infrastructureApiDefinitions ?? configuration.apiDefinitions
@@ -451,6 +452,11 @@ module portalAuthIdentity '../apps/portal/deploy/auth-identity.bicep' = if (depl
   scope: idGroup
   params: { stem: stem, location: location, tags: tags }
 }
+module portalApiAuthIdentity '../apps/portal/deploy/auth-identity.bicep' = if (deployCore && entraRolloutEnabled) {
+  name: '${stem}-portal-api-auth-identity'
+  scope: idGroup
+  params: { stem: stem, location: location, tags: tags, purpose: 'portal-api-auth' }
+}
 module portalRegistry 'modules/portal-registry.bicep' = if (deployCore) {
   name: '${stem}-portal-registry'
   scope: svcGroup
@@ -535,6 +541,7 @@ module certificateStorage 'modules/certificate-storage.bicep' = if (deployCore) 
     vaultPurgeProtection: servicesConfig.vaultPurgeProtection
     portalVaultName: serviceNames.keyVault
     portalCertificateName: portalConfig.certificate.certificateName
+    prepareGatewayObo: entraRolloutEnabled
     registryName: portalRegistry!.outputs.name
     pullPrincipalId: certificateJobIdentities!.outputs.pull.principalId
     tlsPrincipalId: certificateJobIdentities!.outputs.tls.principalId
@@ -741,6 +748,7 @@ output certificateBootstrap object = deployCore ? {
       minimumValidDays: certConfig.minimumValidDays
     }
     portalConfig: { vaultName: serviceNames.keyVault, certificateName: portalConfig.certificate.certificateName, validityMonths: portalConfig.certificate.validityMonths }
+    gatewayOboConfig: entraRolloutEnabled ? { vaultName: serviceNames.keyVault, certificateName: 'gateway-obo', validityMonths: 12 } : {}
   }
 } : {}
 
@@ -819,6 +827,7 @@ output cleanup object = {
 
 output portal object = deployCore ? union(portal!.outputs.platform, {
   authIdentity: portalAuthIdentity!.outputs.identity
+  apiAuthIdentity: entraRolloutEnabled ? portalApiAuthIdentity!.outputs.identity : {}
   authCertificateJobId: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.App/jobs', portalCertificateJobName)
   registryName: portalRegistry!.outputs.name
   registryId: portalRegistry!.outputs.id

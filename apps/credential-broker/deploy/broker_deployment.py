@@ -9,7 +9,7 @@ import time
 
 from deployment.helpers.credential_image import checked, source_bundle
 from deployment.helpers.credential_pools import broker_session_settings, logical_profiles, resource_names
-from deployment.helpers.paths import REPOSITORY
+from deployment.helpers.paths import REPOSITORY, local_paths
 
 APP_API = "2025-01-01"
 BROKER_MODULE = REPOSITORY / 'apps/credential-broker/deploy/broker.bicep'
@@ -19,6 +19,7 @@ def prepare_broker_only_update(config, state, transport):
     """現在の設定と実資源を照合し、Broker・SQLジョブだけの更新入力を作ります。"""
     # Gateway全体の配備と同じ基盤照合を再利用します。実行時importで循環を避けます。
     from deploy_gateway import foundation_inputs, verify_foundation
+    from deployment.helpers.gateway_obo_certificate import deployment_settings, runtime_environment
     snapshot = {}
     class ReadOnly:
         def request(self, method, path, body=None, headers=None):
@@ -83,6 +84,8 @@ def prepare_broker_only_update(config, state, transport):
         'rotationHandoffSeconds': 'BROKER_ROTATION_HANDOFF_SECONDS', 'rotationCandidateTtlSeconds': 'BROKER_ROTATION_CANDIDATE_TTL_SECONDS',
         'transactionLifetimeSeconds': 'BROKER_TRANSACTION_TTL_SECONDS', 'loginCallsPerMinute': 'BROKER_LOGIN_CALLS_PER_MINUTE'}
     expected.update({target: str(session[key]) for key, target in timing.items()})
+    graph_obo = deployment_settings(config, local_paths(config, REPOSITORY))
+    expected.update(runtime_environment(graph_obo))
     if any(env.get(key, {}).get('value') != value for key, value in expected.items()):
         raise ValueError('Broker-only update cannot change existing connection or session settings')
     secrets_rows = environment.get('secrets', [])
@@ -151,6 +154,8 @@ def prepare_broker_only_update(config, state, transport):
         'minReplicas': scale['minReplicas'], 'maxReplicas': scale['maxReplicas'], 'imageDigest': '',
         'deployApplication': False, 'schemaAction': 'observe-schema', **{key: session[key] for key in timing}}
     _, source_hash = source_bundle()
+    if graph_obo:
+        values['graphObo'] = graph_obo
     return {'schemaVersion': 1, 'parameters': values, 'snapshot': snapshot, 'previousImage': old_image,
         'sourceSha256': source_hash, 'databaseId': database,
         'expectedCredentialInterruption': True, 'changesEntraOrPortal': False, 'changesModelCapacity': False}

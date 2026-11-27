@@ -295,6 +295,7 @@
     </choose>
     <!-- 旧クライアントのprofile申告は無視し、下流へも渡さないよう削除します。認証情報ではありません。 -->
     <set-header name="X-Egakumi-Profile" exists-action="delete" />
+    __GRAPH_OBO_ASSERTION_XML__
     <!-- 下流へ転送する前に、入口の資格情報をヘッダーから取り除きます。 -->
     <set-header name="Authorization" exists-action="delete" />
     <set-header name="__KEY_HEADER__" exists-action="delete" />

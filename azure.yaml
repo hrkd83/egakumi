@@ -9,7 +9,8 @@ infra:
   provider: bicep
   path: infra
   module: main
-# provisionで共通基盤・Portal初期サンプル・認証公開証明書を準備し、upの最後にGatewayを配備します。
+# 5アプリの初回はprovisionで共通基盤と公開証明書を準備し、Entra登録後に個別配備します。
+# 従来入力のupは共通基盤に続いてGatewayを配備します。
 # 各アプリの専用コマンドは、個別更新・再試行でも独立して使えます。
 workflows:
   up:

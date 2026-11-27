@@ -14,11 +14,11 @@ Egakumiは、AIを企業・組織の「働き手」として迎え、既存の�
 
 ## Egakumi Coreの構成
 
-Application Gateway・Azure Firewall・API Management・Private Endpointで保護したFoundryを中心に、AIモデル・PII・文書解析とCMによる本人OAuth接続の正式APIを公開するAzure基盤です。Bicepと`azd up/down`で構築・撤去し、外部サービス向けの汎用protocol中継も備えます。
+Application Gateway・Azure Firewall・API Management・Private Endpointで保護したFoundryを中心に、AIモデル・PII・文書解析とCMによる本人OAuth接続の正式APIを公開するAzure基盤です。BicepとAzure Developer CLIで構築・撤去し、外部サービス向けの汎用protocol中継も備えます。
 
-`azd up`は共有基盤・モデル・Gateway・Portal ACA初期サンプルと、KV内のPortal認証鍵・公開証明書を準備します。公開証明書を取得して[専用Portal Entraアプリを手動登録](docs/setup/entra-portal.md)した後、Portal本体を独立してビルド・配備します。
+`azd provision`は共有基盤・モデル・Portal ACA初期サンプルと、API OBO・Portal認証の署名鍵および公開証明書を準備します。公開証明書を取得して[専用Portal Entraアプリを手動登録](docs/setup/entra-portal.md)した後、Portal本体を独立してビルド・配備します。
 
-初期構築は、前提・paramsを準備して`azd up`を実行し、公開証明書取得→手動Entra登録→Portal本体配備へ進みます。標準API正本を常用で解決し、初回Portalでは管理グループObject IDと表示名正規表現の2項目をPortal本体の個別配備コマンドで対話入力できます。GitHub ActionsやPC上のDockerは必要ありません。GatewayとPortalの[個別配備コマンド](docs/operations.md#同じ環境を更新する)も、更新・再試行に引き続き使えます。
+初期構築は、[5アプリの準備](docs/setup/02-entra.md)とparams設定後、`azd provision`で基盤と公開証明書を準備し、手動Entra登録、Gateway、Portal本体の順に進みます。標準API正本を常用で解決し、初回Portalでは管理グループObject IDと表示名正規表現の2項目をPortal本体の個別配備コマンドで対話入力できます。GitHub ActionsやPC上のDockerは必要ありません。GatewayとPortalの[個別配備コマンド](docs/operations.md#同じ環境を更新する)も、更新・再試行に引き続き使えます。
 
 APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。公開例の`<AUTO_GENERATED_APIM_INSTANCE_ID>`は初回自動生成のマーカーです。第1章の準備コマンドが6文字の英小文字・数字へ置換してローカルparamsへ保存し、第2章で同じ値からEntraのCM戻り先を確定します。構築・更新・途中再開では識別子を保持し、撤去後の新規構築は[新しいAPIM識別子の準備](docs/operations.md#撤去後に新しく構築する)から進めます。
 
@@ -32,7 +32,7 @@ HTTP・WebSocket・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra 
 
 ## 新規クローンから構築する
 
-1〜5で前提・設定を準備し、6の`azd up`で基盤・GatewayとPortal初期サンプルを構築し、Entra登録後に9でPortal本体を配備して、10の受入確認へ進みます。7は企業ネットワークを使う場合の構成手順、8・9はアプリの個別更新・再試行の入口です。企業接続を後から整える必要がある場合は、先に`azd provision`で基盤だけを作り、7の完了後に8・9を順に実行できます。Azure Public DNSの公開ゾーン保持やドメイン購入の費用は、Coreとは別に確認します。
+1〜5で前提・設定を準備し、6で基盤とPortal初期サンプルを構築します。公開証明書のEntra登録後に8のGateway、9のPortal本体、10の受入確認へ進みます。7は企業ネットワークを使う場合の構成手順、8・9はアプリの個別更新・再試行の入口です。企業接続を後から整える必要がある場合は、先に`azd provision`で基盤だけを作り、7の完了後に8・9を順に実行できます。Azure Public DNSの公開ゾーン保持やドメイン購入の費用は、Coreとは別に確認します。
 
 | 順番 | 手順 | この段階で用意するもの |
 | --- | --- | --- |
@@ -41,7 +41,7 @@ HTTP・WebSocket・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra 
 | 3 | [公開DNSの準備](docs/setup/03-public-dns.md) | Azure Public DNSの公開ゾーン・NS委任・DNS用マネージドID |
 | 4 | [paramsの準備・リファレンス](docs/setup/04-params.md) | 導入先のID・公開名・IP・アプリ登録を記入した保護ローカルparams |
 | 5 | [configの調整・リファレンス](docs/setup/05-config.md) | テスト／本番の標準構成、SKU・モデル・保護機能の選択 |
-| 6 | [azd upでの構築](docs/setup/06-deploy.md) | 事前確認・基盤・公開DNS・Gateway・Portal初期サンプルと認証証明書の準備 |
+| 6 | [空環境からの構築](docs/setup/06-deploy.md) | 事前確認・基盤・公開DNS・Portal初期サンプルと認証証明書の準備 |
 | 7 | [ハブ＆スポーク対応（任意）](docs/setup/07-hub-spoke.md) | ピアリング、中央DNS・Private DNS、出口・ルート伝搬の調整と再確認 |
 | 8 | [Gatewayの個別配備](#8-gatewayを配備する) | API・ポリシー・製品・購読、CM、credentials DB、認証窓口・SQL初期化・照合ジョブ |
 | 9 | [Portalの個別配備](#9-portalを配備する) | Next.jsイメージ、Portal専用DB・SQL初期化、アプリ、ヘルス監視・認証callback用WAF設定 |
@@ -49,7 +49,7 @@ HTTP・WebSocket・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra 
 
 ### 8. Gatewayを配備する
 
-`azd up`のGateway工程と同じ入口です。Gatewayだけを更新・再試行するときは、第4章で設定した`DEPLOY_PARAMS_FILE`と、同じクローンの`.local/<environment>/state/latest.json`を使います。最初のコマンドで計画を確認し、次のコマンドで反映します。GatewayとPortalを同時に配備せず、各処理の完了を待ちます。
+Gatewayの初回配備、更新、再試行の入口です。第4章で設定した`DEPLOY_PARAMS_FILE`と、同じクローンの`.local/<environment>/state/latest.json`を使います。最初のコマンドで計画を確認し、次のコマンドで反映します。GatewayとPortalを同時に配備せず、各処理の完了を待ちます。
 
 ```sh
 python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
@@ -62,7 +62,7 @@ python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 ### 9. Portalを配備する
 
-`azd up`のPortal工程と同じ入口です。Portalだけを更新・再試行するときや、`azd provision`後の個別構築では、Gatewayの完了を確認してから同じparamsで実行します。
+Portalの初回配備、更新、再試行の入口です。Gatewayの完了を確認してから同じparamsで実行します。
 
 ```sh
 python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
@@ -73,7 +73,7 @@ python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 購読別の任意の利用制限も、このGateway→Portalの順で配備します。既定は全項目無制限で、Portalの保存はSQL内のプロファイル更新だけです。APIMは固定ポリシーで設定を参照します。[利用量の観測と上限の確認](docs/testing/subscription-limits.md)を、運用開始後の確認に使ってください。
 
-`azd up`が成功すれば8・9の追加実行は不要です。途中失敗時はその工程で停止し、保存したstateと各アプリの配備記録を保持します。原因を修正して該当コマンドを再実行できます。基盤だけを構築・更新する場合は`azd provision`を使います。配備成功の後、公開GatewayのAPI呼び出しとPortalのEntraサインインを別途確認して利用を開始します。
+5アプリの初回構築では、基盤準備と公開証明書の登録後に8・9を順に実行します。途中失敗時はその工程で停止し、保存したstateと各アプリの配備記録を保持します。原因を修正して該当コマンドを再実行できます。基盤だけを構築・更新する場合は`azd provision`を使います。配備成功の後、公開GatewayのAPI呼び出しとPortalのEntraサインインを別途確認して利用を開始します。
 
 撤去は、構築時と同じparams・azd環境で `azd down` を実行します。`deploy_gateway.py`・`deploy_portal.py` で追加したアプリ、ジョブ、DB、イメージ、専用IDも回収対象です。配備が途中で失敗した場合も現在の所有資源を照合し、共有CAEを解放してから所有RGを削除します。[撤去の範囲・順序・再実行](docs/operations.md#撤去する)を確認してください。
 
@@ -83,7 +83,7 @@ Azure構築先は`azureTenantId`、CM等の認証テナントの既定値は`ent
 
 購読キーと本人接続のセッションはアプリのサーバー側で保持します。ブラウザはBFF等を経由し、承認済みSaaSは秘密設定へキーを登録します。購読IDを基本の利用主体として計数し、本人向けAPIだけ追加の本人接続を照合します。
 
-新規クローンに秘密情報や過去の構築状態は含まれません。Entra／DNSの資格情報は担当者が準備し、`azd up`が用途・保存先を説明してから非表示で入力を受け付けます。利用者が秘密JSONや`.local/<environment>/secrets/`を手作業で作る必要はありません。
+新規クローンに秘密情報や過去の構築状態は含まれません。Entra／DNSの資格情報は担当者が準備し、構築コマンドが用途・保存先を説明してから非表示で入力を受け付けます。利用者が秘密JSONや`.local/<environment>/secrets/`を手作業で作る必要はありません。
 
 ## 作成される構成
 
@@ -106,7 +106,7 @@ gRPCは基盤の提供要件から廃止しました。専用TCP入口と新規g
 | `rg-<environment>-<product>-svc` | APIM、Foundry・Project・モデル、API Center、Key Vault、共用SQL、ACA環境・Gateway／Portal・ジョブ、ACR |
 | `rg-<environment>-<product>-maint` | Ubuntu管理VM、証明書の取得・更新 |
 
-RGと共通基盤用マネージドIDは`azd up`が作成します。[管理ポータル](docs/setup/portal.md)用のACA環境・初期CA・非公開ACRと、`portal.<domain>`のApp Gateway入口も共通基盤に含みます。Portal本体・専用DB・SQL初期化・ヘルス監視・WAF調整は`deploy_portal.py`で配備します。認証窓口の実行用ID・credentials DB・CM・アプリは`deploy_gateway.py`が担当し、`azd up`の最後に両コマンドを順に呼び出します。
+RGと共通基盤用マネージドIDは`azd provision`が作成します。[管理ポータル](docs/setup/portal.md)用のACA環境・初期CA・非公開ACRと、`portal.<domain>`のApp Gateway入口も共通基盤に含みます。Portal本体・専用DB・SQL初期化・ヘルス監視・WAF調整は`deploy_portal.py`で配備します。認証窓口の実行用ID・credentials DB・CM・アプリは`deploy_gateway.py`が担当します。
 
 Coreの[標準API一覧](docs/reference/api-design-proposal.md)は正式19 API（HTTP 13 API・19 operation、WebSocket 6 API）です。[配備用JSON](apps/apim/apis/)は1 API 1ファイルで管理し、サンプルAPIは含めません。PII生成MCPと、採用時のCM補助API2個は別計上します。Microsoft Graphへの本人接続もCMを使う正式APIです。
 

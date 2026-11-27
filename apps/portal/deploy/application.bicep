@@ -17,6 +17,7 @@ param gatewayOrigin string
 param clientSecretUri string
 param authentication object = {}
 param authIdentity object = {}
+param apiAuthentication object = {}
 param signingSecretUri string
 param expectedEgressIp string
 param apimResourceId string
@@ -30,7 +31,13 @@ var certificateVariables = empty(authentication) ? {} : {
   PORTAL_AUTH_SIGNING_MODE: 'managed-identity'
   PORTAL_AUTH_IDENTITY_CLIENT_ID: authIdentity.clientId
 }
-var variables = union(certificateVariables, {
+var apiAuthenticationVariables = empty(apiAuthentication) ? {} : {
+  PORTAL_API_AUTH_ENABLED: 'true'
+  PORTAL_API_AUTH_SCOPE: apiAuthentication.scope
+  PORTAL_API_AUTH_KEY_URL: apiAuthentication.keyUrl
+  PORTAL_API_AUTH_KEY_CLIENT_ID: apiAuthentication.identity.clientId
+}
+var variables = union(certificateVariables, apiAuthenticationVariables, {
   NODE_ENV: 'production'
   HOSTNAME: '0.0.0.0'
   PORT: '3000'
@@ -54,7 +61,14 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
   name: 'ca-${stem}-portal'
   location: location
   tags: tags
-  identity: { type: 'UserAssigned', userAssignedIdentities: union({ '${runtimeIdentity.id}': {} }, empty(authIdentity) ? {} : { '${authIdentity.id}': {} }) }
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: union(
+      { '${runtimeIdentity.id}': {} },
+      empty(authIdentity) ? {} : { '${authIdentity.id}': {} },
+      empty(apiAuthentication) ? {} : { '${apiAuthentication.identity.id}': {} }
+    )
+  }
   properties: {
     managedEnvironmentId: environment.id
     workloadProfileName: 'Consumption'

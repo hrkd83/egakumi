@@ -3,6 +3,7 @@ import { ModelResponseError } from "./model-response.ts";
 import { REALTIME_MAX_AUDIO_BYTES, REALTIME_MAX_DURATION_MS, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
 import { decodeRealtimeAudio } from "./realtime-audio.ts";
 import { encodeRealtimePcmChunk, getRealtimeSocketUrl, normalizeRealtimeBrowserEvent, readRealtimeSocketMessage, stopRealtimeBrowser, RealtimeMicrophoneQueue, type RealtimeCompletion } from "./realtime-client.ts";
+import type { TryCredential } from "./api-auth/try-credential.ts";
 import { buildRealtimeSessionEvent } from "./realtime-protocol.ts";
 
 /** ブラウザーの許可・対応状況を、任意の例外本文を表示せず案内するための分類です。 */
@@ -42,8 +43,10 @@ async function waitFor(check: () => boolean, targets: { target: EventTarget; eve
  * マイクとAIの双方向音声を開始し、利用者が停止するまで複数の発話を継続します。
  * @remarks 会話の録音保存や自動再接続は行いません。キーはBFFで解決し、認証済みPortalの同一オリジンWSだけへ接続します。
  */
-export async function startRealtimeConversation(options: { model: RealtimeModel; input: RealtimeInput; apiKeyId: string; signal: AbortSignal; onEvent(event: RealtimeStreamEvent): void; onPlaybackBlocked?(blocked: boolean): void }): Promise<RealtimeConversation> {
-  const { model, input, apiKeyId, signal, onEvent, onPlaybackBlocked } = options;
+export async function startRealtimeConversation(options: { model: RealtimeModel; input: RealtimeInput; signal: AbortSignal; onEvent(event: RealtimeStreamEvent): void; onPlaybackBlocked?(blocked: boolean): void } & TryCredential): Promise<RealtimeConversation> {
+  const { model, input, signal, onEvent, onPlaybackBlocked } = options;
+  const selection: TryCredential = options.authentication === "bearer"
+    ? { authentication: "bearer" } : { apiKeyId: options.apiKeyId };
   signal.throwIfAborted();
   if (!globalThis.navigator?.mediaDevices?.getUserMedia || typeof WebSocket === "undefined" || model.transport === "webrtc" && typeof RTCPeerConnection === "undefined") throw new RealtimeBrowserError("BrowserUnsupported");
   const started = performance.now(); const elapsed = () => Math.max(0, Math.round(performance.now() - started));
@@ -269,7 +272,7 @@ export async function startRealtimeConversation(options: { model: RealtimeModel;
       capture.port.onmessage = (event: MessageEvent) => { if (!connected || stopping) return; try { microphoneQueue.push(event.data, current.currentTime); deliverMicrophone(); } catch (error) { void end(error); } };
     }
     active.throwIfAborted(); socket = new WebSocket(getRealtimeSocketUrl(location.origin));
-    socket.addEventListener("open", () => { try { send({ type: "start", ...input, apiKeyId, ...(sdp ? { sdp } : {}) }); } catch (error) { void end(error); } });
+    socket.addEventListener("open", () => { try { send({ type: "start", ...input, ...selection, ...(sdp ? { sdp } : {}) }); } catch (error) { void end(error); } });
     socket.addEventListener("message", (message) => {
       if (finished) return;
       const now = performance.now(); if (now - frameWindow > 1_000) { frameWindow = now; frameCount = 0; }

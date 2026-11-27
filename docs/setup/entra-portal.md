@@ -1,31 +1,17 @@
 # Portal専用Entraアプリの手動登録
 
-状態：工程3の資材・運用手順はローカル検証済みです。[工程4の詳細設計](../reference/portal-stage4-design.md)の実装方針は合意済みで、初回の手動登録に含める設定を本書へ確定しました。対象環境のEntra登録・Portal配備・実受入は保護記録で確認します。工程4の正式実装・実受入は未実施のWIPです。
+Portalログイン、Graph所属照会とAPI試用に使う専用のWebアプリを登録します。同じ依頼でログインとAPI試用の戻り先・権限を登録し、管理者同意を確認します。Entraを管理する担当がAzureポータルで操作します。 [5アプリの構築順](02-entra.md)
 
-初期構築の後に、この手順でアプリ作成と公開証明書の登録を一度の依頼にまとめます。Entraを管理する担当がAzureポータルで操作します。構築資材からEntraアプリを作成したり、管理者同意を自動付与したりしません。
-
-開発・検証環境で構築担当が登録権限を持つ場合も、アプリ内ブラウザのAzureポータルで本書の画面操作を行います。Graph/APIによるアプリ作成・権限設定へ置き換えず、操作画面を取得して手順と照合します。
-
-## この手順が対象にする工程
-
-「専用Portalアプリ」は、Microsoft Entra IDの「アプリの登録」で新しく作る、Portal用の認証アプリを指します。Portalを動かすACAの枠は共有資材で準備し、その枠へ後からPortalのコンテナイメージを配備します。既存のAPI用アプリやCM用アプリと、今回作るPortal用の認証アプリの役割を区別します。
-
-以下は現在の開発・段階受入の順序です。**工程3・4の実装が完成した資材を使う通常の新規構築では、共有資材・鍵準備 → Entraアプリの一度の作成・設定 → 完成済みPortalイメージのビルド・配備・受入**になります。通常の構築担当が工程4のソースを実装したり、そのための別のEntra編集依頼を出したりする手順にはしません。API／CM用アプリの従来の事前準備は維持します。
-
-| 順序 | 実施すること | 担当 |
-| --- | --- | --- |
-| 1. 共有資材の構築 | KV・管理VM・ACAなどの共有資源とPortalの初期サンプルを用意。KV内に秘密鍵・自己署名証明書を発行し、公開`.cer`を取得 | 構築資材 |
-| 2. 新しいPortal用Entraアプリの作成 | 新規アプリ作成、公開証明書、Portalログインの戻り先、Graph管理権限、本書の工程4用設定を一度の依頼で登録 | Entra管理担当が手動操作。本書の対象 |
-| 3. 工程3のPortal配備・受入 | 登録結果を使ってPortal本体をビルド・配備し、証明書認証・Graph管理・定期ジョブ等を受入 | Portalの配備資材と受入担当 |
-| 4. 工程4の実装・追加配備・受入 | 工程3の受入後、合意済みの詳細設計に沿ってAPI用認証・トークン管理・各Tryへの接続を正式実装し、追加配備・受入 | Portalの実装・配備・受入担当 |
-
-本書の「初回登録」は、順序2の**新しいEntraアプリを作成し、必要な証明書と設定をその作成時にまとめて登録すること**です。証明書更新時は、このアプリへ新しい公開証明書を追加します。
-
-順序2で申請を一度にまとめるため、Entraの設定に影響する工程4の設計を先に合意しました。本書の設定を同じ作成・設定作業で完了します。工程4用設定を登録しただけでは、API用OAuthや各Tryが実装・受入済みになるわけではありません。認証の流れ、ライブラリ、保存・更新・失効、全Tryと受入は[詳細設計](../reference/portal-stage4-design.md)に従います。
+| 順序 | 実施すること |
+| --- | --- |
+| `azd provision` | 共有資源とPortal ACAの初期サンプル、Portal署名用の公開証明書を準備 |
+| Entraの登録 | Portalアプリを作成し、公開証明書、2つのWeb戻り先、Graph管理権限、`Gateway.Invoke`を登録 |
+| GatewayとPortalの配備 | Gateway成功後にPortal本体を配備し、Portalログイン・Graph管理・定期照合を確認 |
+| API試用 | 購読キーと本人アクセストークンの各モードを確認 |
 
 ## 初期構築で用意するもの
 
-`azd up`は共有資源、Gateway、Portal ACAの初期サンプルまでを用意します。証明書専用ACAのPortal署名Jobから要求し、KVが認証専用の3072bit RSA鍵と自己署名証明書を生成します。秘密鍵は非exportableです。HTTPS用のACME証明書とは別です。
+`azd provision` が共有資源とPortal ACAの初期サンプルを用意します。証明書専用ACAのPortal署名Jobから要求し、KVが認証専用の3072bit RSA鍵と自己署名証明書を生成します。秘密鍵は非exportableです。HTTPS用のACME証明書とは別です。
 
 `postprovision`は開始したACA Job実行の正常終了と保護された結果を照合し、公開証明書を`.local/<environment>/generated/portal-auth-public.cer`へ、固定参照を同じ環境の`state/portal-auth-certificate.json`へ保存します。単にファイルが存在するだけで初期構築の成功とは判断せず、今回のJob実行の終了結果を確認してください。
 
@@ -75,7 +61,7 @@ KVの秘密鍵、PFX、backing secretは取り出しません。Entra担当へ�
 | 新Portalのclient secret | 作成しない |
 | 利用者割当・条件付きアクセス | 組織のルールを確認し、割当必須の場合は受入利用者の割当も同じ作業で実施 |
 
-Portalログインで要求する`openid profile email`はOIDCのscopeです。API用OAuthの`offline_access`は更新トークンを要求するscopeです。どちらもKV鍵やGraph Application権限を表すものではありません。Portalログイン用ID tokenをAPI試行へ送信しません。Graph下流OBOは工程5の別実装です。
+Portalログインで要求する`openid profile email`はOIDCのscopeです。API用OAuthの`offline_access`は更新トークンを要求するscopeです。どちらもKV鍵やGraph Application権限を表すものではありません。Portalログイン用ID tokenをAPI試行へ送信しません。GraphのBearer試用はAPIアプリのOBO資格情報と委任許可を使います。 [APIアプリのOBO設定](02a-entra-api.md#6-core配備後にobo用の公開証明書を登録する)
 
 `/api/api-auth/complete`はPortal内部の完了処理で、Entraの戻り先には登録しません。既存APIアプリへPortalの証明書や戻り先を追加する操作はありません。公開済みの`Gateway.Invoke`を新しいPortalクライアントへ許可し、管理者同意を付与します。
 
@@ -127,7 +113,7 @@ Portalログインで要求する`openid profile email`はOIDCのscopeです。A
 }
 ```
 
-これは入力項目を示す例であり、プレースホルダーのまま構築できるJSONではありません。鍵の版とthumbprintは保護stateから読みます。明示入力した場合はstateと一致しなければ停止します。登録前は`authentication`全体を省略して初期構築できます。Portal本体配備では登録結果がなければ停止し、CMのsecretへ自動fallbackしません。
+値の例はプレースホルダーです。初回の共通基盤配備では `portal.authentication` を省略できます。Portal本体配備までに専用アプリの登録結果を設定します。鍵の版と指紋は保護stateから取得し、明示入力がある場合は記録と照合します。Portal専用アプリのClient IDは他の4アプリと異なる値を使います。
 
 ```sh
 python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"

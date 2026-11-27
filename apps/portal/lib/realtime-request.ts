@@ -1,6 +1,6 @@
 import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
 import { z } from "zod";
-import { apiKeyIdSchema } from "./api-keys/contracts.ts";
+import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
 import type { RealtimeModel } from "./model-types.ts";
 
 /** 開始時のモデル・音声・応答上限だけを受け取り、接続先や上流イベントの任意入力を拒否します。 */
@@ -24,9 +24,10 @@ export function resolveRealtimeOutputTokens(model: RealtimeModel, input: Realtim
   return input.maxOutputTokens;
 }
 /** 実行時には選択した購読の台帳IDを付け、キーの実値はBFFで解決します。 */
-export const realtimeExecutionSchema = realtimeInputSchema.extend({ apiKeyId: apiKeyIdSchema });
+export const realtimeExecutionSchema = z.union([realtimeInputSchema.extend(tryApiKeyFields), realtimeInputSchema.extend(tryBearerFields)]);
 /** WebRTCはブラウザーが生成した音声専用SDPを追加します。SDPはログへ出しません。 */
-export const realtimeWebRtcExecutionSchema = realtimeExecutionSchema.extend({ sdp: z.string().min(20).max(MAX_RUNTIME_STRING_CHARACTERS) });
+const realTimeOffer = realtimeInputSchema.extend({ sdp: z.string().min(20).max(MAX_RUNTIME_STRING_CHARACTERS) });
+export const realtimeWebRtcExecutionSchema = z.union([realTimeOffer.extend(tryApiKeyFields), realTimeOffer.extend(tryBearerFields)]);
 /** 終了の再確認には、本人に束縛された暗号化参照だけを受け取ります。 */
 export const realtimeStopSchema = z.object({ handle: z.string().min(40).max(16_000) }).strict();
 
@@ -39,7 +40,7 @@ export const REALTIME_MAX_STREAM_BYTES = 100_663_296;
 export const REALTIME_MAX_EVENTS = 50_000;
 
 const usageSchema = z.record(z.string().regex(/^[a-zA-Z0-9_.-]{1,80}$/), z.number().finite().nonnegative());
-const errorCodeSchema = z.enum(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable"]);
+const errorCodeSchema = z.enum(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable"]);
 /** BFFとブラウザーの共通ストリーム契約です。上流の任意イベント・キー・チケットを直接転送しません。 */
 export const realtimeStreamEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("status"), stage: z.enum(["connecting", "connected", "sending", "receiving", "stopping"]), elapsedMs: z.number().nonnegative(), maximumDurationMs: z.number().int().positive().max(REALTIME_MAX_DURATION_MS).optional() }).strict(),

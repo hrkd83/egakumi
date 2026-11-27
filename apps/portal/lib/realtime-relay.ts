@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getRealtimeEndpoint } from "./realtime-integration.ts";
 import { runRealtimeConversation, type RealtimeConversationCommand } from "./realtime-gateway.ts";
 import { resolveRealtimeVoice } from "./realtime-voices.ts";
+import { watchGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
 import { handleRealtimeWebRtc } from "./realtime-webrtc.ts";
 import { realtimeStreamEventSchema, resolveRealtimeOutputTokens, REALTIME_MAX_DURATION_MS, type RealtimeStreamEvent } from "./realtime-request.ts";
 import { REALTIME_RELAY_PATH, realtimeRelayStartSchema, verifyRealtimeInternalProof, type RealtimeRelayContext } from "./realtime-relay-contract.ts";
@@ -49,12 +50,29 @@ export function createRealtimeRelay(dependencies: RealtimeRelayDependencies): { 
   const authorize = dependencies.authorize ?? (async (input, cookie, signal) => {
     const response = await fetch(target, { method: "POST", headers: { "Content-Type": "application/json", "X-Portal-Realtime-Internal": dependencies.internalProof, Cookie: cookie, Origin: origin, "Sec-Fetch-Site": "same-origin" },
       body: JSON.stringify(input), redirect: "error", cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(75_000)]) });
-    if (!response.ok) { void response.body?.cancel().catch(() => undefined); throw new Error(response.status === 401 ? "AuthenticationRequired" : response.status === 403 ? "ApiKeyUnavailable" : "ApiKeyAccessUnavailable"); }
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => undefined);
+      const reason = input.authentication === "bearer" && response.status !== 403
+        ? response.status === 401 ? "ApiAuthenticationRequired" : response.status === 409 ? "ApiAuthenticationBusy" : "ApiAuthenticationUnavailable"
+        : response.status === 401 ? "AuthenticationRequired" : response.status === 403 ? "ApiKeyUnavailable" : "ApiKeyAccessUnavailable";
+      throw new Error(reason);
+    }
     // このloopback応答だけにキー実値が含まれます。ログやクライアントフレームへ転記しません。
-    const text = await response.text(); if (Buffer.byteLength(text) > 20_000) throw new Error("ApiKeyAccessUnavailable");
+    const text = await response.text(); if (Buffer.byteLength(text) > 32_768) throw new Error("ApiKeyAccessUnavailable");
     const context = JSON.parse(text) as RealtimeRelayContext;
-    if (context.portalOrigin !== origin || context.apiKeyId !== input.apiKeyId || context.model.id !== input.modelId || !/^[\x21-\x7e]{16,512}$/.test(context.key)
+    if (context.portalOrigin !== origin || context.model.id !== input.modelId
       || !z.uuid().safeParse(context.actor.tenantId).success || !z.uuid().safeParse(context.actor.objectId).success) throw new Error("ApiKeyAccessUnavailable");
+    if (input.authentication === "bearer") {
+      const bearer = context.bearer;
+      if (!bearer || !/^[A-Za-z0-9._~+\/-]{16,16384}={0,2}$/.test(bearer.value) || context.key !== undefined ||
+          !Number.isSafeInteger(bearer.generation) || bearer.generation < 0 || !Number.isFinite(bearer.expiresAt) ||
+          !Number.isFinite(bearer.accessExpiresAt) || bearer.accessExpiresAt < bearer.expiresAt ||
+          !z.uuid().safeParse(bearer.binding.sessionId).success ||
+          bearer.binding.tenantId !== context.actor.tenantId || bearer.binding.objectId !== context.actor.objectId ||
+          !/^[a-f0-9]{64}$/.test(bearer.binding.hash)) throw new Error("ApiAuthenticationUnavailable");
+    } else if (context.apiKeyId !== input.apiKeyId || !/^[!-~]{16,512}$/.test(context.key ?? "")) {
+      throw new Error("ApiKeyAccessUnavailable");
+    }
     getRealtimeEndpoint(context.model, context.gatewayOrigin); return context;
   });
 
@@ -76,10 +94,10 @@ export function createRealtimeRelay(dependencies: RealtimeRelayDependencies): { 
       const emit = (value: RealtimeStreamEvent) => {
         if (client.readyState !== WebSocket.OPEN) return;
         const encoded = JSON.stringify(realtimeStreamEventSchema.parse(value));
-        if (client.bufferedAmount > 1_048_576 || context && encoded.includes(context.key)) { cancellation.abort(); throw new Error("Stream consumer unavailable"); }
+        if (client.bufferedAmount > 1_048_576 || context && encoded.includes(context.bearer?.value ?? context.key ?? "")) { cancellation.abort(); throw new Error("Stream consumer unavailable"); }
         client.send(encoded, (error) => { if (error) cancellation.abort(); });
       };
-      const fail = (code: "InvalidRequest" | "GenerationFailed" | "AuthenticationRequired" | "ApiKeyUnavailable" | "ApiKeyAccessUnavailable" = "GenerationFailed") => { try { emit({ type: "error", error: { code } }); } catch { /* 受信側が遅いときも回収処理を優先します。 */ } cancellation.abort(); };
+      const fail = (code: "InvalidRequest" | "GenerationFailed" | "AuthenticationRequired" | "ApiKeyUnavailable" | "ApiKeyAccessUnavailable" | "ApiAuthenticationRequired" | "ApiAuthenticationBusy" | "ApiAuthenticationUnavailable" = "GenerationFailed") => { try { emit({ type: "error", error: { code } }); } catch { /* 受信側が遅いときも回収処理を優先します。 */ } cancellation.abort(); };
       const firstFrame = setTimeout(() => { fail("InvalidRequest"); closeSoon(); }, dependencies.firstFrameTimeoutMs ?? 5000); firstFrame.unref();
       const maximum = setTimeout(() => cancellation.abort(), Math.min(dependencies.maximumDurationMs ?? REALTIME_MAX_DURATION_MS, REALTIME_MAX_DURATION_MS)); maximum.unref();
       const heartbeat = setInterval(() => { if (!alive) { cancellation.abort(); client.terminate(); return; } alive = false; if (client.readyState === WebSocket.OPEN) client.ping(); }, dependencies.heartbeatMs ?? 15_000); heartbeat.unref();
@@ -89,15 +107,19 @@ export function createRealtimeRelay(dependencies: RealtimeRelayDependencies): { 
       const execute = async (input: z.infer<typeof realtimeRelayStartSchema>) => {
         try {
           context = await authorize(input, cookie, cancellation.signal); if (cancellation.signal.aborted) return;
+          const credential: GatewayCredential = context.bearer
+            ? { scheme: "bearer", value: context.bearer.value, headers: { Authorization: `Bearer ${context.bearer.value}` }, bearer: context.bearer }
+            : { scheme: "api-key", value: context.key, headers: { "api-key": context.key } };
           resolveRealtimeOutputTokens(context.model, input);
           resolveRealtimeVoice(context.model, input);
           if ((context.model.transport === "webrtc") !== Boolean(input.sdp)) throw new Error("InvalidRequest");
           if (context.model.transport === "webrtc") {
             const allowed = new Set([context.model.apiId, ...(context.model.observer ? [context.model.observer.apiId] : [])]);
             const response = await (dependencies.runWebRtc ?? handleRealtimeWebRtc)(new Request(`${origin}/api/models/realtime/webrtc`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
-              body: JSON.stringify({ modelId: input.modelId, apiKeyId: input.apiKeyId, maxOutputTokens: input.maxOutputTokens, voice: input.voice, sdp: input.sdp }), signal: cancellation.signal }), {
+              body: JSON.stringify({ modelId: input.modelId, ...(input.authentication === "bearer" ? { authentication: "bearer" } : { apiKeyId: input.apiKeyId }), maxOutputTokens: input.maxOutputTokens, voice: input.voice, sdp: input.sdp }), signal: cancellation.signal }), {
               readSession: async () => context!.actor, readPortalOrigin: () => origin, readModels: () => [context!.model], readGatewayEnvironment: async () => ({ origin: context!.gatewayOrigin }),
-              resolveSubscriptionKey: async (actor, id, apiId) => { if (id !== context!.apiKeyId || actor.tenantId !== context!.actor.tenantId || actor.objectId !== context!.actor.objectId || !allowed.has(apiId)) throw new Error("Invalid subscription binding"); return context!.key; },
+              resolveSubscriptionKey: async (actor, id, apiId) => { if (id !== context!.apiKeyId || actor.tenantId !== context!.actor.tenantId || actor.objectId !== context!.actor.objectId || !allowed.has(apiId)) throw new Error("Invalid subscription binding"); return context!.key!; },
+              resolveBearer: context.bearer ? async () => context!.bearer! : undefined,
             });
             if (!response.ok || !response.body) throw new Error("GenerationFailed");
             const reader = response.body.getReader(); const decoder = new TextDecoder("utf-8", { fatal: true }); let pending = "";
@@ -105,10 +127,10 @@ export function createRealtimeRelay(dependencies: RealtimeRelayDependencies): { 
               let split: number; while ((split = pending.indexOf("\n\n")) >= 0) { const frame = pending.slice(0, split); pending = pending.slice(split + 2); if (!frame.startsWith("data: ")) throw new Error("Invalid stream frame"); emit(realtimeStreamEventSchema.parse(JSON.parse(frame.slice(6)))); }
             } } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
           } else {
-            await (dependencies.runConversation ?? runRealtimeConversation)(context.model, { modelId: input.modelId, maxOutputTokens: input.maxOutputTokens, ...(input.voice !== undefined ? { voice: input.voice } : {}) }, getRealtimeEndpoint(context.model, context.gatewayOrigin), context.key, cancellation.signal, emit, (receive) => { command = receive; return () => { command = undefined; }; });
+            await (dependencies.runConversation ?? runRealtimeConversation)(context.model, { modelId: input.modelId, maxOutputTokens: input.maxOutputTokens, ...(input.voice !== undefined ? { voice: input.voice } : {}) }, getRealtimeEndpoint(context.model, context.gatewayOrigin), credential.bearer ? credential : credential.value, watchGatewayCredential(credential, cancellation.signal), emit, (receive) => { command = receive; return () => { command = undefined; }; });
           }
         } catch (error) {
-          if (!stopped && client.readyState === WebSocket.OPEN) fail(error instanceof Error && ["InvalidRequest", "AuthenticationRequired", "ApiKeyUnavailable", "ApiKeyAccessUnavailable"].includes(error.message) ? error.message as "InvalidRequest" : "GenerationFailed");
+          if (!stopped && client.readyState === WebSocket.OPEN) fail(error instanceof Error && ["InvalidRequest", "AuthenticationRequired", "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable"].includes(error.message) ? error.message as "InvalidRequest" : "GenerationFailed");
         } finally { cancellation.abort(); clearTimeout(firstFrame); clearTimeout(maximum); clearTimeout(stopDeadline); clearInterval(heartbeat); context = undefined; closeSoon(); active.delete(client); doneResolve(); }
       };
       client.on("message", (data: RawData, binary: boolean) => {

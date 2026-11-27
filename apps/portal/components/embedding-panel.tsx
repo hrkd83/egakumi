@@ -1,5 +1,7 @@
 "use client";
 
+import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+
 import { useFieldIds } from "@/lib/use-field-ids";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -67,6 +69,7 @@ export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { 
   const model = models.find((item) => item.id === state.input.modelId) ?? models[0];
   const apiId = model?.apiId ?? "";
   const selectedKey = choices.apiId === apiId && choices.status === "ready" ? choices.keys.find((item) => item.id === state.apiKeyId) : undefined;
+  const authentication = useTryAuthentication(selectedKey?.id);
   const text = dictionary.modelGateway;
   const guide = text.integration;
   const embedding = getEmbeddingDictionary(locale);
@@ -92,13 +95,13 @@ export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { 
   /** 編集内容と設定を送り、キーの実値はBFFで解決します。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (requestRef.current || !model || !parsed.success || !payload || !selectedKey) return;
+    if (requestRef.current || !model || !parsed.success || !payload || !authentication.credential) return;
     const controller = new AbortController();
     requestRef.current = controller;
     store.setState({ loading: true, result: null, failure: null, cancelled: false, tab: "response" });
     try {
       const signal = controller.signal;
-      const response = await fetch("/api/models/embeddings", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...parsed.data, apiKeyId: selectedKey.id }), signal });
+      const response = await fetch("/api/models/embeddings", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...parsed.data, ...authentication.credential }), signal });
       const result = await readEmbeddingResponse(response, signal);
       if (!controller.signal.aborted) store.setState({ loading: false, result });
     } catch (error) { if (!controller.signal.aborted) store.setState({ loading: false, failure: error instanceof ModelResponseError ? error.failure : { error: { code: "GenerationFailed" } } }); }
@@ -119,7 +122,9 @@ export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { 
     </>}
     settings={
       <form onSubmit={execute} className="space-y-5">
-      <div className="space-y-2 rounded-lg border border-border bg-white p-3">
+        <TryAuthenticationPicker model={authentication} locale={locale} disabled={state.loading} />
+
+      <div className="space-y-2 rounded-lg border border-border bg-white p-3" hidden={authentication.selection.mode === "bearer"}>
         <div className="flex items-center justify-between gap-3"><label htmlFor={fieldId("embedding-api-key")} className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || choices.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button></div>
         <Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.apiId !== apiId || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => store.setState({ apiKeyId })}><SelectTrigger id={fieldId("embedding-api-key")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block truncate">{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
         <p className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
@@ -134,7 +139,7 @@ export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { 
       <p id={fieldId("embedding-dimensions-help")} className="text-sm leading-6 text-muted-foreground">{embedding.dimensionsHelp}</p>
       {model.providerId === "cohere" && <p className="text-sm leading-6 text-muted-foreground">{embedding.inputTypeHelp}</p>}
       <div className="space-y-3">{state.input.texts.map((value, index) => <div key={index} className="space-y-2"><div className="flex items-center justify-between gap-3"><label htmlFor={fieldId(`embedding-text-${index}`)} className="text-sm font-medium">{embedding.text} {index + 1}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || state.input.texts.length <= 1} aria-label={`${embedding.removeText} ${index + 1}`} onClick={() => updateInput({ texts: state.input.texts.filter((_, entry) => entry !== index) })}><Trash2 className="size-3.5" />{embedding.removeText}</Button></div><Textarea id={fieldId(`embedding-text-${index}`)} rows={3} maxLength={MAX_EMBEDDING_TEXT_CHARACTERS} required disabled={state.loading} value={value} placeholder={EMBEDDING_SAMPLE_TEXTS[index % EMBEDDING_SAMPLE_TEXTS.length]} onChange={(event) => updateInput({ texts: state.input.texts.map((text, entry) => entry === index ? event.target.value : text) })} className="bg-white text-sm leading-7" /></div>)}<div className="flex items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{embedding.textsHelp.replace("{count}", number.format(model.maxInputs))}</p><Button type="button" variant="outline" size="sm" disabled={state.loading || state.input.texts.length >= model.maxInputs} onClick={() => updateInput({ texts: [...state.input.texts, ""] })}><Plus className="size-3.5" />{embedding.addText}</Button></div></div>
-      <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-lg text-sm leading-6 text-muted-foreground">{embedding.sampleNotice}</p><div className="flex items-center gap-2">{state.loading && <Button type="button" variant="outline" size="sm" onClick={cancel}><Square className="size-3.5" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={state.loading || !payload || !selectedKey || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{state.loading ? embedding.running : embedding.execute}</Button></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-lg text-sm leading-6 text-muted-foreground">{embedding.sampleNotice}</p><div className="flex items-center gap-2">{state.loading && <Button type="button" variant="outline" size="sm" onClick={cancel}><Square className="size-3.5" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={state.loading || !payload || !authentication.credential || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{state.loading ? embedding.running : embedding.execute}</Button></div></div>
       {!payload && <p role="alert" className="text-sm text-destructive">{text.errors.InvalidRequest}</p>}
     </form>
     }

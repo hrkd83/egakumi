@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
-import { apiKeyIdSchema } from "./api-keys/contracts.ts";
+import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
 
 /** 1件の入力欄の上限です。API本文全体はモデルのバイト数上限でも検査します。 */
 export const MAX_EMBEDDING_TEXT_CHARACTERS = MAX_RUNTIME_STRING_CHARACTERS;
@@ -16,7 +16,7 @@ export const embeddingInputSchema = z.object({
 export type EmbeddingInput = z.infer<typeof embeddingInputSchema>;
 
 /** 実行時は、現在の所属とAPI利用権限を再確認するための台帳IDを必須にします。 */
-export const embeddingExecutionSchema = embeddingInputSchema.extend({ apiKeyId: apiKeyIdSchema });
+export const embeddingExecutionSchema = z.union([embeddingInputSchema.safeExtend(tryApiKeyFields), embeddingInputSchema.safeExtend(tryBearerFields)]);
 
 const vectorSchema = z.array(z.number().finite()).min(1);
 

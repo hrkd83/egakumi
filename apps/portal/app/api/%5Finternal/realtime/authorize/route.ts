@@ -1,6 +1,7 @@
 import { getAuthEnvironment } from "@/lib/auth-environment";
 import { readPortalPrincipal } from "@/lib/auth-session";
 import { ApiKeyError } from "@/lib/api-keys/contracts";
+import { apiAuthenticationFailure, readGatewayBearer } from "@/lib/api-auth/gateway-credential";
 import { getApiKeyService } from "@/lib/api-keys/service";
 import { getRealtimeModels } from "@/lib/model-catalog";
 import { getPublicModelGatewayOrigin } from "@/lib/model-public-config";
@@ -25,9 +26,14 @@ export async function POST(request: Request): Promise<Response> {
     if (!model || (model.transport === "webrtc") !== Boolean(input.sdp)) return failure(400);
     try { resolveRealtimeOutputTokens(model, input); resolveRealtimeVoice(model, input); } catch { return failure(400); }
     const gatewayOrigin = getPublicModelGatewayOrigin(); if (!gatewayOrigin) return failure(503); getRealtimeEndpoint(model, gatewayOrigin);
+    const relay = { actor: { tenantId: actor.tenantId, objectId: actor.objectId }, model, gatewayOrigin, portalOrigin };
+    if (input.authentication === "bearer") {
+      const bearer = await readGatewayBearer(request, actor, gatewayOrigin);
+      return Response.json({ ...relay, bearer }, { headers });
+    }
     const key = await getApiKeyService().executionKey(actor, input.apiKeyId, model.apiId);
     if (model.observer && await getApiKeyService().executionKey(actor, input.apiKeyId, model.observer.apiId) !== key) return failure(403);
     // 公開frontはこのURLを全拒否します。キーの送信先は同じコンテナのloopbackプロセスだけです。
-    return Response.json({ actor: { tenantId: actor.tenantId, objectId: actor.objectId }, model, key, apiKeyId: input.apiKeyId, gatewayOrigin, portalOrigin }, { headers });
-  } catch (error) { return failure(error instanceof ApiKeyError && error.status < 500 ? 403 : 503); }
+    return Response.json({ ...relay, key, apiKeyId: input.apiKeyId }, { headers });
+  } catch (error) { return failure(apiAuthenticationFailure(error)?.status ?? (error instanceof ApiKeyError && error.status < 500 ? 403 : 503)); }
 }

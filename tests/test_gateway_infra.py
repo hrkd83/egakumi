@@ -67,7 +67,11 @@ class GatewayInfrastructureTests(unittest.TestCase):
         self.assertNotIn("microsoft.apimanagement/service", types)
         self.assertNotIn("microsoft.app/managedenvironments", types)
         self.assertNotIn("microsoft.network/privateendpoints", types)
-        self.assertNotIn("microsoft.authorization/roledefinitions", types)
+        roles = [item for item in resources(self.templates["gateway"])
+                 if item["type"] == "Microsoft.Authorization/roleDefinitions"]
+        signer, = roles
+        self.assertIn("gateway-graph-obo-signer", signer["name"])
+        self.assertEqual(signer["condition"], "[not(empty(parameters('oboKeyName')))]")
         database = self.module("gateway-database")["properties"]["template"]
         db, = [item for item in database["resources"] if item["type"] == "Microsoft.Sql/servers/databases"]
         self.assertIn("sqldb-{0}-credentials", db["name"])

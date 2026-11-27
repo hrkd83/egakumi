@@ -2,11 +2,12 @@ import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.t
 import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
-import { getApiKeyService } from "./api-keys/service.ts";
+import { apiAuthenticationFailure, resolveGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
+import type { PortalBearer } from "./api-auth/service.ts";
 import { getEmbeddingModels } from "./model-catalog.ts";
 import { getModelGatewayEnvironment, type ModelGatewayEnvironment } from "./model-gateway.ts";
 import { buildEmbeddingRequest } from "./embedding-integration.ts";
-import { embeddingExecutionSchema, type EmbeddingInput } from "./embedding-request.ts";
+import { embeddingExecutionSchema } from "./embedding-request.ts";
 import { parseEmbeddingResult, readEmbeddingBody } from "./embedding-response.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
 import type { EmbeddingModel } from "./model-types.ts";
@@ -21,6 +22,7 @@ export type EmbeddingGatewayDependencies = {
   readPortalOrigin: () => string;
   readGatewayEnvironment?: () => Promise<ModelGatewayEnvironment>;
   resolveSubscriptionKey?: (actor: ApiKeyActor, apiKeyId: string, apiId: string) => Promise<string>;
+  resolveBearer?: () => Promise<PortalBearer>;
   readModels?: () => readonly EmbeddingModel[] | Promise<readonly EmbeddingModel[]>;
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
@@ -46,7 +48,7 @@ export async function handleEmbeddings(request: Request, dependencies: Embedding
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
   if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
-  let input: EmbeddingInput & { apiKeyId: string };
+  let input: ReturnType<typeof embeddingExecutionSchema.parse>;
   try { input = embeddingExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, MAX_BUFFERED_BODY_BYTES, request.signal))); } catch { return failure(request.signal.aborted ? "RequestCancelled" : "InvalidRequest", request.signal.aborted ? 499 : 400); }
   let model: EmbeddingModel | undefined;
   try { model = (await (dependencies.readModels ?? getEmbeddingModels)()).find((item) => item.id === input.modelId); } catch { return failure("ModelUnavailable", 503); }
@@ -61,17 +63,20 @@ export async function handleEmbeddings(request: Request, dependencies: Embedding
     const origin = new URL(gateway.origin);
     if (origin.protocol !== "https:" || origin.origin !== gateway.origin || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) throw new Error("Invalid gateway origin");
   } catch { return failure("GatewayNotConfigured", 503); }
-  let key: string;
+  let credential: GatewayCredential;
   try {
-    key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId)))(actor, input.apiKeyId, model.apiId);
-    if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new Error("Invalid subscription key");
-  } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
+    credential = await resolveGatewayCredential(request, actor, input, model.apiId, gateway.origin,
+      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+  } catch (error) {
+    const apiAuth = apiAuthenticationFailure(error);
+    if (apiAuth) return failure(apiAuth.code, apiAuth.status);
+    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
   const timeout = modelDeadline(dependencies.timeoutMs);
   const signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();
   let identifier: string | undefined;
   try {
-    const response = await (dependencies.fetch ?? globalThis.fetch)(new URL(model.path, gateway.origin), { method: "POST", redirect: "error", cache: "no-store", signal, headers: { "Content-Type": "application/json", Accept: "application/json", "api-key": key }, body });
+    const response = await (dependencies.fetch ?? globalThis.fetch)(new URL(model.path, gateway.origin), { method: "POST", redirect: "error", cache: "no-store", signal, headers: { "Content-Type": "application/json", Accept: "application/json", ...credential.headers }, body });
     const id = response.headers.get("apim-request-id");
     if (id && /^[a-zA-Z0-9_-]{1,128}$/.test(id)) identifier = id;
     const details = identifier ? { requestId: identifier } : {};
@@ -83,7 +88,7 @@ export async function handleEmbeddings(request: Request, dependencies: Embedding
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") { await response.body?.cancel(); return failure("GenerationFailed", 502, details); }
     const raw = await readEmbeddingBody(response.body, MAX_BUFFERED_BODY_BYTES, signal);
     const value: unknown = JSON.parse(raw);
-    if (containsModelCredential(value, key, raw)) throw new Error("Unexpected credential reflection");
+    if (containsModelCredential(value, credential.value, raw)) throw new Error("Unexpected credential reflection");
     const result = parseEmbeddingResult(value, model, input, Math.round(performance.now() - started), identifier);
     return Response.json(result, { headers });
   } catch {

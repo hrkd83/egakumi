@@ -4,7 +4,7 @@ import unittest
 
 from test_portal_gateway import CONFIG, Transport, fixture
 from deployment.helpers.waf_names import policy_id, policy_name
-from deployment.helpers.portal_gateway import (CALLBACK_PATH, configure_portal_callback_waf,
+from deployment.helpers.portal_gateway import (API_CALLBACK_PATH, CALLBACK_PATH, CALLBACK_PATHS, configure_portal_callback_waf,
                                                 gateway_id, _callback_gateway, _callback_policy, _portal_policy,
                                                 portal_session_exclusions, _writable)
 
@@ -98,8 +98,20 @@ class PortalCallbackWafTests(unittest.TestCase):
         self.assertEqual(props["requestRoutingRules"][0], current["properties"]["requestRoutingRules"][0])
         self.assertEqual(props["urlPathMaps"][0], current["properties"]["urlPathMaps"][0])
         portal_map = props["urlPathMaps"][1]["properties"]
-        self.assertEqual(portal_map["pathRules"][0]["properties"]["paths"], [CALLBACK_PATH])
+        self.assertEqual(portal_map["pathRules"][0]["properties"]["paths"], list(CALLBACK_PATHS))
         self.assertEqual(portal_map["defaultBackendHttpSettings"]["id"], GATEWAY_ID + "/backendHttpSettingsCollection/behttp-portal")
+
+    def test_existing_login_callback_is_extended_only_to_the_api_form_callback(self):
+        current = ready_gateway(_callback_gateway(CONFIG, gateway(), GATEWAY_ID, POLICY_ID))
+        portal_map = current["properties"]["urlPathMaps"][1]["properties"]
+        portal_map["pathRules"][0]["properties"]["paths"] = [CALLBACK_PATH]
+        updated = _callback_gateway(CONFIG, current, GATEWAY_ID, POLICY_ID)
+        self.assertEqual(updated["properties"]["urlPathMaps"][1]["properties"]["pathRules"][0]["properties"]["paths"],
+                         list(CALLBACK_PATHS))
+        self.assertEqual(portal_map["pathRules"][0]["properties"]["paths"], [CALLBACK_PATH])
+        portal_map["pathRules"].append({"name": "other", "properties": {"paths": [API_CALLBACK_PATH]}})
+        with self.assertRaisesRegex(ValueError, "another owner"):
+            _callback_gateway(CONFIG, current, GATEWAY_ID, POLICY_ID)
 
     def test_repeating_completed_configuration_does_not_write(self):
         desired_policy = ready_policy(_callback_policy(policy()))

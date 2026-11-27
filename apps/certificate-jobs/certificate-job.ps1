@@ -107,7 +107,9 @@ function Invoke-PortalJobCheckpoint([string]$Method, [hashtable]$State = $null) 
         $storage.UserInfo -or $storage.Query -or $storage.Fragment -or $storage.AbsolutePath -ne '/' -or
         $storage.Host -cnotmatch '^[a-z0-9]{3,24}\.blob\.core\.windows\.net$' -or
         $container -cnotmatch '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$') { throw 'Invalid job checkpoint endpoint' }
-    $uri = "$origin/$container/state/portal.json"
+    $stateObject = if ($env:CERTIFICATE_PORTAL_STATE_OBJECT) { $env:CERTIFICATE_PORTAL_STATE_OBJECT } else { 'portal' }
+    if ($stateObject -cnotin @('portal', 'gateway-obo')) { throw 'Invalid certificate checkpoint object' }
+    $uri = "$origin/$container/state/$stateObject.json"
     $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::new($Method), $uri)
     $client = New-CertificateHttpClient
     try {
@@ -170,6 +172,10 @@ try {
     }
     $actionMap = @{ initial = 'Initialize'; prepare = 'Prepare'; inspect = 'Inspect'; activate = 'Activate'; retire = 'Retire' }
     $configuration = Get-PortalJobConfiguration $env:CERTIFICATE_CONFIG_JSON $env:CERTIFICATE_ARGUMENTS_JSON $Action
+    if ($env:CERTIFICATE_PORTAL_STATE_OBJECT -and ($env:CERTIFICATE_PORTAL_STATE_OBJECT -cne 'gateway-obo' -or
+        $Action -cne 'initial' -or ($configuration | ConvertFrom-Json).certificateName -cne 'gateway-obo')) {
+        throw 'Invalid Gateway OBO certificate operation'
+    }
     & '/app/portal-auth-certificate.ps1' -Action $actionMap[$Action] -ConfigJson $configuration -ContainerJob
     exit $LASTEXITCODE
 } catch {

@@ -1,12 +1,12 @@
-# 6. azd upでの構築
+# 6. 空環境からの構築
 
 前：[5. configの調整](05-config.md) · [README](../../README.md) · 次：[7. ハブ＆スポーク対応（任意）](07-hub-spoke.md) · [更新・撤去](../operations.md)
 
 ## このページのゴール
 
-新規クローンに自社のparamsと、Entra・DNS担当者が準備した資格情報を与え、`azd up`で共有資源・Gateway・Portal初期サンプル・認証公開証明書を準備します。[手動Entra登録](entra-portal.md)後にPortal本体を個別配備します。コマンドの正常終了、公開DNSの反映、APIの実応答とPortalへのサインインを分けて確認します。
+新規クローンに[用途別のEntra登録](02-entra.md)とDNSを用意し、`azd provision`で共有資源・Portal初期サンプル・認証用公開証明書を準備します。公開証明書の登録後に、Gateway、Portal本体の順に個別配備します。コマンドの正常終了、公開DNSの反映、APIの実応答とPortalへのサインインを確認します。
 
-**このページの`azd up`からCore設備の作成と課金が始まります。** 公開DNS等、事前準備で別途作成した資源の費用は第3章で確認します。 第1〜5章の準備・料金・保持方針を確定してから実行してください。使い終えた検証環境は[撤去手順](../operations.md#撤去する)で削除します。
+**このページの`azd provision`からCore設備の作成と課金が始まります。** 公開DNS等、事前準備で別途作成した資源の費用は第3章で確認します。 第1〜5章の準備・料金・保持方針を確定してから実行してください。使い終えた検証環境は[撤去手順](../operations.md#撤去する)で削除します。
 
 ## 6-1. 実行フォルダと入力を確認する
 
@@ -26,11 +26,11 @@ python3 scripts/deployment/lifecycle.py validate
 
 `valid: true`、導出された5RG、公開APIの設定状態を確認します。`WORKFORCE_CONFIG`はup/downが読むparamsの入口です。個人用・過去試験用の`.local/<environment>/state/`内の合成設定や、他人のID・URLを含む設定を使いません。
 
-paramsの`services.apimInstanceId`は第1章の初回prepareが公開マーカー`<AUTO_GENERATED_APIM_INSTANCE_ID>`を6文字IDへ置換して保存した値を使います。未解決マーカーは配備入力として受け付けません。第2章で算出したCM戻り先がEntraに保存されていることを確認してください。`azd up`や途中再開で識別子を生成し直すことはありません。撤去後の新規構築は[新しいAPIM識別子を準備](../operations.md#撤去後に新しく構築する)してから、この章を進めます。
+paramsの`services.apimInstanceId`は第1章の初回prepareが公開マーカー`<AUTO_GENERATED_APIM_INSTANCE_ID>`を6文字IDへ置換して保存した値を使います。未解決マーカーは配備入力として受け付けません。第2章で算出したCM戻り先がEntraに保存されていることを確認してください。構築や途中再開で識別子を生成し直すことはありません。撤去後の新規構築は[新しいAPIM識別子を準備](../operations.md#撤去後に新しく構築する)してから、この章を進めます。
 
 標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は廃止しました。旧項目は空配列やfalseでも拒否し、既存paramsを無断で自動変換しません。[入力配置と移行条件](04-params.md#既存入力の移行を確認する)を確認してから実行します。基盤だけを準備する場合は、同じ入力で`azd provision`を使います。今回の入力整理のAzure反映・全環境再構築E2Eは未実施です。
 
-第1章で作成した環境別paramsを使います。`secrets/`・`state/`・`generated/`は同じ`.local/<environment>/`の下に置き、`.azure/`はazdだけが管理します。まだ秘密や配備記録がないことは正常です。第2章のCore client secretを安全な保管先から非表示入力できる状態にし、第3章で確認したAzure DNS側Subscription IDとUAMIのリソースIDを用意します。DNS用IDの公開参照はparamsへ事前設定します。Entraのsecretをparams／configへ書き込まず、案内に従って非表示入力します。
+第1章で作成した環境別paramsを使います。`secrets/`・`state/`・`generated/`は同じ`.local/<environment>/`の下に置き、`.azure/`はazdだけが管理します。まだ秘密や配備記録がないことは正常です。第2章で用意したTools用とCredential用の各client secretを安全な保管先から非表示入力できる状態にし、第3章で確認したAzure DNS側Subscription IDとUAMIのリソースIDを用意します。DNS用IDの公開参照はparamsへ事前設定します。Entraのsecretをparams／configへ書き込まず、案内に従って非表示入力します。
 
 ## 6-2. Azure CLIとazdの両方へログインする
 
@@ -66,19 +66,19 @@ azd env set AZURE_LOCATION "$DEPLOY_LOCATION"
 python3 scripts/deployment/lifecycle.py capacity
 ```
 
-結果は`.local/<environment>/state/capacity.json`です。モデルやVMの提供・クォータ不足、読取不能はその理由を確認します。新規Subscriptionで必要RPが未登録の場合も、読取検査が失敗することがあります。構築者の登録権限を確認してください。通常の`azd up`は必要RPを登録してから内部の検査を進めます。
+結果は`.local/<environment>/state/capacity.json`です。モデルやVMの提供・クォータ不足、読取不能はその理由を確認します。新規Subscriptionで必要RPが未登録の場合も、読取検査が失敗することがあります。構築者の登録権限を確認してください。構築時は必要RPを登録してから内部の検査を進めます。
 
 `management.encryptionAtHost=true`の場合は、`preup`と`preprovision`の共通事前処理で`Microsoft.Compute/EncryptionAtHost`の登録も確認します。未登録なら自動登録し、登録中なら重ねて要求せず待機します。機能登録済みの場合もCompute RPを再登録し、前回の中断などで反映が未完了でも確認してから構築へ進みます。機能登録とRP反映の待機上限は合計30分です。権限不足、未対応の状態、待機超過では構築を停止します。`false`の場合は機能の読取・登録を行いません。`validate`・`capacity`コマンドはこの登録処理を実行しません。
 
 検査の`verified`は、読めた範囲で既知の制限がなかったという結果です。実配備時のサービス容量やMicrosoft側のモデル利用制限まで保証しません。Claudeはazdの構築対象外で、専用のモデル配備・Marketplace確認・RP登録の実装はありません。構築後にGUIで手動追加します。
 
-## 6-4. azd upを実行し、対話入力する
+## 6-4. azd provisionを実行し、対話入力する
 
-ローカルの通常ターミナルで実行し、対話を有効にします。CI用の非対話・`--no-prompt`を付けません。
+ローカルの通常ターミナルで実行し、対話を有効にします。CI用の非対話・`--no-prompt`を付けません。5アプリ用paramsでは、初回の証明書登録を挟むため`azd provision`から始めます。
 
 ```sh
 export AZD_NON_INTERACTIVE=false
-azd up --environment "$DEPLOY_ENVIRONMENT"
+azd provision --environment "$DEPLOY_ENVIRONMENT"
 echo "終了コード: $?"
 ```
 
@@ -86,7 +86,7 @@ echo "終了コード: $?"
 
 1. **端末の検査**：ツール・PowerShell依存と、params／環境の整合を確認。
 2. **Azure DNS用IDの確認**：paramsへ事前設定したDNS側Subscription IDとUAMIリソースIDを検査する。不足・不正な参照があれば構築前に停止する。
-3. **秘密入力の案内**：対象アプリ・取得元・保存先を表示し、設定したAPIに必要なCM用Core client secretを非表示入力する。DNS用の秘密入力はない。
+3. **秘密入力の案内**：対象アプリ・取得元・保存先を表示し、ToolsのCM用とCredentialの本人確認用のclient secretを用途ごとに非表示入力する。DNS用の秘密入力はない。
 4. **端末の保護保存**：CM用Core client secretは既定で`.local/<environment>/secrets/entra-client-secret.txt`へ保存し、POSIX権限600とする。同じsecret保存先を使うCM providerが複数ある場合は1回だけ入力する。
 5. **SSH鍵**：公開鍵・秘密鍵が両方ない場合だけ、指定した`.local/<environment>/secrets/`へ鍵対を生成。有効な既存鍵は再利用し、秘密鍵はAzureへ送らない。
 
@@ -96,7 +96,7 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 
 これはSerial Console用のローカル認証準備です。PAM認証には認証ログやロックアウトへの影響があり、完了記録は実Serial接続の成功を示しません。Managed Run Commandの保護設定やrootプロセスのメモリー等に値が残り得るため、保持がゼロとは扱いません。実ログインの成功は[管理VMの保守手順](../operations.md#serial-consoleのローカル認証を準備する)で別に確認します。
 
-基盤とGatewayの構築が終わり、Entra担当者が専用Portalアプリを手動登録した後、Portalの個別配備で未設定の`portalApiKeys.platformGroupId`と`groupNamePattern`だけを対話入力し、同じ保護paramsへ保存します。表示名はGraphから取得します。管理グループ1件と全標準API製品から内部承認・検証購読を生成し、configの`portalApiKeys.verificationMaxSubscriptions`（初期5）を適用します。製品・件数は対話入力せず、内部`groups`・`verificationSubscriptions`をparamsへ書き戻しません。非対話では上記2項目を事前に設定します。不足したままPortal工程を完了できません。
+基盤の構築とEntra担当者による公開証明書の登録を終え、Gatewayを配備した後、Portalの個別配備で未設定の`portalApiKeys.platformGroupId`と`groupNamePattern`だけを対話入力し、同じ保護paramsへ保存します。表示名はGraphから取得します。管理グループ1件と全標準API製品から内部承認・検証購読を生成し、configの`portalApiKeys.verificationMaxSubscriptions`（初期5）を適用します。製品・件数は対話入力せず、内部`groups`・`verificationSubscriptions`をparamsへ書き戻しません。非対話では上記2項目を事前に設定します。不足したままPortal工程を完了できません。
 
 事前チェックは、配備先の一致、必要な秘密情報、追加配備の容量、監査データの保持保護、既存の通信・証明書・稼働アプリの維持を確認します。Azureの応答にある読取メタデータや空の既定値は、実際の設定に影響する項目と分けて扱います。
 
@@ -107,7 +107,8 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 | 入力 | 対話直後 | 構築後・運用中 |
 | --- | --- | --- |
 | DNS用公開ID（Azure） | paramsの`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId` | 証明書用ACA JobからDNS用UAMIを使い、DNS側のRBAC権限で更新 |
-| CM用Core client secret | paramsの`credentialProviders.graphDelegated.clientSecretFile`が指す保護ファイル | 既存のGraph用アプリID・secretを保持し、APIMのOAuth providerへsecure入力 |
+| Tools client secret | `credentialProviders.graphDelegated.clientSecretFile`が指す保護ファイル | Graph委任接続のAPIM OAuth providerへsecure入力 |
+| Credential client secret | `gateway.authentication.credentialLogin.identity.clientSecretFile`が指す別の保護ファイル | BrokerのOIDC本人確認専用。Key Vault経由で参照 |
 | 管理VMのSSH秘密鍵 | 端末のsecrets内 | 端末だけで保持。公開鍵だけをVMへ設定 |
 | 初期管理VMのローカル認証パスワード | `.local/<environment>/secrets/management-serial-credential.json`へ自動生成・保護保存 | 初回のsecure入力だけで設定。配備成功後にVM個体へ結び付け、既存VMの更新では上書きしない |
 | PortalのAPIキー所有設定 | paramsの管理グループID・表示名正規表現、configの共通上限5 | API正本の全製品から承認と安定IDの検証購読を内部生成してSQL初期化へ渡す |
@@ -121,7 +122,7 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 
 ## 6-5. 構築の進行を確認する
 
-`azd up`は次の処理を続けて行います。途中で同じコマンドを並行実行しません。
+`azd provision`から個別配備まで同じparams・stateを使います。途中で同じ環境のコマンドを並行実行しません。
 
 | 順序 | 実行する内容 |
 | --- | --- |
@@ -130,8 +131,20 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 | 3 | VNet・subnet・NSG・UDR・Firewall・Private DNS、サービス・PE・RBACを作成 |
 | 4 | 既存管理VMで証明書用イメージをビルドし非公開ACRへ登録。専用ACA JobがDNS-01で初回発行し、Key Vaultへ登録。実行成功を確認してAppGW・APIMの公開設定を仕上げる |
 | 5 | API Center同期と常設L7入口保護を設定し、`postprovision`で対象配備のCore出力と公開DNSの結果を保存 |
-| 6 | 対話可能な`postup`から`deploy_applications.py --gateway-only --execute`を呼び、Gatewayのイメージ、credentials DB・CM・SQL初期化、認証窓口、API・ポリシー・Productを配備 |
-| 7 | `azd up`完了後、[PortalアプリをEntraへ登録](entra-portal.md)し、[Portal本体を個別配備](portal.md)。初回グループ、イメージ、認証DB・検証用購読・SQL権限、本体・照合ジョブと公開ヘルスを確認 |
+| 6 | `azd provision`完了後、`generated/gateway-obo-public.cer`をAPIアプリに登録し、Graph委任権限を同意。`generated/portal-auth-public.cer`を[Portalアプリに登録](entra-portal.md)し、Portal client IDと認証tenantを保護paramsに追記 |
+| 7 | Gateway → Portalの順で下記の個別コマンドを実行。Portal初回配備では試用OAuth用の暗号鍵とSQLの保存領域も準備 |
+| 8 | 公開API、Portal、GraphのBearer／キーそれぞれと、[Codex先行端末](../reference/codex-endpoint-rollout.md)を確認 |
+
+登録と同意の確認後、同じ端末で次の順に計画・配備します。
+
+```sh
+python3 -B scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
+python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
+```
+
+基盤だけ作成した段階ではPortalの保護paramsに未発行の鍵URIを入力する必要はありません。完了後の`state/latest.json`と各証明書の保護状態を同じ環境で維持します。Entraのアプリ登録や管理者同意は[登録手順](02-entra.md)に沿って担当者が実施します。
 
 空環境での証明書発行、非公開ACRの通信、途中再開の条件は [証明書用Job](../operations/certificate-jobs.md) を参照します。
 
@@ -151,7 +164,7 @@ ARMのemail receiverの`status: Enabled`は、メールアドレスの確認完�
 
 ## 6-6. 構築完了と公開DNSを確認する
 
-1. `azd up`の終了コードが`0`で、GatewayとPortalの両工程が完了したことを確認する。`postprovision`の`deployed: true`は基盤工程の結果であり、それだけを全体の成功と扱わない。
+1. `azd provision`、Gateway個別配備、Portal個別配備それぞれの終了コードが`0`であることを確認する。`postprovision`の`deployed: true`は基盤工程の結果に相当する。
 2. **実行した配備で更新された**`.local/<environment>/state/latest.json`で、Subscription／resourceGroups／実出力を確認する。古いstateを配備成功の証拠にしない。
 3. Azure Portalで5RG、APIM／Foundry／AppGW等の作成状態、選択したモデルの配備成功を確認する。
 4. `.local/<environment>/state/latest.json`の`outputs.gateway.publicIpId`・`outputs.gateway.publicIp`を、PortalのそのPublic IPと照合する。
@@ -191,15 +204,15 @@ python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 ## 失敗した場合
 
-エラーが出た段階・配備名・エラーコード・correlation IDを控え、秘密値を含めず原因を確認します。Failed配備やAzure側の利用制限を、同じupの繰返しだけで解消する前提にしません。既存モデルの更新失敗では、旧モデルが稼働している可能性もあるため、状態だけで自動削除しません。
+エラーが出た段階・配備名・エラーコード・correlation IDを控え、秘密値を含めず原因を確認します。失敗した配備やAzure側の利用制限は、同じコマンドを繰り返す前に対象工程の配備状態を確認します。既存モデルの更新失敗では、旧モデルが稼働している可能性もあるため、状態だけで自動削除しません。
 
-Gatewayに失敗するとPortalへ進まず、Portalに失敗した場合もup全体は非0で終了します。作成済み基盤や完了済みのアプリを自動で撤去せず、上の個別コマンドで再開できます。設定・`.local/<environment>/state/latest.json`・各配備記録を消さず、同じ環境の入力を使います。
+失敗した工程の終了コードを確認し、原因を修正してから次の工程へ進みます。作成済み基盤や完了済みのアプリを自動で撤去せず、上の個別コマンドで再開できます。設定・`.local/<environment>/state/latest.json`・各配備記録を消さず、同じ環境の入力を使います。
 
 途中まで作成された資源にも費用が発生します。撤去する場合は[同じparamsでのdownとstate不足時の扱い](../operations.md)へ進みます。構築したcloneの`.azure/`・`.local/<environment>/state/`と設定を消してから撤去を始めないでください。
 
 ## 完了条件と次の作業
 
-- up全体の正常終了、実行したGateway配備・証明書準備と、後続のPortal個別配備の成功記録、Azure側の作成状態、公開DNS／TLSを確認した。
+- `azd provision`、Gateway個別配備、Portal個別配備の正常終了と、Azure上の作成状態、公開DNS／TLSを確認した。
 - 選んだAPIの実応答とPortalのMicrosoftサインインを、配備成功とは別に確認した。
 - 通知先を使う場合は初回確認と実受信を確認した。
 - 証明書専用ACA Jobの初回発行・定期更新設定と、DNS用UAMIの関連付け・DNS側RBAC権限を確認した。

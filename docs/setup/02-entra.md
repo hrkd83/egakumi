@@ -1,176 +1,52 @@
-# 02. 共用Entraアプリを準備する
+# 02. Entraの5アプリを登録する
 
-新Portalの登録は本章の事前準備から分離します。初期構築の専用ACA JobがKVで非exportable自己署名証明書を生成し、公開証明書を取り出した後に[専用Portal Entraアプリを手動作成・登録](entra-portal.md)します。アプリ作成・証明書追加・必要権限の同意を一度の依頼にまとめます。以下のPortal共用secretの説明は切替前の旧構成用です。CM/APIの事前準備は引き続き必要です。
+[← 01. 前提を確認する](01-prerequisites.md) · [次へ · 03. 公開DNS](03-public-dns.md)
 
-[← 01. 前提を確認する](01-prerequisites.md) · [次へ：03. 公開DNSを準備する →](03-public-dns.md)
+新規構築は次の5アプリを認証テナントへ登録します。登録ごとに固有のApplication（Client）IDを使います。認証テナントは`entraTenantId`、Azure基盤のテナントは`azureTenantId`で指定します。`entraTenantId`を省略した場合はAzure側と同じテナントを使います。Entraアプリの登録・同意とAzureのロール割当は、各テナントの担当者が実施します。
 
-API向けアクセストークン認可の追加準備は[02a. egakumi-apiを登録する](02a-entra-api.md)、PC上のOAuthクライアントは[02b. egakumi-codexを登録する](02b-entra-codex.md)を参照してください。現在のPortal・CM・本人確認は本ページの共用構成を使用し、アプリの登録だけではAPIMのBearer認可へ切り替わりません。
+| アプリ | 権限・資格情報 | 環境別params |
+| --- | --- | --- |
+| [egakumi-api](02a-entra-api.md) | `Gateway.Invoke`を公開。Graph OBO用の委任`User.Read`と専用の公開証明書 | `gateway.authentication.entra.audience` |
+| [egakumi-codex](02b-entra-codex.md) | Public clientとAuthorization Code＋PKCE。`Gateway.Invoke`の委任許可と同意 | `codex.clientId` |
+| [egakumi-portal](entra-portal.md) | Web、Portal専用の公開証明書、Graphの所属管理用アプリケーション権限、`Gateway.Invoke`の委任許可と同意 | `portal.authentication.tenantId`・`clientId` |
+| egakumi-tools | Web、CM標準の戻り先、Graph委任`User.Read`、CM専用のclient secret | `credentialProviders.graphDelegated.clientId`・`clientSecretFile` |
+| egakumi-credential | Web、本人確認専用の戻り先とclient secret、OIDCによる本人確認 | `gateway.authentication.credentialLogin.identity.clientId`・`clientSecretFile` |
 
-業務APIの入口は既定でAPIM購読キーです。MI認証のFoundry OpenAI HTTP Chat／Responsesでは、[認可設定](04-params.md)により対象APIへ同じURLのEntra Bearer認可を追加する公開資材を実装しています。対象環境への反映・接続受入は別途確認し、この手順を特定環境の完了記録として扱いません。購読キーによるモデル・PII等の基本利用と、APIMのマネージドIDからFoundryへ接続する通信は、この章のアプリ登録を前提にしません。本人のGraph接続、Portalへのサインイン、Portalでのグループ所有APIキー管理には、同じ単一テナントのEntraアプリ`AI Gateway Platform`を使います。
+## 初回の作成と登録順
 
-通常の`azd up`はGatewayとPortalを両方配備するため、構築担当者は本章の共用アプリを準備します。API利用者が購読キーでモデルを呼び出すために、利用者ごとの追加アプリ登録を行う必要はありません。
+1. 認証テナントでAPIアプリを登録し、`Gateway.Invoke`を公開します。Graphの委任`User.Read`を設定し、管理者同意を確認します。
+2. Codex、Tools、Credentialを登録します。各Client ID、認証テナント、ToolsとCredentialそれぞれの保護された秘密ファイル参照を環境別paramsへ記入します。`codex.clientId`を指定すると、初期構築からアプリ分離の構成を選びます。
+3. [初回配備手順](06-deploy.md)に従い`azd provision`で共通基盤を配備します。CoreがAPI OBO用とPortal署名用の公開証明書を用意します。
+4. APIアプリへOBO用公開証明書を登録します。Portalアプリを作成し、Portal署名用公開証明書の登録、戻り先と権限の登録・同意を行い、PortalのClient IDを環境別paramsへ記入します。Portalアプリを先に作成していた場合は同じ登録に公開証明書を追加します。
+5. GatewayとPortalを順に配備し、各アプリの認可と接続を確認します。[Codexの先行端末](../reference/codex-endpoint-rollout.md)でGateway接続を確認してから配布します。
 
-| 利用する機能 | この章で準備するもの |
-| --- | --- |
-| 購読キーでモデル・一般Toolsを使う | API利用者用の追加アプリ登録は不要。キーはGatewayのProductとPortalの購読管理で発行 |
-| CMで本人のGraph接続を使う | 認証窓口・CM・Portalで共用するWebアプリ、Graph委任権限、各Web戻り先、client secret |
-| Portalへサインインする | 同じWebアプリにPortal用の戻り先を追加。別のアプリ登録は不要 |
-| Portalでグループ所有のAPIキーを管理する | 同じアプリにGraphアプリケーション権限を追加し、管理者同意を付与。APIキーの所有者はEntraグループとし、所属メンバーだけが管理できるようにする |
+アプリの表示名は用途を識別できる名前にします。構築担当者へ引き継ぐIDは「アプリケーション（クライアント）ID」です。認証用テナント、各ID、秘密値と実環境の確認結果は環境別の保護領域へ保存します。
 
-この章ではEntraの事前設定を行います。既存アプリを更新する場合は、手順3で必要な権限と管理者同意を確認し、手順4で今回のCM・本人確認・Portalの戻り先を確認します。既存の権限と有効なclient secretはそのまま使えます。Portalのグループ所有APIキー管理は、この準備後に配備します。構築後のGraph接続・API疎通は、[CM共通接続手順](credential-manager-login.md)で確認します。
+## ToolsとCredentialのWebアプリを登録する
 
-Entraのアプリ登録・管理者同意はEntra担当者の権限で行います。Azure SubscriptionのOwnerはAzure RBACの権限です。画像は操作箇所の例です。表示名は用途に合わせ、ID・テナント・APIM名には自社の値を使います。
-
-## paramsから登録用の戻り先を確認する
-
-第1章で用意したparamsの`productName`・`environmentName`・`services.apimInstanceId`・`apiCenterLocation`・`gateway.publicHostName`を使います。`services.apimInstanceId`は初回prepareが公開マーカーを英小文字・数字6文字へ置換し、paramsへ保存した値を保持してください。未解決マーカーを登録入力へ使わず、更新時に生成し直しません。リポジトリルートで実行します。
+第1章で準備したparamsから、CMと本人確認の戻り先を確認します。
 
 ```sh
 python3 -I -B scripts/prepare_registration.py --config "$DEPLOY_PARAMS_FILE"
 ```
 
-出力の`apimName`と`credentialManagerRedirectUri`を、以下のアプリ登録に使います。このコマンドはローカルで名前とURIを計算し、Azure資源やEntraアプリを作成しません。出力を保管する場合は同じ環境の`.local/<environment>/evidence/`へ保存します。
+`credentialManagerRedirectUri`はその環境のAPIM名を含みます。本人確認の戻り先には`gatewayOrigin`と表の固定パスを使います。APIMインスタンス識別子を変更した環境を再構築するときは、CMの戻り先を再計算してからEntraへ登録します。実値を含む出力を保存する場合は、同じ環境の`.local/<environment>/evidence/`を使います。
 
-撤去後に新しいAPIM識別子を用意した場合も、同じコマンドでURIを再計算します。共用アプリのWeb戻り先のうち、その環境の旧CM URIを新しいURIへ更新してください。Gateway・Portalの公開名が同じなら、それぞれの戻り先、有効なclient secret、権限と同意は保持できます。アプリの作り直しは不要です。
+Azureポータルで認証テナントを選び、「Microsoft Entra ID」→「アプリの登録」→「新規登録」を開きます。次の2アプリをSingle tenantで作成します。「認証」ではWebを選び、Implicit grantとPublic client flowsはOFFにします。
 
-## AzureとEntraのテナントを決める
-
-Azureリソースと共用Entraアプリの認証テナントは、同一でも別でも構成できます。
-
-| 設定 | 用途 |
-| --- | --- |
-| `azureTenantId` | Azure構築、RBAC、Key Vault、管理VM、DNS、APIMのMI |
-| `entraTenantId` | 標準Graph OAuth・社員API・任意接続窓口の認証先。省略時はAzure側 |
-| `credentialProviders.additional[].oauthTenantId` | 追加CM providerの任意の別認証先。標準Graphには上書き欄を設けない |
-
-CM接続を読み取るaccess policyにはAzure側のAPIM MIを設定します。標準Graphの共用アプリは`entraTenantId`のテナントに登録します。Portalもこのアプリを登録したEntraテナントを認証先に指定します。Azure側と異なる場合、Portalの認証先に`azureTenantId`を使わないでください。
-
-標準GraphのアプリClient IDと秘密ファイル参照は、保護paramsの`credentialProviders.graphDelegated.clientId`・`clientSecretFile`へ設定します。表示名・scope・poolは共通configの同slotへ置き、論理名`graph-delegated`とGraph URL／本人ID契約は資材で固定します。追加providerはconfig定義とparams登録を双方の`additional[]`で論理名照合します。[公開入力の配置判断](04-params.md#公開入力71主項目の判断記録)を参照してください。
-
-この配置整理だけで既存アプリのClient ID・secret・認証方式を切り替えません。任意の`credentialLogin.identity`を省略した場合の選択CM provider由来の本人確認と、Portalの既存profile利用は維持します。アプリ分離は別の作業計画で扱い、今回のAzure一括反映・全環境再構築E2Eは未実施です。
-
-## 認証窓口・CM・Portalの共用アプリを設定する
-
-以下の画面ショットは、組織固有のテナント名・ID・ドメイン・アカウント情報をマスクした操作例です。画面内の例示値は、実際の登録画面から取得した自社の値に置き換えます。
-
-### 1. 新規登録画面を開き、アプリを登録する
-
-Azure Portal右上のアカウントメニューから、Microsoftサインインに使うEntraテナントへ切り替えます。続いて「Microsoft Entra ID」→「アプリの登録」→「新規登録」を開きます。
-
-このアプリは、認証窓口での本人確認、APIMのCredential Manager（CM）によるGraph接続、Portalへのサインイン、グループ所有APIキーの管理権限を確認する所属照会で共用します。既存の`AI Gateway Platform`がある場合は、そのアプリを開きます。作り直しや追加登録は不要です。
-
-| 入力欄 | 設定する内容 |
-| --- | --- |
-| 名前 | `AI Gateway Platform` |
-| サポートされているアカウントの種類 | 「この組織ディレクトリのみに含まれるアカウント」の単一テナント |
-| リダイレクトURI | 「Web」を選び、下記のCM標準URIを入力 |
-
-`<APIM_NAME>`を上のコマンドが返した`apimName`に置き換えるか、`credentialManagerRedirectUri`をそのまま入力します。
-
-```text
-https://authorization-manager.consent.azure-apim.net/redirect/apim/<APIM_NAME>
-```
-
-![単一テナントのアプリを新規登録する画面](../images/entra-cm-setup/01-register.png)
-
-入力内容を確認し、「登録」を押します。
-
-### 2. 概要からClient IDとテナントIDを控える
-
-登録後の「概要」で次の2項目を控えます。
-
-| 画面の項目 | 控える値 |
-| --- | --- |
-| アプリケーション（クライアント）ID | 共用アプリのClient ID |
-| ディレクトリ（テナント）ID | このアプリを登録したEntraテナントのID |
-
-「オブジェクトID」はアプリ登録自体を識別する値です。Client IDとして控えるのは、アプリケーション（クライアント）IDです。
-
-![新規登録したアプリの概要画面](../images/entra-cm-setup/02-overview.png)
-
-### 3. Graphの委任権限5件とアプリケーション権限2件を追加し、管理者同意を付与する
-
-「APIのアクセス許可」→「アクセス許可の追加」→「Microsoft Graph」→「委任されたアクセス許可」を開き、次の5件を設定します。初期登録で`User.Read`が追加済みの場合は、その項目を使います。
-
-| アクセス許可 | 用途 |
-| --- | --- |
-| `openid` | Microsoftサインインで本人を識別するためのIDトークンを要求する |
-| `profile` | サインインした本人の名前など、基本プロフィールの情報を要求する |
-| `email` | アカウントに設定されたメールアドレスの情報を要求する |
-| `offline_access` | 利用者が毎回サインインし直さずに済むよう、トークン更新の許可を要求する |
-| `User.Read` | Microsoft Graphの`/me`から本人のプロフィールを読み取る |
-
-本人確認には、EntraのテナントIDとユーザーのオブジェクトIDを使います。CM接続後には、Graphの`/me`が返す`id`と、確認済みのユーザーのオブジェクトIDを照合します。UPNは対応表での表示と接続名の初期作成に使います。`email`の情報はアカウントによって返らない場合があります。
-
-続いて「アクセス許可の追加」→「Microsoft Graph」→「アプリケーションの許可」を開き、次の2件を追加します。上記の「委任されたアクセス許可」とは種類が異なるため、追加先を確認してください。
-
-| アクセス許可 | 種類 | 用途 |
+| 設定 | egakumi-tools | egakumi-credential |
 | --- | --- | --- |
-| `GroupMember.Read.All` | アプリケーション | APIキーの所有者に指定されたグループについて、ログインした本人がメンバーかをサーバーで確認する |
-| `User.ReadBasic.All` | アプリケーション | 対象ユーザーの基本情報を読み取る権限。ユーザーを対象とする所属確認APIで、上記のグループ権限と組み合わせる |
+| Web戻り先 | `https://authorization-manager.consent.azure-apim.net/redirect/apim/<APIM_NAME>` | `https://<GATEWAY_HOST>/auth/connections/browser/identity-callback` |
+| 委任スコープ | `openid`、`profile`、`email`、`offline_access`、Graphの`User.Read` | OIDCの`openid`、`profile` |
+| Graphのアプリケーション権限 | なし | なし |
+| 「証明書とシークレット」 | CM専用のclient secretを発行 | 本人確認専用のclient secretを発行 |
 
-これらはテナント内のグループ所属とユーザー基本情報を、サインイン中の利用者に代わらずアプリ自身で読み取れる権限です。Portalで管理対象にしたグループだけにEntra側の読み取り権限が限定されるものではありません。この権限の範囲をEntra担当者が確認し、管理者同意を付与してください。ディレクトリの書き換え権限は追加せず、`Directory.Read.All`や`Directory.ReadWrite.All`も追加しません。
+Credentialの新規登録時に既定のGraph `User.Read`が追加されていれば取り除きます。購読キーのGraph要求は、Credentialで本人を確認し、本人がToolsで再同意して作成したCM接続を使います。BearerのGraph要求ではAPIアプリの委任許可を使ってBrokerがOBO交換します。
 
-追加後、「＜組織名＞に管理者の同意を与えます」を押し、委任5件・アプリケーション2件の計7件が表示され、状態が「＜組織名＞に付与されました」になっていることを確認します。既存アプリへ権限を追加した場合も、追加した権限への管理者同意が必要です。
+管理者が権限の種類と対象を確認して同意を付与します。secretの有効期限と更新担当を記録し、発行直後の「値（Value）」をそれぞれ別の保護ファイルへ保存します。配備ではToolsのsecretをCMへ、CredentialのsecretをBroker専用のKey Vault参照へ渡します。 [MicrosoftのCM設定](https://learn.microsoft.com/en-us/azure/api-management/credentials-how-to-azure-ad) · [本人接続の受入](credential-manager-login.md)
 
-![Graphの委任権限5件・アプリケーション権限2件と管理者同意の確認画面](../images/entra-cm-setup/03-graph-permissions.png)
+## 既存環境の変更
 
-ここで登録するアクセス許可と、接続時に要求するscopeは別の設定です。標準のCM providerは`openid profile email offline_access https://graph.microsoft.com/User.Read`を要求します。Portalのログインでは引き続き`openid profile email`だけを要求します。グループ所属照会のために、利用者のログインscopeを増やしたり、Portalが利用者のGraphトークンを保存したりする必要はありません。
+既存環境のCM接続・更新トークンは発行元Client IDにひも付きます。切替を行う場合は新しいアプリと接続を別に受け入れ、利用者の再同意と旧接続の停止を確認してから旧アプリの権限や資格情報を回収します。 [移行と回収の順序](../reference/entra-app-rollout-plan.md#工程8旧共用アプリと移行設定を撤去する)
 
-グループ所属の照会では、Portalサーバーが同じアプリのClient ID・client secretでアプリケーション用トークン（`https://graph.microsoft.com/.default`）を取得します。署名を検証したログイン情報のユーザーObject IDを使い、`POST /users/{確認済みのユーザーObject ID}/checkMemberGroups`へ管理対象のグループObject IDを渡します。利用者が入力したユーザーIDやUPNで照会先を切り替えません。このAPIは間接的な所属も確認でき、1回に指定できるグループは20件までです。[Microsoftの所属確認APIと必要権限](https://learn.microsoft.com/en-us/graph/api/directoryobject-checkmembergroups?view=graph-rest-1.0)
-
-APIキーの所有者はユーザー個人ではなく、テナントIDとグループObject IDで管理します。発行者や操作した本人は監査記録として別に残します。グループに所属していることと、そのグループにどの製品のキー発行を許可するかはPortal側で別に判定します。グループから外れた利用者のPortal管理権限は失われますが、コピー済みのAPIキー自体を無効にするにはAPIMでキーの再生成や購読の停止・削除が必要です。
-
-認証窓口は本人を確認し、CMはGraph用のアクセストークンと更新トークンを保管します。Portalのログインセッション、APIキー管理時のアプリケーション用Graphトークン、Graph用の本人接続セッションは別に扱います。
-
-### 4. 本人確認・CM・Portal用のWeb戻り先を登録する
-
-「認証」（または「Authentication (Preview)」）を開き、既存の「Web」の設定で「編集」を押します。CM・認証窓口のURIを残したまま、Portal用のURIを追加します。`<APIM_NAME>`はAPIM名、`<GATEWAY_HOST>`はGatewayの公開ホスト名、`<PORTAL_HOST>`はPortalの公開ホスト名に置き換えます。
-
-```text
-https://authorization-manager.consent.azure-apim.net/redirect/apim/<APIM_NAME>
-https://<GATEWAY_HOST>/auth/connections/browser/identity-callback
-https://<PORTAL_HOST>/api/auth/callback/microsoft
-```
-
-Portalの戻り先も「Web」です。「シングルページアプリケーション（SPA）」には登録しません。
-
-「保存」を押した後、「認証」画面を再表示し、上記3件が「Web」として登録されていることを確認します。まだWebの設定がない場合は、「リダイレクトURIの追加」（旧画面では「プラットフォームの追加」）から「Web」を選んで登録します。
-
-フロントチャネルのログアウトURLは空欄、「暗黙的な許可およびハイブリッドフロー」のアクセストークン・IDトークンのチェックはオフを確認します。Preview画面では「設定」タブからこれらの項目を確認できます。
-
-![WebプラットフォームにCM・本人確認・Portalの公開用戻り先3件が登録された画面](../images/entra-cm-setup/04-web-redirect.png)
-
-CM標準の戻り先は、Microsoftの認可コードをCMが受け取る窓口です。`identity-callback`は、SQL台帳から本人の接続を選ぶ前に、認証窓口が本人を確認するための戻り先です。`/api/auth/callback/microsoft`は、PortalのサーバーでBetter Authが認証結果を受け取る戻り先です。言語別URLの`/ja`・`/en`は含めません。
-
-### 5. 有効期間6か月のclient secretを作成する
-
-既存アプリを更新し、有効なclient secretがある場合は、Portal戻り先やGraph権限の追加だけで再発行する必要はありません。新規作成時は次の手順を行います。
-
-「証明書とシークレット」→「クライアントシークレット」→「新しいクライアントシークレット」を開きます。
-
-| 入力欄 | 設定する内容 |
-| --- | --- |
-| 説明 | 共用する用途を識別できる名前。例：`Gateway and Portal authentication` |
-| 有効期限 | 6か月 |
-
-![シークレットの説明と有効期間を指定する画面](../images/entra-cm-setup/05-create-secret.png)
-
-「追加」を押し、発行直後に表示される「値（Value）」を組織承認済みの秘密管理先へ控えます。「シークレットID」は値の代わりに使用できません。更新漏れを防ぐため、有効期限と更新担当者も記録します。
-
-シークレットの値は、この手順書・画面ショット・チャット・params・config・Gitへ記録せず、専用の秘密管理先で扱います。作成後の画面を撮影する場合は、値が表示されていないことを確認します。
-
-後続の`azd up`が用途・保存先を案内してから非表示入力を受け付け、共有するclient secretをKey Vaultへ保存します。Gateway配備時には同じsecretをCM providerへsecure入力で渡し、認証窓口からはKey Vaultを参照します。Portalもサインインとグループ所属照会のサーバー側設定として同じKey Vault secretを共用します。ブラウザーへ渡す公開環境変数には設定しません。本人の接続tokenはCMが管理します。シークレットを更新するときは、これらの利用先への反映も確認してください。
-
-ここまでで、共用Entraアプリの準備は完了です。新規構築では、控えたIDとシークレットの参照先を[04. paramsの設定](04-params.md)の「OAuth provider」で構築用ファイルへ記入します。同じ既存アプリへのPortal戻り先・Graph権限の追加でClient IDやsecretが変わらない場合、CM用paramsの変更は不要です。[MicrosoftのCM設定](https://learn.microsoft.com/en-us/azure/api-management/credentials-how-to-azure-ad)・[Better AuthのMicrosoft設定](https://www.better-auth.com/docs/authentication/microsoft)
-
-## 次へ進む確認
-
-- 購読キーだけで使うAPIと、本人OAuthが必要なAPIを決めた。
-- 共用する単一テナントのアプリに、Graph委任権限5件とアプリケーション権限2件を設定し、管理者同意を付与した。
-- グループ所有APIキーの所属照会がテナント内の読み取り権限を持つことと、製品の発行可否はPortal側で別に制御することを確認した。
-- 本人確認とCMの戻り先・有効な共用secretを準備した。
-- Portal公開用のWeb戻り先を追加し、Webの戻り先3件を確認した。
-- 環境固有のIDとsecretを、公開文書やGitへ追加していない。
-
-[次へ：03. 公開DNSを準備する →](03-public-dns.md)
+[次へ · 03. 公開DNS](03-public-dns.md)

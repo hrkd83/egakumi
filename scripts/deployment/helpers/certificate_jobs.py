@@ -181,6 +181,8 @@ def _arguments(config, mode, action, values):
                 values['rotateFromThumbprint'], str) and re.fullmatch(r'[0-9a-fA-F]{40}', values['rotateFromThumbprint']):
             return values
     else:
+        if action == 'initial' and config.get('codex') and values == {'purpose': 'gateway-obo'}:
+            return values
         expected = {'initial': set(), 'prepare': {'requestId', 'currentKeyId'},
                     'inspect': {'certificateId'}, 'activate': {'certificateId'},
                     'retire': {'certificateId', 'currentKeyId'}}[action]
@@ -259,6 +261,13 @@ def _template(job, target, mode, action, args, attempt, image):
         raise ValueError('The certificate job runtime environment differs from the deployed identity or storage')
     changes = {'CERTIFICATE_ATTEMPT_ID': attempt, 'CERTIFICATE_ACTION': action,
                'CERTIFICATE_ARGUMENTS_JSON': json.dumps(args, separators=(',', ':'), sort_keys=True)}
+    if args.get('purpose') == 'gateway-obo':
+        expected_obo = {**plan['portalConfig'], 'certificateName': 'gateway-obo', 'validityMonths': 12}
+        if plan.get('gatewayOboConfig') != expected_obo:
+            raise ValueError('The Gateway OBO certificate plan differs from the selected foundation')
+        changes['CERTIFICATE_CONFIG_JSON'] = json.dumps(expected_obo, separators=(',', ':'), sort_keys=True)
+        changes['CERTIFICATE_ARGUMENTS_JSON'] = '{}'
+        changes['CERTIFICATE_PORTAL_STATE_OBJECT'] = 'gateway-obo'
     if 'rotateFromThumbprint' in args:
         changes['CERTIFICATE_ROTATE_FROM_THUMBPRINT'] = args['rotateFromThumbprint']
     replaced = set(changes) | {'CERTIFICATE_ROTATE_FROM_THUMBPRINT'}
@@ -632,7 +641,7 @@ def _result(config, target, mode, action, args, attempt, payload, *, now=None):
                 if value != {'retired': True, 'keyId': key}:
                     raise ValueError()
                 return value
-            result = certificate_record(value, config)
+            result = certificate_record(value, config, certificate_name=args.get('purpose'))
             if action in ('inspect', 'activate') and result['certificateId'] != args['certificateId']:
                 raise ValueError()
             return result
@@ -670,7 +679,8 @@ def run_certificate_action(config, outputs, transport, save_json, *, workspace, 
     if operation_id is not None and (not isinstance(operation_id, str) or not ATTEMPT.fullmatch(operation_id)):
         raise ValueError('The certificate operation identifier is invalid')
     root = target[mode + 'JobId']
-    path = workspace.checked(workspace.state / f'certificate-job-{mode}-{action}.json')
+    purpose = args.get('purpose', mode)
+    path = workspace.checked(workspace.state / f'certificate-job-{purpose}-{action}.json')
     record = _load(path)
     identity = {'jobId': root, 'mode': mode, 'action': action, 'image': image,
                 'arguments': args, 'operationId': operation_id}
@@ -730,4 +740,10 @@ def complete_initial_certificates(config, outputs, transport, save_json, *, work
         return run_certificate_action(config, outputs, transport, save_json, workspace=workspace, mode=mode,
                                       action='initial', image_digest=digest, retry_failed=True,
                                       sleep=sleep, monotonic=monotonic)
-    return {'tls': initial('tls'), 'portal': initial('portal'), 'imageDigest': digest}
+    issued = {'tls': initial('tls'), 'portal': initial('portal'), 'imageDigest': digest}
+    if config.get('codex') and not config['gateway']['authentication']['entra'].get('obo'):
+        issued['gatewayObo'] = run_certificate_action(
+            config, outputs, transport, save_json, workspace=workspace, mode='portal', action='initial',
+            arguments={'purpose': 'gateway-obo'}, image_digest=digest, retry_failed=True,
+            sleep=sleep, monotonic=monotonic)
+    return issued

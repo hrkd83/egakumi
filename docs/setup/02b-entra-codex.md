@@ -1,10 +1,10 @@
 # 02b. egakumi-codexをPublic clientとして登録する
 
-[← egakumi-apiの準備](02a-entra-api.md) · [共用Entraアプリの準備](02-entra.md) · [アプリ分離の作業計画](../reference/entra-app-rollout-plan.md)
+[← egakumi-apiの準備](02a-entra-api.md) · [Entraの5アプリ](02-entra.md) · [アプリ分離の作業計画](../reference/entra-app-rollout-plan.md)
 
 社員のPC上のCodexが、Entra IDから`egakumi-api`向けのユーザーアクセストークンを取得するためのアプリを準備します。APIを表す`egakumi-api`と、サインインするクライアントの`egakumi-codex`は別の登録です。本ページは一般化した事前準備手順であり、特定環境での接続成功を示す記録ではありません。
 
-この登録はAPIMの認可実装より先に行えます。Codex本体の接続設定・端末配布・モデル接続試験は後続工程です。登録しただけではAPIMのBearer認可は利用できません。
+初回配備前に登録し、保護paramsの `codex.clientId` へApplication（Client）IDを設定します。APIMの配備・受入後は[接続設定の生成と端末配布](../reference/codex-endpoint-rollout.md)に進みます。
 
 ## 1. 認証用テナントでアプリを登録する
 
