@@ -18,8 +18,6 @@ param subnetPrefixes object
 param nsgNames object
 @description('network.bicep で作成したルートテーブル名。APIM 実 IP 向け UDR の追加先です。')
 param routeTableNames object
-@description('同じ VNet の Firewall が使うポリシー名。既存規則と別の子リソースへ入口許可を追加します。')
-param firewallPolicyName string
 @description('Firewall の確定済みプライベート IP。UDR の next hop として使います。')
 param firewallPrivateIp string
 @description('同じ VNet の Firewall の公開 IP。AppGW の公開入口 443 へ入る通信の送信元 IP に使います。')
@@ -96,7 +94,7 @@ var nsgKeys = ['agw', 'apim', 'pep', 'management', 'aca']
 var rulesByNsg = [
   [
     allowRule('allow-firewall-public-https-ingress', nsgPriorities.groups.agw.rules['allow-firewall-public-https-ingress'].priority, 'Inbound', 'Tcp', ['${firewallPublicIpAddress}/32'], [subnetPrefixes.agw], ['443'])
-    allowRule('allow-apim-http-egress', nsgPriorities.groups.agw.rules['allow-apim-http-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], ['${apimPrivateIp}/32'], ['80'])
+    allowRule('allow-apim-https-egress', nsgPriorities.groups.agw.rules['allow-apim-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], ['${apimPrivateIp}/32'], ['443'])
     allowRule('allow-key-vault-https-egress', nsgPriorities.groups.agw.rules['allow-key-vault-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
   ]
   [
@@ -111,18 +109,17 @@ var rulesByNsg = [
     allowRule('allow-aca-key-vault-https-ingress', nsgPriorities.groups.pep.rules['allow-aca-key-vault-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.aca], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
     allowRule('allow-mgmt-vm-key-vault-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-key-vault-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
     allowRule('allow-mgmt-vm-foundry-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-foundry-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(foundryPrivateIps, ip => '${ip}/32'), ['443'])
-    allowRule('allow-mgmt-vm-audit-storage-japan-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-audit-storage-japan-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditStorageJapanPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-mgmt-vm-audit-storage-platform-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-audit-storage-platform-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditStorageJapanPrivateIps, ip => '${ip}/32'), ['443'])
     allowRule('allow-mgmt-vm-audit-storage-foundry-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-audit-storage-foundry-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditStorageFoundryPrivateIps, ip => '${ip}/32'), ['443'])
   ]
   [
     allowRule('allow-key-vault-https-egress', nsgPriorities.groups.management.rules['allow-key-vault-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
     allowRule('allow-apim-https-egress', nsgPriorities.groups.management.rules['allow-apim-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], [subnetPrefixes.apim], ['443'])
     allowRule('allow-foundry-https-egress', nsgPriorities.groups.management.rules['allow-foundry-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(foundryPrivateIps, ip => '${ip}/32'), ['443'])
-    allowRule('allow-audit-storage-japan-https-egress', nsgPriorities.groups.management.rules['allow-audit-storage-japan-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditStorageJapanPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-audit-storage-platform-https-egress', nsgPriorities.groups.management.rules['allow-audit-storage-platform-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditStorageJapanPrivateIps, ip => '${ip}/32'), ['443'])
     allowRule('allow-audit-storage-foundry-https-egress', nsgPriorities.groups.management.rules['allow-audit-storage-foundry-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditStorageFoundryPrivateIps, ip => '${ip}/32'), ['443'])
   ]
   [
-    allowRule('allow-mgmt-vm-http-ingress', nsgPriorities.groups.aca.rules['allow-mgmt-vm-http-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], [subnetPrefixes.aca], ['80', '31080'])
     allowRule('allow-mgmt-vm-https-ingress', nsgPriorities.groups.aca.rules['allow-mgmt-vm-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], [subnetPrefixes.aca], ['443', '31443'])
     allowRule('allow-appgw-https-egress', nsgPriorities.groups.aca.rules['allow-appgw-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['${appGatewayPublicIpAddress}/32'], ['443'])
     allowRule('allow-key-vault-https-egress', nsgPriorities.groups.aca.rules['allow-key-vault-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
@@ -181,36 +178,6 @@ resource agwToApim 'Microsoft.Network/routeTables/routes@2025-01-01' = {
 
 
 
-// 同じ Firewall Policy を参照し、先行モジュールとは別の規則集へ設定を追加します。
-resource firewallPolicy 'Microsoft.Network/firewallPolicies@2025-01-01' existing = {
-  name: firewallPolicyName
-}
-
-// network.bicep completes the platform/egress groups and Firewall before this
-// module runs. This separate write cannot overlap those policy mutations.
-// AppGW→APIMの必要ポートだけを許可します。
-resource ingressRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-01' = {
-  parent: firewallPolicy
-  name: 'rcg-ingress'
-  properties: {
-    priority: 200
-    ruleCollections: [{
-      name: 'allow-agw-to-apim'
-      priority: 200
-      ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
-      action: { type: 'Allow' }
-      rules: concat([{
-        name: 'allow-appgw-apim-http'
-        ruleType: 'NetworkRule'
-        sourceAddresses: [subnetPrefixes.agw]
-        destinationAddresses: [apimPrivateIp]
-        destinationPorts: ['80']
-        ipProtocols: ['TCP']
-      }])
-    }]
-  }
-}
-
 // APIM のホスト名１個分の DNS Zone。他の APIM 名を隠す azure-api.net 全体の Zone は作りません。
 resource apimGatewayZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
   name: apimGatewayFqdn
@@ -244,5 +211,4 @@ resource apimGatewayRecord 'Microsoft.Network/privateDnsZones/A@2024-06-01' = {
 
 output apimGatewayPrivateDnsZoneId string = apimGatewayZone.id
 output apimGatewayDnsRecord object = { fqdn: apimGatewayFqdn, privateIps: [apimPrivateIp] }
-output ingressRuleCollectionGroupId string = ingressRules.id
 output boundPrivateIps object = { foundry: foundryPrivateIps, keyVault: keyVaultPrivateIps, management: [managementPrivateIp], apim: [apimPrivateIp], auditStorageJapan: auditStorageJapanPrivateIps, auditStorageFoundry: auditStorageFoundryPrivateIps }

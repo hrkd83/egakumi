@@ -378,6 +378,8 @@ class NetworkArmExpression(ArmExpression):
             values = [self.evaluate(parameters, index, item, bindings) for item in arguments]
             supplied = dict(zip((item["name"] for item in function["parameters"]), values))
             return self.resolve(function["output"]["value"], supplied)
+        if name == "null":
+            return None
         if name == "resourceId":
             return "/mock/" + "/".join(str(self.evaluate(parameters, index, item, bindings)) for item in arguments)
         extra = {"length", "empty", "concat", "range", "map", "flatten", "union", "shallowMerge", "true", "false", "and", "string", "environment", "contains", "toLower", "replace"}
@@ -417,6 +419,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         cls.templates = {
             'network': compile_bicep('infra/modules/network.bicep'),
             'network-bindings': compile_bicep('infra/modules/network-bindings.bicep'),
+            'portal-network-bindings': compile_bicep('infra/modules/portal-network-bindings.bicep'),
         }
 
     def configuration(self):
@@ -426,6 +429,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
     def resolver(self, module, config):
         template = self.templates[module]
         parameters = {"config": config["network"], "location": config["location"], "resourcePrefix": "test-fixture", "subnetPrefixes": config["network"]["subnetPrefixes"],
+            "firewallTlsInspection": {"managedIdentityResourceId": "/synthetic/uami", "intermediateCaSecretId": "https://fixture.example.com/secrets/ca"},
             "generatedApimServiceFqdns": config["generatedApimServiceFqdns"],
             "gatewayPublicHostName": config["gateway"]["publicHostName"],
             "portalPublicHostName": config["portal"]["publicHostName"],
@@ -461,6 +465,21 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(subnets[3]["properties"]["privateEndpointNetworkPolicies"],
                          "NetworkSecurityGroupEnabled")
 
+    def test_firewall_and_its_public_ip_default_to_azure_zone_allocation(self):
+        config = self.configuration()
+        config["network"]["appGatewayZones"] = ["1", "2", "3"]
+        resources = self.templates["network"]["resources"]
+        for supplied, expected in (([], None), (["2"], ["2"])):
+            with self.subTest(zones=supplied):
+                config["network"]["firewall"]["zones"] = supplied
+                expression, parameters = self.resolver("network", config)
+                firewall = resources["firewall"]
+                self.assertIn("firewallPublicIp", firewall["dependsOn"])
+                for name in ("firewall", "firewallPublicIp"):
+                    self.assertEqual(expression.resolve(resources[name]["zones"], parameters), expected)
+                self.assertEqual(expression.resolve(resources["appGatewayPublicIp"]["zones"], parameters),
+                                 ["1", "2", "3"])
+
     def test_portal_adds_only_the_explicit_delegated_subnet(self):
         config = self.configuration()
         config["network"]["subnetPrefixes"]["aca"] = "10.70.3.128/27"
@@ -482,24 +501,38 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                 self.assertEqual(rule["sourceAddressPrefix"], "0.0.0.0/0")
                 self.assertEqual(rule["destinationAddressPrefix"], "10.70.0.0/24")
                 self.assertEqual((rule["priority"], rule["destinationPortRange"]), (priority, port))
-        self.assertEqual(rules[1, "allow-appgw-http-ingress"]["sourceAddressPrefix"], "10.70.0.0/24")
-        self.assertEqual(rules[1, "allow-appgw-http-ingress"]["destinationAddressPrefix"], "10.70.2.64/26")
+        self.assertEqual(rules[1, "allow-firewall-https-ingress"]["sourceAddressPrefix"], config["network"]["subnetPrefixes"]["firewall"])
+        self.assertEqual(rules[1, "allow-firewall-https-ingress"]["destinationAddressPrefix"], "10.70.2.64/26")
         self.assertNotIn((3, "allow-time-sync-egress"), rules)
         self.assertEqual(rules[1, "allow-time-sync-egress"]["sourceAddressPrefix"], "10.70.2.64/26")
         self.assertEqual(rules[1, "allow-time-sync-egress"]["destinationAddressPrefix"], "Internet")
         self.assertEqual(rules[1, "allow-time-sync-egress"]["priority"], 328)
-        self.assertEqual(rules[4, "allow-appgw-http-ingress"]["destinationAddressPrefix"], "10.70.2.192/26")
+        self.assertEqual(rules[4, "allow-firewall-https-ingress"]["destinationAddressPrefix"], "10.70.2.192/26")
         expression, parameters = self.resolver("network-bindings", config)
         entries = expression.resolve("[variables('dynamicRules')]", parameters)
         dynamic = {(entry["nsgIndex"], entry["rule"]["name"]): entry["rule"]["properties"] for entry in entries}
         self.assertEqual(dynamic[0, "allow-firewall-public-https-ingress"]["sourceAddressPrefix"], "192.0.2.10/32")
         self.assertEqual(dynamic[0, "allow-firewall-public-https-ingress"]["priority"], 120)
-        self.assertEqual(dynamic[0, "allow-apim-http-egress"]["destinationAddressPrefix"], "10.70.2.68/32")
+        self.assertEqual(dynamic[0, "allow-apim-https-egress"]["destinationAddressPrefix"], "10.70.2.68/32")
         self.assertEqual(dynamic[1, "allow-mgmt-vm-https-ingress"]["sourceAddressPrefix"], "10.70.2.132/32")
         self.assertEqual(dynamic[1, "allow-mgmt-vm-https-ingress"]["destinationAddressPrefix"], "10.70.2.64/26")
         self.assertEqual(dynamic[3, "allow-apim-https-egress"]["sourceAddressPrefix"], "10.70.2.132/32")
         self.assertEqual(dynamic[3, "allow-apim-https-egress"]["destinationAddressPrefix"], "10.70.2.64/26")
         self.assertEqual(dynamic[4, "allow-appgw-https-egress"]["destinationAddressPrefix"], "198.51.100.10/32")
+
+    def test_app_gateway_firewall_uses_only_the_two_https_backend_names(self):
+        template = self.templates["portal-network-bindings"]
+        collection = template["resources"]["ingressRules"]["properties"]["ruleCollections"]
+        apim_host, portal_host = "gateway.example.com", "portal-backend.example.com"
+        gateway_subnet = "192.0.2.0/24"
+        parameters = {"agwPrefix": gateway_subnet, "apimGatewayFqdn": apim_host, "portalBackendHost": portal_host}
+        resolved, = NetworkArmExpression("[createObject()]", template).resolve(collection, parameters)
+        self.assertEqual(resolved["action"], {"type": "Allow"})
+        self.assertEqual(resolved["rules"], [
+            {"name": name, "ruleType": "ApplicationRule", "sourceAddresses": [gateway_subnet],
+             "protocols": [{"protocolType": "Https", "port": 443}], "targetFqdns": [host], "terminateTLS": True}
+            for name, host in (("allow-appgw-apim-https", apim_host), ("allow-appgw-portal-https", portal_host))
+        ])
 
     def test_apim_certificate_split_preserves_the_previous_effective_allow_scope(self):
         """証明書・更新・goの分割で旧HTTP/HTTPS許可を増減させない。"""

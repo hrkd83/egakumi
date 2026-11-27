@@ -21,7 +21,7 @@ from urllib.error import HTTPError, URLError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from deployment import lifecycle
-from deployment.helpers import cleanup
+from deployment.helpers import cleanup, configuration
 from deployment.helpers import prepare_secrets as secret_preparation
 from deployment.helpers.configuration import normalize_configuration
 from configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
@@ -352,7 +352,10 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 return {"created": False}
 
             def assert_prepared_inputs(config):
-                values = real_inputs(config)
+                # The TLS CA file and references are validated with a generated
+                # certificate in test_configuration. These cases exercise hook order.
+                with mock.patch.object(configuration, "load_firewall_tls_inspection", return_value={}):
+                    values = real_inputs(config)
                 self.assertEqual(values["credentialProviderSecrets"], {"graph-delegated": client_secret})
                 self.assertEqual(values["dnsPluginArgumentsJson"], "")
                 self.assertEqual(values["sshPublicKey"], ssh_fixture_key())

@@ -347,12 +347,9 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         self.assertNotIn("verificationSubscriptions", self.parameters["portalApiKeys"])
         self.assertNotIn("domainNames", self.parameters["certificate"])
 
-    def test_standard_firewall_omits_idps_in_normalized_configuration(self):
+    def test_selected_profiles_default_to_premium_blocking_and_keep_snat(self):
         actual = self.normalized()["network"]["firewall"]
-        self.assertEqual(actual["sku"], "Standard")
-        self.assertNotIn("idpsMode", actual)
-        self.assertNotIn("idpsPrivateRanges", actual)
-        self.assertEqual(actual["bypassTrafficSettings"], [])
+        self.assertEqual((actual["sku"], actual["idpsMode"]), ("Premium", "Deny"))
         self.assertEqual(actual["snatPrivateRanges"], ["IANAPrivateRanges", *self.parameters["network"]["addressSpaces"]])
 
     def test_premium_firewall_derives_private_ranges_and_never_adds_a_bypass(self):
@@ -366,9 +363,9 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         ])
         self.assertEqual(actual["bypassTrafficSettings"], [])
 
-    def test_standard_firewall_rejects_idps_enablement(self):
-        self.options["network"]["firewall"]["idpsMode"] = "Deny"
-        with self.assertRaisesRegex(configuration.ConfigurationError, r"network\.firewall\.idpsMode"):
+    def test_split_configuration_rejects_standard_firewall(self):
+        self.options["network"]["firewall"]["sku"] = "Standard"
+        with self.assertRaisesRegex(configuration.ConfigurationError, r"network\.firewall\.sku"):
             self.normalized()
 
     def test_certificate_covers_exactly_gateway_and_portal_fqdns(self):

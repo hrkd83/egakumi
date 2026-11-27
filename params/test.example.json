@@ -52,6 +52,11 @@
     "azureDnsSubscriptionId": "00000000-0000-0000-0000-000000000000",
     "azureDnsManagedIdentityResourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-dns-example/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-example"
   },
+  "firewallTlsInspection": {
+    "managedIdentityResourceId": "<FIREWALL_CA_MANAGED_IDENTITY_RESOURCE_ID>",
+    "intermediateCaSecretId": "<FIREWALL_CA_VERSIONED_KEY_VAULT_SECRET_URI>",
+    "rootCaCertificateFile": "../secrets/firewall-root-ca.cer"
+  },
   "credentialProviders": {
     "graphDelegated": {
       "clientId": "00000000-0000-0000-0000-000000000000",

@@ -208,6 +208,22 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         self.assertEqual(saved['outputs']['managementMaintenance']['principalId'], PRINCIPAL)
         self.assertEqual(saved['outputs']['portal']['managementMaintenance'], saved['outputs']['gatewayFoundation']['managementMaintenance'])
 
+    def test_apply_keeps_exact_previous_platform_rules_and_creates_missing_foundry_rules(self):
+        self.transport.deploy_fixed()
+        previous = self.transport.use_previous_platform_audit_rule_names()
+        self.transport.resources.update({endpoint['id']: endpoint for endpoint in self.transport.endpoints.values()})
+        for group in ('management', 'pep'):
+            parent = self.transport.resources[self.transport.nsg_id(group)]
+            parent['properties']['securityRules'] = [child for child in parent['properties']['securityRules']
+                                                     if 'audit-storage-foundry' not in child['name']]
+        expected = {child['id']: copy.deepcopy(child) for child in previous}
+        self.assertEqual(self.operation.apply(), {'status': 'assets-applied', 'runtimeVerified': False})
+        nsg_requests = [call for call in self.transport.mutations() if '/securityRules/' in call['path']]
+        self.assertEqual(len(nsg_requests), 2)
+        self.assertTrue(all('audit-storage-foundry' in call['path'] and call['method'] == 'PUT' for call in nsg_requests))
+        for child in previous:
+            self.assertEqual(child, expected[child['id']])
+
     def test_dns_record_mismatch_stops_before_link_roles_and_state_update(self):
         self.transport.dns_mismatch = True
         with self.assertRaises(OperationError): self.operation.apply()

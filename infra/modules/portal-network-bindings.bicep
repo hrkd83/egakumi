@@ -6,6 +6,9 @@ param staticIp string
 param vnetId string
 param agwRouteTableName string
 param firewallIp string
+param firewallPolicyName string
+param apimGatewayFqdn string
+param portalBackendHost string
 param agwNsgName string
 param managementNsgName string
 param agwPrefix string
@@ -24,6 +27,38 @@ resource ingressRoute 'Microsoft.Network/routeTables/routes@2025-01-01' = {
     nextHopType: 'VirtualAppliance'
     nextHopIpAddress: firewallIp
   }
+}
+
+resource firewallPolicy 'Microsoft.Network/firewallPolicies@2025-01-01' existing = {
+  name: firewallPolicyName
+}
+
+// AppGW再暗号化後の通信だけを、宛先FQDNで検査して再暗号化します。
+// 同じ通信に一致する先行Network Ruleは置きません。
+resource ingressRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-01' = {
+  parent: firewallPolicy
+  name: 'rcg-ingress'
+  properties: {
+    priority: 200
+    ruleCollections: [{
+      name: 'allow-agw-to-backends'
+      priority: 200
+      ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
+      action: { type: 'Allow' }
+      rules: map([
+        { name: 'allow-appgw-apim-https', fqdn: apimGatewayFqdn }
+        { name: 'allow-appgw-portal-https', fqdn: portalBackendHost }
+      ], backend => {
+        name: backend.name
+        ruleType: 'ApplicationRule'
+        sourceAddresses: [agwPrefix]
+        protocols: [{ protocolType: 'Https', port: 443 }]
+        targetFqdns: [backend.fqdn]
+        terminateTLS: true
+      })
+    }]
+  }
+  dependsOn: [appDns, ingressRoute]
 }
 
 var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
@@ -57,17 +92,11 @@ resource agwNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = 
 resource managementNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: managementNsgName }
 resource appgwPortalOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: agwNsg
-  name: 'allow-aca-http-egress'
-  properties: allowRule('allow-aca-http-egress', nsgPriorities.groups.agw.rules['allow-aca-http-egress'].priority, 'Outbound', 'Tcp', [agwPrefix], ['${staticIp}/32'], ['80']).properties
-}
-resource managementPortalHttpOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
-  parent: managementNsg
-  name: 'allow-aca-http-egress'
-  properties: allowRule('allow-aca-http-egress', nsgPriorities.groups.management.rules['allow-aca-http-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], ['${staticIp}/32'], ['80']).properties
+  name: 'allow-aca-https-egress'
+  properties: allowRule('allow-aca-https-egress', nsgPriorities.groups.agw.rules['allow-aca-https-egress'].priority, 'Outbound', 'Tcp', [agwPrefix], ['${staticIp}/32'], ['443']).properties
 }
 resource managementPortalHttpsOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: managementNsg
-  dependsOn: [managementPortalHttpOut]
   name: 'allow-aca-https-egress'
   properties: allowRule('allow-aca-https-egress', nsgPriorities.groups.management.rules['allow-aca-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], ['${staticIp}/32'], ['443']).properties
 }

@@ -134,9 +134,10 @@ class PublicSampleTests(unittest.TestCase):
                 _, options, actual = self.sample(name)
                 self.assertEqual(options["network"]["appGatewayZones"], zones)
                 self.assertEqual(actual["gateway"]["zones"], zones)
-                self.assertEqual(options["network"]["firewall"]["idpsMode"], "Off" if name == "test" else "Alert")
-                if name == "test":
-                    self.assertNotIn("idpsMode", actual["network"]["firewall"])
+                self.assertEqual(options["network"]["firewall"]["zones"], [])
+                self.assertEqual(actual["network"]["firewall"]["zones"], [])
+                self.assertEqual(options["network"]["firewall"]["idpsMode"], "Deny")
+                self.assertEqual(actual["network"]["firewall"]["idpsMode"], "Deny")
 
     def test_explicit_network_defaults_keep_fixed_rules_and_firewall_extension_inputs(self):
         """DNS/NSG固定入力を再生成せず、Firewall拡張配列と既存の標準値を保持する。"""
@@ -409,7 +410,7 @@ class ConfigurationTests(unittest.TestCase):
         raw["network"]["firewall"] = {}
         actual = self.normalize(raw)
         self.assertEqual(actual["network"]["firewall"]["sku"], "Premium")
-        self.assertEqual(actual["network"]["firewall"]["idpsMode"], "Alert")
+        self.assertEqual(actual["network"]["firewall"]["idpsMode"], "Deny")
         self.assertEqual(actual["apiPublicationStatus"], "not-published")
 
     def test_production_template_requires_target_ids(self):
@@ -430,7 +431,7 @@ class ConfigurationTests(unittest.TestCase):
         actual = self.normalize(raw)
         self.assertEqual(actual["credentialProviders"][0]["oauthTenantId"], actual["entraTenantId"])
         self.assertEqual(actual["network"]["firewall"]["sku"], "Premium")
-        self.assertEqual(actual["network"]["firewall"]["idpsMode"], "Alert")
+        self.assertEqual(actual["network"]["firewall"]["idpsMode"], "Deny")
         self.assertEqual(actual["services"]["apimSkuName"], "Premium")
         self.assertTrue(actual["services"]["vaultPurgeProtection"])
         self.assertEqual(actual["monitoring"]["auditImmutabilityMode"], "Locked")
@@ -555,18 +556,57 @@ class ConfigurationTests(unittest.TestCase):
             with self.assertRaises(configuration.ConfigurationError):
                 self.normalize(raw)
 
-    def test_standard_rejects_premium_idps_settings(self):
-        for updates in ({"idpsMode": "Alert"}, {"signatureOverrides": [{"id": "1", "mode": "Alert"}]}):
-            raw = fixture()
-            raw["network"]["firewall"].update(updates)
-            with self.assertRaises(configuration.ConfigurationError):
-                self.normalize(raw)
+    def test_firewall_requires_premium(self):
+        raw = fixture()
+        raw["network"]["firewall"]["sku"] = "Standard"
+        with self.assertRaisesRegex(configuration.ConfigurationError, r"network\.firewall\.sku"):
+            self.normalize(raw)
 
     def test_premium_does_not_allow_idps_off(self):
         raw = fixture()
         raw["network"]["firewall"].update(sku="Premium", idpsMode="Off")
         with self.assertRaises(configuration.ConfigurationError):
             self.normalize(raw)
+
+    def test_firewall_tls_input_loads_only_public_root_and_versioned_reference(self):
+        import shutil
+        import ssl
+        import subprocess
+
+        openssl = shutil.which("openssl")
+        if openssl is None:
+            self.skipTest("OpenSSL is required to generate a synthetic test certificate")
+        raw = fixture()
+        authority_host = ".".join(("fixture", "vault", "azure", "net"))
+        secret_container = "https://" + authority_host + "/secrets/inspection-ca"
+        secret_uri = secret_container + "/" + "1" * 32
+        identity = ("/subscriptions/" + raw["subscriptionId"] +
+                    "/resourceGroups/rg-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-fixture-ca")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cert, key = root / "ca.cer", root / "ca.key"
+            subprocess.run([openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
+                            "-subj", "/CN=fixture.invalid", "-addext", "basicConstraints=critical,CA:TRUE",
+                            "-keyout", str(key), "-out", str(cert)],
+                           check=True, capture_output=True)
+            cert.chmod(0o600)
+            raw["firewallTlsInspection"] = {"managedIdentityResourceId": identity,
+                                            "intermediateCaSecretId": secret_uri,
+                                            "rootCaCertificateFile": str(cert)}
+            resolved = self.normalize(raw)
+            expected = base64.b64encode(ssl.PEM_cert_to_DER_cert(cert.read_text())).decode("ascii")
+            self.assertEqual(configuration.load_firewall_tls_inspection(resolved), {
+                "managedIdentityResourceId": identity, "intermediateCaSecretId": secret_uri, "rootCaData": expected,
+            })
+            self.assertNotIn("firewallTlsInspection", configuration.build_bicep_configuration(resolved))
+            settings = resolved["firewallTlsInspection"]
+            settings["intermediateCaSecretId"] = secret_container
+            with self.assertRaisesRegex(configuration.ConfigurationError, "versioned Azure Key Vault"):
+                configuration.load_firewall_tls_inspection(resolved)
+            settings["intermediateCaSecretId"] = secret_uri
+            settings["rootCaCertificateFile"] = str(key)
+            with self.assertRaisesRegex(configuration.ConfigurationError, "public root CA"):
+                configuration.load_firewall_tls_inspection(resolved)
 
     def test_developer_cannot_have_two_units(self):
         raw = fixture()
@@ -677,7 +717,8 @@ class ConfigurationTests(unittest.TestCase):
             with self.assertRaisesRegex(configuration.ConfigurationError, "backendUrlTemplate"):
                 self.normalize(raw)
 
-    def test_credential_provider_secrets_load_only_from_protected_files(self):
+    @mock.patch.object(configuration, "load_firewall_tls_inspection", return_value={})
+    def test_credential_provider_secrets_load_only_from_protected_files(self, _firewall_tls):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)
             files = {
@@ -1013,7 +1054,8 @@ class ConfigurationTests(unittest.TestCase):
                 with self.assertRaisesRegex(configuration.ConfigurationError, "DNS-01 issuance requires dnsPlugin mode"):
                     configuration.load_secret_inputs(raw)
 
-    def test_azure_secret_inputs_do_not_read_or_forward_dns_credentials(self):
+    @mock.patch.object(configuration, "load_firewall_tls_inspection", return_value={})
+    def test_azure_secret_inputs_do_not_read_or_forward_dns_credentials(self, _firewall_tls):
         with tempfile.TemporaryDirectory() as directory:
             public_key = Path(directory) / "public-key.pub"
             public_key.write_text(ssh_fixture_key() + "\n")

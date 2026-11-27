@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "groups": {
     "agw": {
       "suffix": "agw",
@@ -106,7 +106,7 @@
             "*"
           ]
         },
-        "allow-apim-http-egress": {
+        "allow-apim-https-egress": {
           "designRecordId": "N-AGW-OUT-01",
           "direction": "Outbound",
           "priority": 120,
@@ -120,10 +120,10 @@
             "ip:apim"
           ],
           "destinationPorts": [
-            "80"
+            "443"
           ]
         },
-        "allow-aca-http-egress": {
+        "allow-aca-https-egress": {
           "designRecordId": "N-AGW-OUT-03",
           "direction": "Outbound",
           "priority": 121,
@@ -137,7 +137,7 @@
             "ip:aca"
           ],
           "destinationPorts": [
-            "80"
+            "443"
           ]
         },
         "allow-key-vault-https-egress": {
@@ -162,7 +162,7 @@
     "apim": {
       "suffix": "apim",
       "rules": {
-        "allow-appgw-http-ingress": {
+        "allow-firewall-https-ingress": {
           "designRecordId": "N-APIM-IN-01",
           "direction": "Inbound",
           "priority": 120,
@@ -170,13 +170,13 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:agw"
+            "subnet:firewall"
           ],
           "destination": [
             "subnet:apim"
           ],
           "destinationPorts": [
-            "80"
+            "443"
           ]
         },
         "allow-mgmt-vm-https-ingress": {
@@ -732,7 +732,7 @@
             "443"
           ]
         },
-        "allow-mgmt-vm-audit-storage-japan-https-ingress": {
+        "allow-mgmt-vm-audit-storage-platform-https-ingress": {
           "designRecordId": "N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS",
           "direction": "Inbound",
           "priority": 229,
@@ -873,23 +873,6 @@
             "1433"
           ]
         },
-        "allow-aca-http-egress": {
-          "designRecordId": "N-MGMT-OUT-ACA-HTTP",
-          "direction": "Outbound",
-          "priority": 225,
-          "access": "Allow",
-          "protocol": "Tcp",
-          "sourcePort": "*",
-          "source": [
-            "ip:management"
-          ],
-          "destination": [
-            "ip:aca"
-          ],
-          "destinationPorts": [
-            "80"
-          ]
-        },
         "allow-aca-https-egress": {
           "designRecordId": "N-MGMT-OUT-ACA-HTTPS",
           "direction": "Outbound",
@@ -924,7 +907,7 @@
             "443"
           ]
         },
-        "allow-audit-storage-japan-https-egress": {
+        "allow-audit-storage-platform-https-egress": {
           "designRecordId": "N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS",
           "direction": "Outbound",
           "priority": 227,
@@ -1049,7 +1032,7 @@
     "aca": {
       "suffix": "aca",
       "rules": {
-        "allow-appgw-http-ingress": {
+        "allow-firewall-https-ingress": {
           "designRecordId": "B-ACA-03",
           "direction": "Inbound",
           "priority": 120,
@@ -1057,14 +1040,14 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "subnet:agw"
+            "subnet:firewall"
           ],
           "destination": [
             "subnet:aca"
           ],
           "destinationPorts": [
-            "80",
-            "31080"
+            "443",
+            "31443"
           ]
         },
         "allow-apim-https-ingress": {
@@ -1083,24 +1066,6 @@
           "destinationPorts": [
             "443",
             "31443"
-          ]
-        },
-        "allow-mgmt-vm-http-ingress": {
-          "designRecordId": "N-ACA-IN-MGMT-HTTP",
-          "direction": "Inbound",
-          "priority": 221,
-          "access": "Allow",
-          "protocol": "Tcp",
-          "sourcePort": "*",
-          "source": [
-            "ip:management"
-          ],
-          "destination": [
-            "subnet:aca"
-          ],
-          "destinationPorts": [
-            "80",
-            "31080"
           ]
         },
         "allow-mgmt-vm-https-ingress": {

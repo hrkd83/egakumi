@@ -38,6 +38,7 @@ class RetiredGrpcInfrastructureTests(unittest.TestCase):
                           publicHostName="api.example.com", portalHostName="portal.example.com",
                           apimPrivateIp="192.0.2.11", portalBackendIp="192.0.2.12",
                           apimHostName="apim.example.com", portalBackendHost="backend.example.com",
+                          firewallRootCaData="SYNTHETIC_PUBLIC_ROOT_CA",
                           l7IngressSecret="SYNTHETIC_PRIVATE_INPUT")
         parameters.update(changes)
         gateway = next(item for item in self.resources("gateway") if item["type"] == "Microsoft.Network/applicationGateways")
@@ -53,7 +54,7 @@ class RetiredGrpcInfrastructureTests(unittest.TestCase):
                     if isinstance(properties, dict):
                         self.assertFalse(any("grpc" in name.lower() for name in properties.get("parameters", {})))
 
-    def test_application_gateway_has_only_http_frontends_and_port80_backends(self):
+    def test_application_gateway_has_https_l7_backends(self):
         properties = self.gateway_properties()
         self.assertEqual({item["properties"]["port"] for item in properties["frontendPorts"]}, {80, 443})
         self.assertTrue(all(item["properties"]["protocol"] in ("Http", "Https") for item in properties["httpListeners"]))
@@ -61,8 +62,11 @@ class RetiredGrpcInfrastructureTests(unittest.TestCase):
             self.assertEqual(properties[collection], [])
         self.assertIs(properties["enableHttp2"], True)
         backends = {item["name"]: item["properties"] for item in properties["backendHttpSettingsCollection"]}
-        for name in ("behttp-apim", "behttp-portal"):
-            self.assertEqual((backends[name]["protocol"], backends[name]["port"]), ("Http", 80))
+        for name, host in (("behttp-apim", "apim.example.com"), ("behttp-portal", "backend.example.com")):
+            self.assertEqual((backends[name]["protocol"], backends[name]["port"]), ("Https", 443))
+            self.assertEqual(backends[name]["hostName"], host)
+            root, = backends[name]["trustedRootCertificates"]
+            self.assertTrue(root["id"].endswith("/trustedRootCertificates/firewall-inspection-root"))
 
     def test_all_apim_gateway_routes_keep_trusted_rewrite_with_each_waf_mode(self):
         self.assertNotIn("existingWafPolicyId", self.templates["gateway"]["parameters"])
@@ -96,10 +100,6 @@ class RetiredGrpcInfrastructureTests(unittest.TestCase):
             self.assertEqual(rule["access"], "Allow")
             self.assertEqual(rule["destinationPortRange"], "443")
         self.assertNotIn('"8443"', json.dumps(groups))
-        firewall = next(item for item in self.resources("network") if item["type"] == "Microsoft.Network/firewallPolicies/ruleCollectionGroups")
-        collections = resolver.resolve(firewall["properties"], parameters)["ruleCollections"]
-        self.assertNotIn("443", collections[0]["rules"][0]["destinationPorts"])
-        self.assertEqual(collections[0]["rules"][0]["destinationPorts"], ["80"])
 
     def test_apim_server_http2_is_string_false_and_l7_is_always_enabled(self):
         template = self.templates["services"]

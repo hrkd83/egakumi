@@ -2,7 +2,7 @@
 
 [共通確認](common.md) · [基盤設定](platform-settings.md) · [NSG設計・通信対応](../reference/network-security-design.md) · [非NSG通信](../reference/platform-communications.md)
 
-初期構築は5 NSG・カスタム75ルール（Allow 69、Deny 6）の固定集合とする。AzureFirewallSubnetにはNSGを関連付けない。
+初期構築は5 NSG・カスタム73ルール（Allow 67、Deny 6）の固定集合とする。AzureFirewallSubnetにはNSGを関連付けない。
 通信の用途を1ルールずつ名前と設計IDで記録し、ルールの作成有無を公開params／configで制御しない。
 
 - 120から: クライアント要求から発生する通信。
@@ -19,7 +19,7 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 
 正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のversion 2で、
 名称・方向・優先度・Allow/Deny・両ポート・プロトコル・アドレス参照・設計IDを定義する。
-以下の表は正本catalog v3の75件に対応する。送信元ポートは全件Any。
+以下の表は正本catalog v4の73件に対応する。送信元ポートは全件Any。
 
 サブネットCIDRは構築入力から、単IPは構築した資源の割当IPから、PEは構築したPE NICの全IPから
 動的に設定する。単IP・PE IPは/32とし、同じサブネットの他資源へ無条件に広げない。
@@ -57,8 +57,8 @@ NSGの初期集合を変える新しいスイッチを追加しない。
 
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
-| 120 | `allow-apim-http-egress` | AppGWサブネットCIDR | APIM内部VIP /32 | TCP／80 | `N-AGW-OUT-01` |
-| 121 | `allow-aca-http-egress` | AppGWサブネットCIDR | ACA共有VIP /32 | TCP／80 | `N-AGW-OUT-03` |
+| 120 | `allow-apim-https-egress` | AppGWサブネットCIDR | APIM内部VIP /32 | TCP／443 | `N-AGW-OUT-01` |
+| 121 | `allow-aca-https-egress` | AppGWサブネットCIDR | ACA共有VIP /32 | TCP／443 | `N-AGW-OUT-03` |
 | 220 | `allow-key-vault-https-egress` | AppGWサブネットCIDR | Key Vault PE全IP /32 | TCP／443 | `N-AGW-OUT-04` |
 
 ## APIM（apim）
@@ -67,7 +67,7 @@ NSGの初期集合を変える新しいスイッチを追加しない。
 
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
-| 120 | `allow-appgw-http-ingress` | AppGWサブネットCIDR | APIMサブネットCIDR | TCP／80 | `N-APIM-IN-01` |
+| 120 | `allow-firewall-https-ingress` | FirewallサブネットCIDR | APIMサブネットCIDR | TCP／443 | `N-APIM-IN-01` |
 | 220 | `allow-mgmt-vm-https-ingress` | 管理VM private IP /32 | APIMサブネットCIDR | TCP／443 | `N-APIM-IN-VM-CANDIDATE` |
 | 320 | `allow-api-management-ingress` | `ApiManagement`タグ | APIMサブネットCIDR | TCP／3443 | `N-APIM-IN-03` |
 | 321 | `allow-apim-ratelimits-counter-sync-ingress` | APIMサブネットCIDR | APIMサブネットCIDR | UDP／4290 | `N-APIM-IN-COUNTER` |
@@ -119,7 +119,7 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 226 | `allow-aca-sql-1433-ingress` | ACAサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-PE-07` |
 | 227 | `allow-aca-acr-https-ingress` | ACAサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-PE-08` |
 | 228 | `allow-mgmt-vm-acr-https-ingress` | 管理VM private IP /32 | ACR PE全IP /32 | TCP／443 | `B-PE-09` |
-| 229 | `allow-mgmt-vm-audit-storage-japan-https-ingress` | 管理VM private IP /32 | collectJapan監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS` |
+| 229 | `allow-mgmt-vm-audit-storage-platform-https-ingress` | 管理VM private IP /32 | collectJapan監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS` |
 | 230 | `allow-mgmt-vm-audit-storage-foundry-https-ingress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-FOUNDRY-HTTPS` |
 | 4096 | `deny-any-ingress` | Any | Any | Any／Any | `B-PE-14` |
 
@@ -144,9 +144,7 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 222 | `allow-apim-https-egress` | 管理VM private IP /32 | APIMサブネットCIDR | TCP／443 | `B-MGMT-18` |
 | 223 | `allow-foundry-https-egress` | 管理VM private IP /32 | Foundry PE全IP /32 | TCP／443 | `B-MGMT-21` |
 | 224 | `allow-sql-1433-egress` | 管理VM private IP /32 | 共有SQL PE全IP /32 | TCP／1433 | `N-MGMT-OUT-SQL` |
-| 225 | `allow-aca-http-egress` | 管理VM private IP /32 | ACA共有VIP /32 | TCP／80 | `N-MGMT-OUT-ACA-HTTP` |
-| 226 | `allow-aca-https-egress` | 管理VM private IP /32 | ACA共有VIP /32 | TCP／443 | `N-MGMT-OUT-ACA-HTTPS` |
-| 227 | `allow-audit-storage-japan-https-egress` | 管理VM private IP /32 | collectJapan監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS` |
+| 227 | `allow-audit-storage-platform-https-egress` | 管理VM private IP /32 | collectJapan監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS` |
 | 228 | `allow-audit-storage-foundry-https-egress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-FOUNDRY-HTTPS` |
 | 320 | `allow-azure-resource-manager-egress` | 管理VMサブネットCIDR | `AzureResourceManager`タグ | TCP／443 | `B-MGMT-06` |
 | 321 | `allow-entra-egress` | 管理VMサブネットCIDR | `AzureActiveDirectory`タグ | TCP／443 | `B-MGMT-07` |
@@ -206,10 +204,8 @@ VNet・Private Endpointへの具体的な経路が優先されるため、Firewa
 
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
-| 120 | `allow-appgw-http-ingress` | AppGWサブネットCIDR | ACAサブネットCIDR | TCP／80, 31080 | `B-ACA-03` |
+| 120 | `allow-firewall-https-ingress` | FirewallサブネットCIDR | ACAサブネットCIDR | TCP／443, 31443 | `B-ACA-03` |
 | 220 | `allow-apim-https-ingress` | APIMサブネットCIDR | ACAサブネットCIDR | TCP／443, 31443 | `B-ACA-04` |
-| 221 | `allow-mgmt-vm-http-ingress` | 管理VM private IP /32 | ACAサブネットCIDR | TCP／80, 31080 | `N-ACA-IN-MGMT-HTTP` |
-| 222 | `allow-mgmt-vm-https-ingress` | 管理VM private IP /32 | ACAサブネットCIDR | TCP／443, 31443 | `N-ACA-IN-MGMT-HTTPS` |
 | 320 | `allow-azure-load-balancer-ingress` | `AzureLoadBalancer`タグ | ACAサブネットCIDR | TCP／30000-32767 | `B-ACA-05` |
 
 ### Outbound
@@ -264,21 +260,24 @@ DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と�
 既存NSGの親は再PUTせず、タグは専用Tags API、ルールは子リソースで更新する。
 この順序と固定ルールの全条件をコンパイル済み資材で確認し、新規構築と再適用で同じ定義を使う。
 
-既存環境も最終状態は同じ資材に収束させる。今回の関連改修ではPortal HTTP80・gRPC撤去・標準DNS固定・管理VMのAzureホストPHC同期を
+既存環境も最終状態は同じ資材に収束させる。今回の関連改修ではApp Gateway後段のHTTPS・gRPC撤去・標準DNS固定・管理VMのAzureホストPHC同期を
 含むため、旧HTTPS後段へ最終Coreを先に適用しない。
 
 1. Windows側Azure CLIで認証し、入力・Core state・所有RG／VNet／NSG／内部資源・実ルールを読み取る。
    WSLはローカル試験とBicepコンパイルに使用し、Entra認証にLinux側Azure CLIを使わない。
-2. [Portal HTTP80移行](platform-settings.md#portal後段をhttp80へ移行する)を先行する。
+2. [HTTPS切替計画](platform-settings.md#appgw後段のtls検査を検証する)を用意する。
    Firewall80追加時は443を保持し、対応image／revision・HTTP readinessを確認してAppGW後段とprobeを切り替える。
    [管理VMのホスト時計への先行移行](#管理vmのホスト時計へ先行移行する)は現行guest監査moduleを単独適用する。既知内容の照合と変更前保存を行い、PHCの実同期と現行scriptの成功証跡が成立してからCoreと旧外部NTP許可の撤去へ進む。
 3. `fixed_nsg.prepare_fixed_nsg_rules`は変更前に全NSGを監査し、完全一致した所有済み旧ルールだけを
    一時優先度へ移す。旧Allowは1000番台、旧末尾Denyは4080とし、旧順序を維持する。
    未知・手動変更・所有不明のルールがあれば変更前に停止する。各変更をETagと保護記録で限定する。
-4. [NSG限定資材](../../infra/modules/nsg-fixed-upgrade.bicep)を単独what-ifで検証し、固定75子と
+   基盤監査Storageの旧名2件は、TCP／443・送受信元・既定優先度の完全一致を確認し、
+   同じ許可条件のまま優先度1500へ退避する。新名の227／229が確認できるまで旧名を削除せず、
+   中断後も退避済みのルールを確認して再開できる。保守資材の限定適用では元の優先度にある旧名も照合する。
+4. [NSG限定資材](../../infra/modules/nsg-fixed-upgrade.bicep)を単独what-ifで検証し、固定73子と
    新ACA NSGだけをIncremental配備する。既存NSGの親、UDR、VNet親、Firewall本体、Public IPは書かない。
    その後、ACA subnetの直前ETagを使った限定PUTでNSG関連付けだけを追加する。
-   `complete_fixed_nsg_rules`が5関連付け・全75条件と既定規則を照合した後にだけ、完全一致する旧子を回収する。
+   `complete_fixed_nsg_rules`が5関連付け・全73条件と既定規則を照合した後にだけ、完全一致する旧子を回収する。
    catalog v2の旧管理325は既知legacy tupleとの完全一致と直前ETagで限定削除し、所有Firewall collectionから管理VM NTP規則を除いて読み戻す。APIMのUDP123許可、未知の企業規則を削除しない。
    Incremental配備で省いた旧子が削除されたとは判断しない。
 5. APIMの通常L7保護を常設し、所有参照を照合した旧gRPC専用domainとAppGW L4設備を撤去する。
@@ -297,11 +296,11 @@ DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と�
 所有する既存NSG名を読み取る。新ACA parentのtagsは再構築と同じ構築tagsと固定3タグのunionとする。
 実VNetのDNSとFirewall上流DNSがAzure提供の空設定であり、Firewall DNS proxyが有効であることを
 NSG変更前に要求する。手動custom DNSがあればこの入口で切り替えず、規則の更新前に停止する。
-公開params／configは増やさず、catalog v3の75規則を常に生成する。
-`verify_fixed_nsg_upgrade_what_if`は75子の全tupleを照合し、展開診断、対象子のIgnore、
+公開params／configは増やさず、catalog v4の73規則を常に生成する。
+`verify_fixed_nsg_upgrade_what_if`は73子の全tupleを照合し、展開診断、対象子のIgnore、
 不足、削除、既存parentやNSG以外への書込を拒否する。what-ifのSucceededだけで判断しない。
 
-`associate_fixed_aca_nsg`は75子が揃った後に、ACA subnetの既知writable設定を保持して
+`associate_fixed_aca_nsg`は73子が揃った後に、ACA subnetの既知writable設定を保持して
 NSG参照だけを変更する。現routeTable、delegations、標準送信設定等を保持し、API仕様の
 readOnly以外で未対応の項目があれば値を省略せず停止する。現在の関連付けが別NSGなら停止する。
 変更前記録・直前ETag・If-Match・一致readbackを必要とし、応答不明や未完了時はPUTを再送しない。

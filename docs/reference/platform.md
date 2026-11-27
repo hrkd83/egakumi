@@ -296,6 +296,6 @@ MCPは、標準同期でAPIの説明・接続先が掲載されても、仕様Do
 
 gRPCは提供要件から廃止しました。公開TCP8443・AppGWの専用L4子設備・gRPC用NSG／Firewall許可・新規proto取り込み・専用のカタログ説明更新は作成しません。`gateway.grpc`全体とgRPC API定義は入力検査で拒否します。既存のgRPCを含むV2公開sourceは、旧資材の所有照合用として厳密な読戻し互換だけを維持します。
 
-通常HTTP／HTTPSの入口保護は常設です。AppGWが`X-Core-L7-Ingress`を上書きし、APIMの共通ポリシーで証明を検査します。frontend HTTP/2は維持し、内部APIM／ACAへはHTTP80で転送します。APIMのServer.Http2は文字列`"false"`に固定します。HTTP・SSE・WebSocket・MCPの通常API、認証・認可・監査・CM・所有者署名の契約は維持します。gRPC廃止のローカル検証と実Azureの移行・通信確認は別に記録します。APIMの旧gRPC専用カスタムドメインは所有参照を照合して撤去し、通常APIのHostは標準Gateway名を維持します。他用途のドメインとHTTP2以外の既存customPropertiesは保持します。
+通常HTTP／HTTPSの入口保護は常設です。AppGWが`X-Core-L7-Ingress`を上書きし、APIMの共通ポリシーで証明を検査します。frontend HTTP/2は維持し、内部APIM／ACAへはFirewallのTLS検査を経由してHTTPS443で転送します。APIMのServer.Http2は文字列`"false"`に固定します。HTTP・SSE・WebSocket・MCPの通常API、認証・認可・監査・CM・所有者署名の契約は維持します。gRPC廃止のローカル検証と実Azureの移行・通信確認は別に記録します。APIMの旧gRPC専用カスタムドメインは所有参照を照合して撤去し、通常APIのHostは標準Gateway名を維持します。他用途のドメインとHTTP2以外の既存customPropertiesは保持します。
 
 APIMの既定Gatewayはカスタムドメイン追加後も利用でき、削除できません。HTTPS保守では`<APIM_NAME>.azure-api.net`をPrivate DNSで内部VIPへ解決し、同名のHost／SNIを使うとMicrosoft管理の既定証明書で接続できます。公開URL・OAuth／CMの案内はAppGWの公開名を維持します。[既定GatewayとSNIの公式説明](https://learn.microsoft.com/azure/api-management/configure-custom-domain)、[Internal VNetの既定FQDNとDNS](https://learn.microsoft.com/azure/api-management/api-management-using-with-internal-vnet)

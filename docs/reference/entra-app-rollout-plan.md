@@ -252,7 +252,7 @@ Bearer要求では、署名・期限・自社tenant/issuer・v2のaud=<API_APP_C
 | audit-context.xml・fragments/audit/core-gateway-telemetry/core-gateway-telemetry.xml | 認証方式、tid/oid、任意のazp、利用枠、正本API、request ID、モデルを関連付ける。token・key・本文を記録しない |
 | fragments/authentication/core-credential-connection/・credential-login/*.xml・[credential-broker](../../apps/credential-broker/) | Bearer本人を初回取引からcallback・業務利用・更新・logout/disconnectまで照合。キーとユーザーcs2は相互流用せず、確認済み接続はtid+oidで再利用。SQL v4・Broker・XMLを揃えて更新し、既存キーv2契約を維持 |
 | realtime-create/observer/hangup・live・非同期結果取得 | 本人と利用枠をticket・call・結果所有者へ結び付ける。旧購読所有の契約も維持 |
-| [application-gateway.bicep](../../infra/modules/application-gateway.bicep)・経路の更新処理 | 共通URLでBearerがAPIMへ到達すること、既存rewrite・WAF範囲・タイムアウトを確認。常設のL7入口証明が通常APIの直接アクセスを拒否し、AppGW→APIMのHTTP80転送と整合することを確認する |
+| [application-gateway.bicep](../../infra/modules/application-gateway.bicep)・経路の更新処理 | 共通URLでBearerがAPIMへ到達すること、既存rewrite・WAF範囲・タイムアウトを確認。常設のL7入口証明が通常APIの直接アクセスを拒否し、AppGWからFirewallのTLS検査を経由するAPIMへのHTTPS443転送でも機能することを確認する |
 
 初期の利用対象は認証テナント全ユーザー、利用は基本無制限で有効な制限だけ構成の共通値を使い、個人grant台帳・利用許可resolverは追加しない。CMとsessionの本人所有者契約は入口認可と別に維持する。将来、グループ別の利用枠が必要になった段階で、責務に沿って追加する。内部通信ではAPIM以外が本人情報を偽装できないことを試験する。既存グループ購読を利用枠へ対応させる場合は、実際の購読状態・API範囲・停止の反映も確認する。
 

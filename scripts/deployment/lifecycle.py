@@ -113,7 +113,7 @@ if __package__ in (None, ""):
 
 from .helpers.paths import REPOSITORY, configuration_path, local_paths, private_parent
 from .helpers.azd_parameters import ARM_PARAMETERS_ENV, arm_parameters_reference, complete_arm_parameters
-from .helpers.configuration import ConfigurationError, build_bicep_configuration, entra_tenant_id, load_configuration, load_secret_inputs
+from .helpers.configuration import ConfigurationError, build_bicep_configuration, entra_tenant_id, load_configuration, load_firewall_tls_inspection, load_secret_inputs
 from .helpers.diagnostics import DiagnosticPreservationError, canonical_settings, prepare_settings
 from .helpers.prepare_secrets import SecretPreparationError, prepare_secrets
 from .helpers.dns_selection import DnsSelectionError, select_dns_provider
@@ -131,7 +131,7 @@ from .helpers.operator_access import OperatorAccessError, cleanup_disabled_opera
 from .helpers.dns_nsg import DnsNsgError, retire_dns_rules
 from .helpers.appgw_egress_nsg import AppgwEgressNsgError, retire_appgw_egress_rules
 from .helpers.fixed_nsg import FixedNsgError, prepare_fixed_nsg_rules, complete_fixed_nsg_rules
-from .helpers.portal_backend_http import require_portal_http_core_ready
+from .helpers.portal_gateway import require_appgw_backend_tls_ready
 from .helpers.management_host_time import ManagementHostTimeError, require_management_host_time_core_ready
 from .helpers import serial_initialization
 from .helpers.serial_credentials import (
@@ -206,7 +206,7 @@ def prepare_core_network_upgrade(config: dict, transport, *, execute=True) -> di
         require_management_host_time_core_ready(config, transport)
     except ManagementHostTimeError as error:
         raise DeploymentError(str(error)) from None
-    require_portal_http_core_ready(config, transport)
+    require_appgw_backend_tls_ready(config, transport, allow_new=True)
     record = upgrade_journal(config, "fixed-nsg-prepare")
     try:
         return prepare_fixed_nsg_rules(config, transport, execute=execute, record=record)
@@ -1019,6 +1019,7 @@ def local_preflight(config: dict, *, check_power_shell: bool = True, configurati
     for variable, key in (("AZURE_SUBSCRIPTION_ID", "subscriptionId"), ("AZURE_TENANT_ID", "azureTenantId")):
         if os.environ.get(variable) and os.environ[variable].lower() != config[key].lower():
             raise DeploymentError(f"{variable} differs from the selected configuration")
+    load_firewall_tls_inspection(config)
     for command in ("az", "azd"):
         if shutil.which(command) is None:
             raise DeploymentError(f"Install {command} before deployment")
@@ -1698,7 +1699,7 @@ def _preprovision(config: dict) -> None:
     # 先に済ませる。RG・監視・VM等の課金資源は、以下の確認が終わるまで作らない。
     register_providers(config)
     transport = ArmTransport(config)
-    require_portal_http_core_ready(config, transport)
+    require_appgw_backend_tls_ready(config, transport, allow_new=True)
     serial_password = _prepare_management_serial_password(config, transport)
     secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json),
                "managementInitialSerialGeneration": _management_serial_generation(config, serial_password)}
@@ -1894,7 +1895,7 @@ def main(argv=None) -> int:
             # preprovisionにも同じ確認を残し、azd provision単独でも前提を満たす。
             register_providers(config)
             transport = ArmTransport(config)
-            require_portal_http_core_ready(config, transport)
+            require_appgw_backend_tls_ready(config, transport, allow_new=True)
             for key, value in (("AZURE_SUBSCRIPTION_ID", config["subscriptionId"]), ("AZURE_TENANT_ID", config["azureTenantId"]), ("AZURE_LOCATION", config["location"])):
                 run(["azd", "env", "set", key, value, "--environment", config["environmentName"]])
             # azdがpreup後に読む入力枠を用意する。秘密入りの実入力は監視基盤の準備後に作る。

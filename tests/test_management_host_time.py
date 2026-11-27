@@ -156,7 +156,7 @@ class ManagementHostTimeReadinessTests(unittest.TestCase):
     def test_gate_runs_before_portal_checks_journal_and_any_nsg_mutation(self):
         with patch.object(lifecycle, "require_management_host_time_core_ready",
                           side_effect=host_time.ManagementHostTimeError("PHC preparation required")), \
-             patch.object(lifecycle, "require_portal_http_core_ready") as portal, \
+             patch.object(lifecycle, "require_appgw_backend_tls_ready") as portal, \
              patch.object(lifecycle, "upgrade_journal") as journal, \
              patch.object(lifecycle, "prepare_fixed_nsg_rules") as nsg:
             with self.assertRaises(lifecycle.DeploymentError):

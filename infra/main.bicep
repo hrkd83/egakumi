@@ -18,6 +18,9 @@ param managementInitialSerialGeneration string = ''
 @description('DNS-01 認証用のプラグイン引数。API トークンを含むためログや通常出力に出しません。')
 @secure()
 param dnsPluginArgumentsJson string = ''
+@description('Firewallの中間CAの参照とAppGW用公開ルート証明書。中間CAの秘密鍵は渡しません。')
+@secure()
+param firewallTlsInspection object = {}
 @description('接続プロバイダー名をキーにした OAuth client secret。公開設定から分離して渡します。')
 @secure()
 param credentialProviderSecrets object = {}
@@ -174,6 +177,10 @@ module network 'modules/network.bicep' = if (deployCore) {
     location: location
     tags: tags
     config: configuration.network
+    firewallTlsInspection: {
+      managedIdentityResourceId: firewallTlsInspection.?managedIdentityResourceId ?? ''
+      intermediateCaSecretId: firewallTlsInspection.?intermediateCaSecretId ?? ''
+    }
     generatedApimServiceFqdns: configuration.generatedApimServiceFqdns
     gatewayPublicHostName: gatewayConfig.publicHostName
     portalPublicHostName: portalConfig.publicHostName
@@ -311,7 +318,6 @@ module networkBindings 'modules/network-bindings.bicep' = if (deployCore) {
     subnetPrefixes: network!.outputs.subnetPrefixes
     nsgNames: network!.outputs.nsgNames
     routeTableNames: network!.outputs.routeTableNames
-    firewallPolicyName: network!.outputs.firewallPolicyName
     firewallPrivateIp: network!.outputs.firewallPrivateIp
     firewallPublicIpAddress: network!.outputs.firewallPublicIpAddress
     appGatewayPublicIpAddress: network!.outputs.appGatewayPublicIpAddress
@@ -516,7 +522,6 @@ module portalNetwork 'modules/portal-network.bicep' = if (deployCore) {
     managementPrivateIp: management!.outputs.managementVm.privateIp
     acaNsgName: network!.outputs.nsgNames.aca
     acaPrefix: network!.outputs.subnetPrefixes.aca
-    agwPrefix: network!.outputs.subnetPrefixes.agw
     firewallPolicyName: network!.outputs.firewallPolicyName
     pepNsgName: network!.outputs.nsgNames.pep
   }
@@ -541,6 +546,7 @@ module portal 'modules/portal-platform.bicep' = if (deployCore) {
 module portalNetworkBindings 'modules/portal-network-bindings.bicep' = if (deployCore) {
   name: '${stem}-portal-network-bindings'
   scope: nwGroup
+  dependsOn: [firewallDiagnostics]
   params: {
     stem: stem
     defaultDomain: portal!.outputs.defaultDomain
@@ -552,6 +558,9 @@ module portalNetworkBindings 'modules/portal-network-bindings.bicep' = if (deplo
     agwPrefix: network!.outputs.subnetPrefixes.agw
     managementPrivateIp: management!.outputs.managementVm.privateIp
     firewallIp: network!.outputs.firewallPrivateIp
+    firewallPolicyName: network!.outputs.firewallPolicyName
+    apimGatewayFqdn: services!.outputs.apimGatewayHost
+    portalBackendHost: portal!.outputs.appHost
   }
 }
 
@@ -642,6 +651,7 @@ module gateway 'modules/application-gateway.bicep' = if (deployCore) {
     apimHostName: services!.outputs.apimGatewayHost
     publicHostName: gatewayConfig.publicHostName
     keyVaultCertificateSecretId: certificate!.outputs.certificateSecretUri
+    firewallRootCaData: firewallTlsInspection.?rootCaData ?? ''
     certificateIdentityId: identity.outputs.id
     skuName: gatewayConfig.skuName
     autoscaleMinCapacity: gatewayConfig.autoscaleMinCapacity

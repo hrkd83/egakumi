@@ -17,6 +17,7 @@
     "management",
     "monitoring",
     "certificate",
+    "firewallTlsInspection",
     "location",
     "foundryLocation",
     "apiCenterLocation",
@@ -426,6 +427,30 @@
     },
     "portalApiKeys": {
       "$ref": "#/$defs/portalApiKeys"
+    },
+    "firewallTlsInspection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "managedIdentityResourceId",
+        "intermediateCaSecretId",
+        "rootCaCertificateFile"
+      ],
+      "description": "Firewall TLS検査の専用マネージドID、バージョン付き中間CA参照、App Gateway用ルート証明書。",
+      "properties": {
+        "managedIdentityResourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "intermediateCaSecretId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootCaCertificateFile": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   },
   "$defs": {

@@ -64,7 +64,7 @@
 - 既存VMは時刻専用moduleを単独先行適用し、SSH／rsyslogを変更しない。所有・現行script全文一致・RunCommand成功と`configured`／`azure-host-phc`／`timeSynchronized: true`／`timeOnly: true`を読取gateで確認してからCoreへ進む。新commandが404の場合だけ現行full audit成功へfallbackし、新commandの失敗や進行中を隠さない。VM作成とcommand開始／終了のUTC時刻を照合し、前VMインスタンスの成功証跡を拒否する。未適用・旧結果・失敗はCore前停止、厳密な整数HTTP404だけが新規構築へ進むことを確認する。NSG限定移行でも旧管理NTP規則の削除前に同じgateを要求する。先行成功を現在精度の保証へ読み替えず、現在source／`Normal`／offsetを実VMで別に確認する。
 - 専用運用CLIのinspect原本・VM binding・入力/Core不変を確認し、旧CoreでvmIdが欠落していても最初の現世代を固定する。receiptの再開で追加PUTしないことと、新しい読取と過去結果の再確認の区別を検証する。旧NSG325または260の既知1件とFW管理NTP1件だけを撤去し、非対象・readonly size・未知条件・競合・応答不明を合成確認する。実環境の結果は保護証跡で管理する。
 - PHC同期成立後に旧管理NSG325の完全一致tupleをETag付きで限定削除し、所有FW collectionの旧管理NTPだけを撤去して読戻しする。catalog v3の75 NSG（Allow69、Deny6）、35 FW（Network16、Application19）、`rcg-platform`12規則と、APIMのNSG328／UDP123維持を照合する。管理VMのVMBus／PHCへUDP123／319／320の許可を追加しない。旧102PASS／76 NSG／36 FWの記録は旧条件として保持し、今回の合格へ転用しない。今回のAzure反映・実VM同期は未実施である。
-- AppGWの専用L4入口・公開8443・gRPC許可を撤去し、通常APIM／ACA向けのHTTP80と管理VMのHTTPS443保守を確認する。APIMの旧所有customProxyだけを除去し、native FQDN／Host／SNIでHTTPS保守できることを確認する。
+- AppGWの専用L4入口・公開8443・gRPC許可を撤去し、通常APIM／ACA向けのHTTPS443と管理VMのHTTPS443保守を確認する。APIMの旧所有customProxyだけを除去し、native FQDN／Host／SNIでHTTPS保守できることを確認する。
 - 所有ETag、保護された変更journal、受理後の読戻し、部分完了からの再開、再実行時の無変更を確認する。APIMの他custom domain・customProperties、WAF・認証・認可・監査・CM・所有者署名を維持する。
 - 新規接続で通常API、Portal転送、SSE／WebSocket／MCP、公開TLS、L7入口証明不備の拒否を確認する。設定読戻し、認証拒否、実推論・ストリーミング成功を分けて記録する。
 

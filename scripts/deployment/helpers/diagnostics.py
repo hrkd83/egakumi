@@ -5,9 +5,14 @@ import copy
 import re
 
 from .apim_naming import apim_name
+from .log_privacy import PRIVACY
 
 
 API = "2021-05-01-preview"
+FIREWALL_TRANSFORMED_URL_CATEGORIES = frozenset(category.casefold() for category in PRIVACY["firewallUrlTables"])
+FIREWALL_URL_CATEGORIES = FIREWALL_TRANSFORMED_URL_CATEGORIES | {
+    "azfwapplicationruleaggregation", "azurefirewallapplicationrule", "alllogs",
+}
 WRITABLE = {"workspaceId", "storageAccountId", "eventHubAuthorizationRuleId", "eventHubName",
             "serviceBusRuleId", "marketplacePartnerId", "logAnalyticsDestinationType", "logs", "metrics"}
 SINKS = {"workspaceId", "storageAccountId", "eventHubAuthorizationRuleId", "serviceBusRuleId", "marketplacePartnerId"}
@@ -104,6 +109,33 @@ def _pairs(properties):
     return result
 
 
+def _firewall_url_categories(properties):
+    return {name for (_, name), entry in _entries(properties.get("logs"), "logs").items()
+            if entry["enabled"] and name in FIREWALL_URL_CATEGORIES}
+
+
+def _verify_other_firewall_log_routes(transport, item, managed_url_log_id):
+    """他の診断設定で変換前URLを転送していれば、勝手に変更せず配備前に止める。"""
+    prefix = item["parentId"] + "/providers/Microsoft.Insights/diagnosticSettings/"
+    response = transport.request("GET", prefix.rstrip("/") + "?api-version=" + API)
+    _need(isinstance(response, dict) and response.get("statusCode") == 200, "firewall-log-inventory")
+    body = response.get("body")
+    _need(isinstance(body, dict)
+          and isinstance(body.get("value"), list) and not body.get("nextLink"), "firewall-log-inventory")
+    owned = {item["id"].casefold(), managed_url_log_id.casefold()}
+    seen = set()
+    for setting in body["value"]:
+        _need(isinstance(setting, dict) and isinstance(setting.get("id"), str)
+              and isinstance(setting.get("name"), str) and setting["name"]
+              and "/" not in setting["name"] and _same(setting.get("type"), "Microsoft.Insights/diagnosticSettings")
+              and _same(setting["id"], prefix + setting["name"]), "firewall-log-identity")
+        identifier = setting["id"].casefold()
+        _need(identifier not in seen, "firewall-log-duplicate")
+        seen.add(identifier)
+        if identifier not in owned:
+            _need(not _firewall_url_categories(normalized_properties(setting.get("properties"))), "external-firewall-url-route")
+
+
 def merge_properties(existing, desired):
     """明示した基盤設定を優先し、既存追加分だけを転送範囲を広げず保持する。"""
     before, canonical = normalized_properties({} if existing is None else existing), normalized_properties(desired)
@@ -166,10 +198,16 @@ def canonical_settings(config, phase, preserve_collection=False):
     if phase == "monitoring":
         return settings
     firewall = resource("nw", "Microsoft.Network/azureFirewalls", "afw-" + stem)
-    firewall_logs = ["AZFWNetworkRule", "AZFWApplicationRule", "AZFWThreatIntel"]
+    firewall_logs = ["AZFWNetworkRule"]
     if config["network"].get("firewall", {}).get("sku", "Premium") == "Premium":
         firewall_logs.append("AZFWIdpsSignature")
     add("fw-logs", firewall, "Microsoft.Network/azureFirewalls", "2025-01-01", f"diag-{stem}-fw", logs=firewall_logs, storage=japan, dedicated=True)
+    # 既存の所有済み設定をマージする場合も、この2分類の直接転送を停止します。
+    settings["fw-logs"]["properties"]["logs"].extend(
+        {"category": category, "enabled": False} for category in PRIVACY["firewallUrlTables"]
+    )
+    add("fw-url-logs", firewall, "Microsoft.Network/azureFirewalls", "2025-01-01", f"diag-{stem}-fw-url-logs",
+        logs=PRIVACY["firewallUrlTables"], dedicated=True)
     add("fw-metrics", firewall, "Microsoft.Network/azureFirewalls", "2025-01-01", f"diag-{stem}-fw-metrics", metrics=["AllMetrics"])
     for key, provider, name, version, region in (
         ("vault", "Microsoft.KeyVault/vaults", "kv-" + stem, "2023-07-01", location),
@@ -234,6 +272,8 @@ def prepare_settings(config, transport, phase, preserve_collection=False):
         if not exists:
             observed[key] = None
             continue
+        if key == "fw-logs":
+            _verify_other_firewall_log_routes(transport, item, all_settings["fw-url-logs"]["id"])
         response = transport.request("GET", item["id"] + "?api-version=" + API)
         _need(isinstance(response, dict) and response.get("statusCode") in (200, 404), "setting-unreadable")
         if response["statusCode"] == 404:
@@ -264,4 +304,10 @@ def prepare_settings(config, transport, phase, preserve_collection=False):
             enabled = _entries(merged.get("logs"), "logs")
             access = any(entry["enabled"] and selector in (("category", "applicationgatewayaccesslog"), ("categoryGroup", "alllogs")) for selector, entry in enabled.items())
             _need(not access or not any(merged.get(sink) for sink in SINKS - {"workspaceId"}), "raw-access-route")
+        if key in ("fw-logs", "fw-url-logs"):
+            url_categories = _firewall_url_categories(merged)
+            _need(not url_categories or (
+                key == "fw-url-logs" and url_categories <= FIREWALL_TRANSFORMED_URL_CATEGORIES
+                and not any(merged.get(sink) for sink in SINKS - {"workspaceId"})
+            ), "raw-firewall-url-route")
     return {key: merge_properties(observed[key], item["properties"]) for key, item in requested.items()}

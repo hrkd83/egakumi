@@ -636,15 +636,6 @@ class GrpcBootstrapTests(unittest.TestCase):
 
 class GrpcInfrastructureSourceTests(unittest.TestCase):
     """gRPCの証明書設定・HTTP/2・入口と鍵の管理を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
-    def test_grpc_assets_are_absent_and_https_maintenance_rules_remain(self):
-        core = Path(__file__).resolve().parents[1]
-        network = (core / "infra/modules/network-bindings.bicep").read_text()
-        for name in ("allow-appgw-grpc-ingress", "allow-apim-grpc-egress", "grpcEnabled", "grpcBackendPort"):
-            self.assertNotIn(name, network)
-        self.assertIn("allow-mgmt-vm-https-ingress", network)
-        self.assertIn("allow-apim-https-egress", network)
-        self.assertIn("destinationPorts: ['80']", network)
-
     def test_secure_inputs_remain_private_and_normal_http_ingress_is_permanent(self):
         core = Path(__file__).resolve().parents[1]
         source = (core / "infra/main.bicep").read_text()

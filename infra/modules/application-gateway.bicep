@@ -53,6 +53,10 @@ param publicHostName string
 @description('AppGW が読む証明書 secret の URI。版を固定しない URI で更新を取り込みます。')
 #disable-next-line secure-secrets-in-params // Reference URI only; no certificate bytes, password, or SAS token.
 param keyVaultCertificateSecretId string
+
+@description('Firewall検査用中間CAを発行したルートの公開DER証明書（Base64）。')
+@minLength(1)
+param firewallRootCaData string
 @minLength(1)
 @description('証明書参照用ユーザー割り当てマネージド ID のリソース ID。Entra アプリの ID ではありません。')
 param certificateIdentityId string
@@ -465,6 +469,7 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
         } : {})
       }
     }))
+    trustedRootCertificates: [{ name: 'firewall-inspection-root', properties: { data: firewallRootCaData } }]
     backendAddressPools: concat([{
       name: 'bepool-apim'
       properties: { backendAddresses: [{ ipAddress: apimPrivateIp }] }
@@ -472,32 +477,35 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
     backendHttpSettingsCollection: concat([{
       name: 'behttp-apim'
       properties: {
-        protocol: 'Http'
-        port: 80
+        protocol: 'Https'
+        port: 443
         cookieBasedAffinity: 'Disabled'
         requestTimeout: backendRequestTimeoutSeconds
+        // V2 uses this Host override as SNI for live requests to the private IP.
         hostName: apimHostName
         pickHostNameFromBackendAddress: false
+        trustedRootCertificates: [{ id: '${gatewayId}/trustedRootCertificates/firewall-inspection-root' }]
         probe: { id: '${gatewayId}/probes/probe-apim' }
       }
     }], [{
       name: 'behttp-portal'
       properties: {
-        protocol: 'Http'
-        port: 80
+        protocol: 'Https'
+        port: 443
         cookieBasedAffinity: 'Disabled'
         // Portal waits for the same Gateway calls, including non-streaming inference.
         requestTimeout: backendRequestTimeoutSeconds
         hostName: portalBackendHost
         pickHostNameFromBackendAddress: false
+        trustedRootCertificates: [{ id: '${gatewayId}/trustedRootCertificates/firewall-inspection-root' }]
         probe: { id: '${gatewayId}/probes/probe-portal' }
       }
     }])
     probes: concat([{
       name: 'probe-apim'
       properties: {
-        protocol: 'Http'
-        port: 80
+        protocol: 'Https'
+        port: 443
         host: apimHostName
         path: '/status-0123456789abcdef'
         interval: 30
@@ -509,8 +517,8 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
     }], [{
       name: 'probe-portal'
       properties: {
-        protocol: 'Http'
-        port: 80
+        protocol: 'Https'
+        port: 443
         host: portalBackendHost
         // Portal配備後は認証不要のヘルスAPIで稼働状態を判定します。
         // 初期構築の仮イメージは対象外です。認証画面への転送は正常判定に含めません。

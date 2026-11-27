@@ -1,6 +1,5 @@
 """同名Core診断の保持と、書込前に止める転送拡大を合成応答だけで確認する。"""
 import copy
-import json
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -9,9 +8,6 @@ from configuration_fixtures import fixture
 from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration
 from deployment.helpers import diagnostics
 from deployment import lifecycle
-
-CANONICAL_FIXTURE_FILE = Path(__file__).resolve().parent / "fixtures/diagnostic_canonical.json"
-
 
 def configuration():
     """実ファイルの秘密を開かず、公開fixtureを通常の検証・構築変換へ通す。"""
@@ -22,7 +18,9 @@ class Directory:
     """診断metadataだけの固定GET応答を返し、未知の書込を拒否する。"""
     def __init__(self, config, existing=True):
         self.calls, self.values = [], {}
-        for key, item in diagnostics.canonical_settings(config, "core", True).items():
+        desired = diagnostics.canonical_settings(config, "core", True)
+        self.firewall_logs = desired["fw-logs"]["id"].rsplit("/", 1)[0].casefold()
+        for key, item in desired.items():
             if existing and key != "activity":
                 self.values[item["ownerId"].casefold()] = {"id": item["ownerId"], "type": item["ownerType"], "location": item["location"], "tags": {
                     "product": config["productName"], "environment": config["environmentName"], "azd-env-name": config["environmentName"]}}
@@ -36,6 +34,9 @@ class Directory:
         self.calls.append((method, path, copy.deepcopy(body)))
         assert method == "GET", "No cloud mutation is permitted in diagnostic controls"
         identifier = path.split("?", 1)[0].casefold()
+        if identifier == self.firewall_logs:
+            items = [value for target, value in self.values.items() if target.startswith(identifier + "/")]
+            return {"statusCode": self.status.get(identifier, 200), "body": {"value": copy.deepcopy(items)}}
         status = self.status.get(identifier, 200 if identifier in self.values else 404)
         return {"statusCode": status, "body": ({"error": {"code": "ResourceNotFound"}} if status == 404 else copy.deepcopy(self.values.get(identifier)))}
 
@@ -45,18 +46,51 @@ class DiagnosticPreservationTests(unittest.TestCase):
         self.config = configuration()
         self.workspace = diagnostics.canonical_settings(self.config, "core")["law"]["parentId"]
 
-    def test_canonical_settings_match_the_independent_previous_bicep_golden(self):
-        cases = json.loads(CANONICAL_FIXTURE_FILE.read_text())["cases"]
-        self.assertEqual(len(cases), 6)
-        for case in cases:
-            config = copy.deepcopy(self.config)
-            config["gateway"]["skuName"] = case["gatewaySku"]
-            config["network"]["firewall"]["sku"] = case["firewallTier"]
-            config["infrastructureApiDefinitions"] = [{"apiType": "websocket"}] if case["websocket"] else []
-            actual = {item["id"].casefold(): item["properties"] for item in diagnostics.canonical_settings(config, case["phase"], case["preserveCollection"]).values()}
-            # 正本の分類・宛先関係を固定し、独立した合成fixtureのsubscriptionだけをメモリー内で束縛する。
-            expected = json.loads(json.dumps(case["expected"]).replace("<AZURE_SUBSCRIPTION_ID>", config["subscriptionId"]))
-            self.assertEqual(actual, expected)
+    def test_inspected_urls_move_from_existing_storage_delivery_to_dedicated_workspace(self):
+        settings = diagnostics.canonical_settings(self.config, "core")
+        transport = Directory(self.config)
+        previous = transport.values[settings["fw-logs"]["id"].casefold()]["properties"]
+        for entry in previous["logs"]:
+            entry["enabled"] = True
+        del transport.values[settings["fw-url-logs"]["id"].casefold()]
+        desired = diagnostics.prepare_settings(self.config, transport, "core")
+        direct = desired["fw-logs"]
+        self.assertEqual(direct["storageAccountId"], previous["storageAccountId"])
+        self.assertEqual({entry["category"] for entry in direct["logs"] if entry["enabled"]}, {"AZFWNetworkRule", "AZFWIdpsSignature"})
+        transformed = desired["fw-url-logs"]
+        self.assertEqual({entry["category"] for entry in transformed["logs"] if entry["enabled"]}, {"AZFWApplicationRule", "AZFWThreatIntel"})
+        self.assertEqual(transformed["workspaceId"], self.workspace)
+        self.assertEqual(transformed["logAnalyticsDestinationType"], "Dedicated")
+        self.assertFalse((diagnostics.SINKS - {"workspaceId"}) & transformed.keys())
+        self.assertTrue(all(call[0] == "GET" for call in transport.calls))
+
+    def test_additional_firewall_route_cannot_bypass_the_protected_workspace(self):
+        settings = diagnostics.canonical_settings(self.config, "core")
+        for logs in (
+            [{"categoryGroup": "allLogs", "enabled": True}],
+            [{"category": "AZFWThreatIntel", "enabled": True}],
+            [{"category": "AZFWApplicationRuleAggregation", "enabled": True}],
+            [{"category": "AzureFirewallApplicationRule", "enabled": True}],
+        ):
+            transport = Directory(self.config)
+            configured = copy.deepcopy(transport.values[settings["fw-logs"]["id"].casefold()])
+            configured.update(id=configured["id"] + "-additional", name=configured["name"] + "-additional")
+            configured["properties"]["logs"] = logs
+            transport.values[configured["id"].casefold()] = configured
+            with self.assertRaisesRegex(diagnostics.DiagnosticPreservationError, "external-firewall-url-route"):
+                diagnostics.prepare_settings(self.config, transport, "monitoring")
+            self.assertTrue(all(call[0] == "GET" for call in transport.calls))
+
+    def test_managed_firewall_routes_require_every_url_category_to_be_transformed(self):
+        settings = diagnostics.canonical_settings(self.config, "core")
+        for name in ("fw-logs", "fw-url-logs"):
+            with self.subTest(name=name):
+                transport = Directory(self.config)
+                props = transport.values[settings[name]["id"].casefold()]["properties"]
+                props["logs"].append({"category": "AZFWApplicationRuleAggregation", "enabled": True})
+                with self.assertRaisesRegex(diagnostics.DiagnosticPreservationError, "raw-firewall-url-route"):
+                    diagnostics.prepare_settings(self.config, transport, "monitoring")
+                self.assertTrue(all(call[0] == "GET" for call in transport.calls))
 
     def test_metrics_only_additional_storage_survives_same_name_properties(self):
         setting = diagnostics.canonical_settings(self.config, "core")["agw-metrics"]

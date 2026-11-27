@@ -49,7 +49,7 @@ param existingWorkspaceDataCollectionRuleResourceId string = ''
 // 長期保存へ転送するテーブルを明示。Linux の認証は Syslog、アプリ監視は App* の各テーブルです。
 var privacy = loadJsonContent('../log-privacy.json')
 var exportTables = ['AppRequests', 'AppDependencies', 'AppExceptions', 'AppTraces', 'AppEvents', 'Syslog', privacy.table]
-var analyticsTables = concat(exportTables, [
+var analyticsTables = concat(exportTables, privacy.firewallUrlTables, [
   'AppMetrics', 'AppPageViews', 'AppBrowserTimings', 'AppAvailabilityResults'
   'Perf', 'Heartbeat', 'AzureActivity', 'AzureMetrics', 'LAQueryLogs', 'StorageBlobLogs'
 ])
@@ -97,7 +97,7 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   }
 }
 
-// 診断ログをLAWへ保存する前にquery全体を除去します。WAF自体のlogScrubbingとは別の保護です。
+// AppGWのqueryとFirewallのTLS検査で得るURL全体を、LAWへ保存する前に除去します。
 // 関連付けはmonitoring段階の配備後に限定PATCHし、次のcore段階へ実IDを引き継ぎます。
 resource workspacePrivacy 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
   name: 'dcr-${resourceStem}-workspace'
@@ -107,7 +107,14 @@ resource workspacePrivacy 'Microsoft.Insights/dataCollectionRules@2023-03-11' = 
   properties: {
     dataSources: {}
     destinations: { logAnalytics: [{ name: 'law-core', workspaceResourceId: workspace.id }] }
-    dataFlows: [{ streams: [privacy.stream], destinations: ['law-core'], transformKql: privacy.transformKql }]
+    dataFlows: concat(
+      [{ streams: [privacy.stream], destinations: ['law-core'], transformKql: privacy.transformKql }],
+      map(privacy.firewallUrlTables, table => {
+        streams: ['Microsoft-Table-${table}']
+        destinations: ['law-core']
+        transformKql: privacy.firewallUrlTransformKql
+      })
+    )
   }
   dependsOn: [tables]
 }

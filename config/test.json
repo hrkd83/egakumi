@@ -9,10 +9,10 @@
     },
     "appGatewayZones": [],
     "firewall": {
-      "sku": "Standard",
+      "sku": "Premium",
       "threatIntelMode": "Alert",
       "zones": [],
-      "idpsMode": "Off",
+      "idpsMode": "Deny",
       "signatureOverrides": []
     },
     "dnsTtl": 300

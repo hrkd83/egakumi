@@ -16,6 +16,9 @@ param tags object = {}
 
 @description('親から受け取る検証済みの設定値。このモジュールが担当する項目だけを参照します。')
 param config object = {}
+
+@secure()
+param firewallTlsInspection object
 @description('検証済みの業務APIと本人情報取得設定だけから生成したAPIM宛先。公開FW追加入力ではありません。')
 param generatedApimServiceFqdns array = []
 @minLength(1)
@@ -50,7 +53,6 @@ var subnetPrefixes = config.?subnetPrefixes ?? {
 // Initial VNet and Firewall upstream DNS use Azure-provided resolution.
 var dnsServers = []
 var firewallSettings = config.?firewall ?? {}
-var firewallTier = firewallSettings.?sku ?? 'Premium'
 var zones = firewallSettings.?zones ?? []
 // ネットワーク規則の非SNAT範囲は標準範囲と構築VNetを維持します。
 var snatPrivateRanges = union(['IANAPrivateRanges'], addressSpaces)
@@ -99,7 +101,7 @@ var nsgDefinitions = [
     key: 'apim'
     suffix: 'apim'
     rules: [
-      allowRule('allow-appgw-http-ingress', nsgPriorities.groups.apim.rules['allow-appgw-http-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])
+      allowRule('allow-firewall-https-ingress', nsgPriorities.groups.apim.rules['allow-firewall-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.firewall], [subnetPrefixes.apim], ['443'])
       allowRule('allow-api-management-ingress', nsgPriorities.groups.apim.rules['allow-api-management-ingress'].priority, 'Inbound', 'Tcp', ['ApiManagement'], [subnetPrefixes.apim], ['3443'])
       allowRule('allow-apim-ratelimits-counter-sync-ingress', nsgPriorities.groups.apim.rules['allow-apim-ratelimits-counter-sync-ingress'].priority, 'Inbound', 'Udp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['4290'])
       allowRule('allow-apim-internal-cache-ingress', nsgPriorities.groups.apim.rules['allow-apim-internal-cache-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['6381-6383'])
@@ -139,7 +141,7 @@ var nsgDefinitions = [
     key: 'aca'
     suffix: 'aca'
     rules: [
-      allowRule('allow-appgw-http-ingress', nsgPriorities.groups.aca.rules['allow-appgw-http-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.aca], ['80', '31080'])
+      allowRule('allow-firewall-https-ingress', nsgPriorities.groups.aca.rules['allow-firewall-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.firewall], [subnetPrefixes.aca], ['443', '31443'])
       allowRule('allow-apim-https-ingress', nsgPriorities.groups.aca.rules['allow-apim-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.apim], [subnetPrefixes.aca], ['443', '31443'])
       allowRule('allow-azure-load-balancer-ingress', nsgPriorities.groups.aca.rules['allow-azure-load-balancer-ingress'].priority, 'Inbound', 'Tcp', ['AzureLoadBalancer'], [subnetPrefixes.aca], ['30000-32767'])
       allowRule('allow-arm-https-egress', nsgPriorities.groups.aca.rules['allow-arm-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureResourceManager'], ['443'])
@@ -340,7 +342,7 @@ resource firewallPublicIp 'Microsoft.Network/publicIPAddresses@2025-01-01' = {
   name: 'pip-afw-${resourcePrefix}'
   location: location
   tags: tags
-  zones: zones
+  zones: empty(zones) ? null : zones
   sku: { name: 'Standard', tier: 'Regional' }
   properties: {
     publicIPAllocationMethod: 'Static'
@@ -361,32 +363,37 @@ resource appGatewayPublicIp 'Microsoft.Network/publicIPAddresses@2025-01-01' = {
   }
 }
 
-// 通信検査の共通設定。Standard では IDPS の設定自体を送らず、Premium の場合だけ構成します。
+// Firewall PremiumでHTTPSを検査します。中間CAは専用IDで取得します。
 resource firewallPolicy 'Microsoft.Network/firewallPolicies@2025-01-01' = {
   name: 'afwp-${resourcePrefix}'
   location: location
   tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${firewallTlsInspection.managedIdentityResourceId}': {} }
+  }
   properties: {
-    sku: { tier: firewallTier }
+    sku: { tier: 'Premium' }
     threatIntelMode: firewallSettings.?threatIntelMode ?? 'Alert'
-    // Standard does not support IDPS: omit the entire property. Premium's
-    // Alert/Deny mode and reviewed signature exceptions remain standard settings.
-    ...(firewallTier == 'Premium' ? {
-      intrusionDetection: {
-        mode: firewallSettings.?idpsMode ?? 'Alert'
-        configuration: {
-          // The CLI excludes only the App Gateway subnet for inbound IDPS classification.
-          privateRanges: config.generatedIdpsPrivateRanges
-          ...(empty(firewallSettings.?signatureOverrides ?? []) ? {} : { signatureOverrides: firewallSettings.signatureOverrides })
-          bypassTrafficSettings: []
-        }
+    intrusionDetection: {
+      mode: firewallSettings.?idpsMode ?? 'Deny'
+      configuration: {
+        privateRanges: config.generatedIdpsPrivateRanges
+        ...(empty(firewallSettings.?signatureOverrides ?? []) ? {} : { signatureOverrides: firewallSettings.signatureOverrides })
+        bypassTrafficSettings: []
       }
-    } : {})
+    }
+    transportSecurity: {
+      certificateAuthority: {
+        name: 'appgw-backend-inspection'
+        keyVaultSecretId: firewallTlsInspection.intermediateCaSecretId
+      }
+    }
     dnsSettings: {
       enableProxy: true
       servers: []
     }
-    // Keep private-destination non-SNAT; IDPS classification ranges above
+    // Keep private-destination non-SNAT for network rules; IDPS ranges above
     // are distinct from these SNAT private ranges.
     snat: { privateRanges: snatPrivateRanges }
   }
@@ -649,10 +656,10 @@ resource firewall 'Microsoft.Network/azureFirewalls@2025-01-01' = {
   name: 'afw-${resourcePrefix}'
   location: location
   tags: tags
-  zones: zones
+  zones: empty(zones) ? null : zones
   dependsOn: [egressRules]
   properties: {
-    sku: { name: 'AZFW_VNet', tier: firewallTier }
+    sku: { name: 'AZFW_VNet', tier: 'Premium' }
     firewallPolicy: { id: firewallPolicy.id }
     ipConfigurations: [{
       name: 'fwipcfg'

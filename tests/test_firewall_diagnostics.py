@@ -31,17 +31,27 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         """分類正本を一元化し、実FW診断は検証済みpropertiesをそのまま使用する。"""
         config = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "config"))
         config["network"]["firewall"]["sku"] = "Premium"
-        definition = diagnostics.canonical_settings(config, "core")["fw-logs"]["properties"]
-        self.assertEqual([entry["category"] for entry in definition["logs"]],
-                         ["AZFWNetworkRule", "AZFWApplicationRule", "AZFWThreatIntel", "AZFWIdpsSignature"])
+        definitions = diagnostics.canonical_settings(config, "core")
+        definition = definitions["fw-logs"]["properties"]
+        self.assertEqual([entry["category"] for entry in definition["logs"] if entry["enabled"]],
+                         ["AZFWNetworkRule", "AZFWIdpsSignature"])
+        url_logs = definitions["fw-url-logs"]["properties"]
+        self.assertEqual([entry["category"] for entry in url_logs["logs"]],
+                         ["AZFWApplicationRule", "AZFWThreatIntel"])
+        self.assertEqual(url_logs["logAnalyticsDestinationType"], "Dedicated")
+        self.assertNotIn("storageAccountId", url_logs)
         config["network"]["firewall"]["sku"] = "Standard"
         standard = diagnostics.canonical_settings(config, "core")["fw-logs"]["properties"]
-        self.assertEqual(len(standard["logs"]), 3)
+        self.assertEqual([entry["category"] for entry in standard["logs"] if entry["enabled"]], ["AZFWNetworkRule"])
         template = self.templates["diagnostics"]
         self.assertEqual({item["type"] for item in template["resources"]}, {"Microsoft.Insights/diagnosticSettings"})
-        logs, = [item for item in template["resources"] if "-metrics" not in item["name"]]
+        logs, = [item for item in template["resources"] if item["properties"] == "[parameters('diagnosticSettingProperties')['fw-logs']]"]
         self.assertEqual(logs["properties"], "[parameters('diagnosticSettingProperties')['fw-logs']]")
         self.assertEqual(logs["scope"], "[resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName'))]")
+        url_resource, = [item for item in template["resources"] if "-fw-url-logs" in item["name"]]
+        self.assertEqual(url_resource["properties"], "[parameters('diagnosticSettingProperties')['fw-url-logs']]")
+        self.assertEqual(url_resource["scope"], logs["scope"])
+        self.assertTrue(url_resource["dependsOn"])
         self.assertNotIn("FlowTrace", json.dumps(definition))
         self.assertNotIn("FatFlow", json.dumps(definition))
 

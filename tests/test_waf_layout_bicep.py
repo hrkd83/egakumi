@@ -76,6 +76,7 @@ class WafLayoutBicepTests(unittest.TestCase):
             publicHostName="gateway.example.com", portalHostName="portal.example.com",
             portalBackendIp="192.0.2.12", portalBackendHost="backend.example.com",
             keyVaultCertificateSecretId="https://vault.example.com/secrets/tls",
+            firewallRootCaData="synthetic-public-der",
             certificateIdentityId="/fixture-identity", grpcEnabled=True,
             speechRawBodyPaths=SPEECH_PATHS,
             documentUploadPaths=[DOCUMENT_PATH],

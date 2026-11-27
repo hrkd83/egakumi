@@ -1,4 +1,4 @@
-"""Compile all 75 fixed NSG rules with synthetic addresses; no Azure calls."""
+"""Compile all 73 fixed NSG rules with synthetic addresses; no Azure calls."""
 import copy
 import json
 from pathlib import Path
@@ -224,8 +224,7 @@ class NsgRulePriorityTests(unittest.TestCase):
             ('portal-network', 'managementRegistryIn', 'pep', 'allow-mgmt-vm-acr-https-ingress'),
             ('portal-network', 'runnerRegistryAccess', 'management', 'allow-acr-https-egress'),
             ('portal-network', 'acaRegistryOut', 'aca', 'allow-acr-https-egress'),
-            ('portal-network-bindings', 'appgwPortalOut', 'agw', 'allow-aca-http-egress'),
-            ('portal-network-bindings', 'managementPortalHttpOut', 'management', 'allow-aca-http-egress'),
+            ('portal-network-bindings', 'appgwPortalOut', 'agw', 'allow-aca-https-egress'),
             ('portal-network-bindings', 'managementPortalHttpsOut', 'management', 'allow-aca-https-egress'),
             ('credential-broker-network', 'sqlIn', 'pep', 'allow-aca-sql-1433-ingress'),
             ('credential-broker-network', 'managementSqlIn', 'pep', 'allow-mgmt-vm-sql-1433-ingress'),
@@ -250,9 +249,9 @@ class NsgRulePriorityTests(unittest.TestCase):
         return result
 
     def test_complete_contract_has_unique_contiguous_bands_and_no_grpc_rules(self):
-        self.assertEqual(self.contract['version'], 3)
+        self.assertEqual(self.contract['version'], 4)
         self.assertEqual(set(self.contract['groups']), set(GROUPS))
-        expected_counts = {'agw': 9, 'apim': 22, 'aca': 15, 'pep': 13, 'management': 16}
+        expected_counts = {'agw': 9, 'apim': 22, 'aca': 14, 'pep': 13, 'management': 15}
         record_ids = set(); terminal = 0
         for g, group in self.contract['groups'].items():
             self.assertEqual(len(group['rules']), expected_counts[g]); identities = set(); bands = {}
@@ -266,11 +265,13 @@ class NsgRulePriorityTests(unittest.TestCase):
                 else:
                     start = rule['priority']//100*100+20; self.assertIn(start, (120, 220, 320))
                     bands.setdefault((rule['direction'], start), []).append(rule['priority'])
-            for (_, start), priorities in bands.items():
-                self.assertEqual(sorted(priorities), list(range(start, start+len(priorities))))
-        self.assertEqual((len(record_ids), terminal), (75, 6))
+            for (direction, start), priorities in bands.items():
+                retired_http = {('management', 'Outbound'): {225}, ('aca', 'Inbound'): {221}}.get((g, direction), set())
+                expected = [priority for priority in range(start, max(priorities) + 1) if priority not in retired_http]
+                self.assertEqual(sorted(priorities), expected)
+        self.assertEqual((len(record_ids), terminal), (73, 6))
 
-    def test_all_75_compiled_tuples_match_fixed_manifest_with_single_and_multiple_ips(self):
+    def test_all_73_compiled_tuples_match_fixed_manifest_with_single_and_multiple_ips(self):
         for multiple, prefix in ((False, '10.70'), (True, '10.80')):
             p = self.parameters(multiple, prefix); actual = self.compiled_rules(p)
             for g, rules in actual.items():
@@ -327,8 +328,8 @@ class NsgRulePriorityTests(unittest.TestCase):
         p['config'].update(dnsServers=['192.0.2.53'], firewall={'dnsServers': ['192.0.2.54']},
                            generatedIdpsPrivateRanges=['192.0.2.0/24'])
         self.assertEqual(self.resolve('network', network['resources']['vnet']['properties']['dhcpOptions'], p), {'dnsServers': []})
-        firewall = self.resolve('network', network['resources']['firewallPolicy']['properties'], p)
-        self.assertEqual(firewall['dnsSettings'], {'enableProxy': True, 'servers': []})
+        firewall_dns = network['resources']['firewallPolicy']['properties']['dnsSettings']
+        self.assertEqual(self.resolve('network', firewall_dns, p), {'enableProxy': True, 'servers': []})
         for m in MODULES:
             self.assertFalse(any(r['type'].endswith('/defaultSecurityRules') for r in self.templates[m]['resources'].values()))
 

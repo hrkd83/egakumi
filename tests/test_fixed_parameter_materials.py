@@ -58,7 +58,8 @@ class FixedParameterMaterialsTests(unittest.TestCase):
         app_gateway = "192.0.2.0/24"
         spaces = ["10.0.0.0/8", app_gateway, "198.51.100.0/24"]
         generated = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "198.51.100.0/24"]
-        parameters = {"config": {"addressSpaces": spaces, "subnetPrefixes": {"agw": app_gateway},
+        parameters = {"firewallTlsInspection": {"managedIdentityResourceId": "/synthetic/uami", "intermediateCaSecretId": "https://fixture.example.com/secrets/ca"},
+                      "config": {"addressSpaces": spaces, "subnetPrefixes": {"agw": app_gateway},
                                  "firewall": {"sku": "Premium", "idpsPrivateRanges": ["0.0.0.0/0"]}}}
         with self.assertRaisesRegex(KeyError, "generatedIdpsPrivateRanges"):
             expression(template).resolve(policy["properties"], parameters)
@@ -71,30 +72,21 @@ class FixedParameterMaterialsTests(unittest.TestCase):
         })
         self.assertEqual(actual["dnsSettings"], {"enableProxy": True, "servers": []})
 
-    def test_firewall_default_ranges_and_sku_specific_idps_preserve_reviewed_settings(self):
+    def test_premium_firewall_uses_reviewed_signatures_and_the_inspection_ca(self):
         template = self.templates["network"]
         policy, = [item for item in resources(template)
                    if item["type"] == "Microsoft.Network/firewallPolicies"]
         overrides = [{"id": "2030000", "mode": "Alert"}]
-        for tier in ("Premium", "Standard"):
-            parameters = {"config": {"firewall": {
-                "sku": tier, "idpsMode": "Deny", "threatIntelMode": "Deny",
-                "signatureOverrides": copy.deepcopy(overrides),
-            }}}
-            if tier == "Premium":
-                parameters["config"]["generatedIdpsPrivateRanges"] = ["192.0.2.0/24"]
-            with self.subTest(tier=tier):
-                actual = expression(template).resolve(policy["properties"], parameters)
-                spaces = expression(template).resolve(template["variables"]["addressSpaces"], parameters)
-                self.assertEqual(actual["snat"]["privateRanges"], ["IANAPrivateRanges", *spaces])
-                self.assertEqual(actual["sku"]["tier"], tier)
-                self.assertEqual(actual["threatIntelMode"], "Deny")
-                if tier == "Standard":
-                    self.assertNotIn("intrusionDetection", actual)
-                else:
-                    self.assertEqual(actual["intrusionDetection"]["mode"], "Deny")
-                    self.assertEqual(actual["intrusionDetection"]["configuration"]["signatureOverrides"], overrides)
-                    self.assertEqual(actual["intrusionDetection"]["configuration"]["bypassTrafficSettings"], [])
+        ca = {"managedIdentityResourceId": "/synthetic/uami", "intermediateCaSecretId": "https://fixture.example.com/secrets/ca"}
+        parameters = {"firewallTlsInspection": ca, "config": {
+            "generatedIdpsPrivateRanges": ["192.0.2.0/24"],
+            "firewall": {"signatureOverrides": overrides},
+        }}
+        actual = expression(template).resolve(policy["properties"], parameters)
+        self.assertEqual(actual["sku"]["tier"], "Premium")
+        self.assertEqual(actual["intrusionDetection"]["mode"], "Deny")
+        self.assertEqual(actual["intrusionDetection"]["configuration"]["signatureOverrides"], overrides)
+        self.assertEqual(actual["transportSecurity"]["certificateAuthority"]["keyVaultSecretId"], ca["intermediateCaSecretId"])
 
     def test_both_audit_storage_accounts_fix_empty_public_ip_rules_and_keep_diagnostic_ingestion(self):
         template = self.templates["monitoring"]
@@ -132,6 +124,7 @@ class FixedParameterMaterialsTests(unittest.TestCase):
                           "portalBackendHost": "synthetic-aca.example.com",
                           "subnetId": "/synthetic-subnet", "publicIpId": "/synthetic-public-ip",
                           "keyVaultCertificateSecretId": "https://synthetic-vault.example.com/secrets/tls",
+                          "firewallRootCaData": "synthetic-public-der",
                           "certificateIdentityId": "/synthetic-certificate-mi"}
             reader = expression(template)
             with self.subTest(sku=sku):
