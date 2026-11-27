@@ -18,8 +18,8 @@ import api_publication as publish
 from deployment.helpers.configuration import build_bicep_configuration
 from deployment.helpers.apim_authentication import render_service_policy, validate_common_authentication_policy
 from deployment.helpers.apim_common_authentication import render_common_authentication_fragments
-import render_apim_policy
-from standard_apis import API_DEFINITION_DIRECTORY, load_api_definitions
+from policy import render_apim_policy
+from catalog.standard_apis import API_DEFINITION_DIRECTORY, load_api_definitions
 
 
 def ok(body, status=200, headers=None):
@@ -215,7 +215,7 @@ class PublicationTests(unittest.TestCase):
             self.inventory[rid] = ok({"id": rid, "tags": {**self.tags, "layer": layer, "azd-env-name": "test"}})
         self.inventory[ids["apim"]] = ok({"id": ids["apim"], "tags": self.tags,
             "identity": {"type": "SystemAssigned", "principalId": "44444444-4444-4444-8444-444444444444"},
-            "properties": {"virtualNetworkType": "Internal", "customProperties": {publish.grpc_lifecycle.HTTP2: "false"}}})
+            "properties": {"virtualNetworkType": "Internal", "customProperties": {publish.ingress.HTTP2: "false"}}})
         self.inventory[ids["apim"] + "/policies/policy"] = ok({"properties": {"format": "rawxml", "value": render_service_policy()}})
         for identifier, value in render_common_authentication_fragments(entra_enabled=False).items():
             self.inventory[ids["apim"] + "/policyFragments/" + identifier] = ok({"properties": {"format": "rawxml", "value": value}})
@@ -230,7 +230,7 @@ class PublicationTests(unittest.TestCase):
         self.inventory[subnet] = ok({"id": subnet, "properties": {"addressPrefix": "10.40.2.64/26"}})
         self.inventory[self.plan["deploymentId"]] = ok({"fixtureApimId": ids["apim"], "properties": {
             "provisioningState": "Succeeded", "outputs": {"publishedApiResourceIds": {"value": [ids["apim"] + "/apis/model"]}}}})
-        for name in (publish.grpc_lifecycle.SECRET_NAME, publish.grpc_lifecycle.TICKET_NAME):
+        for name in (publish.ingress.SECRET_NAME, publish.ingress.TICKET_NAME):
             self.inventory[ids["apim"] + "/namedValues/" + name] = ok({"properties": {"keyVault": {
                 "secretIdentifier": "https://" + names["keyVault"] + ".vault.azure.net/secrets/" + name,
                 "lastStatus": {"code": "Success"}}}})
@@ -531,7 +531,7 @@ class PublicationTests(unittest.TestCase):
             with self.subTest(failure=failure),self.assertRaises(ValueError):
                 publish.verify_credential_login(config,plan,apim,Transport(inventory))
 
-    def test_common_authentication_missing_old_modified_or_duplicated_blocks_stop_before_any_write(self):
+    def test_common_authentication_modified_or_duplicated_blocks_stop_before_any_write(self):
         """共通認可ブロックの内容を全体照合し、改変を公開前に検出する。"""
         policy_id = self.plan["apimId"] + "/policies/policy"
         for reason in ("malformed", "marker-only", "key-header", "telemetry", "marker", "duplicate", "nested"):
@@ -539,12 +539,8 @@ class PublicationTests(unittest.TestCase):
             xml = render_service_policy()
             fragment_id = self.plan["apimId"] + "/policyFragments/core-common-authentication"
             fragment = inventory[fragment_id]["body"]["properties"]["value"]
-            if reason == "missing":
-                inventory[policy_id] = ok({}, 404)
-            elif reason == "old": xml = '<policies><inbound /><backend><forward-request /></backend><outbound /><on-error /></policies>'
-            elif reason == "malformed": xml = '<policies><inbound>'
+            if reason == "malformed": xml = '<policies><inbound>'
             elif reason == "marker-only": xml = '<policies><inbound><choose id="core-common-authentication"><otherwise><set-variable name="gatewayCommonAuthenticationValidated" value="@(true)" /></otherwise></choose></inbound></policies>'
-            elif reason == "anonymous": xml = xml.replace('context.Api.Id == &quot;gateway-oauth-metadata&quot;', 'context.Api.Id != &quot;gateway-oauth-metadata&quot;')
             elif reason == "key-header": fragment = fragment.replace('{{core-subscription-key-header}}', 'UNRELATED_PRIVATE_AUDIENCE')
             elif reason == "telemetry": fragment = fragment.replace('source="core-gateway"', 'source="changed"')
             elif reason == "marker": fragment = fragment.replace('name="gatewayCommonAuthenticationValidated" value="@(true)"', 'name="gatewayCommonAuthenticationValidated" value="@(false)"')
@@ -558,7 +554,7 @@ class PublicationTests(unittest.TestCase):
                     inbound.remove(block)
                     ET.SubElement(ET.SubElement(inbound, "choose"), "otherwise").append(block)
                 xml = ET.tostring(document, encoding="unicode")
-            if reason != "missing": inventory[policy_id]["body"]["properties"]["value"] = xml
+            inventory[policy_id]["body"]["properties"]["value"] = xml
             inventory[fragment_id]["body"]["properties"]["value"] = fragment
             transport = Transport(inventory)
             with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, "(?i)authentication") as error:
@@ -854,62 +850,34 @@ class PublicationTests(unittest.TestCase):
         observed.update(size="0.002000000 MB", provisioningState="Succeeded")
         self.assertTrue(publish._contains(observed, body["properties"]))
 
-    def test_legacy_firewall_rule_is_renamed_without_losing_targets_or_changing_other_rules(self):
+    def test_duplicate_apim_firewall_rules_fail_before_any_merge(self):
         group = copy.deepcopy(self.group)
-        legacy = {"name": "apim-approved-services", "ruleType": "ApplicationRule",
-                  "sourceAddresses": [self.plan["firewall"]["sourcePrefix"]],
-                  "protocols": [{"protocolType": "Https", "port": 443}], "terminateTLS": False,
-                  "targetFqdns": ["*.example.com", "Known.EXAMPLE.com"]}
-        group["properties"]["ruleCollections"][0]["rules"].append(legacy)
+        rules = group["properties"]["ruleCollections"][0]["rules"]
+        rules.extend({"name": "allow-apim-approved-services"} for _ in range(2))
         before = copy.deepcopy(group)
-        plan = copy.deepcopy(self.plan)
-        plan["firewall"]["externalFqdns"] = ["known.example.com"]
-        body, changed, etag = publish.merge_firewall(ok(group), plan)
-        self.assertTrue(changed)
-        self.assertEqual(etag, '"fixture-etag"')
-        expected = copy.deepcopy(group["properties"])
-        expected.pop("provisioningState", None)
-        expected["ruleCollections"][0]["rules"][-1]["name"] = "allow-apim-approved-services"
-        self.assertEqual(body, {"properties": expected})
+        with self.assertRaisesRegex(ValueError, "duplicated"):
+            publish.merge_firewall(ok(group), self.plan)
         self.assertEqual(group, before)
-        repeated = {"id": group["id"], "etag": '"next"', **body}
-        self.assertFalse(publish.merge_firewall(ok(repeated), plan)[1])
 
-    def test_duplicate_current_and_legacy_firewall_rules_fail_before_any_merge(self):
-        names = ("allow-apim-approved-services", "apim-approved-services")
-        for pair in ((names[0], names[0]), (names[1], names[1]), names):
-            group = copy.deepcopy(self.group)
-            group["properties"]["ruleCollections"][0]["rules"] += [{"name": name} for name in pair]
-            before = copy.deepcopy(group)
-            with self.subTest(names=pair), self.assertRaisesRegex(ValueError, "duplicated"):
-                publish.merge_firewall(ok(group), self.plan)
-            self.assertEqual(group, before)
-
-    def test_empty_legacy_target_requires_a_destination_before_rename(self):
+    def test_apim_firewall_rule_can_receive_its_first_destination(self):
         plan = copy.deepcopy(self.plan)
         plan["firewall"]["externalFqdns"] = []
         self.assertFalse(publish.merge_firewall(ok(self.group), plan)[1])
-        for name in ("apim-approved-services", "allow-apim-approved-services"):
-            group = copy.deepcopy(self.group)
-            rule = {"name": name, "ruleType": "ApplicationRule",
-                    "sourceAddresses": [plan["firewall"]["sourcePrefix"]],
-                    "protocols": [{"protocolType": "Https", "port": 443}], "terminateTLS": False,
-                    "targetFqdns": []}
-            group["properties"]["ruleCollections"][0]["rules"].append(rule)
-            with self.subTest(name=name):
-                if name == "apim-approved-services":
-                    with self.assertRaisesRegex(ValueError, "empty legacy"):
-                        publish.merge_firewall(ok(group), plan)
-                else:
-                    self.assertFalse(publish.merge_firewall(ok(group), plan)[1])
-                plan_with_host = copy.deepcopy(plan)
-                plan_with_host["firewall"]["externalFqdns"] = ["backend.example.com"]
-                body, changed, _ = publish.merge_firewall(ok(group), plan_with_host)
-                self.assertTrue(changed)
-                self.assertEqual(body["properties"]["ruleCollections"][0]["rules"][-1]["targetFqdns"],
-                                 ["backend.example.com"])
+        group = copy.deepcopy(self.group)
+        group["properties"]["ruleCollections"][0]["rules"].append({
+            "name": "allow-apim-approved-services", "ruleType": "ApplicationRule",
+            "sourceAddresses": [plan["firewall"]["sourcePrefix"]],
+            "protocols": [{"protocolType": "Https", "port": 443}], "terminateTLS": False,
+            "targetFqdns": [],
+        })
+        self.assertFalse(publish.merge_firewall(ok(group), plan)[1])
+        plan["firewall"]["externalFqdns"] = ["backend.example.com"]
+        body, changed, _ = publish.merge_firewall(ok(group), plan)
+        self.assertTrue(changed)
+        self.assertEqual(body["properties"]["ruleCollections"][0]["rules"][-1]["targetFqdns"],
+                         ["backend.example.com"])
 
-    def test_firewall_name_migration_rejects_extra_permissions_and_invalid_fqdns(self):
+    def test_apim_firewall_rule_rejects_extra_permissions_and_invalid_fqdns(self):
         changes = ({"sourceIpGroups": ["fixture-group"]}, {"destinationAddresses": ["*"]},
                    {"fqdnTags": ["fixture-tag"]}, {"targetUrls": ["example.com/restricted"]},
                    {"webCategories": ["fixture-category"]}, {"ipv6Rule": True}, {"ipv6Rule": 0},
@@ -917,18 +885,17 @@ class PublicationTests(unittest.TestCase):
                    {"httpHeadersToInsert": [{"headerName": "X-Test", "headerValue": "fixture"}]},
                    {"targetFqdns": ["*"]}, {"targetFqdns": ["https://example.com"]},
                    {"targetFqdns": ["192.0.2.1"]})
-        for name in ("apim-approved-services", "allow-apim-approved-services"):
-            for fields in changes:
-                group = copy.deepcopy(self.group)
-                rule = {"name": name, "ruleType": "ApplicationRule",
-                        "sourceAddresses": [self.plan["firewall"]["sourcePrefix"]],
-                        "protocols": [{"protocolType": "Https", "port": 443}], "terminateTLS": False,
-                        "targetFqdns": ["known.example.com"], **fields}
-                group["properties"]["ruleCollections"][0]["rules"].append(rule)
-                before = copy.deepcopy(group)
-                with self.subTest(name=name, fields=fields), self.assertRaises(ValueError):
-                    publish.merge_firewall(ok(group), self.plan)
-                self.assertEqual(group, before)
+        for fields in changes:
+            group = copy.deepcopy(self.group)
+            rule = {"name": "allow-apim-approved-services", "ruleType": "ApplicationRule",
+                    "sourceAddresses": [self.plan["firewall"]["sourcePrefix"]],
+                    "protocols": [{"protocolType": "Https", "port": 443}], "terminateTLS": False,
+                    "targetFqdns": ["known.example.com"], **fields}
+            group["properties"]["ruleCollections"][0]["rules"].append(rule)
+            before = copy.deepcopy(group)
+            with self.subTest(fields=fields), self.assertRaises(ValueError):
+                publish.merge_firewall(ok(group), self.plan)
+            self.assertEqual(group, before)
 
     def test_firewall_readback_still_rejects_changed_priorities_actions_sources_protocols_and_rules(self):
         """sizeだけを除外し、予想外の許可拡大や既存規則の欠落・変更は拒否する。"""
@@ -972,23 +939,6 @@ class PublicationTests(unittest.TestCase):
         self.assertFalse(result["runtimeVerified"])
         self.assertTrue(result["cleanupIdsPreserved"])
         self.assertNotIn("DELETE", [call[0] for call in transport.calls])
-
-    def test_api_only_publication_finishes_catalog_metadata_after_successful_import(self):
-        transport = Transport(self.inventory)
-        metadata = {"enabled": True, "checked": 1, "updated": 1, "apiIds": [self.plan["apimId"] + "/apis/sample"]}
-
-        def finish(config, outputs, actual_transport):
-            self.assertEqual(config, self.config)
-            self.assertEqual(outputs, self.state["outputs"])
-            self.assertIs(actual_transport.inner, transport)
-            self.assertEqual(transport.calls[-1][0], "GET")
-            self.assertTrue(any(path.startswith(self.plan["deploymentId"] + "?") for method, path, _, _ in transport.calls if method == "GET"))
-            return metadata
-
-        with mock.patch.object(publish, "finalize_descriptions", side_effect=finish) as finalizer:
-            result = publish.execute_plan(self.config, self.state, self.plan, self.template, transport, sleep=lambda _: None)
-        finalizer.assert_called_once()
-        self.assertEqual(result["catalogDescriptions"], metadata)
 
     def failed_publication(self):
         """一部成功後の Failed を再現する。成功 outputs は意図的に付けない。"""
@@ -1216,9 +1166,11 @@ class PublicationTests(unittest.TestCase):
         transport = Transport(self.inventory)
         clock, starter_reads = [0], [0]
         original = transport.request
-        def finishing(*_):
-            clock[0] = 7199  # Cleanup's own 300-second budget is still fresh.
-            return {}
+        cleanup_samples = publish.cleanup_default_samples
+
+        def cleanup_near_deadline(*args, **kwargs):
+            clock[0] = 7199
+            return cleanup_samples(*args, **kwargs)
         def expiring_read(method, path, *args, **kwargs):
             result = original(method, path, *args, **kwargs)
             if method == "GET" and path.split("?", 1)[0] == starter:
@@ -1226,7 +1178,7 @@ class PublicationTests(unittest.TestCase):
                 if starter_reads[0] == 2:
                     clock[0] = 7200
             return result
-        with mock.patch.object(publish, "finalize_descriptions", side_effect=finishing), \
+        with mock.patch.object(publish, "cleanup_default_samples", side_effect=cleanup_near_deadline), \
                 mock.patch.object(transport, "request", side_effect=expiring_read), \
                 mock.patch.object(publish.time, "monotonic", side_effect=lambda: clock[0]):
             with self.assertRaisesRegex(publish.DeploymentError, "deadline expired before normal stage write"):
@@ -1241,28 +1193,22 @@ class PublicationTests(unittest.TestCase):
         summary = {"status": "complete", "deletedApiIds": [], "deletedProductIds": [],
                    "skipped": []}
 
-        def finalize(*args):
-            phases.append("catalog")
+        def cleanup(apim_id, apis, actual_transport, **kwargs):
             self.assertTrue(any(method == "PUT" and path.startswith(self.plan["deploymentId"] + "?")
                                 for method, path, _, _ in transport.calls))
-            return {"enabled": False}
-
-        def cleanup(apim_id, apis, actual_transport, **kwargs):
-            self.assertEqual(phases, ["catalog"])
             self.assertEqual(apim_id, self.plan["apimId"])
             self.assertEqual(apis, self.plan["parameters"]["apiDefinitions"]["value"])
             self.assertIs(actual_transport.inner, transport)
             phases.append("cleanup")
             return summary
 
-        with mock.patch.object(publish, "finalize_descriptions", side_effect=finalize), \
-                mock.patch.object(publish, "cleanup_default_samples", side_effect=cleanup):
+        with mock.patch.object(publish, "cleanup_default_samples", side_effect=cleanup):
             result = publish.execute_plan(self.config, self.state, self.plan, self.template, transport, sleep=lambda _: None)
-        self.assertEqual(phases, ["catalog", "cleanup"])
+        self.assertEqual(phases, ["cleanup"])
         self.assertEqual(result["defaultSampleCleanup"], summary)
 
     def test_failed_publication_or_finishing_never_starts_sample_deletion(self):
-        for failure in ("deployment", "policy", "catalog"):
+        for failure in ("deployment", "policy"):
             with self.subTest(failure=failure):
                 transport = Transport(copy.deepcopy(self.inventory))
                 request = transport.request
@@ -1275,8 +1221,7 @@ class PublicationTests(unittest.TestCase):
 
                 transport.request = failing_request
                 with mock.patch.object(publish, "cleanup_default_samples") as cleanup, \
-                        mock.patch.object(publish, "install_common_authentication", side_effect=publish.DeploymentError("policy failed") if failure == "policy" else None), \
-                        mock.patch.object(publish, "finalize_descriptions", side_effect=publish.DeploymentError("catalog failed") if failure == "catalog" else None):
+                        mock.patch.object(publish, "install_common_authentication", side_effect=publish.DeploymentError("policy failed") if failure == "policy" else None):
                     with self.assertRaises(publish.DeploymentError):
                         publish.execute_plan(self.config, self.state, self.plan, self.template, transport, sleep=lambda _: None)
                     cleanup.assert_not_called()
@@ -1316,13 +1261,12 @@ class PublicationTests(unittest.TestCase):
 
 
 class CurrentAuthenticationPublicationTests(unittest.TestCase):
-    """正本と説明だけが異なる既存raw辞書、旧API集合を読取り・再計算で保持する。"""
+    """配備済みの認証ポリシーとAPI公開範囲を読取り、再配備時に照合する。"""
 
-    def fixture(self, enabled=True, *, previous_explanations=False):
+    def fixture(self, enabled=True):
         from test_entra_named_value_publication import checkpoint_fixture
 
-        base, _, inventory, _, global_policy, saved = checkpoint_fixture(
-            entra_enabled=enabled, previous_explanations=previous_explanations)
+        base, _, inventory, _, global_policy, saved = checkpoint_fixture(entra_enabled=enabled)
         state = {**base.state, "apiPublicationSourceCheckpoint": copy.deepcopy(saved)}
         plan = publish.prepare_plan(base.config, state)
         inventory[plan["apimId"] + "/policies/policy"] = ok(
@@ -1335,11 +1279,9 @@ class CurrentAuthenticationPublicationTests(unittest.TestCase):
         return base, state, plan, inventory, global_policy, fragments
 
     def test_management_preflight_uses_actual_current_dictionary_in_both_states_and_stays_read_only(self):
-        for enabled, previous_explanations in ((enabled, previous) for enabled in (False, True)
-                                              for previous in (False, True)):
+        for enabled in (False, True):
             for mode in ("valid", "modified", "missing"):
-                base, state, plan, inventory, global_policy, fragments = self.fixture(
-                    enabled, previous_explanations=previous_explanations)
+                base, state, plan, inventory, global_policy, fragments = self.fixture(enabled)
                 identifier = "core-entra-authentication-error" if enabled else "core-common-authentication"
                 resource_id = plan["apimId"] + "/policyFragments/" + identifier
                 if mode == "missing":
@@ -1357,7 +1299,7 @@ class CurrentAuthenticationPublicationTests(unittest.TestCase):
                 before_config, before_state, before_inventory = (copy.deepcopy(value) for value in
                                                                  (base.config, state, inventory))
                 transport = Transport(inventory)
-                with self.subTest(entra=enabled, previous_explanations=previous_explanations, mode=mode):
+                with self.subTest(entra=enabled, mode=mode):
                     if mode == "valid":
                         with mock.patch.object(publish, "transition_common_authentication_policy",
                                                wraps=publish.transition_common_authentication_policy) as transition:
@@ -1381,10 +1323,8 @@ class CurrentAuthenticationPublicationTests(unittest.TestCase):
         class ScopeReadReached(Exception):
             """Stop before unrelated source generation; authentication executes normally."""
 
-        for altered, previous_explanations in ((altered, previous) for altered in (False, True)
-                                              for previous in (False, True)):
-            base, state, _, inventory, global_policy, fragments = self.fixture(
-                previous_explanations=previous_explanations)
+        for altered in (False, True):
+            base, state, _, inventory, global_policy, fragments = self.fixture()
             settings = copy.deepcopy(state["apiPublicationSourceCheckpoint"]["entraAuthentication"])
             base.config["apiDefinitions"] = base.config["apiDefinitions"][:1]
             plan = publish.prepare_plan(base.config, state)
@@ -1408,7 +1348,7 @@ class CurrentAuthenticationPublicationTests(unittest.TestCase):
 
             # Replace only foundation checks unrelated to this contract. Both
             # real transitions must use the read dictionary before source work.
-            with self.subTest(altered=altered, previous_explanations=previous_explanations), mock.patch.object(
+            with self.subTest(altered=altered), mock.patch.object(
                     publish, "verify_subscription_products"), mock.patch.object(
                     publish, "verify_credential_login"), mock.patch.object(
                     publish, "verify_websocket_diagnostics"), mock.patch.object(
@@ -1420,7 +1360,6 @@ class CurrentAuthenticationPublicationTests(unittest.TestCase):
                 self.assertEqual(len(calls), 2)
                 self.assertEqual(calls[0]["previous_fragments"], fragments)
                 self.assertEqual(calls[1]["previous_fragments"], fragments)
-                self.assertTrue(calls[1]["allow_previous_explanations"])
                 self.assertEqual(calls[1]["entra"]["apiNames"], ["model", "sample"])
                 self.assertEqual(calls[1]["previous_entra"], settings)
                 self.assertEqual(len(strict_results), 1 if altered else 2)

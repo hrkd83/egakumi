@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import management_client as client
+from operations import management_client as client
 
 OPERATOR_ID = '55555555-5555-5555-5555-555555555555'
 

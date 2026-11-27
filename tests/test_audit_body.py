@@ -7,7 +7,7 @@ import unittest
 from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from audit_body import recover
+from audit.audit_body import recover
 
 
 class AuditBodyTests(unittest.TestCase):

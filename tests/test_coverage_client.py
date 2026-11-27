@@ -2,9 +2,7 @@
 
 合成PNG・PDF・WAV、HTTP応答、SSEを使う。正常な終端や構造を確認し、壊れたデータを見かけのstatusだけで合格にしない。
 """
-import asyncio
 import base64
-import importlib.util
 import io
 import json
 from pathlib import Path
@@ -15,7 +13,7 @@ import wave
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-import coverage_client as probe
+from validation import coverage_client as probe
 try:
     import httpx2
 except ImportError:
@@ -58,28 +56,6 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(audio.json["messages"][0]["content"][1]["type"], "input_audio")
         with self.assertRaises(ValueError):
             probe.request_for("unknown", model="approved")
-
-    def test_agent_modes_remain_explicit_and_stateless(self):
-        for mode in ("fixed", "model", "pii"):
-            request = probe.request_for("agent", agent_mode=mode)
-            self.assertEqual(request.json["metadata"]["sample_mode"], mode)
-            self.assertFalse(request.json["store"])
-        with self.assertRaises(ValueError): probe.request_for("agent", agent_mode="other")
-
-    def test_agent_pii_requires_masked_synthetic_contact_in_json_and_stream(self):
-        request = probe.request_for("agent", agent_mode="pii")
-        self.assertIn("alice@example.com", request.json["input"])
-        def result(text):
-            return probe.inspect_json(request, {"status": "completed", "output": [{"content": [{"type": "output_text", "text": text}]}]})
-        self.assertFalse(result("OK")["expectedContentObserved"])
-        self.assertFalse(result(probe.PII_INPUT)["syntheticContactMasked"])
-        self.assertTrue(result("Contact: *****************.")["syntheticContactMasked"])
-        stream = probe.AgentStream(0, request)
-        for delta in ("Contact: ", "*****************."):
-            stream.event(json.dumps({"type": "response.output_text.delta", "delta": delta}))
-        stream.event(json.dumps({"type": "response.completed", "response": {"status": "completed"}}))
-        self.assertTrue(stream.result()["syntheticContactMasked"])
-        self.assertNotIn("Contact:", json.dumps(stream.result()))
 
     def test_chat_vision_and_detailed_speech_require_expected_content(self):
         image = probe.request_for("vision", model="approved")

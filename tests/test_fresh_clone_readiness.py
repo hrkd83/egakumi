@@ -225,7 +225,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         # 配備側と同じく、正本のモデル上限を展開して内部API登録用JSONを生成します。
         prepare = subprocess.run([sys.executable, "-I", "-S", "-B", "-c",
             "import json, sys; from pathlib import Path; sys.path.insert(0, 'scripts'); "
-            "from standard_apis import load_api_definitions; "
+            "from catalog.standard_apis import load_api_definitions; "
             "print(json.dumps({'apiDefinitions': [api for name in "
             "('openai-inference-v1', 'pii-v1', 'graph-profile-v1') for api in "
             "load_api_definitions(Path('apps/api-gateway/apis') / (name + '.json'))]}))"],

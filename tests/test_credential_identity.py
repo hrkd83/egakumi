@@ -248,18 +248,17 @@ class CredentialIdentityRotationTests(unittest.TestCase):
         self.assertNotIn('identity', scope)
 
     def test_rotation_rejects_absent_independent_identity_or_unknown_profile_and_purpose(self):
-        ctx = operation_context(normalized(independent=False))
-        for profile, purpose in (('approved-oauth', 'identity'), ('unknown', 'cm'), ('approved-oauth', 'other')):
+        standard = operation_context(normalized())
+        incomplete = operation_context(normalized(independent=False))
+        for ctx, profile, purpose in ((incomplete, 'approved-oauth', 'identity'), (incomplete, 'approved-oauth', 'cm'),
+                                      (standard, 'unknown', 'cm'), (standard, 'approved-oauth', 'other')):
             with self.subTest(profile=profile, purpose=purpose), self.assertRaises(OperationError):
                 entra_secret.selection(ctx, profile, purpose)
 
-    def test_identity_only_rotation_skips_cm_key_vault_updates_and_redeploys_gateway(self):
+    def test_credential_rotation_redeploys_gateway_using_protected_parameters(self):
         ctx = operation_context(normalized())
-        scope = entra_secret.selection(ctx, 'approved-oauth', 'identity')
-        with mock.patch.object(entra_secret, 'update_shared_cm_secrets') as shared, \
-                mock.patch.object(entra_secret, 'save') as save:
-            entra_secret.update_consumers(ctx, scope, {}, Path('synthetic-receipt.json'), {}, 'switch')
-        shared.assert_not_called()
+        with mock.patch.object(entra_secret, 'save') as save:
+            entra_secret.update_consumers(ctx, {}, Path('synthetic-receipt.json'), 'switch')
         save.assert_called_once()
         ctx.verify_resource.assert_called()
         ctx.run_cli.assert_called_once()
@@ -269,18 +268,6 @@ class CredentialIdentityRotationTests(unittest.TestCase):
         self.assertTrue(any(arg.endswith('deploy_gateway.py') for arg in args))
         self.assertNotIn(SYNTHETIC_SECRET, json.dumps(args))
 
-    def test_cm_rotation_updates_shared_vault_only_for_shared_login(self):
-        for independent, expected in ((True, ['gateway']), (False, ['cm', 'gateway'])):
-            with self.subTest(independent=independent):
-                ctx = operation_context(normalized(independent=independent))
-                scope = entra_secret.selection(ctx, 'approved-oauth')
-                events = []
-                ctx.run_cli.side_effect = lambda args: events.append('gateway')
-                with mock.patch.object(entra_secret, 'update_shared_cm_secrets', side_effect=lambda *args: events.append('cm')), \
-                        mock.patch.object(entra_secret, 'save'):
-                    entra_secret.update_consumers(ctx, scope, {}, Path('synthetic-receipt.json'),
-                                                 {'approved-oauth': SYNTHETIC_SECRET}, 'switch')
-                self.assertEqual(events, expected)
 
 
 class CredentialIdentityRuntimeTests(unittest.TestCase):

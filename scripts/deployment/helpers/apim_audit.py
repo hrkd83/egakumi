@@ -252,7 +252,7 @@ def _source_expression(source: str, mode: str) -> str:
         return COMPACT_SOURCE_COMMENT + "\n" + _without_source_line_comments(source)
     if mode == "omit":
         return _without_source_line_comments(source)
-    raise ValueError("Audit source comments require full, compact or legacy omit mode")
+    raise ValueError("Audit source comments require full, compact or omit mode")
 
 
 def _without_telemetry_explanation_lines(xml: str) -> str:
@@ -391,9 +391,9 @@ def _render_realtime_owner_context(xml: str) -> str:
 
 
 def render_audit_policy(xml: str, *, source_comments: str = "full") -> str:
-    """生C#と説明をXMLへ埋め込む。compactは複製する主体監査だけ、omitは旧生成元照合だけに使う。"""
+    """C#をXMLへ埋め込み、展開先に応じて説明コメントの量を調整する。"""
     if source_comments not in {"full", "compact", "omit"}:
-        raise ValueError("Audit source comments require full, compact or legacy omit mode")
+        raise ValueError("Audit source comments require full, compact or omit mode")
     marker = "__AUDIT_BODY_MODEL_ERROR_XML__"
     if marker in xml:
         source = (REPOSITORY / "apps/api-gateway/policies/snippets/audit/audit-body-model-error/audit-body-model-error.xml").read_text(encoding="utf-8").strip()
@@ -438,8 +438,6 @@ def render_audit_policy(xml: str, *, source_comments: str = "full") -> str:
         # changing the decoded C# and are only needed for attribute markers.
         encoded = (escape(source) if marker in {CORE_GATEWAY_TELEMETRY_MARKER, CREDENTIAL_TELEMETRY_MARKER, CORE_CREDENTIAL_CONNECTION_OUTBOUND_MARKER}
                    else escape(source, {'"': "&quot;", "'": "&apos;"}))
-        # The new request expression follows its marker's column. Existing audit
-        # markers retain their original bytes for fixed old-source readback.
         xml = re.sub(r"(?m)^([ \t]*)" + marker,
                      lambda match: match[1] + encoded.replace("\n", "\n" + match[1]), xml)
         if marker in xml:

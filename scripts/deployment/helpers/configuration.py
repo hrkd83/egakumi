@@ -1841,7 +1841,7 @@ def build_bicep_configuration(configuration: dict) -> dict:
     result["apiDefinitions"] = with_catalog_descriptions(configuration)
     # 標準APIの接続先はGateway配備時に解決する。基盤は公開経路と本文形式だけを
     # 先に受け取り、空の公開API配列でも適切なWAF・監査設定を準備する。
-    from standard_apis import infrastructure_api_definitions
+    from catalog.standard_apis import infrastructure_api_definitions
     result['infrastructureApiDefinitions'] = infrastructure_api_definitions(configuration['apiDefinitions'])
     # エディター用のschema/commentはローカルに保持し、取得やARMへの送信はしない。
     result.pop("$schema", None)

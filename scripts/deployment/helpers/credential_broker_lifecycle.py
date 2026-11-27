@@ -1,10 +1,10 @@
 """認証窓口専用の秘密と既存アプリを、構築対象の環境に結び付けて扱う。"""
 from .credential_pools import resource_names
-from .grpc_lifecycle import _prepare_credential
+from .ingress import prepare_credential
 
 
 def prepare_secret(config, root, write_protected):
-    return {"credentialBrokerKey": _prepare_credential(config, root, "credential-broker", write_protected)}
+    return {"credentialBrokerKey": prepare_credential(config, root, "credential-broker", write_protected)}
 
 
 def broker_environment_id(config):

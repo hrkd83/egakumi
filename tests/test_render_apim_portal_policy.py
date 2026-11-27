@@ -15,7 +15,7 @@ from xml.etree import ElementTree as ET
 from configuration_fixtures import CORE
 from deployment.helpers.paths import LocalPaths, private_parent
 from deployment.helpers.private_permissions import protect_new_path
-import render_apim_portal_policy as portal
+from policy import render_apim_portal_policy as portal
 
 
 EXAMPLES = CORE / "apps/api-gateway/policies/portal-examples"
@@ -150,7 +150,7 @@ class ManualPortalPolicyTests(unittest.TestCase):
                 protect_new_path(source)
                 json.dump(load_example("rest"), stream)
             output = runtime.root / "generated" / "manual-policy.xml"
-            command = [sys.executable, "-B", str(CORE / "scripts/render_apim_portal_policy.py"),
+            command = [sys.executable, "-B", str(CORE / "scripts/policy/render_apim_portal_policy.py"),
                        "--runtime-root", str(runtime.repository), "--environment", "test", "--config", str(source), "--output"]
             self.assertEqual(subprocess.run([*command, str(runtime.repository / "unsafe.xml")], capture_output=True).returncode, 1)
             self.assertFalse((runtime.repository / "unsafe.xml").exists())

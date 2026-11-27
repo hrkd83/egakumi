@@ -12,13 +12,13 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from waf_policy import (exclusion, load_manifest, selected_profiles, published_paths,
+from operations.waf_policy import (exclusion, load_manifest, selected_profiles, published_paths,
                         desired_policy, reconcile, canonical_gateway, canonical_policy,
                         RESERVED_POLICY_KEYS, exclusion_is_covered, plan)
-from waf_contracts import contract_fields, APP_GROUPS
+from validation.waf_contracts import contract_fields, APP_GROUPS
 from deployment.helpers.portal_gateway import portal_session_exclusions, _writable_policy
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
-                                           policy_id as waf_policy_id, policy_name, predecessor_policy_id)
+                                           policy_id as waf_policy_id, policy_name)
 from deployment.helpers.waf_body import ai_body_settings, ai_content_type_profile
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, POOL, BACKEND, REWRITE, gateway, policy, api_mapping
 
@@ -35,7 +35,7 @@ def configuration():
 
 
 def manifest():
-    return {'version': 1, 'profiles': [{'name': 'g-chat-completions', 'scope': 'gateway', 'paths': [CHAT],
+    return {'version': 2, 'profiles': [{'name': 'g-chat-completions', 'scope': 'gateway', 'paths': [CHAT],
         'exclusions': [exclusion('messages.content', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100'])]}]}
 
 
@@ -276,7 +276,7 @@ class DataWafTests(unittest.TestCase):
                              variable='RequestHeaderValues')
         base['properties']['managedRules']['exclusions'].append(existing)
         original_base, original_profile = copy.deepcopy(base), copy.deepcopy(profile)
-        with mock.patch('waf_policy.source_url_exclusions', return_value=[]):
+        with mock.patch('operations.waf_policy.source_url_exclusions', return_value=[]):
             previous = desired_policy(base, profile, configuration())
         updated = desired_policy(base, profile, configuration())
         expected = [exclusion(selector, 'REQUEST-931-APPLICATION-ATTACK-RFI', ['931130'])
@@ -429,13 +429,6 @@ class DataWafTests(unittest.TestCase):
                 with self.subTest(group=group['ruleGroupName'], change=change), self.assertRaises(ValueError):
                     selected_profiles(configuration(), manifest=value)
 
-    def test_legacy_version_one_http_splitting_exception_remains_accepted(self):
-        legacy = manifest()
-        legacy['profiles'][0]['exclusions'] = [exclusion(
-            'messages.content', 'REQUEST-921-PROTOCOL-ATTACK', ['921130'])]
-        self.assertEqual(legacy['version'], 1)
-        self.assertEqual(selected_profiles(configuration(), manifest=legacy), legacy['profiles'])
-
     def test_group_coverage_never_silently_changes_an_existing_scope(self):
         old = exclusion('input.output.text', 'REQUEST-933-APPLICATION-ATTACK-PHP', ['933151', '933180'])
         whole = copy.deepcopy(old)
@@ -497,7 +490,7 @@ class DataWafTests(unittest.TestCase):
                       'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942400']),
         ]
         self.assertFalse({e['selector'] for e in legacy} & {e['selector'] for e in profile['exclusions']})
-        old = {'version': 1, 'profiles': [{**copy.deepcopy(profile), 'exclusions': legacy}]}
+        old = {'version': 2, 'profiles': [{**copy.deepcopy(profile), 'exclusions': legacy}]}
         current = {'version': source['version'], 'profiles': [profile]}
         config, transport = configuration(), ArmMemory()
         config['apiDefinitions'][0]['operations'].append({'name': 'responses', 'method': 'POST', 'urlTemplate': '/responses'})
@@ -806,7 +799,7 @@ class DataWafTests(unittest.TestCase):
         source = load_manifest()
         profiles = [p for p in source['profiles'] if p['name'] in ('g-chat-completions', 'g-responses')]
         current = {'version': source['version'], 'profiles': profiles}
-        old = {'version': 1, 'profiles': [
+        old = {'version': 2, 'profiles': [
             {**copy.deepcopy(p), 'exclusions': [exclusion(
                 'messages.content' if p['name'] == 'g-chat-completions' else 'input.content.text',
                 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100'])]} for p in profiles]}
@@ -858,7 +851,7 @@ class DataWafTests(unittest.TestCase):
         config['apiDefinitions'][0]['authorization']['operationConstraints']['responses'] = {'kind': 'statelessResponses'}
         transport = ArmMemory(subresource_metadata=True)
         reconcile(config, transport, scopes=('gateway',), manifest=value, timeout=1)
-        reconcile(config, transport, scopes=('gateway',), manifest={'version': 1, 'profiles': [other]}, timeout=1)
+        reconcile(config, transport, scopes=('gateway',), manifest={'version': 2, 'profiles': [other]}, timeout=1)
         before = copy.deepcopy(transport.resources[GATEWAY_ID])
         transport.calls.clear()
         value['profiles'].append(other)
@@ -1058,7 +1051,7 @@ class DataWafTests(unittest.TestCase):
                 'name': 'operation', 'method': 'POST', 'urlTemplate': '/' + path.rsplit('/', 1)[1]}]}
                 for path in profile['paths']]
             if name == 'g-images':
-                from standard_apis import infrastructure_api_definitions
+                from catalog.standard_apis import infrastructure_api_definitions
                 config['apiDefinitions'] = infrastructure_api_definitions([])
             if scope == 'portal':
                 config['portal'] = {'publicHostName': 'portal.example.test'}
@@ -1760,7 +1753,7 @@ class DataWafTests(unittest.TestCase):
     def test_main_finite_paths_match_python_including_deployments_and_generated_mcp(self):
         from arm_helpers import PolicyExpression
         from bicep_helpers import compile_bicep
-        from standard_apis import infrastructure_api_definitions
+        from catalog.standard_apis import infrastructure_api_definitions
 
         class MainExpression(PolicyExpression):
             def resolve(self, value, parameters, index=0):
@@ -1783,82 +1776,6 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(set(actual), published_paths({'apiDefinitions': []}))
         self.assertIn('/tools/pii-v1-mcp/mcp', actual)
         self.assertFalse(any('{' in value for value in actual))
-
-
-class PiiSplitMigrationTests(unittest.TestCase):
-    """実Azureを使わず、既知の共有PIIからの限定移行と退役前の維持を検証する。"""
-
-    def setUp(self):
-        profiles = {item['name']: item for item in load_manifest()['profiles']}
-        self.profiles = [profiles['g-pii-rest'], profiles['g-pii-mcp']]
-        self.config = configuration()
-        self.shared = desired_policy(policy(), self.profiles[0], self.config)
-        self.old_id = predecessor_policy_id(self.config, 'g-pii-rest')
-        self.shared.update(id=self.old_id, name=self.old_id.rsplit('/', 1)[-1], etag='"old-pii"')
-        self.shared['properties']['managedRules']['exclusions'].extend(copy.deepcopy(self.profiles[1]['exclusions']))
-
-    def test_owned_shared_source_is_unchanged_and_only_the_other_text_selector_is_removed(self):
-        before = copy.deepcopy(self.shared)
-        for profile, other in zip(self.profiles, ('params.arguments.text', 'text')):
-            with self.subTest(profile=profile['name']):
-                actual = desired_policy(policy(), profile, self.config, sources=(self.shared,))
-                expected = desired_policy(policy(), profile, self.config)
-                self.assertEqual(actual, expected)
-                self.assertFalse(any(entry['selector'] == other for entry in actual['properties']['managedRules']['exclusions']))
-                self.assertEqual(self.shared, before)
-
-    def test_foreign_source_and_noncanonical_destination_cannot_drop_the_other_selector(self):
-        foreign = copy.deepcopy(self.shared)
-        foreign['id'] = waf_policy_id(self.config, 'g-responses')
-        for profile in self.profiles:
-            with self.subTest(profile=profile['name'], source='foreign'), self.assertRaises(ValueError):
-                desired_policy(policy(), profile, self.config, sources=(foreign,))
-            changed = {**profile, 'paths': [profile['paths'][0] + '/neighbor']}
-            with self.subTest(profile=profile['name'], destination='neighbor'), self.assertRaises(ValueError):
-                desired_policy(policy(), changed, self.config, sources=(self.shared,))
-
-    def test_unknown_exclusions_or_changed_settings_and_custom_rules_are_not_silently_removed(self):
-        changes = []
-        unknown = copy.deepcopy(self.shared)
-        unknown['properties']['managedRules']['exclusions'].append(exclusion(
-            'unexpectedField', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100']))
-        changes.append(unknown)
-        wider = copy.deepcopy(self.shared)
-        retiring = next(entry for entry in wider['properties']['managedRules']['exclusions'] if entry['selector'] == 'params.arguments.text')
-        retiring['exclusionManagedRuleSets'][0]['ruleGroups'].append({'ruleGroupName': 'UNKNOWN-GROUP'})
-        changes.append(wider)
-        settings = copy.deepcopy(self.shared)
-        settings['properties']['policySettings']['requestBodyCheck'] = False
-        changes.append(settings)
-        custom = copy.deepcopy(self.shared)
-        custom['properties'].setdefault('customRules', []).append({'name': 'unexpected-rule', 'priority': 99, 'action': 'Allow'})
-        changes.append(custom)
-        for index, source in enumerate(changes):
-            before = copy.deepcopy(source)
-            with self.subTest(change=index), self.assertRaises(ValueError):
-                desired_policy(policy(), self.profiles[0], self.config, sources=(source,))
-            self.assertEqual(source, before)
-
-    def test_reconcile_moves_both_paths_without_updating_or_deleting_the_old_policy(self):
-        source = gateway(path_based=True)
-        paths = [profile['paths'][0] for profile in self.profiles]
-        api_mapping(source)['pathRules'].insert(0, {'name': 'waf-data-g-pii-redact', 'properties': {
-            'paths': paths, 'firewallPolicy': {'id': self.old_id},
-            'backendAddressPool': POOL, 'backendHttpSettings': BACKEND, 'rewriteRuleSet': REWRITE}})
-        self.config['apiDefinitions'] = [{'path': path.rsplit('/', 1)[0].lstrip('/'), 'operations': [{
-            'name': 'operation', 'method': 'POST', 'urlTemplate': '/' + path.rsplit('/', 1)[1]}]} for path in paths]
-        transport = ArmMemory(source, {self.old_id: copy.deepcopy(self.shared)})
-        before = copy.deepcopy(transport.resources[self.old_id])
-        value = {'version': 2, 'profiles': self.profiles}
-        reconcile(self.config, transport, scopes=('gateway',), manifest=value)
-        rules = api_mapping(transport.resources[GATEWAY_ID])['pathRules']
-        for profile in self.profiles:
-            rule, = [rule for rule in rules if rule['name'] == 'waf-data-' + profile['name']]
-            self.assertEqual(rule['properties']['paths'], profile['paths'])
-            self.assertEqual(rule['properties']['firewallPolicy']['id'], waf_policy_id(self.config, profile['name']))
-        self.assertEqual(transport.resources[self.old_id], before)
-        self.assertFalse(any(method == 'DELETE' or method == 'PUT' and identifier == self.old_id
-                             for method, identifier, *_ in transport.calls))
 
 
 if __name__ == '__main__':

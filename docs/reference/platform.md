@@ -63,7 +63,7 @@ APIMの`core-gateway`は検証済み購読ID、要求ID、API／操作、結果c
 
 既存LAWへ`GatewayLlmLogs`を送り、[標準`ApiManagementGatewayLlmLog`の列](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/apimanagementgatewayllmlog)を固定契約にします。`CorrelationId`はGateway要求との一致、`RequestId`は言語モデル側の要求ID、`DeploymentName`は許可済み配備名との厳密一致に使い、`PromptTokens/CompletionTokens/TotalTokens`を検査します。要求／応答行の同じ数値は重複計上せず、異なる数値や複数モデル要求IDは`ambiguous-usage`として残します。Responses、Anthropic、音声、PII、MCP等はこの初期の数値対象外で、未提供・途中切断・不正値を含め`none`とし、0や推計値を補いません。Chat SSEでもproviderがusageを返す必要があり、`stream_options.include_usage`等の対応条件と実ログ到達を試験で確認します。これはtoken制限や課金台帳の追加ではありません。
 
-[監査query](../../scripts/audit-usage.kql)は許可済み実行の集計用です。自前JSONのschema／eventとGatewayの上位`CorrelationId`を照合し、`TraceRecords`内の`message/Message`を明示対応します。内部`source`の存在には依存しません。帰属の矛盾は`ambiguous-request`の1行で残し、generated MCP表口とobserverを実処理件数へ重複計上しません。`accepted`のみなら最終結果は不明とします。拒否・policyエラー等を含む全体監査は`ApiManagementGatewayLogs`の`ResponseCode/BackendResponseCode`、全phaseのtraceと別途照合します。新しいログcategoryの導入は通常の`azd up`で行い、その後のAPI差分公開も同じAPI診断と設定を適用します。導入前の配備をAPI差分公開だけで更新してcategoryまで有効化したとは扱いません。
+[監査query](../../scripts/audit/audit-usage.kql)は許可済み実行の集計用です。自前JSONのschema／eventとGatewayの上位`CorrelationId`を照合し、`TraceRecords`内の`message/Message`を明示対応します。内部`source`の存在には依存しません。帰属の矛盾は`ambiguous-request`の1行で残し、generated MCP表口とobserverを実処理件数へ重複計上しません。`accepted`のみなら最終結果は不明とします。拒否・policyエラー等を含む全体監査は`ApiManagementGatewayLogs`の`ResponseCode/BackendResponseCode`、全phaseのtraceと別途照合します。新しいログcategoryの導入は通常の`azd up`で行い、その後のAPI差分公開も同じAPI診断と設定を適用します。導入前の配備をAPI差分公開だけで更新してcategoryまで有効化したとは扱いません。
 
 ## 本人・共有キー・サービスの回数制限
 

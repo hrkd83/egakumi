@@ -67,23 +67,24 @@ class UpWorkflowTests(LifecycleFixture, unittest.TestCase):
         outputs = self.outputs()
         outputs["endpoints"] = {"public": "https://gateway.example.invalid"}
 
+        response = self.core_completion_response(outputs)
+
         def foundation_cli(arguments, **kwargs):
             if arguments[:3] == ["azd", "env", "get-values"]:
                 return {"CORE_DEPLOYMENT_NAME": "fixture-completed-core"}
             if arguments[:4] == ["az", "deployment", "sub", "show"]:
-                return {"properties": {"outputs": {key: {"value": value} for key, value in outputs.items()}}}
+                return response
             raise AssertionError("Unexpected CLI command")
 
         with mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
              mock.patch.object(lifecycle, "run", side_effect=foundation_cli), \
              mock.patch.object(lifecycle, "ArmTransport"), \
-             mock.patch("deployment.helpers.portal_auth_certificate.collect_initial_certificate") as certificate, \
-             mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": False}), \
+             mock.patch.object(lifecycle, "verify_apim_endpoint", return_value={"enabled": True}) as verified, \
              mock.patch.object(lifecycle, "configure_public_dns", return_value={"status": "not-required"}), \
              contextlib.redirect_stdout(io.StringIO()) as result:
             args = hook_arguments("postprovision", "lifecycle.py")
             self.assertEqual(lifecycle.main([*args, "--config", str(selected)]), 0)
-        certificate.assert_called_once()
+        verified.assert_called_once()
         saved = json.loads((self.paths.state / "latest.json").read_text())
         self.assertEqual(saved["outputs"], outputs)
         self.assertEqual(saved["resourceStem"], self.config["resourceStem"])

@@ -8,7 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from deployment.helpers.waf_source_urls import source_url_exclusions
-from waf_contracts import contract_fields
+from validation.waf_contracts import contract_fields
 
 
 def expected_exclusion(selector):

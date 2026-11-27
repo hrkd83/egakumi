@@ -19,7 +19,8 @@ from urllib.parse import urlsplit
 
 from deployment.lifecycle import DeploymentError, require_success
 from deployment.helpers.apim_authentication import (
-    ENTRA_OPEN_PRODUCT_ID, ENTRA_NAMED_VALUES, validate_entra_named_values, validate_entra_named_value,
+    ENTRA_OPEN_PRODUCT_ID, ENTRA_NAMED_VALUES, is_closed_initial_policy,
+    validate_entra_named_values, validate_entra_named_value,
 )
 from deployment.helpers.apim_audit import AUDIT_FRAGMENT_FILES
 from deployment.helpers.apim_api_settings import (
@@ -36,6 +37,7 @@ from deployment.helpers.apim_common_authentication import (
     AUTHENTICATION_FRAGMENT_IDS, COMMON_AUTHENTICATION_FRAGMENT_ID, ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID,
     render_common_authentication_fragments,
 )
+from deployment.helpers.apim_samples import SAMPLE_API, is_default_echo_api
 from deployment.helpers.credential_login import API_ID as CREDENTIAL_LOGIN_API_ID, OPERATIONS as CREDENTIAL_LOGIN_OPERATIONS
 from deployment.helpers.credential_broker_lifecycle import broker_https_ingress
 from deployment.helpers.paths import REPOSITORY
@@ -72,96 +74,6 @@ class PolicyManifest:
     api_properties: dict[str, dict] = field(default_factory=dict)
     api_children: dict[str, dict] = field(default_factory=dict)
     source_version: int = 1
-
-
-@dataclass(frozen=True)
-class ReconciliationInventory:
-    """Explicit all-API migration witnesses, never a generated-source manifest.
-
-    Raw XML is retained only for backup/concurrency checks. It cannot authorize
-    reopening; that requires the independently generated complete v2 source.
-    """
-    apim_id: str
-    snapshot: dict
-    api_ids: frozenset[str]
-    protected_api_ids: frozenset[str]
-    previous_members: frozenset[str]
-
-
-_MISSING_MCP_TOOL_SEAL = object()
-
-
-@dataclass(frozen=True)
-class _RecordedMissingMcpTool:
-    """Internal source-bound restoration witness, never accepted from JSON."""
-    apim_id: str
-    api_id: str
-    resource_id: str
-    properties: dict
-    api_properties: dict
-    seal: object = field(repr=False)
-
-
-def _check_recorded_missing_mcp_tool(manifest, witness):
-    if (type(witness) is not _RecordedMissingMcpTool or witness.seal is not _MISSING_MCP_TOOL_SEAL
-            or manifest.apim_id != witness.apim_id or manifest.source_version != 2
-            or manifest.api_properties.get(witness.api_id, {}).get("type") != "mcp"
-            or not witness.resource_id.startswith(witness.api_id + "/tools/")):
-        raise ValueError("A missing MCP tool requires its internal recorded-source witness")
-    _identifier(witness.resource_id[len(witness.api_id + "/tools/"):])
-    expected = {rid: properties for rid, properties in manifest.api_children.items()
-                if rid.startswith(witness.api_id + "/tools/")}
-    if (set(expected) != {witness.resource_id}
-            or json.dumps(expected[witness.resource_id], sort_keys=True) != json.dumps(witness.properties, sort_keys=True)
-            or json.dumps(manifest.api_properties[witness.api_id], sort_keys=True) != json.dumps(witness.api_properties, sort_keys=True)):
-        raise ValueError("Missing MCP restoration must retain the one exact recorded tool and parent")
-
-
-def validate_native_product_before(manifest, baseline):
-    """Validate exact historical Product witnesses, including known policy absence."""
-    roots = {manifest.apim_id + "/products/" + _identifier(name)
-             for names in manifest.products.values() for name in names}
-    expected = roots | {rid + "/policies/policy" for rid in roots}
-    open_id = manifest.apim_id + "/products/" + ENTRA_OPEN_PRODUCT_ID
-    allowed = expected | {open_id, open_id + "/policies/policy"}
-    if (not isinstance(baseline, dict) or not expected <= set(baseline) or not set(baseline) <= allowed
-            or ((open_id in baseline) != (open_id + "/policies/policy" in baseline))):
-        raise ValueError("Every native Product requires its exact recorded pre-stage witnesses")
-    for resource_id, entry in baseline.items():
-        raw = resource_id.endswith("/policies/policy")
-        path = resource_id + "?api-version=" + APIM_API + ("&format=rawxml" if raw else "")
-        if (not isinstance(entry, dict) or set(entry) != {"path", "headers", "response"}
-                or entry["path"] != path or not isinstance(entry["response"], dict)
-                or entry["response"].get("statusCode") not in ((200, 404) if raw else (200,))):
-            raise ValueError("Recorded native Product witness path or response is invalid")
-        response = entry["response"]
-        if response["statusCode"] == 200:
-            body = response.get("body")
-            if (not isinstance(body, dict) or not isinstance(body.get("properties"), dict)
-                    or not (raw and "id" not in body) and (
-                        not isinstance(body.get("id"), str) or body["id"].casefold() != resource_id.casefold())):
-                raise ValueError("Recorded native Product witness must identify its known resource")
-            if raw:
-                _xml(body["properties"].get("value"))
-    return baseline
-
-
-def _check_native_product_readback(product_id, body, policy, baseline):
-    before = baseline[product_id]["response"]["body"]["properties"]
-    current = copy.deepcopy(body.get("properties", {}))
-    before = copy.deepcopy(before)
-    before.pop("provisioningState", None)
-    current.pop("provisioningState", None)
-    if json.dumps(before, sort_keys=True) != json.dumps(current, sort_keys=True):
-        raise ValueError("Native Product properties changed from their recorded pre-stage contract")
-    response = baseline[product_id + "/policies/policy"]["response"]
-    if response["statusCode"] == 404:
-        if policy is not None:
-            raise ValueError("A native Product policy appeared outside the recorded stage")
-    else:
-        if policy is None:
-            raise ValueError("A recorded native Product policy disappeared")
-        _same_xml(policy.get("properties", {}).get("value"), response["body"]["properties"]["value"])
 
 
 class TransitionError(DeploymentError):
@@ -579,13 +491,6 @@ def _identifier(value):
     return value
 
 
-def _canonical_inventory_id(observed, prefix):
-    """Normalize ARM casing only, requiring one child of the selected parent."""
-    if not isinstance(observed, str) or observed[:len(prefix)].casefold() != prefix.casefold():
-        raise ValueError("The complete shared resource inventory must have canonical unique IDs")
-    return prefix + _identifier(observed[len(prefix):])
-
-
 def _read(transport, resource_id, snapshot, *, raw=False, missing=False, collection=False):
     path = resource_id + "?api-version=" + APIM_API + ("&format=rawxml" if raw else "")
     headers = {"Accept": "application/json"} if raw else None
@@ -617,8 +522,36 @@ def _validate_manifest_scope(manifest: PolicyManifest, scope_manifest: PolicyMan
     _audit_fragment_scope(scope.policies, manifest.apim_id, api_properties=scope.api_properties)
 
 
+def _native_product_contract(snapshot, manifest):
+    apim = manifest.apim_id
+    roots = {apim + "/products/" + _identifier(name) for names in manifest.products.values() for name in names}
+    result = {}
+    for resource_id in sorted(roots):
+        product = _properties(snapshot[resource_id][2])
+        policy = snapshot[resource_id + "/policies/policy"][2]
+        result[resource_id] = {
+            "properties": {key: value for key, value in product.items() if key != "provisioningState"},
+            "policy": None if policy.get("statusCode") == 404 else _properties(policy)["value"],
+        }
+    return result
+
+
+def _verify_native_products(snapshot, manifest, expected):
+    actual = _native_product_contract(snapshot, manifest)
+    if not isinstance(expected, dict) or set(actual) != set(expected):
+        raise ValueError("The recorded native Product inventory is incomplete")
+    for resource_id, values in actual.items():
+        prior = expected[resource_id]
+        if (not isinstance(prior, dict) or set(prior) != {"properties", "policy"}
+                or json.dumps(values["properties"], sort_keys=True) != json.dumps(prior["properties"], sort_keys=True)
+                or (values["policy"] is None) != (prior["policy"] is None)):
+            raise ValueError("The native Product contract changed after closed staging")
+        if values["policy"] is not None:
+            _same_xml(values["policy"], prior["policy"])
+
+
 def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: PolicyManifest | None = None,
-                      _recorded_missing_mcp_tool=None, native_product_before=None):
+                      native_products=None):
     """global/Product/API/全operationと参照fragment/backend/NamedValueを実読取する。
 
     初回互換性範囲はコード生成元の既知Productだけ。購読必須Productの
@@ -634,12 +567,6 @@ def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: Po
     if not manifest.operations or set(manifest.operations) != set(manifest.products) or set(manifest.operations) != set(manifest.api_properties):
         raise ValueError("The complete target API manifest is required")
     _validate_manifest_scope(manifest, scope_manifest)
-    if _recorded_missing_mcp_tool is not None:
-        if native_product_before is None:
-            raise ValueError("Recorded missing MCP restoration requires its historical native Product witnesses")
-        _check_recorded_missing_mcp_tool(manifest, _recorded_missing_mcp_tool)
-    if native_product_before is not None:
-        validate_native_product_before(manifest, native_product_before)
     snapshot, visited = {}, set()
 
     def dependency(kind, name, expected):
@@ -735,13 +662,7 @@ def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: Po
                 children = _read(transport, api_id + "/" + kind, snapshot, collection=True)
                 observed_ids = [item.get("id") if isinstance(item, dict) else None for item in children["value"]]
                 if len(observed_ids) != len(expected_children) or set(observed_ids) != set(expected_children):
-                    witness = _recorded_missing_mcp_tool
-                    if (witness is None or kind != "tools" or api_type != "mcp" or api_id != witness.api_id
-                            or set(expected_children) != {witness.resource_id} or observed_ids):
-                        raise ValueError("Every API tool/schema must match the generated source inventory")
-                    if _read(transport, witness.resource_id, snapshot, missing=True) is not None:
-                        raise ValueError("The recorded missing MCP tool must have a fresh direct 404")
-                    continue
+                    raise ValueError("Every API tool/schema must match the generated source inventory")
                 for resource_id, expected in expected_children.items():
                     child = _read(transport, resource_id, snapshot)
                     if not _contains(_properties({"body": child}), expected):
@@ -782,8 +703,6 @@ def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: Po
             elif product.get("properties", {}).get("subscriptionRequired") is not True:
                 raise ValueError("An existing open Product conflicts with Entra activation")
             product_policy = _read(transport, product_id + "/policies/policy", snapshot, raw=True, missing=True)
-            if native_product_before is not None and product_id != open_product_id:
-                _check_native_product_readback(product_id, product, product_policy, native_product_before)
             if product_id == open_product_id:
                 if product_policy is None:
                     raise ValueError("The dedicated open Product must have its fixed policy")
@@ -821,6 +740,8 @@ def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: Po
                 if not _operation_routing_matches(_properties({"body": operation}), expected):
                     raise ValueError("Operation routing contract differs from the generated source")
             policy(operation_id + "/policies/policy")
+    if native_products is not None:
+        _verify_native_products(snapshot, manifest, native_products)
     return snapshot
 
 
@@ -964,18 +885,17 @@ def read_stage_shared_resources(manifest, plan, template, transport):
 
 def read_failed_closed_stage(current, attempted, transport, *, scope_manifest, plan,
                              previous_browser_source=None, attempted_browser_source=None,
-                             native_product_before=None, _recorded_missing_mcp_tool=None):
+                             native_products):
     """Read a source-known partial stage without trusting an observed source.
 
-    The attempted manifest must come from the separately verified recorded
-    failed PUT/source binding. Routing and native Product/backend contracts
+    The attempted manifest comes from the verified failed ARM stage and its
+    independently generated source. Routing and native Product/backend contracts
     remain identical. Each expectation selected below is an independent old
     or attempted value; unknown contents never become generated expectations.
     Missing witnesses are permitted only for explicitly attempted creations.
     """
     _validate_manifest_scope(current, scope_manifest)
     _validate_manifest_scope(attempted, scope_manifest)
-    validate_native_product_before(current, native_product_before)
     for name in ("operations", "products", "api_properties", "api_children", "backends"):
         expected = json.dumps(getattr(current, name), sort_keys=True, allow_nan=False)
         if any(json.dumps(getattr(candidate, name), sort_keys=True, allow_nan=False) != expected
@@ -1045,8 +965,7 @@ def read_failed_closed_stage(current, attempted, transport, *, scope_manifest, p
             raise ValueError("Failed-stage backend differs from its unchanged recorded contract")
     mixed = replace(current, policies=policies, named_values=named_values)
     snapshot.update(read_policy_graph(mixed, transport, scope_manifest=scope_manifest,
-                                     native_product_before=native_product_before,
-                                     _recorded_missing_mcp_tool=_recorded_missing_mcp_tool))
+                                     native_products=native_products))
     product_snapshot, members = read_open_product(apim, transport, allowed_api_ids=(), missing=False)
     if members:
         raise ValueError("Failed-stage recovery requires the employee Product to remain empty")
@@ -1135,13 +1054,26 @@ def read_fresh_publication(plan, transport):
             prefix = apim + "/" + kind + "/"
             name = resource_id[len(prefix):].casefold()
             if name in names or (kind == "namedValues" and OPERATION_BACKEND_IDENTIFIER.fullmatch(name)):
-                raise ValueError("A stage-owned APIM child already exists; explicit source reconciliation is required")
+                raise ValueError("A stage-owned APIM child already exists; the matching saved publication source is required")
     global_id = apim + "/policies/policy"
     global_policy = _read(transport, global_id, snapshot, raw=True, missing=True)
-    if global_policy is None and inventories["apis"]:
-        raise ValueError("Creating an initial global baseline requires an empty API inventory; reconcile existing APIs explicitly")
-    if global_policy is not None:
-        value = global_policy.get("properties", {}).get("value")
+    value = global_policy.get("properties", {}).get("value") if global_policy is not None else None
+    if global_policy is None or is_closed_initial_policy(value):
+        if inventories["apis"]:
+            echo_id = apim + "/apis/" + SAMPLE_API
+            if [item["id"].casefold() for item in inventories["apis"]] != [echo_id.casefold()]:
+                raise ValueError("The initial global baseline requires an empty API inventory or the default Echo API")
+            echo = _read(transport, echo_id, snapshot)
+            observed_id = echo.get("id")
+            if (not isinstance(observed_id, str) or observed_id.casefold() != echo_id.casefold()
+                    or not is_default_echo_api(echo)):
+                raise ValueError("A customized or different Echo API cannot be treated as a default sample")
+            revisions = _read(transport, echo_id + "/revisions", snapshot, collection=True)["value"]
+            revision = revisions[0] if len(revisions) == 1 else None
+            if (not isinstance(revision, dict) or revision.get("apiId") != "/apis/" + SAMPLE_API + ";rev=1"
+                    or revision.get("apiRevision") != "1" or revision.get("isCurrent") is not True):
+                raise ValueError("The default Echo API must have only its initial current revision")
+    else:
         root = _xml(value)
         if any(root.iter("include-fragment")):
             raise ValueError("Existing global fragments need a protected source before fresh staging")
@@ -1696,240 +1628,10 @@ def verify_browser_publication_source(plan, source, transport):
     return snapshot
 
 
-def read_reconciliation_inventory(plan, template, transport, *, known_manifest=None):
-    """Capture explicitly selected existing APIs without inventing their source.
-
-    The normal deployment still requires complete old source. This exceptional
-    migration instead requires the entire canonical live API inventory, exact
-    ownership/routing/key contracts, independently verified known old source,
-    and a closed stage before any complete NEW source can become authoritative.
-    """
-    apim, snapshot = plan["apimId"], {}
-    definitions = plan["parameters"]["apiDefinitions"]["value"]
-    released = plan.get("releasedProduct", {}).get("productId", "released-apis")
-    contracts, children = {}, {}
-    products = {_identifier(api["productId"]) for api in definitions} | {released}
-    for api in definitions:
-        name, kind = _identifier(api["name"]), api.get("apiType", "http")
-        operations = {"onHandshake"} if kind == "websocket" else {_identifier(op["name"]) for op in api.get("operations", [])}
-        contracts[apim + "/apis/" + name] = (kind, api["path"], True, api["subscriptionKeyHeader"], operations, {api["productId"], released})
-        constraints = api.get("authorization", {}).get("operationConstraints", {})
-        schema_names = set()
-        if any(item.get("kind") == "pii" for item in constraints.values()):
-            schema_names.add("pii-public-contract")
-        if any(item.get("kind") in ("documentAnalysis", "documentAnalysisStatus") for item in constraints.values()):
-            schema_names.add("document-analysis-public-contract")
-        children[apim + "/apis/" + name] = {"schemas": schema_names, "tools": set()}
-        if "mcp" in api:
-            mcp = api["mcp"]
-            mcp_id = apim + "/apis/" + _identifier(mcp["name"])
-            contracts[mcp_id] = ("mcp", mcp["path"], True, api["subscriptionKeyHeader"], set(), {api["productId"], released})
-            children[mcp_id] = {"schemas": set(), "tools": {_identifier(mcp["operationNames"][0])}}
-    if plan.get("credentialLogin"):
-        header = plan["credentialLogin"].get("keyHeader", plan["commonAuthentication"]["core-subscription-key-header"])
-        contracts[apim + "/apis/credential-manager-login"] = ("http", "auth/connections", True, header,
-            {"start", "status", "logout", "session-commit", "logout-all", "disconnect"}, products)
-        contracts[apim + "/apis/credential-manager-browser"] = ("http", "auth/connections/browser", False, None,
-            {"launch", "launch-post", "identity-callback", "callback"}, set())
-    selected = set(plan["publishedApiIds"])
-    if not contracts or selected != set(contracts):
-        raise ValueError("Source reconciliation must select every configured canonical API")
-    if known_manifest is not None:
-        if known_manifest.apim_id != apim or not set(known_manifest.operations) <= selected:
-            raise ValueError("Known old source must belong to the complete selected publication")
-        snapshot.update(read_policy_graph(known_manifest, transport))
-    rows = _read(transport, apim + "/apis", snapshot, collection=True)["value"]
-    live_ids = [row.get("id") if isinstance(row, dict) else None for row in rows]
-    if len(live_ids) != len(set(live_ids)) or any(rid not in selected for rid in live_ids):
-        raise ValueError("Every existing API/revision must be explicitly selected for source reconciliation")
-    if not live_ids:
-        raise ValueError("Existing-source reconciliation requires an existing canonical API inventory")
-    protected = {rid for rid, contract in contracts.items() if contract[2]}
-    open_snapshot, members = read_open_product(apim, transport, allowed_api_ids=protected, missing=True)
-    snapshot.update(open_snapshot)
-    _read(transport, apim + "/policies/policy", snapshot, raw=True)
-    shared = {}
-    for kind in ("policyFragments", "backends", "namedValues"):
-        rows = _read(transport, apim + "/" + kind, snapshot, collection=True)["value"]
-        prefix = apim + "/" + kind + "/"
-        canonical = {rid.casefold(): rid for rid in snapshot}
-        captured = {}
-        for row in rows:
-            observed = row.get("id") if isinstance(row, dict) else None
-            rid = _canonical_inventory_id(observed, prefix)
-            folded = rid.casefold()
-            if folded in captured:
-                raise ValueError("The complete shared resource inventory must have canonical unique IDs")
-            # Use the selected APIM/kind spelling, retaining any already-read
-            # generated resource key. Raw collection and GET replies remain
-            # untouched in the backup; casing cannot create a second resource.
-            captured[folded] = canonical.get(folded, rid)
-        shared[kind] = captured
-        for rid in captured.values():
-            body = _read(transport, rid, snapshot, raw=kind == "policyFragments")
-            properties = body.get("properties", {})
-            if kind == "backends" and properties.get("credentials"):
-                raise ValueError("Reconciled backends must not contain unmanaged credentials")
-            if kind == "namedValues" and properties.get("keyVault"):
-                kv = properties["keyVault"]
-                if kv.get("identityClientId") is not None or kv.get("lastStatus", {}).get("code", "").lower() != "success":
-                    raise ValueError("Reconciled secret references must resolve through APIM system identity")
-    for rid, (kind, path, required, header, operations, allowed_products) in contracts.items():
-        body = _read(transport, rid, snapshot, missing=True)
-        if body is None:
-            if rid in live_ids:
-                raise ValueError("API absence disagrees with the complete live inventory")
-            continue
-        if rid not in live_ids:
-            raise ValueError("An API exists outside the complete live inventory")
-        props = body.get("properties", {})
-        if props.get("type", props.get("apiType", "http")) != kind or props.get("path") != path or props.get("subscriptionRequired") is not required:
-            raise ValueError("Existing API ownership/routing/key contract differs from the selected source")
-        if required:
-            keys = props.get("subscriptionKeyParameterNames", {})
-            if keys.get("header") != header or keys.get("query") != "subscription-key" or keys.get("bearer") not in (None, "disabled"):
-                raise ValueError("Reconciliation must preserve native key validation and disable bearer-as-key parsing")
-        revisions = _read(transport, rid + "/revisions", snapshot, collection=True)["value"]
-        revision = revisions[0] if len(revisions) == 1 else {}
-        if (revision.get("apiRevision") != "1" or revision.get("apiId") != "/apis/" + rid.rsplit("/", 1)[-1] + ";rev=1"
-                or revision.get("isCurrent") is not True or revision.get("isOnline") is not True):
-            raise ValueError("Reconciliation does not overwrite unrepresented API revision history")
-        observed = _read(transport, rid + "/operations", snapshot, collection=True)["value"]
-        names = [item.get("id", "").removeprefix(rid + "/operations/") for item in observed if isinstance(item, dict)]
-        if len(names) != len(observed) or len(names) != len(set(names)) or not set(names) <= operations:
-            raise ValueError("Every existing operation must belong to the declared current API contract")
-        _read(transport, rid + "/policies/policy", snapshot, raw=True, missing=True)
-        for name in names:
-            _identifier(name)
-            _read(transport, rid + "/operations/" + name, snapshot)
-            _read(transport, rid + "/operations/" + name + "/policies/policy", snapshot, raw=True, missing=True)
-        for child_kind in ("tools", "schemas"):
-            observed_children = _read(transport, rid + "/" + child_kind, snapshot, collection=True)["value"]
-            allowed_children = children.get(rid, {}).get(child_kind, set())
-            child_ids = [item.get("id") if isinstance(item, dict) else None for item in observed_children]
-            prefix = rid + "/" + child_kind + "/"
-            if len(child_ids) != len(set(child_ids)) or any(not isinstance(child_id, str) or not child_id.startswith(prefix)
-                    or child_id[len(prefix):] not in allowed_children for child_id in child_ids):
-                raise ValueError("Every existing API tool/schema must belong to the declared current source")
-            for child_id in child_ids:
-                _read(transport, child_id, snapshot)
-        memberships = _read(transport, rid + "/products", snapshot, collection=True)["value"]
-        seen = set()
-        for item in memberships:
-            product_id = item.get("id", "") if isinstance(item, dict) else ""
-            name = product_id.rsplit("/", 1)[-1]
-            if product_id not in (apim + "/products/" + name, rid + "/products/" + name) or name in seen:
-                raise ValueError("Product associations must have unique canonical identities")
-            seen.add(name)
-            if name == ENTRA_OPEN_PRODUCT_ID:
-                if not required:
-                    raise ValueError("Transaction-authenticated browser APIs cannot join the employee Product")
-                continue
-            if name not in allowed_products:
-                raise ValueError("Reconciliation does not overwrite custom API/Product authorization")
-            product = _read(transport, apim + "/products/" + name, snapshot)
-            if product.get("properties", {}).get("subscriptionRequired") is not True:
-                raise ValueError("Existing native Products must retain subscription requirements")
-            policy = _read(transport, apim + "/products/" + name + "/policies/policy", snapshot, raw=True, missing=True)
-            if policy is not None:
-                root = _xml(policy.get("properties", {}).get("value"))
-                if any(len(section) != 1 or section[0].tag != "base" for section in root):
-                    raise ValueError("Custom Product policies require independent migration review")
-    for rid, (_, _, result) in tuple(snapshot.items()):
-        if result.get("statusCode") != 200 or not ("/policies/policy" in rid or "/policyFragments/" in rid):
-            continue
-        value = result.get("body", {}).get("properties", {}).get("value")
-        root = _xml(value, fragment="/policyFragments/" in rid)
-        for node in root.iter():
-            if node.tag in ("include-fragment", "set-backend-service"):
-                kind, attr = ("policyFragments", "fragment-id") if node.tag == "include-fragment" else ("backends", "backend-id")
-                target = apim + "/" + kind + "/" + _identifier(node.get(attr))
-                if target.casefold() not in shared[kind]:
-                    raise ValueError("A current policy references an uncaptured shared resource")
-        if any((apim + "/namedValues/" + _identifier(name)).casefold() not in shared["namedValues"]
-               for name in set(re.findall(r"\{\{([^{}]+)\}\}", ET.tostring(root, encoding="unicode")))):
-            raise ValueError("A current policy references an uncaptured NamedValue")
-    verify_snapshot(snapshot, transport)
-    return ReconciliationInventory(apim, copy.deepcopy(snapshot), frozenset(selected), frozenset(protected), frozenset(members))
-
-
-def reconcile_closed_publication(inventory, desired_global_policy, transport, stage_closed_apis,
-                                 *, desired_open_api_ids, on_staged=None, backup=None,
-                                 sleep=time.sleep, timeout_seconds=300):
-    """Back up/close the old route, establish NEW v2 source, then activate.
-
-    Captured old XML is only a concurrency/rollback witness. Reopening is
-    delegated to the normal source-verified transition after the complete
-    newly generated closed stage has passed its independent graph readback.
-    """
-    if not isinstance(inventory, ReconciliationInventory) or not callable(backup) or not callable(on_staged):
-        raise ValueError("Explicit reconciliation requires protected backup and source checkpoint callbacks")
-    desired_open = set(desired_open_api_ids)
-    if desired_open != set(inventory.protected_api_ids):
-        raise ValueError("Reconciliation must activate every configured protected API")
-    apim, snapshot = inventory.apim_id, copy.deepcopy(inventory.snapshot)
-    global_id = apim + "/policies/policy"
-    prior_global = snapshot[global_id][2]
-    verify_snapshot(snapshot, transport)
-    backup(copy.deepcopy(inventory))
-    verify_snapshot(snapshot, transport)
-    members = set(inventory.previous_members)
-    deadline = time.monotonic() + timeout_seconds
-    try:
-        for api_id in sorted(members):
-            fresh, members = _membership(apim, api_id, False, transport, snapshot, members, sleep=sleep, deadline=deadline)
-            old_products = snapshot.get(api_id + "/products")
-            updates = {}
-            products = _read(transport, api_id + "/products", updates, collection=True)
-            if old_products is not None:
-                old_names = {item["id"].rsplit("/", 1)[-1] for item in old_products[2]["body"]["value"]}
-                new_names = {item["id"].rsplit("/", 1)[-1] for item in products["value"]}
-                if new_names != old_names - {ENTRA_OPEN_PRODUCT_ID}:
-                    raise ValueError("Native Product memberships changed concurrently with employee closure")
-            snapshot.update(fresh)
-            snapshot.update(updates)
-        verify_snapshot(snapshot, transport)
-        desired = stage_closed_apis()
-        if (not isinstance(desired, PolicyManifest) or desired.source_version != 2 or desired.apim_id != apim
-                or set(desired.operations) != set(inventory.protected_api_ids)):
-            raise ValueError("Reconciliation requires complete independently generated v2 source for every protected API")
-        _same_xml(desired.policies.get(global_id), desired_global_policy)
-        staged = PolicyManifest(apim, {**desired.policies, global_id: _properties(prior_global)["value"]},
-            desired.operations, desired.products, desired.backends, desired.named_values,
-            desired.api_properties, desired.api_children, desired.source_version)
-        # staging中は現行資材と旧globalを個別に完全照合する。固定配置は
-        # 正式なdesired全体で検査し、旧globalと新handlerの混在を救済対象にしない。
-        ready = read_policy_graph(staged, transport, scope_manifest=desired)
-        if _signature(ready[global_id][2]) != _signature(prior_global):
-            raise ValueError("Global policy drifted during source reconciliation")
-        closed, current_members = read_open_product(apim, transport, allowed_api_ids=(), missing=False)
-        if current_members:
-            raise ValueError("Reconciled staging must leave the employee Product empty")
-        ready.update(closed)
-        verify_snapshot(ready, transport)
-        result = transition(staged, desired_global_policy, transport, lambda: desired,
-            previous_open_api_ids=(), desired_open_api_ids=desired_open,
-            preflight_scope_manifest=desired,
-            on_staged=on_staged, sleep=sleep, timeout_seconds=max(1, deadline - time.monotonic()))
-        return {**result, "employeePathInterrupted": bool(inventory.previous_members), "sourceReconciled": True}
-    except TransitionError:
-        raise
-    except (ValueError, OSError, DeploymentError):
-        closed = False
-        try:
-            recovery, remaining = read_open_product(apim, transport, allowed_api_ids=inventory.protected_api_ids, missing=True)
-            for api_id in sorted(remaining):
-                recovery, remaining = _membership(apim, api_id, False, transport, recovery, remaining, sleep=sleep, deadline=deadline)
-            closed = not remaining
-        except (ValueError, OSError, DeploymentError):
-            pass
-        raise TransitionError(employee_path_closed=closed, recovery_complete=False) from None
-
-
 def transition(current: PolicyManifest, desired_global_policy, transport, stage_closed_apis,
                *, previous_open_api_ids=(), desired_open_api_ids=(), new_api_ids=(), stage_prerequisites=None,
-               preflight_scope_manifest=None, on_staged=None, on_prepared=None, sleep=time.sleep, timeout_seconds=300,
-               native_product_before=None, _recorded_missing_mcp_tool=None):
+               preflight_scope_manifest=None, on_staged=None, on_prepared=None, on_stage_ready=None,
+               native_products=None, sleep=time.sleep, timeout_seconds=300):
     """所属解除 → staging/source readback → global/ETag/readback → 最後の所属追加。
 
     stage callbackは全APIのsubscriptionRequired=trueを保ち、更新後source manifestを返す。
@@ -1942,9 +1644,7 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
     if (not previous_open <= existing or not desired_open <= existing | additions
             or additions & existing):
         raise ValueError("Existing targets need generated source; additions need explicit absence proof")
-    snapshot = read_policy_graph(current, transport, scope_manifest=preflight_scope_manifest,
-                                 native_product_before=native_product_before,
-                                 _recorded_missing_mcp_tool=_recorded_missing_mcp_tool)
+    snapshot = read_policy_graph(current, transport, scope_manifest=preflight_scope_manifest, native_products=native_products)
     additions_snapshot = read_new_api_absence(current.apim_id, additions, transport)
     snapshot.update(additions_snapshot)
     snapshot.update(stage_prerequisites or {})
@@ -1969,6 +1669,8 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
             snapshot.update(fresh)
             snapshot.update(products)
         verify_snapshot(snapshot, transport)
+        if on_stage_ready is not None:
+            on_stage_ready(_native_product_contract(snapshot, current))
         desired = stage_closed_apis()
         if (not isinstance(desired, PolicyManifest) or desired.apim_id != current.apim_id
                 or set(desired.operations) != existing | additions):
@@ -1978,7 +1680,7 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
         staged = PolicyManifest(desired.apim_id, staged_policies, desired.operations, desired.products,
                                 desired.backends, desired.named_values, desired.api_properties, desired.api_children, desired.source_version)
         # 現行の固定配置をdesiredで検査し、実資材と旧globalはstagedの期待値へ照合する。
-        ready = read_policy_graph(staged, transport, scope_manifest=desired, native_product_before=native_product_before)
+        ready = read_policy_graph(staged, transport, scope_manifest=desired, native_products=native_products)
         fresh, members = read_open_product(current.apim_id, transport, allowed_api_ids=(), missing=not bool(desired_open))
         if members:
             raise ValueError("Staging must leave the employee route closed")
@@ -1999,7 +1701,7 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
             candidate = _wait(transport, global_id, sleep=sleep, deadline=deadline, raw=True)
             _same_xml(_properties(candidate).get("value"), desired_global_policy)
             written_global = candidate
-        ready = read_policy_graph(desired, transport, native_product_before=native_product_before)
+        ready = read_policy_graph(desired, transport, native_products=native_products)
         fresh, members = read_open_product(current.apim_id, transport, allowed_api_ids=(), missing=not bool(desired_open))
         ready.update(fresh)
         for api_id in sorted(desired_open):

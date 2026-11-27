@@ -12,14 +12,13 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import coverage_client
-import credential_session_store
-import decision_client
+from validation import coverage_client
+from clients import credential_session_store
+from clients import decision_client
 from deployment.helpers import configuration, paths
-import integration_client
-import prepare_coverage
-import render_apim_policy
-import waf_probe
+from clients import integration_client
+from policy import render_apim_policy
+from validation import waf_probe
 
 
 class OperationalOutputPathTests(unittest.TestCase):
@@ -35,18 +34,21 @@ class OperationalOutputPathTests(unittest.TestCase):
         self.patches = ExitStack()
         self.addCleanup(self.patches.close)
         for module in (integration_client, coverage_client, decision_client,
-                       credential_session_store, waf_probe, render_apim_policy,
-                       prepare_coverage, paths):
+                       credential_session_store, waf_probe, render_apim_policy, paths):
             self.patches.enter_context(patch.object(module, "private_parent", self.private_parent))
 
     def private_parent(self, target):
         return self.original_parent(target, self.repository)
 
     def writers(self):
+        def decision_output(target):
+            with decision_client.open_new(target) as evidence:
+                evidence.write('{"succeeded": false}\n')
+
         return {
             "integration": lambda target: integration_client.private_write(target, "Synthetic result.\n"),
             "coverage": lambda target: coverage_client.private_bytes(target, b"Synthetic artifact.\n"),
-            "decision": lambda target: decision_client.write_new(target, {"succeeded": False}),
+            "decision": decision_output,
             "session": lambda target: credential_session_store.FileSessionStore(target).write(
                 {"synthetic": True}, expected_revision=0),
             "waf": lambda target: waf_probe._write(target, {"network_requests": 0}),
@@ -118,14 +120,6 @@ class OperationalOutputPathTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "output rejected"):
                 waf_probe.main(["--gateway-base-url", "https://gateway.example.invalid",
                                 "--output", str(self.repository / ".state/waf.json")])
-
-    def test_coverage_preparation_rejects_old_output_before_reading_inputs(self):
-        with patch.object(sys, "argv", ["prepare", "--base", "not-read.json", "--overlay", "not-read-api.json",
-                                       "--output", str(self.repository / "params/example.local.json")]), \
-                patch.object(prepare_coverage, "load_configuration_source", side_effect=AssertionError("input read")), \
-                redirect_stdout(io.StringIO()):
-            self.assertEqual(2, prepare_coverage.main())
-        self.assertFalse((self.repository / "params").exists())
 
     def test_configuration_render_uses_the_protected_destination_and_refuses_legacy(self):
         config = {"resourceGroupNames": {}, "apiPublicationStatus": "configured"}

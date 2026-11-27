@@ -7,7 +7,7 @@ import unittest
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, gateway, policy, api_mapping, ready_gateway, _writable_policy
 from deployment.helpers.waf_names import policy_id, policy_name
 from deployment.helpers.waf_body import ai_body_settings
-from waf_policy import exclusion, desired_policy, load_manifest
+from operations.waf_policy import exclusion, desired_policy, load_manifest
 from test_portal_gateway import Transport
 from gateway_ingress import DOCUMENT_PATH, DOCUMENT_RULE_NAME, document_upload_limit, _document_policy, _raw_body_policy, _path_gateway, configure_gateway_document_waf
 from bicep_helpers import compile_bicep
@@ -137,7 +137,7 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
     resource = waf_fixtures.SsmlWafTests.resource
 
     def test_main_derives_only_the_canonical_binary_document_post_independent_of_size(self):
-        from standard_apis import infrastructure_api_definitions
+        from catalog.standard_apis import infrastructure_api_definitions
         original = configuration()['apiDefinitions'][0]
         expression = self.main['variables']['documentUploadPaths']
         def paths(api):

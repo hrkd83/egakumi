@@ -20,7 +20,9 @@ def client_inventory(config):
         'managementPrincipalId': maintenance_metadata(config['subscriptionId'])['principalId'],
         'managementVmId': base + config['resourceGroupNames']['maint'] + '/providers/Microsoft.Compute/virtualMachines/vm-' + config['resourceStem'] + '-mgmt',
         'applications': [service + 'Microsoft.App/containerApps/ca-' + config['resourceStem'] + '-portal'],
-        'jobs': [], 'sqlDatabases': [], 'environments': [service + 'Microsoft.App/managedEnvironments/cae-' + config['resourceStem']],
+        'jobs': [], 'sqlDatabases': [],
+        'environments': [service + 'Microsoft.App/managedEnvironments/cae-' + config['resourceStem'] + suffix
+                         for suffix in ('', '-broker')],
         'workspace': {'id': monitor + 'Microsoft.OperationalInsights/workspaces/law-' + config['resourceStem'],
                       'customerId': '66666666-6666-4666-8666-666666666666'},
         'auditStorage': [{'id': monitor + 'Microsoft.Storage/storageAccounts/st' + config['resourceStem'].replace('-', '') + suffix,
@@ -32,8 +34,10 @@ def client_core_outputs(config):
     """inventoryと同じ構築資源を返す、監視/VM/監査の合成Core出力。"""
     inventory = client_inventory(config)
     accounts = inventory['auditStorage']
+    broker = inventory['environments'][1]
     return {
         'managementClientInventory': inventory,
+        'brokerPlatform': {'environmentId': broker, 'environmentName': broker.rsplit('/', 1)[-1]},
         'managementVm': {'id': inventory['managementVmId'], 'principalId': inventory['managementPrincipalId']},
         'monitoring': {'workspaceId': inventory['workspace']['id'], 'workspaceCustomerId': inventory['workspace']['customerId']},
         'auditStorage': {'collectJapan': {'id': accounts[0]['id']}, 'collectFoundry': {'id': accounts[1]['id']},

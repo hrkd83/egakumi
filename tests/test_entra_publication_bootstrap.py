@@ -3,8 +3,10 @@ import copy
 import unittest
 from contextlib import ExitStack
 from unittest import mock
+import xml.etree.ElementTree as ET
 
 import test_publish_apis as legacy
+from test_apim_sample_cleanup import default_echo_properties
 from test_entra_publication import SyntheticTransport, response, xml
 import entra_publication as publication
 
@@ -123,9 +125,18 @@ def controller_fixture():
     return base, plan, authentication, transport
 
 
+def add_default_echo(apim_id, inventory):
+    echo_id = apim_id + "/apis/echo-api"
+    inventory[apim_id + "/apis"] = response(apim_id + "/apis", value=[{"id": echo_id}])
+    inventory[echo_id] = response(echo_id, default_echo_properties())
+    inventory[echo_id + "/products"] = response(echo_id + "/products", value=[])
+    inventory[echo_id + "/revisions"] = response(echo_id + "/revisions", value=[
+        {"apiId": "/apis/echo-api;rev=1", "apiRevision": "1", "isCurrent": True, "isOnline": True}])
+    return echo_id
+
+
 class BootstrapControllerTests(unittest.TestCase):
-    def execute(self, base, plan, authentication, transport, checkpoints, *, timeout_seconds=None,
-                failed_closed_stage_attempt=None, restore_recorded_mcp_tool=False):
+    def execute(self, base, plan, authentication, transport, checkpoints, *, timeout_seconds=None, **options):
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(publish, "prepare_plan", return_value=plan))
             stack.enter_context(mock.patch.object(publish, "verify_common_authentication", return_value=authentication))
@@ -133,18 +144,15 @@ class BootstrapControllerTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(publish, "merge_firewall", return_value=({}, False, '"unchanged"')))
             for name in ("verify_subscription_products", "verify_credential_login", "verify_websocket_diagnostics"):
                 stack.enter_context(mock.patch.object(publish, name))
-            for name in ("reconcile_unreleased_apis", "enable_websocket_diagnostics", "finalize_descriptions", "cleanup_default_samples"):
+            for name in ("reconcile_unreleased_apis", "enable_websocket_diagnostics", "cleanup_default_samples"):
                 stack.enter_context(mock.patch.object(publish, name, return_value={}))
             stack.enter_context(mock.patch.object(publish, "state_from_outputs", return_value={"serviceResourceIds": base.state["serviceResourceIds"]}))
             def checkpoint(value):
                 transport.calls.append(("CHECKPOINT", "source", None, None))
                 checkpoints.append(copy.deepcopy(value))
             budget = {} if timeout_seconds is None else {"timeout_seconds": timeout_seconds}
-            if failed_closed_stage_attempt is not None:
-                budget["failed_closed_stage_attempt"] = failed_closed_stage_attempt
-            if restore_recorded_mcp_tool:
-                budget["restore_recorded_mcp_tool"] = True
-            return publish.execute_plan(base.config, base.state, plan, base.template, transport, sleep=lambda _: None, checkpoint=checkpoint, **budget)
+            return publish.execute_plan(base.config, base.state, plan, base.template, transport, sleep=lambda _: None,
+                                        checkpoint=checkpoint, **budget, **options)
 
     def test_default_budget_finishes_delayed_stage_and_reopens_without_waiting_out_the_budget(self):
         base, plan, authentication, transport = controller_fixture()
@@ -226,18 +234,105 @@ class BootstrapControllerTests(unittest.TestCase):
         self.assertTrue(all(global_write < index for index in memberships))
 
     def test_missing_global_gets_only_a_conditional_closed_baseline_before_stage(self):
-        base, plan, authentication, transport = controller_fixture()
-        transport.inventory.pop(transport.global_id)
-        authentication["previousValue"] = None
-        # This transaction fixture isolates the initial creation and ordering.
-        # The fixed inline renderer avoids references to fragments not staged yet;
-        # its real authentication source is checked in the fragment tests.
-        with mock.patch("deployment.helpers.apim_authentication._render_inline_common_authentication_service_policy",
-                        return_value=xml("closed")):
-            self.execute(base, plan, authentication, transport, [])
-        creation = next(call for call in transport.calls if call[0] == "PUT" and call[1] == transport.global_id)
-        self.assertEqual(creation[3], {"If-None-Match": "*"})
-        self.assertEqual(creation[2]["properties"]["value"], xml("closed"))
+        for echo_present in (False, True):
+            with self.subTest(echo_present=echo_present):
+                base, plan, authentication, transport = controller_fixture()
+                transport.inventory.pop(transport.global_id)
+                authentication["previousValue"] = None
+                if echo_present:
+                    echo_id = add_default_echo(plan["apimId"], transport.inventory)
+                self.execute(base, plan, authentication, transport, [])
+                creation = next(call for call in transport.calls if call[0] == "PUT" and call[1] == transport.global_id)
+                self.assertEqual(creation[3], {"If-None-Match": "*"})
+                policy = ET.fromstring(creation[2]["properties"]["value"])
+                inbound = policy.find("inbound")
+                self.assertEqual([node.tag for node in inbound], ["return-response"])
+                self.assertEqual(inbound.find("return-response/set-status").get("code"), "503")
+                self.assertFalse(list(policy.iter("include-fragment")))
+                stage = next(call for call in transport.calls if call[0] == "PUT" and call[1] == plan["deploymentId"])
+                self.assertLess(transport.calls.index(creation), transport.calls.index(stage))
+                if echo_present:
+                    for path in (echo_id, echo_id + "/revisions"):
+                        checks = [index for index, call in enumerate(transport.calls) if call[:2] == ("GET", path)]
+                        self.assertGreaterEqual(len(checks), 2)
+                        self.assertLess(checks[1], transport.calls.index(creation))
+                    self.assertTrue(all(method == "GET" for method, path, *_ in transport.calls if path == echo_id))
+
+    def test_fresh_retry_proves_unchanged_closed_baseline_and_absent_stage(self):
+        from test_entra_named_value_publication import configured
+
+        _, plan, original = configured()
+        apim = plan["apimId"]
+        global_id = apim + "/policies/policy"
+        original[global_id] = response(global_id, {"format": "rawxml", "value": publish.CLOSED_INITIAL_POLICY})
+        for kind in ("apis", "policyFragments", "backends", "products", "namedValues", "loggers", "diagnostics"):
+            original[apim + "/" + kind] = response(apim + "/" + kind, value=[])
+        for resource_id in plan["publishedApiIds"]:
+            original[resource_id] = legacy.ok({}, 404)
+        original.pop(apim + "/policyFragments/core-common-authentication")
+        original.pop(plan["deploymentId"])
+        for echo_present in (False, True):
+            with self.subTest(echo_present=echo_present):
+                inventory = copy.deepcopy(original)
+                if echo_present:
+                    echo_id = add_default_echo(apim, inventory)
+                transport = legacy.Transport(inventory)
+                auth = publish.verify_common_authentication(plan, transport)
+                self.assertIsNone(auth["previousEntra"])
+                self.assertEqual(auth["previousValue"], publish.CLOSED_INITIAL_POLICY)
+                self.assertTrue(auth["changed"])
+                publish.validate_common_authentication_policy(auth["value"], entra=plan["entraAuthentication"])
+                snapshot = publication.read_fresh_publication(plan, transport)
+                publication.verify_snapshot(snapshot, transport)
+                if echo_present:
+                    self.assertIn(echo_id, snapshot)
+                    self.assertIn(echo_id + "/revisions", snapshot)
+                    inventory[echo_id]["body"]["properties"]["path"] = "changed"
+                    with self.assertRaises(ValueError):
+                        publication.verify_snapshot(snapshot, transport)
+                self.assertTrue(all(call[0] == "GET" for call in transport.calls))
+
+        for change in ("modified", "arbitrary-fragment", "stage-owned-fragment", "unselected-api"):
+            inventory = copy.deepcopy(original)
+            if change == "modified":
+                inventory[global_id]["body"]["properties"]["value"] = publish.CLOSED_INITIAL_POLICY.replace('code="503"', 'code="200"')
+            elif change == "arbitrary-fragment":
+                inventory[global_id]["body"]["properties"]["value"] = publish.CLOSED_INITIAL_POLICY.replace(
+                    "<inbound>", '<inbound><include-fragment fragment-id="unreviewed" />')
+            elif change == "stage-owned-fragment":
+                inventory[apim + "/policyFragments"]["body"]["value"] = [{"id": apim + "/policyFragments/staged"}]
+            else:
+                inventory[apim + "/apis"]["body"]["value"] = [{"id": apim + "/apis/unselected"}]
+            transport = legacy.Transport(inventory)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                publish.verify_common_authentication(plan, transport)
+                publication.read_fresh_publication(plan, transport)
+            self.assertTrue(all(call[0] == "GET" for call in transport.calls))
+
+    def test_default_echo_exception_rejects_conflicts_and_non_default_readback(self):
+        _, plan, _, initial = controller_fixture()
+        apim = plan["apimId"]
+        initial.inventory[initial.global_id] = legacy.ok({}, 404)
+        echo_id = add_default_echo(apim, initial.inventory)
+        for case in ("other-api", "revision-id", "modified", "different-apim", "extra-revision", "selected"):
+            inventory = copy.deepcopy(initial.inventory)
+            candidate_plan = copy.deepcopy(plan)
+            if case == "other-api":
+                inventory[apim + "/apis"]["body"]["value"].append({"id": apim + "/apis/other"})
+            elif case == "revision-id":
+                inventory[apim + "/apis"]["body"]["value"][0]["id"] += ";rev=1"
+            elif case == "modified":
+                inventory[echo_id]["body"]["properties"]["serviceUrl"] = "https://custom.example.com/api"
+            elif case == "different-apim":
+                inventory[echo_id]["body"]["id"] = apim + "-other/apis/echo-api"
+            elif case == "extra-revision":
+                inventory[echo_id + "/revisions"]["body"]["value"].append({"apiRevision": "2"})
+            else:
+                candidate_plan["publishedApiIds"].append(echo_id)
+            transport = InitialTransport(inventory, candidate_plan, initial.source)
+            with self.subTest(case=case), self.assertRaises(ValueError):
+                publication.read_fresh_publication(candidate_plan, transport)
+            self.assertTrue(all(call[0] == "GET" for call in transport.calls))
 
     def test_fresh_stage_rejects_owned_case_variant_inventory_before_any_write(self):
         for kind, name in (
@@ -490,17 +585,7 @@ class BootstrapControllerTests(unittest.TestCase):
                 self.assertEqual(len(checkpoints), 1)
                 self.assertFalse(any(call[0] == 'PUT' and call[1].startswith(transport.open_id + '/apis/') for call in transport.calls))
 
-    def test_source_v1_partial_migration_stops_before_membership_or_stage_writes(self):
-        base, plan, authentication, transport, checkpoints = self.addition_fixture()
-        source = base.state['apiPublicationSourceCheckpoint']['source']
-        source['schemaVersion'] = 1
-        source.pop('apiChildren')
-        with mock.patch.object(publish, 'transition_common_authentication_policy', return_value=(xml('active'), False)):
-            with self.assertRaisesRegex(ValueError, 'republish every prior API'):
-                self.execute(base, plan, authentication, transport, checkpoints)
-        self.assertTrue(all(call[0] == 'GET' for call in transport.calls))
-
-    def test_source_v1_complete_republication_upgrades_only_after_verified_closed_stage(self):
+    def test_previous_source_must_use_current_schema_before_any_write(self):
         base, plan, authentication, transport = controller_fixture()
         checkpoints = []
         self.execute(base, plan, authentication, transport, checkpoints)
@@ -512,9 +597,10 @@ class BootstrapControllerTests(unittest.TestCase):
         base.state['apiPublicationSourceCheckpoint'] = prior
         authentication = {**authentication, 'previousValue': xml('active'), 'previousEntra': {'apiNames': ['model', 'sample']}}
         transport.calls.clear()
-        self.execute(base, plan, authentication, transport, checkpoints)
-        self.assertEqual(checkpoints[-1]['source']['schemaVersion'], 2)
-        self.assertEqual({entry['name'] for entry in checkpoints[-1]['source']['apis']}, {'model', 'sample'})
+        with self.assertRaisesRegex(ValueError, 'current v2 API source'):
+            self.execute(base, plan, authentication, transport, checkpoints)
+        self.assertEqual(len(checkpoints), 1)
+        self.assertTrue(all(call[0] == 'GET' for call in transport.calls))
         self.assertEqual(transport.members, {plan['apimId'] + '/apis/' + name for name in ('model', 'sample')})
 
     def test_stage_shared_resource_without_source_or_with_drift_is_never_overwritten(self):

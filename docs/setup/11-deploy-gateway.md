@@ -50,10 +50,10 @@ SQLサーバーは`sql-<stem>`、Private Endpointは`pe-<stem>-sql`。`<stem>`�
 初回配備・更新・再試行には同じコマンドを使う。リポジトリルートで、同じparamsとCore stateを使う。GitHub Actions、PC上のDocker、PCからのSQL／ACRへの直接接続は不要。
 
 ```bash
-python3 scripts/deploy_gateway.py \
+python3 scripts/deployment/deploy_gateway.py \
   --config "$DEPLOY_PARAMS_FILE"
 
-python3 scripts/deploy_gateway.py \
+python3 scripts/deployment/deploy_gateway.py \
   --config "$DEPLOY_PARAMS_FILE" \
   --execute
 ```
@@ -64,9 +64,11 @@ python3 scripts/deploy_gateway.py \
 2. 管理VMへACRスコープの組み込み`AcrPush`を一時付与し、イメージを作成して非公開ACRへ登録する。実際のdigestを取得し、そのビルドで作成した一時Run Commandと一時権限を回収する。
 3. 本文監査を有効にした環境では、Coreの監査基盤を使って中継・保存ワーカーを配備し、準備を確認する。
 4. credentials DB、認証窓口の実行用ID、CMプロバイダー・必要な組み込みロール、専用鍵とAPIMの名前付きの値・バックエンドを配備する。
-5. 同じdigestのSQL初期化ジョブを実行し、テーブル・プール台帳・実行用IDのSQL権限を準備する。本人対応とCMプールは保持する。本人セッションv2へ初めて切り替える際は`002_session_lifecycle.sql`が旧取引・旧セッションを無効化し、セッション関連テーブルを新定義へ置き換える。v2配備の通常再試行では有効なセッションを初期化し直さない。`003_idle_connection_cleanup.sql`はスキーマ版3として未使用接続回収と割当処理を更新し、既存の`LastUsedAt`を巻き戻さず保持する。`004_verified_user_caller.sql`はスキーマ版4としてユーザー主体用の`CallerId`列を追加し、既存の購読・取引・セッション・CM接続を保持する。
-6. SQL初期化に成功してからContainer Appと定期照合ジョブを配備し、認証窓口の正常起動を確認する。新しいStartup・Readiness・Liveness probeは`/health/gateway-caller-v1`でSQL版4とユーザー主体用の列を毎回検査する。初期化に失敗した場合はアプリ更新とAPI登録に進まない。
+5. 同じdigestのSQL初期化ジョブを実行し、テーブル・プール台帳・実行用IDのSQL権限を準備する。初回はスキーマ版4まで適用する。同じ資材で再試行する場合は適用済みのスキーマ、本人対応、取引・セッション、CMプールを引き継ぐ。
+6. SQL初期化に成功してからContainer Appと定期照合ジョブを配備し、認証窓口の正常起動を確認する。Startup・Readiness・Liveness probeは`/health/gateway-caller-v1`でSQL版4とユーザー主体用の列を検査する。初期化に失敗した場合はアプリ更新とAPI登録を停止する。
 7. API・バックエンド・Product・ポリシーを登録する。購読キーは[例外発行の運用](../operations/access-and-keys.md)に沿って管理者が発行する。必要な診断ログと初期サンプルの整理も行う。
+
+初回配備とステージ開始前の再試行では、APIMが作成した既定のEcho APIを読み取りで確認する。対象APIMの初期リビジョンだけを許容し、業務APIの配備が確認できてから既存のサンプル整理処理を実行する。[Microsoft Learnの既定Echo APIの例](https://learn.microsoft.com/en-us/azure/api-management/how-to-deploy-self-hosted-gateway-kubernetes-opentelemetry#generate-and-consume-the-opentelemetry-metrics)
 
 標準19 API正本を常用で解決する。計画と反映は個別コマンドの`--execute`で区別し、公開paramsの切替フラグを使わない。
 
@@ -76,7 +78,7 @@ ACR・SQLの公開アクセスは無効のまま。追加の常設VMやカスタ
 
 コマンドが終了コード`0`で完了し、今回更新された`.local/<environment>/state/gateway-deployment.json`が`status: deployed`になることを確認する。イメージ作成と一時資源の回収状況は、同じディレクトリの`credential-broker-build.json`に記録する。Coreの`latest.json`は後続のPortal配備でも使う。
 
-Gatewayが失敗した場合は、Coreと配備記録を保ち、原因を修正してGatewayを再試行する。同じ環境・同じソースで登録済みのイメージを再利用し、既存のDB・CM接続・購読キーを初期化し直さない。Gatewayの完了後に[Portalを個別配備する](12-deploy-portal.md)。
+Gatewayが失敗した場合は、Coreと配備記録を保ち、原因を修正して再試行する。同じ環境・同じソースで登録済みのイメージは再利用する。APIMに子資源が一部作成された場合や同じAPI範囲の更新時に停止した場合は、[途中失敗時の手順](../operations.md#アプリ配備の途中で失敗した場合)で再開条件を確認する。Gatewayの完了後に[Portalを個別配備する](12-deploy-portal.md)。
 
 継続配備では`.github/workflow-templates/gateway.yml.example`が同じコマンドを使う。`--image-digest`は別途作成済みのイメージを指定する場合に使い、通常の初期構築では指定しない。
 

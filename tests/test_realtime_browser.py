@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import realtime_browser as browser
+from clients import realtime_browser as browser
 
 
 class RealtimeBrowserTests(unittest.IsolatedAsyncioTestCase):

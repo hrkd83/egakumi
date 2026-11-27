@@ -12,8 +12,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import prepare_portal_local_auth as preparation
-import run_portal_local as launcher
+from portal_local import prepare_portal_local_auth as preparation
+from portal_local import run_portal_local as launcher
 
 
 class LocalPortalLauncherTests(unittest.TestCase):
@@ -97,15 +97,15 @@ class LocalPortalLauncherTests(unittest.TestCase):
         self.assertEqual(len(keys), text.count("[REDACTED]"))
         self.assertTrue(all(self.runtime[key] not in text for key in keys))
 
-    def test_legacy_dotenv_is_not_read_and_no_child_is_started(self):
-        legacy = self.root / "apps/portal/.env.local"
-        legacy.write_text("OWNER_SETTING=keep\n", encoding="utf-8")
+    def test_app_environment_file_is_not_read_and_no_child_is_started(self):
+        app_environment = self.root / "apps/portal/.env.local"
+        app_environment.write_text("OWNER_SETTING=keep\n", encoding="utf-8")
         with patch.object(launcher, "read_environment", side_effect=AssertionError("settings read")), \
                 patch.object(launcher.subprocess, "Popen") as start:
-            with self.assertRaisesRegex(preparation.PreparationError, "migrate"):
+            with self.assertRaisesRegex(preparation.PreparationError, r"\.local/<environment>/portal/runtime\.env"):
                 launcher.run(self.configuration, self.root, ["npm", "run", "dev"])
         start.assert_not_called()
-        self.assertEqual("OWNER_SETTING=keep\n", legacy.read_text())
+        self.assertEqual("OWNER_SETTING=keep\n", app_environment.read_text())
 
     def test_missing_or_insecure_settings_do_not_start_the_command(self):
         self.runtime_path.chmod(0o644)

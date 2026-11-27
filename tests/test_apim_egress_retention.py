@@ -52,30 +52,14 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
                 self.assertEqual(lifecycle.discover_existing_apim_egress_fqdns(self.config, transport), [])
                 self.assertFalse(transport.mutations())
 
-    def test_legacy_rule_destinations_are_read_without_renaming_the_snapshot(self):
+    def test_duplicate_apim_rules_are_rejected(self):
         policy, group = self.snapshots()
-        group["body"]["properties"]["ruleCollections"][0]["rules"][0]["name"] = "apim-approved-services"
-        before = copy.deepcopy(group)
+        rules = group["body"]["properties"]["ruleCollections"][0]["rules"]
+        rules.append({**rules[0], "targetFqdns": ["another.example.com"]})
         transport = ScriptedTransport([policy, group])
-        self.assertEqual(lifecycle.discover_existing_apim_egress_fqdns(self.config, transport),
-                         ["graph.microsoft.com", "management.azure.com"])
-        self.assertEqual(group, before)
+        with self.assertRaisesRegex(lifecycle.DeploymentError, "duplicated"):
+            lifecycle.discover_existing_apim_egress_fqdns(self.config, transport)
         self.assertFalse(transport.mutations())
-
-    def test_current_and_legacy_name_duplicates_cannot_discard_existing_targets(self):
-        for names in (("allow-apim-approved-services", "apim-approved-services"),
-                      ("allow-apim-approved-services", "allow-apim-approved-services"),
-                      ("apim-approved-services", "apim-approved-services")):
-            policy, group = self.snapshots()
-            rules = group["body"]["properties"]["ruleCollections"][0]["rules"]
-            rules[0]["name"] = names[0]
-            duplicate = copy.deepcopy(rules[0])
-            duplicate.update(name=names[1], targetFqdns=["another.example.com"])
-            rules.append(duplicate)
-            transport = ScriptedTransport([policy, group])
-            with self.subTest(names=names), self.assertRaisesRegex(lifecycle.DeploymentError, "duplicated"):
-                lifecycle.discover_existing_apim_egress_fqdns(self.config, transport)
-            self.assertFalse(transport.mutations())
 
     def test_foreign_policy_or_failed_read_cannot_be_used_as_an_empty_snapshot(self):
         policy, _ = self.snapshots()
@@ -138,7 +122,7 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-             mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
+             mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()), \
              mock.patch.object(lifecycle, "lock_and_verify_policies"), mock.patch.object(lifecycle, "configure_app_insights_cap"), \
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)

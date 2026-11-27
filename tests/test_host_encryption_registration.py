@@ -306,12 +306,12 @@ class HostEncryptionHookIntegrationTests(unittest.TestCase):
              mock.patch.object(lifecycle, "ROOT", Path(directory).resolve()), \
              mock.patch.object(lifecycle, "local_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-             mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
+             mock.patch.object(lifecycle, "prepare_ingress_secrets", return_value={}), \
              mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "run", return_value={"registrationState": "Registered"}), \
              mock.patch.object(lifecycle, "ensure_host_encryption", side_effect=lifecycle.DeploymentError("EncryptionAtHost pending")), \
              mock.patch.object(lifecycle, "ArmTransport") as arm, \
-             mock.patch.object(lifecycle, "deploy_phase") as deploy:
+             mock.patch.object(lifecycle, "deploy_monitoring") as deploy:
             with self.assertRaisesRegex(lifecycle.DeploymentError, "EncryptionAtHost"):
                 lifecycle.preprovision(self.config)
         arm.assert_not_called()

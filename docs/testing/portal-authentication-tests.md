@@ -39,7 +39,6 @@ Networkの取消コミット`5f72d83`を取り込んだ後、9スイート102試
 | --- | --- |
 | `test_portal_auth_certificate`、`test_portal_authentication_infra` | 初期公開証明書・state・更新段階、Core/PortalのBicep生成、初期workerと署名ID・権限 |
 | `test_management_client_assets`、`test_management_client_assets_bicep` | Proxyを要求する照合と限定配備、管理client・network・credential networkのBicep生成 |
-| `test_deploy_applications` | 初期構築のGateway-only入口とPortal個別配備の分担 |
 | `test_nsg_rule_priorities`、`test_fixed_nsg_validation`、`test_nsg_deployment_order` | 固定NSG集合・SQL向け4規則のTCP1433・固定通信の照合と配備順 |
 
 Proxy取消の統合時点で、`infra/`、`scripts/`、`apps/`の実装は証明書改修済みコミット`511575f`と一致することを確認しました。その後に検証した旧VM方式の初期発行は、次節に履歴として記録します。Redirect専用module・CLI・manifestと残存参照を除去し、Portal用の公開データ許可定義を保持しました。これらは合成検証であり、Azure操作・SQL実接続・証明書発行・Entraログインの受入ではありません。
@@ -63,7 +62,6 @@ ACA Jobへ移行する前は、管理VMへ初回発行用のRun Commandを追加
 | `tests/test_portal_auth_certificate.py` | 初期構築はClient ID不要、手動登録後の2項目入力、公開DERとthumbprint・期限・KV参照、単一worker出力、登録前切替拒否、旧VM入口での不明PUTの再送抑止、手動受入と旧Entra削除の必要性 |
 | `tests/test_portal_authentication_infra.py` | Bicepコンパイル、CoreとPortal本体の資源責任、専用ID、鍵scope権限、secretと証明書の設定、ジョブ・DB・Gateway既存設定 |
 | `tests/test_portal_certificate_initialization.py` | ACA Jobが保存した初期状態の読取り、旧構成への初期配備の停止、保護runtimeと排他、旧Coreの発行済み結果の収集 |
-| `tests/test_deploy_applications.py` | アプリ配備補助入口のGateway-only指定と、両アプリの配備順、失敗時の停止、state選択 |
 | Portalの認証・Graphテスト | client assertionの固定宛先・thumbprint・短命性・digest署名・秘密非露出、ログインのtid/oid、Graphの本人照合、既存セッション・実行用SQL権限 |
 
 ローカル試験ではAzure/KV/Entraへ通信せず、実値をfixtureへコピーしません。型検査・lint・build・依存auditと混入検査も確認します。試験に使った合成秘密鍵をファイルへ保存しません。

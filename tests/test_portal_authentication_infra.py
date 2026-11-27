@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration, ConfigurationError
 from deployment.helpers.portal_authentication import prepare_secret, remove_secret
-from deployment.helpers.grpc_lifecycle import secret_path
+from deployment.helpers.ingress import secret_path
 from deployment.lifecycle import parameters
 from configuration_fixtures import fixture
 

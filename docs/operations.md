@@ -32,15 +32,9 @@ Azure CLI・azdの認証先、`.local/`内の環境名、paramsのTenant／Subsc
 
 Gitからクローンし直しても`.azure/`・`.local/`は復元されません。構築時の環境別領域とazd環境を、別端末への引継ぎや障害に備えて保護保管します。公開用の資材コピーや配布物へ混ぜません。既存の記録を削除して再試行したり、名前からResource IDを推測してstateを作ったりしません。
 
-## 新しい公開入力へ移す前に確認する
+## 設定を変更する前に確認する
 
-公開入力71主項目の判断と新しい登録／定義形は[paramsの判断記録](setup/07-params.md#公開入力71主項目の判断記録)にまとめています。今回の一括改修は資材実装の段階です。Azure反映、全環境再構築E2Eと実受入は未実施であり、最終集約前のローカル試験を一式成功と扱いません。
-
-既存の保護paramsとstateを保持して旧値を比較します。固定化した旧入力は空配列・空object・false・nullでも拒否し、共通値はconfigの正しい位置へ移します。標準Graphはparamsの`credentialProviders.graphDelegated`へClient IDと秘密参照、configの同slotへ表示名・scope・poolを分離します。追加providerは双方の`additional[]`を論理名で照合します。既存の論理／物理provider名、アプリID、秘密参照、scope文字列、pool.count=12とcapacity=8000を配置変更だけで変更しません。
-
-非標準・非空の権限、既存WAF、IP例外、静的caller上書き、API置換、別tenant、Portal追加グループ／製品subset／独自購読IDは無断変換しません。意図した資源・利用範囲・所有者・復旧と対象限定の移行を確定してから進みます。今回のコード変更だけで認証方式やClient IDを新しいアプリへ切り替えません。
-
-`services.apimInstanceId`は初回prepareが公開マーカーを6文字IDへ置換してparamsへ保存し、通常更新では保持します。未解決マーカー・欠落・不正な既存値を更新時に再生成しません。SSH鍵参照と秘密ファイルも同環境の保護領域で保持し、公開例の上書きコピーや別環境入力の自動流用を行いません。
+同じ環境の保護paramsとstateを使用します。公開入力の配置は[paramsの手順](setup/07-params.md)を参照してください。`services.apimInstanceId` と秘密ファイル参照を保持し、更新時に構築IDを再生成しません。
 
 ## 同じ環境を更新する
 
@@ -48,11 +42,11 @@ Gitからクローンし直しても`.azure/`・`.local/`は復元されませ�
 | --- | --- |
 | 共通基盤の設定 | 変更対象と復旧方法を個別に確定し、対象限定の操作で更新する。[共通確認](operations/common.md)で資材と実設定を整合させる |
 | Foundryのモデル | [モデル運用](operations/foundry.md)に従い、Foundryの画面で配備・容量・版を変更する |
-| Gatewayのみ | `python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`で反映 |
-| Portalのみ | `python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`で反映 |
-| 両アプリを順に更新 | `python3 scripts/deploy_applications.py --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`でGateway→Portalを実行 |
+| Gatewayのみ | `python3 scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`で反映 |
+| Portalのみ | `python3 scripts/deployment/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`で反映 |
+| 両アプリを順に更新 | `python3 scripts/operations/release.py --component all --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`でGateway→Portalを実行 |
 
-初回構築ではAPI・Tools・CredentialのEntraアプリを登録してから、`azd up`でCoreを構築します。続けてAPIのOBO証明書登録とPortalアプリの作成・証明書登録を行い、GatewayとPortalを個別配備します。構築後の運用は上表の入口を使います。初期構築途中での再試行は[構築手順](setup/08-provision-core.md)で扱います。アプリの個別更新は、基盤の再構築と独立して実行できます。共通基盤・Gateway・Portalを並行して更新せず、各処理の終了を確認します。個別コマンドの通常の計画生成はローカル処理です。`deploy_gateway.py`・`deploy_portal.py`の`--deployment-name`を指定すると、計画時にも指定した成功済みCore配備のoutputsをAzureから読み取ります。`deploy_applications.py`はこのオプションに対応しません。これはアプリ配備用の選択肢であり、撤去用stateを復元するコマンドではありません。
+初回構築ではAPI・Tools・CredentialのEntraアプリを登録してから、`azd up`でCoreを構築します。続けてAPIのOBO証明書登録とPortalアプリの作成・証明書登録を行い、GatewayとPortalを個別配備します。構築後の運用は上表の入口を使います。初期構築途中での再試行は[構築手順](setup/08-provision-core.md)で扱います。アプリの個別更新は、基盤の再構築と独立して実行できます。共通基盤・Gateway・Portalを並行して更新せず、各処理の終了を確認します。個別コマンドの通常の計画生成はローカル処理です。`deploy_gateway.py`・`deploy_portal.py`の`--deployment-name`を指定すると、計画時にも指定した成功済みCore配備のoutputsをAzureから読み取ります。一括更新では保存済みのCore stateを使用します。これはアプリ配備用の選択肢であり、撤去用stateを復元するコマンドではありません。
 
 Gatewayは、採用時のBrokerイメージ作成・DB／CM配備・SQL初期化・起動確認の後に、API・Product・ポリシー・WAFを反映します。Portalはイメージ作成・DB／権限・SQL初期化を経て同じContainer Appを更新し、公開`/api/health`を確認します。イメージは管理VMで作成し、Core内の非公開ACRへ登録します。確認済みのソースとdigestが一致する場合は既存のビルド結果を再利用します。
 
@@ -72,7 +66,7 @@ APIだけの公開処理はFoundryモデルを配備せず、GUI等で変更し�
 
 Azure Portal等で個別に追加するAPIは、API／operation・Product所属・購読必須設定・購読キーヘッダーを揃え、`<base />`で共通認可を継承させます。下流認証・許可宛先・公開パス・監査も設定します。資材の管理対象と同じIDを手動編集すると競合するため、更新元を明確にします。登録対象外の独自APIを、定義から省いただけで自動削除する処理ではありません。
 
-共通ポリシーは子資源の成功後にETag付きで統合・読戻し確認します。適用失敗や競合時は最新状態と差分を確認し、同じ対象で再試行します。全体ポリシーを削除して作り直したり、認可を解除して復旧したりしません。手動統合用の確認XMLは [render_apim_policy.py](../scripts/render_apim_policy.py)で未作成のファイルへオフライン出力できます。
+共通ポリシーは子資源の成功後にETag付きで統合・読戻し確認します。適用失敗や競合時は最新状態と差分を確認し、同じ対象で再試行します。全体ポリシーを削除して作り直したり、認可を解除して復旧したりしません。手動統合用の確認XMLは [render_apim_policy.py](../scripts/policy/render_apim_policy.py)で未作成のファイルへオフライン出力できます。
 
 Gatewayの公開処理は、未使用と判定できるAPIM初期サンプル（Echo API、Starter／Unlimitedとその購読）を整理します。業務へ転用したもの、範囲を確認できない購読、masterは保持し、`defaultSampleCleanup`へ結果を記録します。WebSocket採用時は既存の診断宛先・他カテゴリを保持して接続ログを有効にし、`webSocketDiagnostics`へ結果を記録します。
 
@@ -87,10 +81,18 @@ GatewayはAPI、ポリシー、製品を配備します。検証用を含めて�
 3. Gatewayで停止した場合はGatewayを再試行し、その成功後にPortalを実行する。Portalで停止した場合はPortalの専用コマンドから再開できる。
 4. アプリの稼働・公開ヘルス・イメージdigestと、変更対象の業務動作を確認して記録する。
 
+同じAPI範囲を更新する途中でAPIMのARM配備が `Failed` になり、`state/gateway-api-closed-stage.json` がある場合は、原因を解消して次のコマンドを使います。同じコード・params・Core stateと、前回成功時の `state/gateway-api-source.json` が必要です。APIM上のポリシー、ルーティング、Productの現物を照合し、Bearer対象のProductが閉じたままであることを確認してから、API配備とGatewayのWAF設定を再開します。
+
+```sh
+python3 -B scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute --resume-closed-stage
+```
+
+初回配備でAPIMの子資源が部分的に作成された場合や、製品の関連付け・ポリシーに照合できない変更がある場合は、自動再開を停止します。Azure側の配備操作とローカルの保護記録を照合して復旧範囲を確認します。
+
 両アプリを続けて更新する場合は次を使います。既存の成功結果だけを理由に後続工程へ進まず、各子コマンドの今回の終了コードで判断します。
 
 ```sh
-python3 scripts/deploy_applications.py --config "$DEPLOY_PARAMS_FILE" --execute
+python3 scripts/operations/release.py --component all --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
 
@@ -124,7 +126,7 @@ Coreの診断ログ・LAW export・監査Storageと、企業共通監査は所�
 
 保守の責任者は、担当者本人の Microsoft Entra Object ID に、作業の開始前に必要な権限を手動で付与し、終了時に回収します。作業票に対象・操作・開始／終了時刻・付与担当・回収担当を記録します。手動のAzure RBAC割当は期限で自動削除されません。PIMが利用できる場合は任意で使えます。
 
-初回構築では、監査用のPE・DNS、管理VM上のクライアントと対象一覧、担当者本人向けのACA保守ロール定義を準備します。Gateway・Portalの配備時には、実際に構築したApp・Job・DBを対象一覧へ追加します。[既存環境への限定適用](../scripts/operations/maintenance.py)もロール定義と対象一覧を構築します。旧資材で既に作ったVMの保守権限を回収する場合、対象MI・割当スコープ・DBユーザー・証明書更新の依存を別途照合し、権限管理者が個別に回収します。
+初回構築では、監査用のPE・DNS、管理VM上のクライアントと対象一覧、担当者本人向けのACA保守ロール定義を準備します。Gateway・Portalの配備時には、実際に構築したApp・Job・DBを対象一覧へ追加します。
 
 ### 保守の付与・回収
 
@@ -156,7 +158,7 @@ az role assignment delete --ids '<RECORDED_ASSIGNMENT_ID>'
 
 ### 保護入出力とSQLを含む8種類の操作
 
-[管理クライアント](../scripts/management_client.py) と対象一覧は `/opt/core/maintenance/` にroot所有で配置されます。担当者はVM内で本人のAzure CLIセッションを作り、`sudo`を付けずに実行します。入出力先は本人所有の700ディレクトリ、入力ファイルは600にします。チェックアウト内ではルートの `.local/<environment>/` を使います。出力は未作成のファイルを指定し、本文を端末や公開ログへ転記しません。
+[管理クライアント](../scripts/operations/management_client.py) と対象一覧は `/opt/core/maintenance/` にroot所有で配置されます。担当者はVM内で本人のAzure CLIセッションを作り、`sudo`を付けずに実行します。入出力先は本人所有の700ディレクトリ、入力ファイルは600にします。チェックアウト内ではルートの `.local/<environment>/` を使います。出力は未作成のファイルを指定し、本文を端末や公開ログへ転記しません。
 
 ブラウザーを使えない管理VMでは、組織がデバイスコード認証を許可している場合に以下のように本人でサインインします。認証コードは保護された接続で扱います。本人のCLIプロファイルは共有せず、保守クライアントの実行中にアカウントを切り替えません。条件付きアクセスで制限される場合は、組織で認められた本人認証を確認します。クライアントはAzure CLIの現在のテナントと本人のMicrosoft Graph Object IDを確認するため、ゲストからMicrosoft Graphへの既存Entra経路と、Azure CLIが本人プロファイルを取得できることも受入で確かめます。 [Azure CLIで本人のObject IDを確認する手順](https://learn.microsoft.com/en-us/entra/identity/users/how-to-get-signed-in-identity)
 
@@ -251,10 +253,10 @@ Locked WORMがある場合は変更前に停止します。Unlockedでも構成�
 2. 第1章で選んだ`DEPLOY_PROFILE`を設定し、次のコマンドを実行する。コマンドは対応する撤去記録を検査してから、paramsの`services.apimInstanceId`を更新する。旧stateは`.local/<environment>/history/apim/<旧識別子>/state/`へ保管し、通常の`state/`は新しい構築用に空にする。paramsの他の設定とsecretは保持する。
 
    ```sh
-   python3 -I -B scripts/prepare_local_environment.py \
+   python3 -I -B scripts/setup/prepare_local_environment.py \
      --environment "$DEPLOY_ENVIRONMENT" --profile "$DEPLOY_PROFILE" \
      --new-apim-instance
-   python3 -I -B scripts/prepare_registration.py --config "$DEPLOY_PARAMS_FILE"
+   python3 -I -B scripts/setup/prepare_registration.py --config "$DEPLOY_PARAMS_FILE"
    ```
 
 3. [ToolsのWeb戻り先の確認](setup/03-entra-tools.md#cmのweb戻り先を確認する)に従い、その環境のCM用Web戻り先1件を新しいURIへ置き換え、保存後に確認する。Gateway・Portalの公開名を継続する場合は、その2件の戻り先、アプリの権限・同意、有効なsecretを保持する。

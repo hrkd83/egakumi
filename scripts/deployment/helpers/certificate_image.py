@@ -11,7 +11,7 @@ import tarfile
 import time
 import uuid
 
-from management_client import IMDS_ORIGIN
+from operations.management_client import IMDS_ORIGIN
 
 from . import credential_image, image_build
 from .paths import REPOSITORY

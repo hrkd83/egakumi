@@ -21,7 +21,7 @@ OIDCの `openid profile email` で本人確認します。アプリごとの登�
 リポジトリ直下で、[第01章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)の`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を設定して、まず変更予定を確認します。計画だけではファイル作成、秘密の読み取り、Azureへの操作は行いません。
 
 ```sh
-python3 scripts/prepare_portal_local_auth.py --config "$DEPLOY_PARAMS_FILE"
+python3 scripts/portal_local/prepare_portal_local_auth.py --config "$DEPLOY_PARAMS_FILE"
 ```
 
 `--execute`を付けて実行すると、指定した環境の証明書記録を使い、以下のGit管理外ファイルを保護して保存します。元のparamsは変更しません。設定が一致する既存ファイルは再利用し、上書きしません。
@@ -32,7 +32,7 @@ python3 scripts/prepare_portal_local_auth.py --config "$DEPLOY_PARAMS_FILE"
 SQL Server Developerは開発・テスト専用で、本番業務に使用できません。[Microsoftの説明](https://learn.microsoft.com/en-us/sql/sql-server/editions-and-components-of-sql-server-2022?view=sql-server-ver16#sql-server-editions)とライセンスを確認し、同意した場合だけ実行します。
 
 ```sh
-python3 scripts/prepare_portal_local_auth.py \
+python3 scripts/portal_local/prepare_portal_local_auth.py \
   --config "$DEPLOY_PARAMS_FILE" --execute --accept-sql-eula
 ```
 
@@ -49,9 +49,9 @@ PORTAL_LOCAL_SQL_ENV_FILE="$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admi
   docker compose --env-file "$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admin.env" \
   -f apps/portal/compose.local.yml up -d --wait
 npm --prefix apps/portal ci
-python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" \
+python3 scripts/portal_local/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" \
   --admin -- npm run db:bootstrap-local
-python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" -- npm run dev
+python3 scripts/portal_local/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" -- npm run dev
 ```
 
 `run_portal_local.py`は対象環境の保護ファイルを子プロセスの環境へ読み込み、`apps/portal`を作業フォルダーとしてコマンドを実行します。`--admin`はSQL初期化・管理作業にだけ指定し、通常の`npm run dev`へ管理者資格情報を渡しません。
@@ -70,7 +70,7 @@ SQL Server Developerのライセンスを確認し、同意した場合に実行
 PYTHONPATH=scripts python3 -B - <<'PY'
 from secrets import token_urlsafe
 from deployment.helpers.paths import LocalPaths, REPOSITORY
-from prepare_portal_local_auth import admin_settings, write_new_pair
+from portal_local.prepare_portal_local_auth import admin_settings, write_new_pair
 
 workspace = LocalPaths(REPOSITORY, "portal-sql")
 target = workspace.checked(workspace.secrets / "portal-local-sql-admin.env")

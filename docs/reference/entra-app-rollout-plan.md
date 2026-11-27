@@ -35,7 +35,7 @@
 
 承認したPII入口の分割は、APIMではなくApp GatewayのWAF設定である。現行構成では、`g-pii-rest`を`/tools/pii/v1/redact`の`RequestArgValues / Equals / text`だけへ、`g-pii-mcp`を`/tools/pii-v1-mcp/mcp`の`RequestArgValues / Equals / params.arguments.text`だけへ対応付ける。Portalの`p-pii-redact`は維持する。このWAF変更はAPIMの入力検査とは独立し、APIのURL・キー／Bearer認証・モデル機能・OBOを変更しない。URI制約と他のWAF規則は未棚卸のまま保持する。
 
-PII分割のAzure反映・読戻しと、正常なREST要求およびMCP初期化・ツール照会・PII実行の通過・マスキング確認を完了した。旧`g-pii-redact`は参照がないことを確認して退役した。WAFとAPIMの適用・受入は分け、一連の変更を一括コミットする。通常reconcileによる旧資源の自動削除へは変更せず、移行時の保持・復旧と成功後の限定退役を区別する。移行元は通常の新規構成と区別し、同名queryへの除外やAzureのJSON解析の挙動をローカル生成だけで確認済みとは扱わない。[設定と移行順](../testing/waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)を参照する。
+PII分割のAzure反映・読戻しと、正常なREST要求およびMCP初期化・ツール照会・PII実行の通過・マスキング確認を完了した。旧`g-pii-redact`は参照がないことを確認して退役した。同名queryへの除外とAzureのJSON解析は、対象環境で受入時に確認する。[設定と受入確認](../testing/waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)を参照する。
 
 `core-query-observation`と`core-query-telemetry`は専用フォルダの同名XML／C#へ整理し、Azureの日本語説明・新人向けの処理説明を揃える。APIの[REST、WebSocket、外部MCP、生成MCP](../../apps/api-gateway/policies/api-templates/README.md)は`api-templates/`、All APIsの全体ポリシーは`service.xml`で管理する。外部MCP用の観測フローは`mcp/external.xml`に定義する。
 
@@ -176,7 +176,7 @@ Portal証明書を非exportableなKV鍵で生成するにはAzure側Key Vaultが
 | 対象 | 計画に含める改訂 |
 |---|---|
 | [Core前のEntra登録](../../README.md#新規クローンから構築する)と[Core後の証明書登録](../setup/09-egakumi-portal.md) | 4アプリの責務、機能別の必要登録、準備順、画面ごとの設定、同意・割当、確認値、新規／移行の分岐を示す案内へ改訂。詳細は各章のアプリ別手順を使う |
-| [prepare_registration.py](../../scripts/prepare_registration.py)・[registration-names.bicepparam](../../infra/registration-names.bicepparam)・[登録準備試験](../../tests/test_prepare_registration.py) | 役割別の予定redirect・必要な入力を案内できる形式へ拡張。Portal hostとCM用の戻り先は用途を分けて検査。既存命名出力と呼出元の互換性も確認。登録済みIDやsecretを要求せず事前計算できる契約を維持 |
+| [prepare_registration.py](../../scripts/setup/prepare_registration.py)・[registration-names.bicepparam](../../infra/registration-names.bicepparam)・[登録準備試験](../../tests/test_prepare_registration.py) | 役割別の予定redirect・必要な入力を案内できる形式へ拡張。Portal hostとCM用の戻り先は用途を分けて検査。既存命名出力と呼出元の互換性も確認。登録済みIDやsecretを要求せず事前計算できる契約を維持 |
 | [07-params.md](../setup/07-params.md)・schemas・configuration.py | 基盤用4アプリのclient ID／認証tenant／scope／資格情報参照の記入先を役割別に説明。CM providerからPortalや接続窓口の設定を暗黙に導出しない |
 | [portal.md](../setup/12-deploy-portal.md)・[Portalローカル認証](../testing/portal-local-auth.md) | Portal専用アプリ、公開／開発callback、証明書準備、API追加同意、KV到達・署名認可、ローカルruntime設定へ更新 |
 | [credential-manager-login.md](credential-manager-login.md)・[credential-sql.md](../setup/11-deploy-gateway.md) | toolsのCM認可とcredentialの本人確認を分離。redirect、provider/profile、secret参照、旧接続移行の対応表を更新 |
@@ -284,10 +284,10 @@ MCPのREST-backed operationIdは同じREST操作へ関連付け、Bearer検証�
 
 ### 試験用のPKCE補助CLI
 
-[entra_signin.py](../../scripts/entra_signin.py)の`user-token`は、MSAL PublicClientApplicationとAuthorization Code＋PKCEで試験用access tokenを取得する再利用候補である。既存登録だけを使い、secret・Graph User.Readを追加しない。認証tenant、試験に使うPublic clientのID、登録済みloopbackを明示する。ここではAPIが受理する委任tokenを確認する。採用する端末のサインインや更新は、その端末で個別に試験する。
+[entra_signin.py](../../scripts/clients/entra_signin.py)の`user-token`は、MSAL PublicClientApplicationとAuthorization Code＋PKCEで試験用access tokenを取得する再利用候補である。既存登録だけを使い、secret・Graph User.Readを追加しない。認証tenant、試験に使うPublic clientのID、登録済みloopbackを明示する。ここではAPIが受理する委任tokenを確認する。採用する端末のサインインや更新は、その端末で個別に試験する。
 
 ```bash
-python3 -B scripts/entra_signin.py user-token \
+python3 -B scripts/clients/entra_signin.py user-token \
   --environment '<ENVIRONMENT>' \
   --tenant-id '<AUTH_TENANT_ID>' --client-id '<PUBLIC_CLIENT_ID>' \
   --scope 'api://<API_APP_CLIENT_ID>/Gateway.Invoke' \
@@ -302,7 +302,7 @@ python3 -B scripts/entra_signin.py user-token \
 
 共有先への書込みは、呼出し側の`OperationContext.locked()`で同じ環境の`.operations.lock`を保持したままCLIを子として実行し、ほかの通常操作と排他する。CLI内には別のlock実装を追加しない。
 
-依存は[auth-requirements.txt](../../scripts/auth-requirements.txt)のMSAL 1.39.0を専用runtimeへ用意する。このMSALは`openid`・`profile`・`offline_access`を内部追加するため、補助CLIの`--scope`へこれらを明示すると予約scopeとして失敗する。クライアントへのOAuth設定は採用する製品の仕様に従う。補助CLIは毎回対話flowを開始し、保存cacheからのsilent refresh専用操作を実装していない。
+依存は[auth-requirements.txt](../../scripts/clients/auth-requirements.txt)のMSAL 1.39.0を専用runtimeへ用意する。このMSALは`openid`・`profile`・`offline_access`を内部追加するため、補助CLIの`--scope`へこれらを明示すると予約scopeとして失敗する。クライアントへのOAuth設定は採用する製品の仕様に従う。補助CLIは毎回対話flowを開始し、保存cacheからのsilent refresh専用操作を実装していない。
 
 `protected_text`はPOSIXの所有者・0600とWindows nativeの実DACLを検査し、新規の空ファイルを保護してから書き込む。既存の共有ファイルの権限を自動修復しない。WSL等から使う場合もWindowsブラウザー→WSL loopbackの到達とport/pathを先に非秘密のcallback試験で確認する。実Entraサインインと採用クライアントでの更新・モデル推論は未実施として記録し、ローカル保存・callback・MSALの合成PKCE試験を実接続のPASSへ置き換えない。
 

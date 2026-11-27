@@ -14,7 +14,7 @@ PortalはMicrosoft Entraでサインインし、Model GatewayとTool Gatewayを�
 
 Coreが作る初期Container AppにはMicrosoftの初期イメージが載ります。公開App Gatewayが使うHTTPSプローブは `/api/health` のHTTP 200を要求するため、Portal本体の配備まではバックエンドが異常と判定されます。
 
-実装は [apps/portal](../../apps/portal/) にあり、[deploy](../../apps/portal/deploy/) にBicepとビルド処理、[sql](../../apps/portal/sql/) にSQLマイグレーションがあります。端末とCIは同じ [deploy_portal.py](../../scripts/deploy_portal.py) を使います。
+実装は [apps/portal](../../apps/portal/) にあり、[deploy](../../apps/portal/deploy/) にBicepとビルド処理、[sql](../../apps/portal/sql/) にSQLマイグレーションがあります。端末とCIは同じ [deploy_portal.py](../../scripts/deployment/deploy_portal.py) を使います。
 
 ## 配備する
 
@@ -23,8 +23,8 @@ Core、Entra登録、Gateway配備が完了したら、同じ環境の保護para
 対象Azure環境へログインし、Python 3.11以上とBicep CLIを使える端末で、リポジトリのルートから計画を確認して実行します。
 
 ```sh
-python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
-python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
+python3 -B scripts/deployment/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/deployment/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
 1. 管理VMで公開ソースをビルドし、非公開ACRへPortalイメージを登録します。管理VMにビルド時だけ必要な `AcrPush` を割り当て、終了後に回収します。

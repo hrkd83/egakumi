@@ -1,4 +1,4 @@
-"""管理VMが検証した公開証明書を取得し、Portalの固定参照を保護stateへ渡す。"""
+"""証明書ジョブが返した公開証明書とPortalの版固定参照を保護stateへ保存する。"""
 from __future__ import annotations
 
 import base64
@@ -10,12 +10,8 @@ import re
 import tempfile
 import time
 
-from .paths import local_paths, private_parent
+from .paths import private_parent
 from .private_permissions import check_private_permissions, protect_new_path
-
-MARKER = 'EGAKUMI_PORTAL_AUTH:'
-COMPUTE_API = '2024-07-01'
-
 
 def application_vault_origin(stem):
     """選択済み環境に対応するアプリ用Vaultのデータプレーン起点。"""
@@ -48,17 +44,6 @@ def certificate_record(value: dict, config: dict, *, allow_expired=False, certif
         raise ValueError('Portal authentication certificate material is incomplete or differs from the selected vault') from None
 
 
-def parse_worker_output(output: str, config: dict) -> dict:
-    """Run Commandの出力から単一の公開metadataだけを読みます。本文は例外へ含めません。"""
-    try:
-        lines = [line[len(MARKER):] for line in output.splitlines() if line.startswith(MARKER)]
-        if len(lines) != 1 or len(lines[0]) > 24000:
-            raise ValueError()
-        return certificate_record(json.loads(lines[0]), config)
-    except (ValueError, TypeError, AttributeError):
-        raise ValueError('The management VM did not return verified public certificate material') from None
-
-
 def save_public_certificate(workspace, record: dict, filename='portal-auth-public.cer') -> None:
     """Entraへ渡す公開証明書だけを環境別generatedへ原子的に保存します。"""
     target = workspace.checked(workspace.root / 'generated' / filename)
@@ -78,27 +63,6 @@ def save_public_certificate(workspace, record: dict, filename='portal-auth-publi
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
-
-
-def collect_initial_certificate(config, outputs, transport, save_json, *, workspace=None) -> None:
-    """初期資材が実行したexact Run Commandの終了を確認し、currentを勝手に置換しません。"""
-    vm = outputs['managementVm']['id']
-    expected_vm = ('/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['maint']
-                   + '/providers/Microsoft.Compute/virtualMachines/vm-' + config['resourceStem'] + '-mgmt')
-    if vm.casefold() != expected_vm.casefold():
-        raise ValueError('Initial certificate execution belongs to another management VM')
-    resource = outputs['portal']['authCertificateRunCommandId']
-    if resource != vm + '/runCommands/initialize-portal-auth-certificate':
-        raise ValueError('Initial authentication certificate command differs from the recorded management VM')
-    response = transport.request('GET', resource + '?api-version=' + COMPUTE_API + '&$expand=instanceView')
-    body = response.get('body') or {}
-    view = body.get('properties', {}).get('instanceView') or body.get('instanceView') or {}
-    if (response.get('statusCode') != 200 or body.get('id') != resource
-            or view.get('executionState') != 'Succeeded' or view.get('exitCode') != 0):
-        raise ValueError('Initial authentication certificate issuance has not completed successfully')
-    record = parse_worker_output(view.get('output', ''), config)
-    workspace = workspace if workspace is not None else local_paths(config)
-    store_initial_certificate(config, workspace, record, save_json)
 
 
 def store_initial_certificate(config, workspace, record, save_json):

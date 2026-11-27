@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
 from .paths import REPOSITORY
-from .apim_audit import render_audit_policy, _with_source_line_comments, _without_source_line_comments
+from .apim_audit import render_audit_policy, _with_source_line_comments
 from .credential_login import key_only_gateway_telemetry
 
 
@@ -24,145 +24,6 @@ AUTHENTICATION_FRAGMENT_FILES = {
     for identifier in AUTHENTICATION_FRAGMENT_IDS
 }
 COMMON_AUTHENTICATION_SOURCE = "fragments/authentication/core-common-authentication/core-common-authentication.cs"
-
-# This is a reader for the two fixed authentication decisions and their Global
-# call sites, not a general XML/C# equivalence checker. Current generation,
-# validation and management-plane readback keep their literal comparisons.
-_PREVIOUS_AUTHENTICATION_ROOTS = {
-    COMMON_AUTHENTICATION_FRAGMENT_ID: ("choose", "include-fragment"),
-    ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID: ("choose", "include-fragment"),
-    "core-request-context": ("include-fragment",),
-    "core-trusted-ingress": ("include-fragment",),
-    "core-credential-browser-exception": ("include-fragment",),
-    "core-audit-authenticated-subject": ("include-fragment",),
-    "core-response-request-id": ("set-header",),
-    "core-error-request-id": ("set-header",),
-}
-_CSHARP_IDENTIFIER = re.compile(r"@?[A-Za-z_][A-Za-z_0-9]*")
-_CSHARP_NUMBER = re.compile(
-    r"(?:0[xX][0-9A-Fa-f](?:_*[0-9A-Fa-f])*(?:[uU][lL]?|[lL][uU]?)?"
-    r"|0[bB][01](?:_*[01])*(?:[uU][lL]?|[lL][uU]?)?"
-    r"|(?:[0-9](?:_*[0-9])*\.[0-9](?:_*[0-9])*|\.[0-9](?:_*[0-9])*"
-    r"|[0-9](?:_*[0-9])*)(?:[eE][+-]?[0-9](?:_*[0-9])*)?"
-    r"(?:[fFdDmM]|[uU][lL]?|[lL][uU]?)?)")
-_CSHARP_OPERATORS = tuple(sorted({
-    ">>>=", ">>>", "<<=", ">>=", "??=", "++", "--", "&&", "||", "??", "?.", "?[",
-    "=>", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=",
-    "<<", ">>", "::", "..", "+", "-", "*", "/", "%", "&", "|", "^", "!", "~",
-    "=", "<", ">", "?", ":", ".", ",", ";", "(", ")", "[", "]", "{", "}",
-}, key=lambda token: (-len(token), token)))
-
-
-def _previous_authentication_expression_tokens(value: str) -> tuple[str, ...]:
-    """Tokenize only fixed APIM authentication expressions; keep every raw literal.
-
-    Comments and ASCII whitespace are the only discarded material. Operators
-    use maximal munch, so adding whitespace cannot merge or split tokens.
-    Interpolated/raw strings, directives and unrecognized syntax stop migration
-    instead of guessing their meaning; the fixed authentication source uses none.
-    """
-    source = value.strip(" \t\r\n\f\v")
-    if not source.startswith(("@{", "@(")):
-        raise ValueError("Previous authentication comparison requires an APIM expression")
-    tokens = [source[:2]]
-    position = 2
-    while position < len(source):
-        character = source[position]
-        if character in " \t\r\n\f\v":
-            position += 1
-            continue
-        if source.startswith("//", position):
-            end = re.search(r"[\r\n]", source[position + 2:])
-            position = len(source) if end is None else position + 2 + end.start()
-            continue
-        if source.startswith("/*", position):
-            end = source.find("*/", position + 2)
-            if end == -1:
-                raise ValueError("Previous authentication expression contains an unclosed comment")
-            position = end + 2
-            continue
-        if character == "#" or source.startswith(("$\"", "$@\"", "@$\"", '\"\"\"'), position):
-            raise ValueError("Previous authentication expression contains unsupported syntax")
-        verbatim = source.startswith('@"', position)
-        if verbatim or character in "\"'":
-            start = position
-            delimiter = '"' if verbatim else character
-            position += 2 if verbatim else 1
-            body_start = position
-            while position < len(source):
-                character = source[position]
-                if character == delimiter:
-                    if verbatim and source.startswith('""', position):
-                        position += 2
-                        continue
-                    if delimiter == "'" and position == body_start:
-                        raise ValueError("Previous authentication expression contains an empty character literal")
-                    position += 1
-                    tokens.append(source[start:position])
-                    break
-                if not verbatim and character in "\r\n":
-                    raise ValueError("Previous authentication expression contains a multiline regular literal")
-                if not verbatim and character == "\\":
-                    if position + 1 >= len(source) or source[position + 1] in "\r\n":
-                        raise ValueError("Previous authentication expression contains an incomplete literal escape")
-                    position += 2
-                else:
-                    position += 1
-            else:
-                raise ValueError("Previous authentication expression contains an unclosed literal")
-            continue
-        if character == "$":
-            raise ValueError("Previous authentication expression contains unsupported interpolation")
-        number = _CSHARP_NUMBER.match(source, position) if character.isascii() and (
-            character.isdigit() or character == "." and position + 1 < len(source) and source[position + 1].isdigit()) else None
-        if number is not None:
-            tokens.append(number.group())
-            position = number.end()
-            continue
-        identifier = _CSHARP_IDENTIFIER.match(source, position)
-        if identifier is not None:
-            tokens.append(identifier.group())
-            position = identifier.end()
-            continue
-        operator = next((token for token in _CSHARP_OPERATORS if source.startswith(token, position)), None)
-        if operator is None:
-            raise ValueError("Previous authentication expression contains an unknown token")
-        tokens.append(operator)
-        position += len(operator)
-    return tuple(tokens)
-
-
-def _previous_authentication_source_matches(actual: ET.Element, expected: ET.Element) -> bool:
-    """Compare a known generated authentication decision/Global owned block only."""
-    identifier = expected.get("id")
-    if (expected.tag not in _PREVIOUS_AUTHENTICATION_ROOTS.get(identifier, ())
-            or actual.tag != expected.tag or actual.get("id") != identifier):
-        raise ValueError("Previous explanations are limited to fixed authentication decisions and Global call sites")
-
-    def content(value):
-        return value if value and value.strip() else ""
-
-    def same_value(observed, fixed):
-        if fixed.lstrip().startswith(("@{", "@(")):
-            if not observed.lstrip().startswith(("@{", "@(")):
-                return False
-            return _previous_authentication_expression_tokens(observed) == _previous_authentication_expression_tokens(fixed)
-        return observed == fixed
-
-    def same_node(observed, fixed):
-        if observed.tag != fixed.tag or set(observed.attrib) != set(fixed.attrib):
-            return False
-        if any(not same_value(observed.attrib[name], value) for name, value in fixed.attrib.items()):
-            return False
-        if not same_value(content(observed.text), content(fixed.text)):
-            return False
-        children = [node for node in observed if isinstance(node.tag, str)]
-        expected_children = [node for node in fixed if isinstance(node.tag, str)]
-        return len(children) == len(expected_children) and all(
-            same_node(child, wanted) and same_value(content(child.tail), content(wanted.tail))
-            for child, wanted in zip(children, expected_children))
-
-    return same_node(actual, expected)
 
 
 def extract_common_authentication_sections(source: str) -> dict[str, str]:
@@ -249,10 +110,10 @@ def _render_telemetry(value: str) -> str:
     return render_audit_policy(value, source_comments="compact")
 
 
-def render_common_authentication_fragment(*, entra_enabled: bool, source_comments: str = "full") -> str:
+def render_common_authentication_fragment(*, entra_enabled: bool) -> str:
     """同名XMLへ同名CSの5区画を差し込み、現在と同じ共通認証を生成する。"""
-    if type(entra_enabled) is not bool or source_comments not in ("full", "omit"):
-        raise ValueError("Authentication fragment rendering requires an explicit state and comment mode")
+    if type(entra_enabled) is not bool:
+        raise ValueError("Authentication fragment rendering requires an explicit Boolean state")
     directory = REPOSITORY / "apps/api-gateway/policies"
     value = (directory / AUTHENTICATION_FRAGMENT_FILES[COMMON_AUTHENTICATION_FRAGMENT_ID]).read_text(encoding="utf-8")
     sections = extract_common_authentication_sections((directory / COMMON_AUTHENTICATION_SOURCE).read_text(encoding="utf-8"))
@@ -260,15 +121,7 @@ def render_common_authentication_fragment(*, entra_enabled: bool, source_comment
         marker = "__CORE_COMMON_AUTHENTICATION_" + section.upper().replace("-", "_") + "_CSHARP__"
         if value.count(marker) != 1:
             raise ValueError("Each authentication section needs exactly one XML insertion point")
-        if source_comments == "full":
-            body = _with_source_line_comments(body)
-        else:
-            # 直前のinline式は区画ごとの固定インデントを持つ。新説明行だけを除き、その空白も正確に戻す。
-            body = _without_source_line_comments(body)
-            restore = {"key-request-validation": 6, "entra-failure-subject": 2}.get(section, 0)
-            if restore:
-                body = "\n".join(" " * restore + line if line else line for line in body.split("\n"))
-        value = value.replace(marker, escape(body, {'"': '&quot;', "'": '&apos;'}), 1)
+        value = value.replace(marker, escape(_with_source_line_comments(body), {'"': '&quot;', "'": '&apos;'}), 1)
     start, end = "<!-- core-entra-branch-start -->", "<!-- core-entra-branch-end -->"
     if value.count(start) != 1 or value.count(end) != 1:
         raise ValueError("Authentication XML needs its fixed Entra branch boundary")
@@ -284,25 +137,19 @@ def render_common_authentication_fragment(*, entra_enabled: bool, source_comment
     return value
 
 
-def render_entra_authentication_error_fragment(*, source_comments: str = "full") -> str:
+def render_entra_authentication_error_fragment() -> str:
     """標準Entra検証の失敗だけを、現行の監査と401応答へつなげる。"""
-    if source_comments not in ("full", "omit"):
-        raise ValueError("Authentication fragment comments require a known mode")
     directory = REPOSITORY / "apps/api-gateway/policies"
     value = _render_telemetry((directory / AUTHENTICATION_FRAGMENT_FILES[ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID]).read_text(encoding="utf-8"))
     _fragment(ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID, value)
     return value
 
 
-def render_common_authentication_fragments(*, entra_enabled: bool, source_comments: str = "full") -> dict[str, str]:
-    fragments = {COMMON_AUTHENTICATION_FRAGMENT_ID: render_common_authentication_fragment(
-        entra_enabled=entra_enabled, source_comments=source_comments)}
+def render_common_authentication_fragments(*, entra_enabled: bool) -> dict[str, str]:
+    fragments = {COMMON_AUTHENTICATION_FRAGMENT_ID: render_common_authentication_fragment(entra_enabled=entra_enabled)}
     if entra_enabled:
-        fragments[ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID] = render_entra_authentication_error_fragment(source_comments=source_comments)
+        fragments[ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID] = render_entra_authentication_error_fragment()
     return fragments
-
-
-render_authentication_fragments = render_common_authentication_fragments
 
 
 def render_operation_entra_authentication_error(xml: str, *, entra_enabled: bool = False) -> str:
@@ -347,18 +194,6 @@ def expand_operation_entra_authentication_error(xml: str) -> str:
 
 def expand_common_authentication_fragments(xml: str, fragments: dict[str, str], *, entra_enabled: bool) -> str:
     """明示された信頼済み辞書を固定生成元と完全照合してから、Globalの固定位置へ展開する。"""
-    return _expand_common_authentication_fragments(xml, fragments, entra_enabled=entra_enabled,
-                                                  previous_explanations=False)
-
-
-def expand_previous_common_authentication_fragments(xml: str, fragments: dict[str, str], *, entra_enabled: bool) -> str:
-    """移行前だけ、固定実コードとXML形状が一致する旧説明を確認し、旧rawから展開する。"""
-    return _expand_common_authentication_fragments(xml, fragments, entra_enabled=entra_enabled,
-                                                  previous_explanations=True)
-
-
-def _expand_common_authentication_fragments(xml: str, fragments: dict[str, str], *, entra_enabled: bool,
-                                           previous_explanations: bool) -> str:
     root = _xml(xml)
     if root.tag != "policies":
         if any(node.get("fragment-id") in AUTHENTICATION_FRAGMENT_IDS for node in root.iter("include-fragment")):
@@ -375,17 +210,7 @@ def _expand_common_authentication_fragments(xml: str, fragments: dict[str, str],
     for identifier, value in fragments.items():
         fragment = _fragment(identifier, value)
         fixed = _fragment(identifier, expected[identifier])
-        matches = (_previous_authentication_source_matches(fragment[0], fixed[0]) if previous_explanations
-                   else _structure(fragment) == _structure(fixed))
-        if previous_explanations:
-            # Expansion inserts the choose only. Do not discard unexpected text
-            # outside it while recognizing the previous complete leaf source.
-            def wrapper_content(value):
-                return value if value and value.strip() else ""
-            matches = matches and all(wrapper_content(observed) == wrapper_content(wanted)
-                                      for observed, wanted in ((fragment.text, fixed.text),
-                                                               (fragment[0].tail, fixed[0].tail)))
-        if not matches:
+        if _structure(fragment) != _structure(fixed):
             raise ValueError("Authentication fragment differs from its fixed generated source")
         parsed[identifier] = fragment
     expected_ids = list(expected)

@@ -7,8 +7,8 @@ param tags object = {}
 @description('構築したVM・App・Job・環境・監視先・監査コンテナーの内部inventory。秘密tokenは含めません。')
 param inventory object
 
-var clientSource = replace(loadTextContent('../../../scripts/management_client.py'), '\r\n', '\n')
-var requirements = loadTextContent('../../../scripts/maintenance-requirements.txt')
+var clientSource = replace(loadTextContent('../../../scripts/operations/management_client.py'), '\r\n', '\n')
+var requirements = loadTextContent('../../../scripts/operations/maintenance-requirements.txt')
 var installer = replace(loadTextContent('../../guest/prepare-management-client.sh'), '\r\n', '\n')
 var script = replace(replace(replace(installer, '__CLIENT_SOURCE_BASE64__', base64(clientSource)), '__CLIENT_REQUIREMENTS_BASE64__', base64(requirements)), '__CLIENT_INVENTORY_BASE64__', base64(string(inventory)))
 resource vm 'Microsoft.Compute/virtualMachines@2024-07-01' existing = { name: vmName }

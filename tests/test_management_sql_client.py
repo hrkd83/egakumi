@@ -12,7 +12,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import management_client as client
+from operations import management_client as client
 from test_management_client import OPERATOR_ID, fixture
 
 
@@ -93,13 +93,6 @@ class ManagementSqlClientTests(unittest.TestCase):
             else: value['sqlDatabases'][0]['id'] += ';TrustServerCertificate=yes'
             with self.subTest(mutation=mutation), self.assertRaises(client.MaintenanceError):
                 client.validate_inventory(value)
-
-    def test_legacy_core_inventory_upgrades_to_no_sql_targets_without_mutation(self):
-        legacy = fixture()
-        legacy.pop('sqlDatabases')
-        upgraded = client.validate_inventory(legacy)
-        self.assertEqual(upgraded['sqlDatabases'], [])
-        self.assertNotIn('sqlDatabases', legacy)
 
     def test_token_buffer_encrypted_proxy_connection_and_pooling_are_fixed(self):
         self.query()

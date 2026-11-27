@@ -1,18 +1,15 @@
-"""Compile management-client assets and compare initial/App/upgrade inventories."""
+"""Compile management-client assets and validate the Core and app inventories."""
 import base64
 import copy
 import re
 from pathlib import Path
-from types import SimpleNamespace
 import unittest
-from unittest import mock
 
 from bicep_helpers import compile_bicep
 from test_management_maintenance_rbac import MaintenanceExpression, SUBSCRIPTION
 from test_nsg_deployment_order import ancestors, dependency_graph, same_template
 from test_fixed_nsg_validation import fixture_config
 from deployment.helpers import management_client_assets as assets
-from operations.maintenance import MaintenanceUpgrade
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,9 +105,9 @@ class ManagementClientBicepTests(unittest.TestCase):
         script = properties['source']['script']
         embedded = dict(re.findall(r"export (CORE_MAINTENANCE_[A-Z_]+_B64)='([^']*)'", script))
         self.assertEqual(base64.b64decode(embedded['CORE_MAINTENANCE_SOURCE_B64']).decode(),
-                         (ROOT / 'scripts/management_client.py').read_text(encoding='utf-8'))
+                         (ROOT / 'scripts/operations/management_client.py').read_text(encoding='utf-8'))
         self.assertEqual(base64.b64decode(embedded['CORE_MAINTENANCE_REQUIREMENTS_B64']).decode().replace('\r\n', '\n'),
-                         (ROOT / 'scripts/maintenance-requirements.txt').read_text(encoding='utf-8'))
+                         (ROOT / 'scripts/operations/maintenance-requirements.txt').read_text(encoding='utf-8'))
         import json
         self.assertEqual(json.loads(base64.b64decode(embedded['CORE_MAINTENANCE_INVENTORY_B64'])), inventory)
         self.assertFalse(properties['asyncExecution'])
@@ -135,21 +132,19 @@ class ManagementClientBicepTests(unittest.TestCase):
         for suffix in required:
             with self.subTest(suffix=suffix): self.assertTrue(any(suffix in name for name in names))
 
-    def test_core_after_both_apps_and_existing_upgrade_produce_identical_inventory(self):
+    def test_app_deployments_extend_the_constructed_core_inventory(self):
         config, parameters, _, state = self.fixture()
         core = resolve(self.core, self.core['outputs']['managementClientInventory']['value'], parameters)
         combined = copy.deepcopy(core)
         for component in ('portal', 'gateway'):
-            outputs = {'managementMaintenance': assets._expected_targets(config, broker_separated=True)[component]}
+            outputs = {'managementMaintenance': assets._expected_targets(config)[component]}
             combined, _ = assets._merge_outputs(config, combined, outputs, component)
-        plan = {'principalId': core['managementPrincipalId'], 'auditStorage': state['outputs']['auditStorage'],
-                'sqlDatabases': combined['sqlDatabases'],
-                'applicationNames': [value.rsplit('/', 1)[-1] for value in combined['applications']],
-                'jobNames': [value.rsplit('/', 1)[-1] for value in combined['jobs']],
-                'environmentNames': [value.rsplit('/', 1)[-1] for value in combined['environments']]}
-        context = SimpleNamespace(config=config, state=state, transport=mock.Mock())
-        upgraded = MaintenanceUpgrade(context).client_inventory(plan)
-        self.assertEqual(upgraded, combined)
+        state['outputs']['managementClientInventory'] = combined
+        self.assertEqual(assets.management_client_inventory(config, state), combined)
+        self.assertEqual(len(combined['applications']), 2)
+        self.assertEqual(len(combined['jobs']), 3)
+        self.assertEqual({item['alias'] for item in combined['sqlDatabases']}, {'credentials', 'portal'})
+        self.assertEqual(combined['environments'], core['environments'])
 
     def test_broker_firewall_has_only_routed_azure_and_package_traffic(self):
         template = self.credential_network

@@ -60,7 +60,7 @@ python3 -B scripts/operations/portal_auth_certificate.py prepare --config "$DEPL
 python3 -B scripts/operations/portal_auth_certificate.py confirm-registration --config "$DEPLOY_PARAMS_FILE" --entra-registration-confirmed --execute
 python3 -B scripts/operations/portal_auth_certificate.py switch --config "$DEPLOY_PARAMS_FILE" --execute
 # ログイン、Bearer試用、Graph OBOの結果を確認してから進める
-python3 -B scripts/operations/portal_auth_certificate.py verify --config "$DEPLOY_PARAMS_FILE" --login-verified --graph-verified --job-verified --execute
+python3 -B scripts/operations/portal_auth_certificate.py verify --config "$DEPLOY_PARAMS_FILE" --login-verified --graph-verified --execute
 # Entra担当が旧公開証明書を削除
 python3 -B scripts/operations/portal_auth_certificate.py retire --config "$DEPLOY_PARAMS_FILE" --entra-old-certificate-removed --execute
 ```
@@ -85,11 +85,5 @@ python3 -B scripts/operations/portal_auth_certificate.py prepare --config "$DEPL
 ```
 
 KVの要求が送られたか不明でpendingも結果もない場合、checkpointを削除して再実行せず、運用担当がKVの現物と要求状況を確認してください。由来不明の既存証明書や他要求の証明書を自動採用しません。段階結果と実行記録を調査できるように保持します。保存の途中で失敗した場合も、既存stateを残して同じ段階から再開します。
-
-## 旧Portal構成の撤去
-
-新Portalの実受入後、ACA本体・Graphジョブに`MICROSOFT_CLIENT_SECRET`と旧KV secret参照が残っていないことを確認します。旧実行IDに残るPortal用途の`core-credential-<profile>` secret読取割当も、scope・principal・利用先を照合して撤去します。Bicepの条件で割当を作らなくなっても、incremental配備では既存の割当が自動削除されるとは限りません。
-
-Entra担当は旧アプリのPortal専用Redirect URIだけを利用先確認後に撤去します。CMが使うsecret、Redirect URI、権限は残します。旧secret値・CM共用資材を自動削除する操作はありません。旧イメージによる復旧を終えた後、ソースに残る移行用secret処理も別途差分確認して撤去します。
 
 実環境の証跡は`.local/<environment>/evidence/`へ保存します。公開の検証記録には独立した合成値と一般化した結果だけを記載します。[構築手順](../setup/09-egakumi-portal.md)と[受入試験](../testing/portal-authentication-tests.md)を併せて確認してください。

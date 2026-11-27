@@ -14,7 +14,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from deployment import lifecycle
-from deployment.helpers import cleanup, grpc_lifecycle
+from deployment.helpers import cleanup, ingress
 from configuration_fixtures import connection_fixture
 from lifecycle_fixtures import LifecycleFixture, ScriptedTransport
 
@@ -33,7 +33,7 @@ class CredentialCleanupCliTests(LifecycleFixture, unittest.TestCase):
         lifecycle.protected_json(self.paths.params, {"fixture": "synthetic-config"})
         lifecycle.protected_json(self.paths.parameters, {"fixture": "SYNTHETIC_PRIVATE_INPUT"})
         self.generated_credentials = [
-            grpc_lifecycle.secret_path(self.config, self.root, purpose)
+            ingress.secret_path(self.config, self.root, purpose)
             for purpose in ("l7-ingress", "realtime-ticket")
         ]
         for path in self.generated_credentials:

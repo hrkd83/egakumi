@@ -8,7 +8,7 @@ from arm_helpers import DiscoveryExpression
 from bicep_helpers import compile_bicep
 from configuration_fixtures import CORE, configuration, fixture
 from deployment.helpers.diagnostics import canonical_settings
-import standard_apis
+from catalog import standard_apis
 
 
 def foundation_configuration():

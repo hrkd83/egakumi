@@ -39,7 +39,10 @@ class SecretTests(unittest.TestCase):
                   'subscriptionId': TENANT, 'azureTenantId': TENANT, 'entraTenantId': TENANT,
                   'resourceGroupNames': {'svc': 'rg-test-fixture-svc'},
                   'services': {'apimInstanceId': 'abc123'}, 'credentialProviders': [provider],
-                  'gateway': {'authentication': {'credentialLogin': {'providerNames': ['graph']}}}}
+                  'gateway': {'authentication': {'credentialLogin': {'providerNames': ['graph'], 'identity': {
+                      'clientId': OBJECT, 'tenantId': TENANT,
+                      'clientSecretFile': str(self.workspace.secrets / 'identity-fixture.txt'),
+                  }}}}}
         scope = f'/subscriptions/{TENANT}/resourceGroups/rg-test-fixture-svc/providers/'
         state = {'serviceResourceIds': {'keyVault': scope + 'Microsoft.KeyVault/vaults/kv-test-fixture',
                                        'apim': scope + 'Microsoft.ApiManagement/service/apim-test-fixture-abc123'}}
@@ -49,7 +52,7 @@ class SecretTests(unittest.TestCase):
         self.receipt = self.workspace.state / 'operations/rotation.json'
         self.credentials = [{'keyId': OLD_ID, 'endDateTime': self.future()},
                             {'keyId': NEW_ID, 'endDateTime': self.future()}]
-        self.calls, self.parameter_documents = [], []
+        self.calls, self.gateway_inputs = [], []
         self.failure = None
         self.enterContext(patch.object(secret.OperationContext, 'load', return_value=self.ctx))
         self.enterContext(patch.object(self.ctx, 'verify_resource', return_value={}))
@@ -79,12 +82,9 @@ class SecretTests(unittest.TestCase):
                 self.assertEqual(json.loads(Path(args[args.index('--body') + 1][1:]).read_text()), {'keyId': OLD_ID})
                 self.credentials = [v for v in self.credentials if v['keyId'] != OLD_ID]
                 return ''
-        if args[:4] == ['az', 'deployment', 'group', 'create']:
-            document = json.loads(Path(args[args.index('--parameters') + 1][1:]).read_text())
-            self.parameter_documents.append(document)
-            if self.failure == 'kv':
-                raise OperationError('uncertain')
-        elif any('deploy_gateway.py' in arg for arg in args):
+        if any('deploy_gateway.py' in arg for arg in args):
+            source = Path(self.ctx.config['credentialProviders'][0]['clientSecretFile'])
+            self.gateway_inputs.append(source.read_text())
             if self.failure == 'gateway':
                 raise OperationError('gateway failed')
         return ''
@@ -179,24 +179,20 @@ class SecretTests(unittest.TestCase):
                                         '--old-key-id', OLD_ID, '--execute'), 1)
         self.assertEqual(self.calls, [])
 
-    def test_switch_uses_only_secure_module_then_gateway_and_keeps_backups(self):
+    def test_switch_updates_protected_inputs_then_deploys_gateway_and_keeps_backups(self):
         self.assertEqual(self.switch(), 0)
-        document = self.parameter_documents[0]['parameters']
-        self.assertEqual(set(document), {'vaultName', 'profiles', 'providerSecrets'})
-        self.assertEqual(document['providerSecrets']['value'], {'graph': NEW})
-        self.assertEqual(set(document['profiles']['value']), {'graph'})
-        command = next(v for v in self.calls if v[:4] == ['az', 'deployment', 'group', 'create'])
-        self.assertEqual(command[command.index('--mode') + 1], 'Incremental')
-        self.assertIn('shared-entra-secrets.bicep', ' '.join(command))
-        self.assertFalse(Path(command[command.index('--parameters') + 1][1:]).exists())
+        self.assertEqual(self.gateway_inputs, [NEW])
+        command, = [args for args in self.calls if any('deploy_gateway.py' in value for value in args)]
+        self.assertIn('--execute', command)
+        self.assertIn(str(self.workspace.params), command)
         receipt = json.loads(self.receipt.read_text())
         self.assertEqual(receipt['phase'], 'switched-auth-unverified')
         self.assertEqual(Path(receipt['backups'][0]['backup']).read_text(), OLD)
         self.assertFalse(any('/removePassword' in ' '.join(a) for a in self.calls))
         self.assert_no_public_value()
 
-    def test_kv_failure_does_not_publish_gateway_or_retire(self):
-        self.failure = 'kv'
+    def test_failed_vault_scope_verification_stops_before_gateway_or_retirement(self):
+        self.ctx.state['serviceResourceIds']['keyVault'] += '-other'
         self.assertEqual(self.switch(), 1)
         self.assertFalse(any('deploy_gateway.py' in ' '.join(a) for a in self.calls))
         self.assertEqual(self.run_stage('retire', '--verified-new-sign-in', '--verified-new-connection', '--execute'), 1)
@@ -237,7 +233,7 @@ class SecretTests(unittest.TestCase):
         self.assertEqual(self.run_stage('rollback', '--execute'), 0)
         current = Path(self.ctx.config['credentialProviders'][0]['clientSecretFile'])
         self.assertEqual(current.read_text(), OLD)
-        self.assertEqual(self.parameter_documents[-1]['parameters']['providerSecrets']['value'], {'graph': OLD})
+        self.assertEqual(self.gateway_inputs, [NEW, OLD])
         self.assertFalse(any('/removePassword' in ' '.join(a) for a in self.calls))
 
     def test_wrong_receipt_scope_and_same_key_ids_stop(self):

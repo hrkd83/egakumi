@@ -4,8 +4,6 @@
 """
 
 import asyncio
-from contextlib import asynccontextmanager
-import importlib.util
 import json
 import logging
 import os
@@ -14,16 +12,12 @@ import socket
 import sys
 import tempfile
 import time
-import types
 import unittest
-from unittest import mock
 from urllib.parse import parse_qs, urlsplit
-from urllib.request import ProxyHandler, build_opener, urlopen
+from urllib.request import ProxyHandler, build_opener
 
-CORE = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("integration_client", CORE / "scripts/integration_client.py")
-probe = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(probe)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from clients import integration_client as probe
 try:
     import httpx2
     import mcp
@@ -134,107 +128,6 @@ class SummaryTests(unittest.TestCase):
         for field in ("authorization_endpoint", "token_endpoint"):
             with self.assertRaises(ValueError):
                 probe.validate_oauth_config({**config, field: "https://unapproved.example/token"})
-
-
-class MCPContractTests(unittest.IsolatedAsyncioTestCase):
-    """実clientのtools/call手前を合成SDKで通し、型不一致の実行を防ぐ。"""
-    async def contract_probe(self, schema, *, next_cursor=None, strict=True, tools_capability=True):
-        url = "https://gateway.example.com/tools/pii/mcp/v1/mcp"
-        calls, clients = [], []
-
-        class FakeClient:
-            def __init__(self, **kwargs):
-                self.hooks = kwargs["event_hooks"]
-                clients.append(self)
-            async def __aenter__(self):
-                return self
-            async def __aexit__(self, *args):
-                return False
-
-        class FakeSession:
-            def __init__(self, *args, **kwargs):
-                pass
-            async def __aenter__(self):
-                return self
-            async def __aexit__(self, *args):
-                return False
-            async def initialize(self):
-                return types.SimpleNamespace(capabilities=types.SimpleNamespace(tools={} if tools_capability else None))
-            async def list_tools(self):
-                return types.SimpleNamespace(tools=[types.SimpleNamespace(name="pii_redact_text", input_schema=schema)],
-                    next_cursor=next_cursor)
-            async def call_tool(self, name, arguments):
-                request = types.SimpleNamespace(method="POST", url=url, extensions={}, headers={},
-                    content=json.dumps({"method": "tools/call", "params": {"name": name, "arguments": arguments}}).encode())
-                await clients[0].hooks["request"][0](request)
-                calls.append((name, arguments))
-                return types.SimpleNamespace(structured_content=pii_result(), content=[], is_error=False)
-
-        @asynccontextmanager
-        async def fake_stream(*args, **kwargs):
-            yield object(), object()
-
-        http = types.ModuleType("httpx2")
-        http.AsyncClient = FakeClient
-        http.AsyncHTTPTransport = lambda **kwargs: object()
-        session_module = types.ModuleType("mcp.client.session")
-        session_module.ClientSession = FakeSession
-        stream_module = types.ModuleType("mcp.client.streamable_http")
-        stream_module.streamable_http_client = fake_stream
-        modules = {"httpx2": http, "mcp.client.session": session_module, "mcp.client.streamable_http": stream_module}
-        with mock.patch.dict(sys.modules, modules), \
-                mock.patch.object(probe, "verified_tls_context", return_value=object()):
-            result = await probe.mcp_probe(url, {"text": "SYNTHETIC-PII-INPUT", "language": "ja"},
-                {"Authorization": "Bearer <SYNTHETIC_TOKEN>"}, strict_tool_contract=strict)
-        return result, calls
-
-    def schema(self):
-        return {"type": "object", "properties": {"text": {"type": "string"}, "language": {"type": "string"}},
-                "required": ["text", "language"]}
-
-    async def test_strict_numeric_or_incomplete_schema_and_more_pages_never_call_tool(self):
-        changes = (
-            lambda s: s["properties"].update(text={"type": "number"}, language={"type": "integer"}),
-            lambda s: s["properties"].update(text={"type": ["string", "number"]}),
-            lambda s: s.update(type="array"), lambda s: s.update(required=["text"]),
-            lambda s: s["properties"].update(extra={"type": "string"}),
-        )
-        for change in changes:
-            schema = self.schema()
-            change(schema)
-            result, calls = await self.contract_probe(schema)
-            self.assertFalse(result["succeeded"])
-            self.assertFalse(result["toolContractCheckedBeforeCall"])
-            self.assertEqual(result["toolPostCount"], 0)
-            self.assertEqual(calls, [])
-            self.assertEqual(result["mcpPhase"], "checking-tool-schema")
-        for kwargs in ({"next_cursor": "synthetic-next-page"}, {"tools_capability": False}):
-            result, calls = await self.contract_probe(self.schema(), **kwargs)
-            self.assertFalse(result["succeeded"])
-            self.assertEqual(calls, [])
-            self.assertEqual(result["toolPostCount"], 0)
-
-    async def test_strict_string_contract_is_checked_before_exactly_one_call(self):
-        result, calls = await self.contract_probe(self.schema())
-        self.assertTrue(result["succeeded"])
-        self.assertTrue(result["toolContractCheckedBeforeCall"])
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(result["toolPostCount"], 1)
-        descriptor = result["toolDescriptors"][0]
-        self.assertTrue(descriptor["textPropertyString"])
-        self.assertTrue(descriptor["languagePropertyString"])
-        self.assertTrue(descriptor["requiredFieldsMatch"])
-        self.assertNotIn("SYNTHETIC-PII-INPUT", json.dumps(result))
-        self.assertNotIn("<SYNTHETIC_TOKEN>", json.dumps(result))
-
-    async def test_opt_in_preserves_existing_default_contract_behavior(self):
-        schema = self.schema()
-        schema["properties"]["text"] = {"type": "number"}
-        result, calls = await self.contract_probe(schema, strict=False)
-        self.assertTrue(result["succeeded"])
-        self.assertFalse(result["toolContractCheckedBeforeCall"])
-        self.assertFalse(result["toolDescriptors"][0]["textPropertyString"])
-        self.assertEqual(len(calls), 1)
 
 
 @unittest.skipUnless(httpx2, "Use .tools/integration-venv for the actual SDK fixture tests")

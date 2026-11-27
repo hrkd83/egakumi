@@ -225,7 +225,7 @@ Graph等の本人接続APIは、セッション未指定・期限切れ・CM再�
 | 1 | Azure／提供元の接続仕様 | 固定上流と音声契約を公式資料に照合。実環境のURL・権限・到達を確認 |
 | 2 | `apps/api-gateway/apis/<API名>.json` | 対象APIの許可モデル・モデル別設定・固定上流を変更する。新規APIは1ファイルを追加する |
 | 3 | `schemas/`・`scripts/deployment/helpers/configuration.py` | モデル別ルーティングとLive系入力・WSS設定の検査を追加 |
-| 4 | `scripts/configure_trial.py`・`prepare_coverage.py`・`deploy_gateway.py` | 新しい接続定義の合成・検査・登録計画を生成 |
+| 4 | `scripts/deployment/deploy_gateway.py` | 新しい接続定義の合成・検査・登録計画を生成 |
 | 5 | `apps/api-gateway/api-publication.bicep`・`apps/api-gateway/policies/` | FLUXモデル別の固定上流選択、Liveセッション制御、文字起こしWSSの登録・ポリシー生成を実装 |
 | 6 | 接続クライアントの確認 | profileヘッダーなしのモデル選択と新しい音声イベントを扱うクライアントから受入 |
 | 7 | ローカル試験・Azureでの受入 | 件数・モデル対応・権限・通常／SSE／音声の正常終端を確認し、APIMへ公開 |
@@ -244,7 +244,7 @@ PII MCPは`pii-v1`の`pii_redact_text`から生成し、RESTと同じProductの�
 
 - 初期配備28モデル：`config/test.json`・`config/production.json`と[モデル一覧](foundry-model-catalog.md)。
 - 標準19 APIの配備定義：[apps/api-gateway/apis/](../../apps/api-gateway/apis/)。1 API 1ファイルで、APIの名前とファイル名を一致させる。
-- 現行の登録・検査・移行：`scripts/deploy_gateway.py`・`scripts/deployment/helpers/configuration.py`・`scripts/api_migration.py`。
+- 現行の登録は `scripts/deployment/deploy_gateway.py`、設定検査は `scripts/deployment/helpers/configuration.py` を使用する。
 - 公開の実装：`apps/api-gateway/api-publication.bicep`・`apps/api-gateway/policies/`。
 - 本文の19 API一覧と28モデル対応表：登録内容の確認と受入試験に使用する。
 - ポリシーの適用順・検査内容：[APIMポリシー一覧](apim-policy-catalog.md)。

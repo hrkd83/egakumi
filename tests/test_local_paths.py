@@ -17,7 +17,7 @@ from deployment.helpers.azd_parameters import complete_arm_parameters
 from deployment.helpers.paths import LocalPaths, configuration_path, local_paths, private_output, private_parent
 from deployment.helpers.configuration import normalize_configuration
 from configuration_fixtures import fixture
-import prepare_local_environment
+from setup import prepare_local_environment
 
 
 class LocalPathsTests(unittest.TestCase):

@@ -19,7 +19,7 @@ BROKER_MODULE = REPOSITORY / 'apps/credential-broker/deploy/broker.bicep'
 def prepare_broker_only_update(config, state, transport):
     """現在の設定と実資源を照合し、Broker・SQLジョブだけの更新入力を作ります。"""
     # Gateway全体の配備と同じ基盤照合を再利用します。実行時importで循環を避けます。
-    from deploy_gateway import foundation_inputs, verify_foundation
+    from deployment.deploy_gateway import foundation_inputs, verify_foundation
     from deployment.helpers.gateway_obo_certificate import deployment_settings, runtime_environment
     snapshot = {}
     class ReadOnly:
@@ -164,7 +164,7 @@ def prepare_broker_only_update(config, state, transport):
 
 def compile_broker_only_template():
     """既存のBicep CLIで単独モジュールを読み、Azureへ接続せずにコンパイルします。"""
-    from prepare_registration import bicep_executable
+    from setup.prepare_registration import bicep_executable
     result = subprocess.run([bicep_executable(), 'build', str(BROKER_MODULE), '--stdout', '--no-restore'],
         capture_output=True, text=True, encoding='utf-8', timeout=180)
     if result.returncode:

@@ -11,7 +11,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from audit_usage import gateway_events, join_usage
+from audit_usage_fixture import gateway_events, join_usage
 
 APIM = "/subscriptions/fixture/resourceGroups/core/providers/Microsoft.ApiManagement/service/core"
 RID = "22222222-2222-4222-8222-222222222222"
@@ -20,7 +20,7 @@ RID = "22222222-2222-4222-8222-222222222222"
 class SubscriptionUsageQueryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.query = (ROOT / "scripts/subscription-usage.kql").read_text(encoding="utf-8")
+        cls.query = (ROOT / "scripts/audit/subscription-usage.kql").read_text(encoding="utf-8")
         cls.statements = re.sub(r"//[^\n]*", "", cls.query)
 
     def test_apim_subscription_is_not_azure_subscription_or_caller_input(self):

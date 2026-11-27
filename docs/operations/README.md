@@ -18,7 +18,6 @@
 | NSGの通信範囲・優先度を確認する | [NSGの構成と優先度](network-security-groups.md) | 共通採番JSONと初期構築5モジュールのBicep |
 | 通信要件・Firewallの許可範囲・判断を確認する | [通信要件](../reference/network-communication-requirements.md)・[Firewall設計](../reference/firewall-policy-design.md) | 実経路、RCG/collection/規則、対応NSG、[検証と実証結果の管理](../reference/network-security-validation.md) |
 | 管理VMから監査Blob・保存ログ・ACAログを読む、Appへ限定execする、SQLを保守する | [管理VMの保守操作](../operations.md#管理vmから保守データを取得する) | 担当者本人のEntra ID、作業期間中の対象別権限、保護inventory |
-| 不要なDNS用NSG子規則を回収する | [DNS規則の限定回収](platform-settings.md#不要なdns用nsg子規則を回収する) | `operations/nsg_dns.py`で計画・限定DELETE |
 
 運用テストはこの業務のまとまりから選び、各作業の必要な検査・変更・確認・戻し方を一連で確認する。権限組合せ・全モデル・全入力の網羅は構築・統合テストに分ける。
 

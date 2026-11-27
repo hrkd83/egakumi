@@ -62,7 +62,7 @@ class MonitoringExportReapplyTests(LifecycleFixture, unittest.TestCase):
         ok = lambda body, status=200: {'statusCode': status, 'headers': {}, 'body': body}
         return [ok({}, 201), ok(failure), ok(operations), ok(workspace), ok(export), ok({}, 201), ok(succeeded)]
 
-    def exercise(self, responses, *, phase='monitoring', clock=None, unknown_put=None, expire_after_read=False, expire_after_put=False, template=None, advance_404_seconds=0, unknown_read=None, expire_after_intent=False):
+    def exercise(self, responses, *, clock=None, unknown_put=None, expire_after_read=False, expire_after_put=False, template=None, advance_404_seconds=0, unknown_read=None, expire_after_intent=False):
         for path in self.paths.state.glob('monitoring-reapply-*.json'):
             path.unlink()
         lifecycle.protected_json(self.paths.state / 'latest.json', {
@@ -123,7 +123,7 @@ class MonitoringExportReapplyTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle.time, 'sleep', side_effect=clock.sleep), \
              contextlib.redirect_stdout(io.StringIO()):
             try:
-                output = lifecycle.deploy_phase(self.config, phase, preserve_collection=True, secrets={})
+                output = lifecycle.deploy_monitoring(self.config, preserve_collection=True)
                 error = None
             except lifecycle.DeploymentError as failure:
                 output, error = None, failure
@@ -278,12 +278,3 @@ class MonitoringExportReapplyTests(LifecycleFixture, unittest.TestCase):
         _, error, transport, _ = self.exercise(self.responses(), template=template)
         self.assertIsNotNone(error)
         self.assertEqual([call['method'] for call in transport.calls], ['PUT', 'GET'])
-
-    def test_core_failure_has_no_monitoring_reapply_branch(self):
-        registry_absent = {'statusCode': 404, 'headers': {}, 'body': None}
-        _, error, transport, _ = self.exercise([registry_absent, *self.responses()[:2]], phase='core')
-        self.assertIsInstance(error, lifecycle.DeploymentError)
-        self.assertIn('The core deployment Failed', str(error))
-        self.assertEqual([call['method'] for call in transport.calls], ['GET', 'PUT', 'GET'])
-        self.assertIn('/providers/Microsoft.ContainerRegistry/registries/', transport.calls[0]['path'])
-        self.assertFalse(transport.responses)

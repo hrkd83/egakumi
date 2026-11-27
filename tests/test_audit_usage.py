@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
-from audit_usage import gateway_events, join_usage
+from audit_usage_fixture import gateway_events, join_usage
 A='/subscriptions/fixture/resourceGroups/core/providers/Microsoft.ApiManagement/service/core'
 P='11111111-1111-4111-8111-111111111111'; C='22222222-2222-4222-8222-222222222222'
 T='44444444-4444-4444-8444-444444444444'; O='55555555-5555-4555-8555-555555555555'; Z='66666666-6666-4666-8666-666666666666'
@@ -93,7 +93,7 @@ class AuditUsageTests(unittest.TestCase):
   other={**row,'subscriptionId':'app-b','callerId':'subscription:app-b'}
   self.assertEqual(run([row,other],[])[0]['usageStatus'],'ambiguous-request')
  def test_query_uses_official_columns_bag_set_and_no_unsupported_source_or_payload(self):
-  query=(Path(__file__).resolve().parents[1]/'scripts/audit-usage.kql').read_text()
+  query=(Path(__file__).resolve().parents[1]/'scripts/audit/audit-usage.kql').read_text()
   for token in ['_ResourceId =~ apimResourceId','ApiManagementGatewayLlmLog','DeploymentName','PromptTokens','CompletionTokens','TotalTokens',
       'on requestId, targetModel',"'ambiguous-request'",'requestAmbiguous',"measurementRole) == 'execution'",'make_set(bag_pack(',
       'parentPrincipal==tostring(record.verifiedPrincipalId)', 'trace.Message', 'toguid(v)', 'canonicalId(tostring(CorrelationId))','long(null)']:

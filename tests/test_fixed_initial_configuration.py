@@ -20,7 +20,7 @@ sys.path.insert(0, str(CORE / "scripts"))
 
 from deployment.helpers import configuration
 from deployment.helpers.credential_pools import logical_profiles, physical_providers
-from standard_apis import DEFINITION_FILES, load_api_definitions
+from catalog.standard_apis import DEFINITION_FILES, load_api_definitions
 from configuration_fixtures import connection_fixture
 
 

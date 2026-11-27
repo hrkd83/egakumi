@@ -1,4 +1,4 @@
-"""Coreと別工程のアプリをまとめ、途中構築でも共用CAEの前に回収する。"""
+"""途中構築でもアプリとジョブをそれぞれの専用CAEより先に回収する。"""
 from __future__ import annotations
 
 import copy
@@ -10,16 +10,14 @@ from cleanup_fixtures import CleanupFixture, FakeTransport, cleanup
 class ApplicationTransport(FakeTransport):
     """親アプリ・ジョブの削除で子実行も消え、CAEは子の残存時に削除できないARM。"""
 
-    def __init__(self, resources, environment_id, child_ids):
+    def __init__(self, resources, environment_children):
         super().__init__(resources)
-        self.environment_id = environment_id
-        self.child_ids = child_ids
+        self.environment_children = environment_children
 
     def request(self, method, path, *, body=None, headers=None):
         target = path.split("?", 1)[0]
-        if method == "DELETE" and target == self.environment_id:
-            if any(child in self.resources for child in self.child_ids):
-                raise AssertionError("shared environment deleted before its applications and jobs")
+        if method == "DELETE" and any(child in self.resources for child in self.environment_children.get(target, [])):
+            raise AssertionError("environment deleted before its applications and jobs")
         response = super().request(method, path, body=body, headers=headers)
         if method == "DELETE" and target not in self.resources:
             for resource_id in list(self.resources):
@@ -35,6 +33,7 @@ class ApplicationTeardownTests(CleanupFixture, unittest.TestCase):
         stem = self.configuration["resourceStem"]
         prefix = self.svc_rg + "/providers/Microsoft.App/"
         self.environment_id = prefix + "managedEnvironments/cae-" + stem
+        self.broker_environment_id = self.environment_id + "-broker"
         self.portal_id = prefix + "containerApps/ca-" + stem + "-portal"
         self.broker_id = prefix + "containerApps/ca-" + stem + "-credentials"
         self.job_ids = [prefix + "jobs/caj-" + stem + suffix
@@ -43,24 +42,32 @@ class ApplicationTeardownTests(CleanupFixture, unittest.TestCase):
         self.subnet_id = (cleanup._rg_id(self.configuration, "nw")
                           + "/providers/Microsoft.Network/virtualNetworks/vnet-" + stem
                           + "/subnets/snet-" + stem + "-aca")
+        self.broker_subnet_id = self.subnet_id.removesuffix("-aca") + "-broker"
+        self.environment_children = {
+            self.environment_id: [self.portal_id, self.job_ids[0]],
+            self.broker_environment_id: [self.broker_id, *self.job_ids[1:]],
+        }
 
     def transport(self, state="Succeeded", *, missing_bindings=False):
         """成功出力を持たず、実資源の所有情報だけを検証可能にする。"""
         resources = {}
-        for target in [self.environment_id, *self.child_ids]:
+        environments = {self.environment_id: self.subnet_id, self.broker_environment_id: self.broker_subnet_id}
+        parent = {child: environment for environment, children in self.environment_children.items() for child in children}
+        for target in [*environments, *self.child_ids]:
             kind = target.rsplit("/", 2)[1]
             properties = {"provisioningState": state}
             if not missing_bindings:
-                if target == self.environment_id:
-                    properties["vnetConfiguration"] = {"infrastructureSubnetId": self.subnet_id}
+                if target in environments:
+                    properties["vnetConfiguration"] = {"infrastructureSubnetId": environments[target]}
                 else:
-                    properties["environmentId" if kind == "jobs" else "managedEnvironmentId"] = self.environment_id
+                    properties["environmentId" if kind == "jobs" else "managedEnvironmentId"] = parent[target]
             resources[target] = {"id": target, "name": target.rsplit("/", 1)[-1],
                 "type": "Microsoft.App/" + kind, "location": self.configuration["location"],
                 "tags": {"product": self.configuration["productName"], "environment": self.configuration["environmentName"]},
                 "properties": properties}
-        resources[self.subnet_id] = {"id": self.subnet_id, "properties": {"ipConfigurations": [], "serviceAssociationLinks": []}}
-        return ApplicationTransport(resources, self.environment_id, self.child_ids)
+        for subnet in environments.values():
+            resources[subnet] = {"id": subnet, "properties": {"ipConfigurations": [], "serviceAssociationLinks": []}}
+        return ApplicationTransport(resources, self.environment_children)
 
     def test_all_application_children_are_removed_without_completed_deployment_outputs(self):
         transport = self.transport()
@@ -73,10 +80,12 @@ class ApplicationTeardownTests(CleanupFixture, unittest.TestCase):
         result = self.pre(transport)
         self.assertEqual(result["status"], "ready-for-azd-down")
         deleted = [call["id"] for call in transport.mutations()]
-        self.assertEqual(set(deleted), {*self.child_ids, self.environment_id})
-        for target in self.child_ids:
-            self.assertLess(deleted.index(target), deleted.index(self.environment_id))
-        self.assertTrue(all(target not in transport.resources for target in [*self.child_ids, *children, self.environment_id]))
+        self.assertEqual(set(deleted), {*self.child_ids, *self.environment_children})
+        for environment, app_resources in self.environment_children.items():
+            for target in app_resources:
+                self.assertLess(deleted.index(target), deleted.index(environment))
+        self.assertTrue(all(target not in transport.resources
+                            for target in [*self.child_ids, *children, *self.environment_children]))
         self.assertIn(unrelated, transport.resources)
         self.assertEqual(result["portal"]["subnet"]["status"], "released")
 
@@ -118,7 +127,7 @@ class ApplicationTeardownTests(CleanupFixture, unittest.TestCase):
                     self.pre(transport)
                 self.assertEqual(transport.mutations(), [])
 
-    def test_failed_or_pending_job_delete_preserves_shared_environment_and_can_resume(self):
+    def test_failed_or_pending_job_delete_preserves_environment_and_can_resume(self):
         for failure in ("denied", "pending"):
             with self.subTest(failure=failure):
                 transport = self.transport()

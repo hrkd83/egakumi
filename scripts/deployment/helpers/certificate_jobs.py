@@ -11,7 +11,7 @@ import time
 from urllib.parse import urlsplit
 import uuid
 
-from management_client import IMDS_ORIGIN, STORAGE_AUDIENCE
+from operations.management_client import IMDS_ORIGIN, STORAGE_AUDIENCE
 
 from . import certificate_image
 from .configuration import entra_app_separation_enabled

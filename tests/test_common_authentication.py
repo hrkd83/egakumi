@@ -326,55 +326,6 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
             with self.subTest(kind=kind),self.assertRaises(ValueError):
                 merge_common_authentication_policy(ET.tostring(root,encoding='unicode'))
 
-    def test_broker_migration_replaces_only_owned_cache_and_anonymous_route(self):
-        from deployment.helpers.apim_authentication import merge_common_authentication_policy, render_service_policy, validate_common_authentication_policy, _render_inline_common_authentication_service_policy
-        from authentication_source_fixture import credential_broker_inline_fixture
-        from deployment.helpers.apim_browser_exception import expand_browser_exception_fragment
-        from test_credential_login import settings
-        import re
-        login = settings()
-        root = ET.fromstring(credential_broker_inline_fixture(login))
-        inbound = root.find("inbound")
-        anonymous = inbound.find("choose[@id='core-common-authentication']/when")
-        anonymous.set("condition", re.sub(r' \|\| \(context\.Operation\.Id == "identity-callback"[^)]*\)', '', anonymous.get("condition")))
-        for index, node in enumerate((
-            ET.Element("set-variable", {"id": "core-credential-login-cache-value", "name": "gatewayCredentialCached", "value": ""}),
-            ET.Element("set-variable", {"id": "core-credential-login-cache-key", "name": "gatewayCredentialCacheKey", "value": "old-cache-key"}),
-            ET.fromstring('<choose id="core-credential-login-cache"><when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayCredentialCacheKey&quot;]))"><cache-lookup-value key="@((string)context.Variables[&quot;gatewayCredentialCacheKey&quot;])" variable-name="gatewayCredentialCached" default-value="" caching-type="internal" /></when></choose>'),
-        )):
-            inbound.insert(index + 1, node)
-        ET.SubElement(inbound, "set-header", {"name": "X-Manual", "exists-action": "delete"})
-        old = ET.tostring(root, encoding="unicode")
-        with self.assertRaises(ValueError):
-            merge_common_authentication_policy(old, login)
-        merged, changed = merge_common_authentication_policy(old, login, migrate_credential_broker=True)
-        self.assertTrue(changed)
-        self.assertNotIn("core-credential-login-cache", merged)
-        self.assertIn("identity-callback", expand_browser_exception_fragment(merged, login=login))
-        self.assertIsNotNone(ET.fromstring(merged).find(
-            "inbound/include-fragment[@fragment-id='core-credential-browser-exception']"))
-        self.assertIsNotNone(ET.fromstring(merged).find("inbound/set-header[@name='X-Manual']"))
-        validate_common_authentication_policy(merged, login)
-        self.assertFalse(merge_common_authentication_policy(merged, login, migrate_credential_broker=True)[1])
-
-        # 同じ所有IDに追加処理がある場合、その処理まで巻き込んで削除しない。
-        ET.SubElement(inbound.find("choose[@id='core-credential-login-cache']/when"), "return-response")
-        with self.assertRaises(ValueError):
-            merge_common_authentication_policy(ET.tostring(root, encoding="unicode"), login, migrate_credential_broker=True)
-
-    def test_broker_migration_rejects_partial_cache_or_modified_authorization(self):
-        from deployment.helpers.apim_authentication import merge_common_authentication_policy, _render_inline_common_authentication_service_policy
-        from test_credential_login import settings
-        login = settings()
-        for kind in ("partial", "modified"):
-            root = ET.fromstring(_render_inline_common_authentication_service_policy(login))
-            if kind == "partial":
-                ET.SubElement(root.find("inbound"), "cache-lookup-value", {"id":"core-credential-login-cache", "caching-type":"internal"})
-            else:
-                root.find(".//set-variable[@name='gatewayCommonAuthenticationValidated']").set("value", "@(false)")
-            with self.subTest(kind=kind), self.assertRaises(ValueError):
-                merge_common_authentication_policy(ET.tostring(root, encoding="unicode"), login, migrate_credential_broker=True)
-
     def test_common_merge_accepts_factory_policy_without_optional_error_section(self):
         from deployment.helpers.apim_authentication import merge_common_authentication_policy,validate_common_authentication_policy
         factory='<policies><inbound/><backend><forward-request/></backend><outbound/></policies>'

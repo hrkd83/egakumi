@@ -2,7 +2,7 @@
 
 業務APIの公開に使うAPI定義、APIMポリシー、Application GatewayのWAFポリシー設定を管理します。
 
-共通基盤と同じparamsを、ルートの`python3 scripts/deploy_gateway.py --config <params> --execute`へ渡します。GatewayのDB・CM・認証窓口が必要な場合は先に配備し、準備完了後にこのフォルダーのAPIを登録します。初回構築では、`azd up`による共通基盤の作成と、公開証明書のEntra登録を済ませてから[Gatewayを個別配備](../../docs/setup/11-deploy-gateway.md)します。
+共通基盤と同じparamsを、ルートの`python3 scripts/deployment/deploy_gateway.py --config <params> --execute`へ渡します。GatewayのDB・CM・認証窓口が必要な場合は先に配備し、準備完了後にこのフォルダーのAPIを登録します。初回構築では、`azd up`による共通基盤の作成と、公開証明書のEntra登録を済ませてから[Gatewayを個別配備](../../docs/setup/11-deploy-gateway.md)します。
 
 Credential BrokerのBackendと名前付きの値は、専用内部CAEの既定ドメインからHTTPS URLを生成します。本人接続・Graph OBOの公開前にはBrokerの所属CAEとHTTPS ingressを照合します。 [Credential Brokerの配備境界](../credential-broker/README.md)
 

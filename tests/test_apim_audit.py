@@ -1,8 +1,6 @@
 """共通主体と監査の正規生成時展開を合成入力で確認する。"""
 from policy_fixture_paths import policy_fixture_path
-from pathlib import Path
 import unittest
-from unittest import mock
 import xml.etree.ElementTree as ET
 
 from configuration_fixtures import CORE
@@ -20,11 +18,6 @@ class AuditRenderingTests(unittest.TestCase):
         self.assertEqual(ET.fromstring(rendered).find('trace/message').text, '@{\n' + source.rstrip('\n') + '\n}')
         self.assertNotIn('&quot;', rendered)
         self.assertNotIn(marker, rendered)
-
-    def test_fixed_previous_templates_do_not_load_current_subject_source(self):
-        previous = '<fragment><trace><message>@{ return "fixed"; }</message></trace></fragment>'
-        with mock.patch.object(Path, "read_text", side_effect=AssertionError("Loaded current audit source")):
-            self.assertEqual(render_audit_policy(previous), previous)
 
     def test_connection_render_expands_raw_and_embedded_audit_sources(self):
         from deployment.helpers import credential_login

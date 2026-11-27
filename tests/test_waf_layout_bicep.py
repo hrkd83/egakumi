@@ -7,7 +7,7 @@ import unittest
 from bicep_helpers import compile_bicep
 from test_ssml_waf import GatewayExpression
 from deployment.helpers.waf_body import ai_body_settings
-from waf_policy import desired_policy, exclusion
+from operations.waf_policy import desired_policy, exclusion
 
 
 ROOT = Path(__file__).resolve().parents[1]

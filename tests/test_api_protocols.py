@@ -14,55 +14,30 @@ import xml.etree.ElementTree as ET
 
 from configuration_fixtures import CORE, api_fixture, configuration, fixture
 from test_gateway_limits_telemetry import PWSH, expression, single_expression
-import prepare_coverage
-import standard_apis
-from api_definition_helpers import catalog_overlay, configured_base
+from test_standard_apis import standard_fixture
+from catalog import standard_apis
 from deployment.helpers.apim_api_request import expand_api_request_preparation_fragment
 
 POLICIES = CORE / "apps/api-gateway/policies"
 SERVICE_POLICY = CORE / "apps/api-gateway/policies/service.xml"
 
 
-def _test_bindings(value, raw):
-    """合成試験の公開ID/固定URLだけを、入力に実在するplaceholderへ渡す。"""
-    known = {"TENANT_ID": raw.get("entraTenantId", raw["azureTenantId"]),
-        "CM_CLIENT_ID": "66666666-6666-4666-8666-666666666666", "CM_CLIENT_SECRET_FILE": "../secrets/cm-client.txt",
-        "PUBLIC_HOST_NAME": raw["gateway"]["publicHostName"], "SPEECH_RESOURCE_ID": "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-fixture-svc/providers/Microsoft.CognitiveServices/accounts/speech-fixture",
-        "HOSTED_AGENT_BASE_URL": "https://fixture.services.ai.azure.com/api/projects/core/agents/approved-agent/endpoint/protocols/openai",
-        "VOICE_LIVE_WS_BASE_URL": "wss://provider.example.com/voice-live/realtime",
-        "VOICE_LIVE_CALLS_WS_BASE_URL": "wss://provider.example.com/voice-live/realtime/calls",
-        "VOICE_LIVE_MODEL": "gpt-6.1-sol", "VOICE_LIVE_CALLS_MODEL": "gpt-6.1-sol",
-        "LIVE_WS_BASE_URL": "wss://provider.example.com/openai/v1/live/sessions",
-        "TRANSCRIPTION_WS_BASE_URL": "wss://provider.example.com/openai/v1/realtime"}
-    bindings = {}
-    for name in prepare_coverage.required_bindings(value):
-        if name in known:
-            bindings[name] = known[name]
-        elif name.endswith("WS_BASE_URL"):
-            bindings[name] = "wss://provider.example.com/realtime"
-        elif name.endswith(("BASE_URL", "BACKEND")):
-            bindings[name] = "https://provider.example.com"
-        elif name.endswith("MODEL"):
-            bindings[name] = "approved-" + name.lower().replace("_model", "")
-        elif name.endswith("SKU"):
-            bindings[name] = "GlobalStandard"
-        else:
-            bindings[name] = "2026-01-01"
-    return bindings
-
-
 def bound_coverage():
-    """正式18 APIを実際の準備処理で合成する。"""
-    raw = configured_base()
-    value = catalog_overlay()
-    return prepare_coverage.prepare(raw, value, _test_bindings(value, raw), base_directory=CORE / "config")
+    """現行のCore出力を使うGateway公開処理から、正式APIの合成設定を作る。"""
+    raw, state = standard_fixture()
+    published = standard_apis.resolve_publication_configuration(raw, state)
+    return {**raw, "apiDefinitions": published["apiDefinitions"]}
 
 
 def bound_external_coverage():
     """汎用protocol能力の試験だけに、外部5 APIのfixtureを明示追加する。"""
     raw = bound_coverage()
     fixture_data = json.loads((CORE / "tests/fixtures/external-api-definitions.json").read_text())
-    external = prepare_coverage.substitute(fixture_data, _test_bindings(fixture_data, raw))
+    external = standard_apis._substitute(fixture_data, {
+        "PUBLIC_HOST_NAME": raw["gateway"]["publicHostName"],
+        "TOOLS_HTTP_BACKEND": "https://provider.example.com",
+        "HOSTED_AGENT_BASE_URL": "https://fixture.services.ai.azure.com/api/projects/core/agents/approved-agent/endpoint/protocols/openai",
+    })
     raw["apiDefinitions"].extend(external["apiDefinitions"])
     return raw
 
@@ -360,7 +335,7 @@ class ProtocolConfigurationTests(unittest.TestCase):
             self.normalize(raw)
 
     def test_foundation_can_prepare_realtime_key_before_apis_exist(self):
-        from deployment.helpers.grpc_lifecycle import realtime_enabled
+        from deployment.helpers.ingress import realtime_enabled
         raw = fixture()
         raw["gateway"].pop("realtimeControlEnabled")
         without_realtime = self.normalize(raw)

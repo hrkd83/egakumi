@@ -20,5 +20,3 @@ Private DNSで、管理VMと証明書用ACAの双方からACRのログイン名�
 - 公開TLSの定期更新はACAのスケジュールで起動します。手動確認・更新・同期の入口は [公開TLS証明書の運用](secrets-and-certificates.md#tls証明書を更新し公開httpsまで確認する) です。既定では12時間ごとに確認し、有効期限30日前から更新を試みます。計画更新と定期実行はBlobリースで調整します。
 - AppGWのKey Vault参照はバージョンなしです。Key Vaultの新しい版と実際に両ホストが配信する版を別々に確認します。Jobの失敗、長時間未実行、証明書の期限を監視します。 [AppGWの証明書更新](https://learn.microsoft.com/en-us/troubleshoot/azure/application-gateway/troubleshoot-application-gateway-key-vault-certificate)
 - [Portal署名証明書の更新](portal-authentication.md)は、候補を発行し、Entraへ公開証明書を登録し、切替・確認を経て旧鍵を無効化します。このJobを開始すると実行テンプレートを変更できるため、開始・変更権限は証明書運用担当へ限定します。通常のVM保守にJobの起動権限は含めません。 [ACA Jobの開始権限](https://learn.microsoft.com/en-us/azure/container-apps/jobs#permissions)
-
-旧資材を既存環境へ適用済みの場合、従来のVMタイマーと新しいACA Jobを並行稼働させると、同じ証明書を同時に更新する可能性があります。この手順の対象は空のAzure環境からの構築です。既存環境を移行する場合は、旧タイマーと権限の回収、ACME状態の引継ぎ、切戻し条件を別途確認します。

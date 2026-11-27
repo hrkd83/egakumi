@@ -109,7 +109,7 @@ Coreの[標準API一覧](docs/reference/api-design-proposal.md)は正式19 API�
 - [企業ネットワークへの接続（任意）](docs/setup/10-hub-spoke.md)：ハブ＆スポーク、中央DNS、経路伝搬等を担当部隊と調整します。
 - [テスト・検証](docs/testing/README.md)：構築テスト・動作テストの対象、手順、受入条件と、検証用の補助資料をまとめています。
 - [TIPS: CodexをAIゲートウェイにOAuthで接続する](docs/tips/codex-gateway-oauth.md) — Azureポータルで専用アプリを登録し、端末でCodexを手動設定する任意の手順。
-- [音声の回帰試験画面](tests/browser/realtime.html)：`scripts/realtime_browser.py`のローカル専用relayで利用します。PortalやGatewayのAzure配備には含めません。
+- [音声の回帰試験画面](tests/browser/realtime.html)：`scripts/clients/realtime_browser.py`のローカル専用relayで利用します。PortalやGatewayのAzure配備には含めません。
 - [開発共通ルール・保守手順](DEVELOPMENT.md)：コーディング規約、[テストの共通ルール](DEVELOPMENT.md#テストの共通ルール)と[実行方法](DEVELOPMENT.md#テストの実行方法)、任意の配備補助を扱います。
 
 関連資料：[勉強会動画](docs/videos.md)・[過去の調査・検証記録](docs/history/README.md)。

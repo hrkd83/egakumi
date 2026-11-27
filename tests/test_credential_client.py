@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-import credential_client
-import cleanup_credential_connections
+from clients import credential_client
+from operations import inspect_credential_connections as cleanup_credential_connections
 
 from test_credential_login import TX, SECRET, LAUNCH, settings
 

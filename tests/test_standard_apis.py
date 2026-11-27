@@ -8,7 +8,7 @@ from unittest import mock
 
 from configuration_fixtures import CORE, api_fixture, fixture
 from deployment.helpers import configuration
-import standard_apis
+from catalog import standard_apis
 
 
 def standard_fixture():

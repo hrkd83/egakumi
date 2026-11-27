@@ -184,9 +184,17 @@ class LifecycleFixture:
         dns = mock.patch.object(lifecycle, "configure_public_dns", return_value={"status": "configured"})
         self.public_dns = dns.start()
         self.addCleanup(dns.stop)
-        portal_certificate = mock.patch('deployment.helpers.portal_auth_certificate.collect_initial_certificate')
-        portal_certificate.start()
-        self.addCleanup(portal_certificate.stop)
+        for module, name, settings in (
+            ("deployment.helpers.certificate_jobs", "complete_initial_certificates", {
+                "return_value": {"imageDigest": "synthetic-digest", "tls": {}, "portal": {}}}),
+            ("deployment.helpers.portal_auth_certificate", "store_initial_certificate", {}),
+            ("deployment.lifecycle", "deploy_public_ingress", {
+                "side_effect": lambda config, outputs, *args: {"publicUrl": outputs["endpoints"]["public"]}}),
+            ("deployment.lifecycle", "observe_initial_certificate", {}),
+        ):
+            dependency = mock.patch(f"{module}.{name}", **settings)
+            dependency.start()
+            self.addCleanup(dependency.stop)
         env = mock.patch.dict(os.environ, {"AZURE_ENV_NAME": self.config["environmentName"], "PYTHONDONTWRITEBYTECODE": "1"}, clear=True)
         env.start()
         self.addCleanup(env.stop)
@@ -235,6 +243,30 @@ class LifecycleFixture:
             requests.append((f"{network}/firewallPolicies/afwp-{stem}?api-version=2025-01-01", missing))
         paths, responses = zip(*requests)
         return ScriptedTransport(list(responses), expected_get_paths=paths)
+
+    def core_completion_response(self, outputs):
+        """生成入力とネイティブCore出力を同じ合成環境へ束縛する。"""
+        outputs.setdefault("endpoints", {"public": "https://fixture.example.com"})
+        outputs["gateway"] = {"publicUrl": outputs["endpoints"]["public"]}
+        outputs["gatewayPlan"] = {}
+        outputs["ingressMonitoringPlan"] = {}
+        stem = self.config["resourceStem"]
+        service_group = self.config["resourceGroupNames"]["svc"]
+        certificate_environment = (f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/{service_group}"
+                                   f"/providers/Microsoft.App/managedEnvironments/cae-{stem}-certificate")
+        bootstrap = {"jobName": "synthetic-job", "environmentId": certificate_environment}
+        outputs["certificateBootstrap"] = {**bootstrap, "imageDigest": "synthetic-digest"}
+        prepared = {
+            **outputs, "gateway": {},
+            "certificateBootstrap": bootstrap,
+            "ingressSecrets": {**outputs["ingressSecrets"], "enabled": False},
+        }
+        lifecycle.protected_json(self.paths.parameters, {"parameters": {
+            "firewallTlsInspection": {"value": {}},
+            "l7IngressSecret": {"value": "synthetic-input"},
+        }})
+        return {"properties": {"provisioningState": "Succeeded",
+                "outputs": {key: {"value": value} for key, value in prepared.items()}}}
 
     def outputs(self):
         sub = self.config["subscriptionId"]

@@ -159,7 +159,7 @@ class ApiContractConfigurationTests(unittest.TestCase):
         self.assertEqual(set(result['modelSettings']['vision-model']['integerLimits']), {'special'})
 
     def test_model_routing_requires_routes_for_every_allowed_model(self):
-        from standard_apis import load_api_definitions, API_DEFINITION_DIRECTORY
+        from catalog.standard_apis import load_api_definitions, API_DEFINITION_DIRECTORY
         base = next(api for api in load_api_definitions(API_DEFINITION_DIRECTORY) if api['name'] == 'blackforest-images-v1')
         normalize = lambda api: _apis([api], TENANT, {'FLUX.2-flex', 'FLUX.2-pro'},
             'https://gateway.example.com', {'subscriptionKeyHeader': 'api-key'})

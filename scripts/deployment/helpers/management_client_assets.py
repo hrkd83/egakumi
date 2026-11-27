@@ -7,7 +7,8 @@ import json
 import re
 import time
 
-from management_client import validate_inventory
+from operations.management_client import validate_inventory
+from .credential_broker_lifecycle import broker_environment_id
 from .paths import REPOSITORY, local_paths
 from .portal_resources import resource_names as portal_resource_names
 from .private_permissions import check_private_permissions
@@ -34,10 +35,8 @@ def expected_maintenance_environments(config, state):
     if portal_output is not None and (not isinstance(portal_output, dict)
             or portal_output.get('environmentName') != 'cae-' + stem):
         raise ValueError('The Portal maintenance environment differs from its constructed scope')
-    if 'brokerPlatform' not in outputs:
-        return {'portal': portal, 'gateway': portal}
-    broker = outputs['brokerPlatform']
-    gateway = portal + '-broker'
+    broker = outputs.get('brokerPlatform')
+    gateway = broker_environment_id(config)
     if (not isinstance(broker, dict) or broker.get('environmentName') != 'cae-' + stem + '-broker'
             or str(broker.get('environmentId', '')).casefold() != gateway.casefold()):
         raise ValueError('The Broker maintenance environment differs from its constructed scope')
@@ -52,7 +51,7 @@ def matches_maintenance_environment(properties, environment):
     return bool(references) and all(str(value).casefold() == environment.casefold() for value in references)
 
 
-def _expected_targets(config, *, broker_separated=False):
+def _expected_targets(config):
     """期待名は取り違え検出だけに使い、出力がないIDを補って配備しない。"""
     stem = config['resourceStem']
     base = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['svc'] + '/providers/Microsoft.App/'
@@ -61,7 +60,7 @@ def _expected_targets(config, *, broker_separated=False):
         'gateway': {
             'applicationIds': [base + 'containerApps/ca-' + stem + '-credentials'],
             'jobIds': [base + 'jobs/caj-' + stem + '-schema', base + 'jobs/caj-' + stem + '-recon'],
-            'environmentIds': [base + 'managedEnvironments/cae-' + stem + ('-broker' if broker_separated else '')],
+            'environmentIds': [broker_environment_id(config)],
             'sqlDatabaseIds': [sql + 'credentials'],
         },
         'portal': {
@@ -80,7 +79,7 @@ def management_client_inventory(config, state):
         raise ValueError('Management client Core state differs from the selected configuration')
     value = state.get('outputs', {}).get('managementClientInventory')
     if not isinstance(value, dict) or not value:
-        raise ValueError('Current Core management client inventory is required; complete the operations upgrade or current Core deployment')
+        raise ValueError('Current Core management client inventory is required; complete the Core deployment')
     try:
         value = deepcopy(validate_inventory(value))
     except (ValueError, RuntimeError, TypeError, KeyError):
@@ -91,11 +90,10 @@ def management_client_inventory(config, state):
             or value['managementVmId'].casefold() != vm.casefold()):
         raise ValueError('The constructed management client identity differs from the selected environment')
     environments = expected_maintenance_environments(config, state)
-    broker_separated = environments['portal'] != environments['gateway']
-    if broker_separated and {item.casefold() for item in value['environments']} != {
+    if {item.casefold() for item in value['environments']} != {
             item.casefold() for item in environments.values()}:
         raise ValueError('The constructed Portal and Broker environments are both required in the maintenance inventory')
-    allowed = _expected_targets(config, broker_separated=broker_separated)
+    allowed = _expected_targets(config)
     for output, family in FAMILIES.items():
         expected = {target.casefold() for component in allowed.values() for target in component[output]}
         ids = [item['id'] for item in value[family]] if family == 'sqlDatabases' else value[family]
@@ -148,10 +146,7 @@ def _merge_outputs(config, inventory, outputs, component):
     if not isinstance(metadata, dict) or set(metadata) != set(FAMILIES):
         raise ValueError('Successful app deployment management maintenance outputs are required')
     inventory = deepcopy(validate_inventory(inventory))
-    separated = _expected_targets(config, broker_separated=True)
-    broker_environment, = separated['gateway']['environmentIds']
-    broker_separated = broker_environment.casefold() in {item.casefold() for item in inventory['environments']}
-    expected = (separated if broker_separated else _expected_targets(config))[component]
+    expected = _expected_targets(config)[component]
     additions = []
     for output, family in FAMILIES.items():
         ids = metadata[output]

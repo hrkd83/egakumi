@@ -1,4 +1,4 @@
-"""Operation release keeps the established CLI boundary and stops failed stages."""
+"""Operation release shares the Gateway lock and stops after a failed stage."""
 from __future__ import annotations
 
 import contextlib
@@ -20,6 +20,7 @@ class Context:
         self.config_path = root / ".local/test/params.local.json"
         self.state_path = root / ".local/test/state/latest.json"
         self.commands = []
+        self.gateway_arguments = []
         self.events = []
         self.fail_at = None
         self.lock_depth = 0
@@ -39,9 +40,17 @@ class Context:
         if "--execute" in command:
             assert self.lock_depth == 1
         self.commands.append(command)
-        if len(self.commands) == self.fail_at:
+        if len(self.commands) + len(self.gateway_arguments) == self.fail_at:
             raise OSError("SECRET_SENTINEL")
         return "SECRET_SENTINEL"
+
+    def apply_gateway(self, arguments, *, _locked_workspace):
+        assert _locked_workspace is self.workspace and self.lock_depth == 1
+        self.gateway_arguments.append(arguments)
+        print("SECRET_SENTINEL")
+        if len(self.commands) + len(self.gateway_arguments) == self.fail_at:
+            raise OSError("SECRET_SENTINEL")
+        return 0
 
 
 class OperationsReleaseTests(unittest.TestCase):
@@ -51,6 +60,7 @@ class OperationsReleaseTests(unittest.TestCase):
         self.context = Context(Path(directory.name).resolve())
         self.output, self.errors = io.StringIO(), io.StringIO()
         self.loader = self.enterContext(mock.patch.object(release.OperationContext, "load", return_value=self.context))
+        self.gateway = self.enterContext(mock.patch("deployment.deploy_gateway.main", side_effect=self.context.apply_gateway))
         self.enterContext(contextlib.redirect_stdout(self.output))
         self.enterContext(contextlib.redirect_stderr(self.errors))
 
@@ -59,18 +69,22 @@ class OperationsReleaseTests(unittest.TestCase):
 
     def test_default_all_plans_existing_gateway_then_portal_and_hides_child_output(self):
         self.assertEqual(self.run_release("--component", "all"), 0)
-        expected = [[sys.executable, "-B", str(self.context.workspace.repository / "scripts" / f"deploy_{name}.py"),
+        expected = [[sys.executable, "-B", str(self.context.workspace.repository / "scripts/deployment" / f"deploy_{name}.py"),
                      "--config", str(self.context.config_path), "--state-file", str(self.context.state_path)]
                     for name in ("gateway", "portal")]
         self.assertEqual(self.context.commands, expected)
+        self.gateway.assert_not_called()
         self.assertEqual(self.context.events[-1][1]["status"], "planned")
         self.assertNotIn("SECRET_SENTINEL", self.output.getvalue() + self.errors.getvalue())
 
     def test_execute_passes_only_explicit_mode_and_same_checked_paths(self):
         self.assertEqual(self.run_release("--component", "all", "--execute"), 0)
-        self.assertEqual(len(self.context.commands), 2)
-        self.assertTrue(all(command[-1] == "--execute" for command in self.context.commands))
+        expected = ["--config", str(self.context.config_path), "--state-file", str(self.context.state_path), "--execute"]
+        self.assertEqual(self.context.gateway_arguments, [expected])
+        self.assertEqual(len(self.context.commands), 1)
+        self.assertEqual(self.context.commands[0][3:], expected)
         self.assertEqual(self.context.events[-1][1]["completedComponents"], ["gateway", "portal"])
+        self.assertNotIn("SECRET_SENTINEL", self.output.getvalue() + self.errors.getvalue())
 
     def test_single_component_digest_reuses_established_immutable_image_argument(self):
         digest = "sha256:" + "a" * 64
@@ -89,7 +103,8 @@ class OperationsReleaseTests(unittest.TestCase):
     def test_gateway_failure_does_not_start_portal_or_repeat_gateway(self):
         self.context.fail_at = 1
         self.assertEqual(self.run_release("--component", "all", "--execute"), 1)
-        self.assertEqual(len(self.context.commands), 1)
+        self.assertEqual(len(self.context.gateway_arguments), 1)
+        self.assertEqual(self.context.commands, [])
         self.assertEqual(self.context.events[-1][1]["completedComponents"], [])
         self.assertEqual(self.context.events[-1][1]["component"], "gateway")
         self.assertNotIn("SECRET_SENTINEL", self.output.getvalue() + self.errors.getvalue())
@@ -97,14 +112,15 @@ class OperationsReleaseTests(unittest.TestCase):
     def test_portal_failure_keeps_prior_gateway_completion_in_receipt(self):
         self.context.fail_at = 2
         self.assertEqual(self.run_release("--component", "all", "--execute"), 1)
-        self.assertEqual(len(self.context.commands), 2)
+        self.assertEqual(len(self.context.gateway_arguments), 1)
+        self.assertEqual(len(self.context.commands), 1)
         self.assertEqual(self.context.events[-1][1]["completedComponents"], ["gateway"])
         self.assertEqual(self.context.events[-1][1]["component"], "portal")
 
     def test_child_failure_exit_code_is_preserved_without_child_error_text(self):
         error = release.OperationError("SECRET_SENTINEL", exit_code=7)
         with mock.patch.object(self.context, "run_cli", side_effect=error):
-            self.assertEqual(self.run_release("--component", "gateway", "--execute"), 7)
+            self.assertEqual(self.run_release("--component", "portal", "--execute"), 7)
         self.assertEqual(self.context.events[-1][1]["exitCode"], 7)
         self.assertEqual(self.context.lock_depth, 0)
         self.assertNotIn("SECRET_SENTINEL", self.output.getvalue() + self.errors.getvalue())

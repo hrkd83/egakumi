@@ -39,7 +39,7 @@ def managed_ai_paths(config):
     # Import lazily: the public contract renderer has no configuration-loader
     # dependency. Resolve deployment URLs from selected canonical operations,
     # so adding a model does not require another WAF selector/model allowlist.
-    from waf_contracts import model_operation_waf_path, require_source_routes
+    from validation.waf_contracts import model_operation_waf_path, require_source_routes
     manifest = require_source_routes(config.get("apiDefinitions", []))
     standard = {path for profile in manifest["profiles"] if profile["scope"] == "gateway"
                 and profile["name"] not in ("g-document-status", "g-realtime-ticket")

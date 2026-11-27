@@ -59,7 +59,7 @@ OpenAI／Claudeの中継はHTTP本文16 MiB、監査用の抽出結果は方向�
 Log Analyticsの要求IDから証跡Blobの同じ要求IDの接頭辞を開く。調査者本人に`Storage Blob Data Reader`を本文コンテナーの範囲で一時付与し、管理経路から該当する記録だけを取得する。取得した記録は環境の保護領域に置き、Blobと同じ`<REQUEST_ID>/<CAPTURE_ID>/<連番>.json`の階層を維持する。ディレクトリは700、ファイルは600とする。
 
 ```bash
-python3 -I -B scripts/audit_body.py \
+python3 -I -B scripts/audit/audit_body.py \
   --config '.local/<environment>/params.local.json' \
   --records '.local/<environment>/evidence/body-audit/<REQUEST_ID>/<CAPTURE_ID>'
 ```

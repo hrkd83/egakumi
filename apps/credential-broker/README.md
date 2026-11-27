@@ -4,7 +4,7 @@ APIM経由で本人接続を管理する内部FastAPIサービスです。MSAL�
 
 Broker本体、SQL初期化ジョブ、定期照合ジョブは、Coreが準備する専用サブネットの内部CAE（`cae-${stem}-broker`）に配置します。APIMは専用CAEの既定ドメインへ直接HTTPSで接続します。アプリの`external: true`は内部CAEのプライベートロードバランサーに発行するための設定で、Broker用NSGがAPIMサブネットを許可します。ブラウザーの本人接続とcallbackは引き続き公開GatewayのURLを使います。 [Azure Container Appsのingress](https://learn.microsoft.com/en-us/azure/container-apps/ingress)
 
-Core構築と公開証明書のEntra登録後、Gatewayの個別配備でBrokerを用意します。初回配備・更新はリポジトリのルートから`python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute`を実行します。既存管理VMでのイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、本体と照合ジョブ、APIMのAPI登録まで一括実行します。`--execute`なしはローカル計画だけです。[配備手順](../../docs/setup/11-deploy-gateway.md#4-gatewayを配備する)と[CM共通接続手順](../../docs/reference/credential-manager-login.md)を参照してください。
+Core構築と公開証明書のEntra登録後、Gatewayの個別配備でBrokerを用意します。初回配備・更新はリポジトリのルートから`python3 scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute`を実行します。既存管理VMでのイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、本体と照合ジョブ、APIMのAPI登録まで一括実行します。`--execute`なしはローカル計画だけです。[配備手順](../../docs/setup/11-deploy-gateway.md#4-gatewayを配備する)と[CM共通接続手順](../../docs/reference/credential-manager-login.md)を参照してください。
 
 Gateway配備は同じCoreのBroker専用CAE出力を参照し、実行前に実環境のドメイン、サブネット、既存のアプリとジョブの所属を照合します。旧共有CAEに同名の資源がある場合は、既存のSQL台帳とCM接続を引き継ぐ切替を別途計画するため、配備を停止します。
 

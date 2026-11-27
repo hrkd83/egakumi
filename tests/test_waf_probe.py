@@ -25,7 +25,7 @@ from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-import waf_probe as probe
+from validation import waf_probe as probe
 
 
 class WafProbeTests(unittest.TestCase):
@@ -1529,7 +1529,8 @@ class WafProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "plan.json"
             with patch.object(probe, "run_probe", side_effect=AssertionError("network attempted")):
-                code = probe.main(["--suite", "legacy", "--dry-run", "--case-filter", "baseline", "--key-file", str(Path(directory) / "missing-secret"), "--output", str(output)])
+                code = probe.main(["--dry-run", "--case-filter", " baseline ", "--key-file",
+                                   str(Path(directory) / "missing-secret"), "--output", str(output)])
             self.assertEqual(code, 0)
             report = json.loads(output.read_text(encoding="utf-8"))
             self.assertTrue(report["dry_run"])
@@ -1697,7 +1698,7 @@ class WafProbeTests(unittest.TestCase):
                 self.assertNotIn("X-Waf-Unknown", values)
 
     def test_opaque_ticket_header_scope_is_a_selector_invariant_not_an_invented_attack(self):
-        from waf_contracts import contract_fields
+        from validation.waf_contracts import contract_fields
         for profile, name in (("g-document-status", "X-Core-Document-Ticket"),
                               ("g-realtime-ticket", "X-Core-Call-Ticket")):
             fields = [field for field in contract_fields(profile) if field["matchVariable"] == "RequestHeaderValues" and field["groups"]]

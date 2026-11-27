@@ -11,7 +11,7 @@ from configuration_fixtures import fixture
 from deployment.helpers import apim_generations as generations
 from deployment.helpers.apim_naming import apim_name
 from deployment.helpers.paths import LocalPaths
-import prepare_local_environment
+from setup import prepare_local_environment
 
 
 class ApimGenerationTests(unittest.TestCase):

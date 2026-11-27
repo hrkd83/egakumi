@@ -1,8 +1,5 @@
 """実サービスへ接続せず、Decision の型検査と1要求だけの安全な試験を確認する。"""
-import asyncio
-import copy
 from contextlib import redirect_stderr, redirect_stdout
-import importlib.util
 import io
 import json
 from pathlib import Path
@@ -11,13 +8,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-CORE = next(parent for parent in Path(__file__).resolve().parents if (parent / "scripts/integration_client.py").is_file())
-SCRIPTS = CORE / "scripts"
+SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-STAGED_CLIENT = Path(__file__).with_name("decision_client.py")
-spec = importlib.util.spec_from_file_location("decision_client_staged", STAGED_CLIENT if STAGED_CLIENT.is_file() else SCRIPTS / "decision_client.py")
-probe = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(probe)
+from clients import decision_client as probe
 import httpx2
 
 
@@ -70,11 +63,14 @@ class DecisionTests(unittest.TestCase):
     def test_evidence_writer_rejects_existing_files_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "evidence.json"
-            probe.write_new(target, {"succeeded": False})
+            with probe.open_new(target) as evidence:
+                evidence.write('{"succeeded": false}\n')
             self.assertEqual(target.stat().st_mode & 0o777, 0o600)
-            with self.assertRaises(FileExistsError): probe.write_new(target, {})
+            with self.assertRaises(FileExistsError):
+                probe.open_new(target)
             link = Path(directory) / "link"; link.symlink_to(target)
-            with self.assertRaisesRegex(ValueError, "symbolic links"): probe.write_new(link, {})
+            with self.assertRaisesRegex(ValueError, "symbolic links"):
+                probe.open_new(link)
 
     def test_unwritable_or_existing_output_is_detected_before_token_read(self):
         with tempfile.TemporaryDirectory() as directory:

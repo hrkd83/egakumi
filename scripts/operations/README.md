@@ -2,28 +2,27 @@
 
 [運用手順](../../docs/operations/README.md) · [運用テスト](../../docs/testing/operations-tests.md)
 
-構築済みの同じ環境のparams・Core stateを使う。リポジトリルートで実行し、反映は`--execute`を明示する。計画と反映は別の結果として記録する。
+現行資材で構築した環境のparamsとCore stateを使う。リポジトリルートで実行し、反映は`--execute`を明示する。計画と反映は別の結果として記録する。
 
 | 入口 | 用途 | 計画時のAzure通信 |
 | --- | --- | --- |
 | `release.py` | `--component gateway/portal/all`で既存の個別配備を利用。単体は`--image-digest`で互換な旧版へ切戻し | なし |
 | `model.py` | config正本の一配備を`--name`と`--intent create/update`で選ぶ。容量はPATCH、版変更は追加の明示指定 | 現物を読んで比較する |
 | `entra_secret.py` | `--stage create/switch/rollback/retire`で新値作成、KV／CM切替、確認後の旧値廃止を分ける | 既定計画では変更しない。各stageの前提は手順参照 |
-| `certificate.py` | `--stage check/renew/sync`で既存workerと参照先・公開TLSを確認する。期限前の計画更新は`--stage renew --rotate` | 既定計画は通信なし。実際の確認にも`--execute`を使う |
-| `api_key.py` | 通常購読の主副の片側を再生成し、指定した新規秘密ファイルへ保存 | なし。実行時に現物の購読を照合する |
+| `certificate.py` | `--stage check/renew/sync`で証明書用Container Apps JobとAppGW・公開TLSを確認する。期限前の更新は`--stage renew --rotate` | 既定計画は通信なし。実際の確認にも`--execute`を使う |
+| `portal_auth_certificate.py` | Portal用署名証明書の初期状態を確認し、署名Jobによる更新・配備切替・復旧を行う | 既定計画は通信なし |
 | `waf.py` | 既存の用途別WAFのreconcilerを`--scope gateway/portal/all`で利用 | なし |
-| `nsg_dns.py` | Azure提供DNSを確認し、不要な既知のDNS用NSG子規則だけを回収 | 現物のDNS設定・所有・全対象規則を読む |
-| `nsg_appgw_egress.py` | 既定許可と重複するAppGWの送信3子規則だけを回収 | AppGWサブネット・対向宛先・既定規則・所有と実規則を読む |
-| `management_host_time.py` | 明示したruntime／evidenceで`inspect/apply/verify`を分け、SSH／rsyslogを変更せずPHC時刻だけを先行設定・確認 | 所有VM・同一世代と既存commandを読む。guest確認の実行にも`--execute`を使う |
-| `management_time_network.py` | PHC確認後、管理用の旧NTP NSG childとFW規則だけを条件付きで撤去 | 所有・関連付け・PHC証跡・NSG全条件・対象RCGの現在条件を読む |
 | `monitoring.py` | 対象Action groupのメール宛先、または既存アラート1規則の閾値を更新 | 現物を読んで比較する |
+| `inspect_credential_connections.py` | 対象APIMのCredential Manager接続を確認する | 対象を確認してから、接続の一覧を読み取る |
+
+`management_client.py` は構築時に管理VMへ配置される保守クライアントの正本です。運用者本人の権限で、構築時に登録した対象のSQL・ACA・監査へアクセスします。 [管理VMの保守手順](../../docs/operations.md)
 
 ```sh
 python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --component all
 python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --component all --execute
 ```
 
-全入口の引数は`--help`で確認する。ソース・config・API定義の編集は、変更目的に合わせて手順どおり行う。Portalで利用者本人の認可が必要な操作は、正規のPortal画面・認証経路を使う。
+全入口の引数は`--help`で確認する。ソース・config・API定義の編集は、変更目的に合わせて手順どおり行う。例外の購読キーは基盤管理者がAzureポータルで発行・管理する。 [購読キーの運用](../../docs/operations/access-and-keys.md)
 
 ## 保存と途中停止
 

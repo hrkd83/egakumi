@@ -1109,15 +1109,14 @@ class DocumentAnalysisConfigurationTests(unittest.TestCase):
                 normalize_configuration(raw)
 
     def test_document_only_foundation_prepares_the_existing_server_owner_key(self):
-        from deployment.helpers.grpc_lifecycle import enabled, owner_ticket_enabled, prepare_secret, realtime_enabled
+        from deployment.helpers.ingress import owner_ticket_enabled, prepare_secret, realtime_enabled
         raw = self.raw()
         raw['gateway']['realtimeControlEnabled'] = False
         config = normalize_configuration(raw)
-        self.assertTrue(enabled(config))
         self.assertFalse(realtime_enabled(config))
         self.assertTrue(owner_ticket_enabled(config))
         writer = mock.Mock()
-        with mock.patch('deployment.helpers.grpc_lifecycle._prepare_credential',
+        with mock.patch('deployment.helpers.ingress.prepare_credential',
                         side_effect=['synthetic-ingress-key', 'synthetic-document-ticket-key']) as prepare:
             self.assertEqual(prepare_secret(config, ROOT, writer), {
                 'l7IngressSecret': 'synthetic-ingress-key',
@@ -1134,7 +1133,7 @@ class DocumentAnalysisConfigurationTests(unittest.TestCase):
         raw = self.raw()
         raw['apiDefinitions'] = []
         raw['gateway']['realtimeControlEnabled'] = False
-        from deployment.helpers.grpc_lifecycle import owner_ticket_enabled, realtime_enabled
+        from deployment.helpers.ingress import owner_ticket_enabled, realtime_enabled
         config = normalize_configuration(raw)
         self.assertFalse(realtime_enabled(config))
         self.assertTrue(owner_ticket_enabled(config))

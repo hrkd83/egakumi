@@ -40,11 +40,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/deploy_gateway.py --config "$CORE_PARAMS_PATH" \
+          python3 scripts/deployment/deploy_gateway.py --config "$CORE_PARAMS_PATH" \
             --deployment-name "$CORE_DEPLOYMENT_NAME"
       - name: Deploy Gateway database, CM, broker, and APIs
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/deploy_gateway.py --config "$CORE_PARAMS_PATH" \
+          python3 scripts/deployment/deploy_gateway.py --config "$CORE_PARAMS_PATH" \
             --deployment-name "$CORE_DEPLOYMENT_NAME" --execute

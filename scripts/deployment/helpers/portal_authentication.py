@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from .grpc_lifecycle import _prepare_credential, secret_path
+from .ingress import prepare_credential, secret_path
 
 
 PURPOSE = "portal-auth"
@@ -14,7 +14,7 @@ def prepare_secret(config: dict, root: Path, write_protected) -> dict:
     値は画面やparamsへ出さず、呼出元が保護したBicepパラメーター経由で
     Key Vaultへ登録する。Entraアプリのclient secretとは別の鍵である。
     """
-    return {"portalAuthenticationSecret": _prepare_credential(config, root, PURPOSE, write_protected)}
+    return {"portalAuthenticationSecret": prepare_credential(config, root, PURPOSE, write_protected)}
 
 
 def remove_secret(config: dict, root: Path) -> None:

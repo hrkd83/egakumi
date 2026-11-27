@@ -34,8 +34,7 @@ python3 -B scripts/operations/entra_secret.py --config "$DEPLOY_PARAMS_FILE" \
    作成要求や保存結果が不明なら再作成せず、receiptの段階・operation IDとEntraの
    credential metadataを照合する。Valueは作成後に再取得できない。
 4. 次を計画・反映する。現在の保護入力は別の600ファイルへ退避し、同じClient IDの
-   対象入力を新値へ揃える。既存の共有secretモジュールだけをサービスRGへ
-   `Incremental`配備し、同名のKV新versionを保存した後、既存Gを実行する。
+   対象入力を新値へ揃える。Gateway配備が、対象のKey Vault参照とCMまたはCredential本人確認の設定を更新する。
 
 ```sh
 python3 -B scripts/operations/entra_secret.py --config "$DEPLOY_PARAMS_FILE" \

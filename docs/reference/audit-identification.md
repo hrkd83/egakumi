@@ -2,7 +2,7 @@
 
 この文書はWIPである。監査出力の契約と照会用資材を説明し、資材の実装、ローカル検証、対象環境への適用と受入を区別する。保存先、保持期間、アクセス権限の設計は既存の監査基盤に従う。識別情報を追加しただけで、J-SOXへの適合や実施した自然人の特定が完了したとは扱わない。
 
-[audit-identification.kql](../../scripts/audit-identification.kql)は、APIMの要求を1行ずつ残し、認証主体、要求の情報、App Gatewayのネットワーク観測を照会する。[audit-usage.kql](../../scripts/audit-usage.kql)の利用量集計は変更しない。新queryで利用量や課金配賦を推測しない。
+[audit-identification.kql](../../scripts/audit/audit-identification.kql)は、APIMの要求を1行ずつ残し、認証主体、要求の情報、App Gatewayのネットワーク観測を照会する。[audit-usage.kql](../../scripts/audit/audit-usage.kql)の利用量集計は変更しない。新queryで利用量や課金配賦を推測しない。
 
 ## 情報源と要求の相関
 

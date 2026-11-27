@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-QUERY = ROOT / 'scripts/audit-identification.kql'
+QUERY = ROOT / 'scripts/audit/audit-identification.kql'
 APIM = '/subscriptions/REPLACE/resourceGroups/REPLACE/providers/Microsoft.ApiManagement/service/REPLACE'
 APPGW = '/subscriptions/REPLACE/resourceGroups/REPLACE/providers/Microsoft.Network/applicationGateways/REPLACE'
 TENANT = '11111111-1111-4111-8111-111111111111'

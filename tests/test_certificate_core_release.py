@@ -52,7 +52,6 @@ class CertificateCoreReleaseTests(unittest.TestCase):
              mock.patch.object(lifecycle, 'state_from_outputs', return_value={}), \
              mock.patch('operations.common.OperationContext') as context, \
              mock.patch.object(lifecycle, '_save_deployment_state', side_effect=checkpoint), \
-             mock.patch.object(lifecycle, 'require_certificate_job_cutover'), \
              mock.patch.object(lifecycle, '_bind_management_serial_password'), \
              mock.patch.object(lifecycle, 'verify_core_network_after_deployment'), \
              mock.patch('deployment.helpers.certificate_jobs.complete_initial_certificates', side_effect=issue), \
@@ -62,9 +61,8 @@ class CertificateCoreReleaseTests(unittest.TestCase):
                                side_effect=lambda *args: events.append('appgw') or self.gateway), \
              mock.patch.object(lifecycle, 'require_appgw_backend_tls_ready'), \
              mock.patch.object(lifecycle, 'observe_initial_certificate', side_effect=public_tls), \
-             mock.patch.object(lifecycle, 'configure_grpc_endpoint',
+             mock.patch.object(lifecycle, 'verify_apim_endpoint',
                                side_effect=lambda *args, **kwargs: events.append('ingress-settings') or {}), \
-             mock.patch.object(lifecycle, 'upgrade_journal'), \
              mock.patch.object(lifecycle, 'finish_public_dns',
                                side_effect=lambda *args: events.append('public-dns') or {'status': 'configured'}), \
              mock.patch.object(lifecycle, 'protected_json'):

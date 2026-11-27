@@ -35,7 +35,7 @@ rotationCommitAttempted          確定要求を送る前に保存する試行�
 
 ## FastAPI / Python
 
-参照実装は[`scripts/credential_client.py`](../../scripts/credential_client.py)。依存パスへ`scripts`を追加するか、アプリのサーバーモジュールとして同じファイルを配置する。標準ライブラリーだけを使用する。`MemorySessionStore`はテスト用、`FileSessionStore`はWSL/POSIXの単一ホスト診断用。本番では`locked/read/write(expected_revision=...)`を共有DBで実装する。
+参照実装は[`scripts/clients/credential_client.py`](../../scripts/clients/credential_client.py)。依存パスへ`scripts`を追加するか、アプリのサーバーモジュールとして同じファイルを配置する。標準ライブラリーだけを使用する。`MemorySessionStore`はテスト用、`FileSessionStore`はWSL/POSIXの単一ホスト診断用。本番では`locked/read/write(expected_revision=...)`を共有DBで実装する。
 
 ```python
 from fastapi import Depends

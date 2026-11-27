@@ -191,13 +191,13 @@ class ApimHostnamePreservationTests(LifecycleFixture, unittest.TestCase):
         with mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
                 mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
                 mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-                mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
+                mock.patch.object(lifecycle, "prepare_ingress_secrets", return_value={}), \
                 mock.patch.object(lifecycle, "run", return_value={}), \
                 mock.patch.object(lifecycle, "ArmTransport", return_value=ScriptedTransport(responses)), \
                 mock.patch.object(lifecycle, "capacity_preflight"), \
                 mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
                 mock.patch.object(lifecycle, "configure_app_insights_cap"), \
-                mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
+                mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()), \
                 mock.patch.object(lifecycle, "discover_existing_network_security_groups", return_value=[]), \
                 mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
                 mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
@@ -208,25 +208,6 @@ class ApimHostnamePreservationTests(LifecycleFixture, unittest.TestCase):
             discover.assert_called_once()
             values = json.loads(self.paths.parameters.read_text())["parameters"]
             self.assertEqual(values["existingApimHostnameConfigurations"]["value"], self.expected())
-
-    def test_direct_core_put_includes_snapshot_and_monitoring_does_not_discover_domains(self):
-        for phase in ("core", "monitoring"):
-            responses = [{"statusCode": 404, "body": None}] if phase == "core" else []
-            transport = ScriptedTransport(responses + [{"statusCode": 201, "body": {}},
-                {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded", "outputs": {}}}}])
-            with self.subTest(phase=phase), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
-                    mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
-                    mock.patch.object(lifecycle, "discover_existing_network_security_groups", return_value=[]), \
-                    mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
-                    mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
-                    mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
-                    mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": False}) as ingress, \
-                    mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value=self.expected()) as discover:
-                lifecycle.deploy_phase(self.config, phase, secrets={})
-                self.assertEqual(discover.call_count, 1 if phase == "core" else 0)
-                self.assertEqual(ingress.call_count, 1 if phase == "core" else 0)
-                values = transport.mutations()[0]["body"]["properties"]["parameters"]
-                self.assertEqual(values["existingApimHostnameConfigurations"]["value"], self.expected() if phase == "core" else {})
 
 
 class ApimHostnameBicepTests(unittest.TestCase):

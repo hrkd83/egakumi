@@ -101,13 +101,13 @@
       "rule": "nonpublic-host",
       "value": "management.core.windows.net",
       "reason": "Official Azure Resource Manager access token audience documented at https://learn.microsoft.com/en-us/entra/msal/msal-acquire-cache-tokens",
-      "paths": ["scripts/management_client.py"]
+      "paths": ["scripts/management_client.py", "scripts/operations/management_client.py"]
     },
     {
       "rule": "nonpublic-host",
       "value": "sts.windows.net",
       "reason": "Common Microsoft Entra v1 issuer endpoint used with a runtime tenant or a synthetic value. See https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference",
-      "paths": ["scripts/management_client.py", "tests/test_management_client.py"]
+      "paths": ["scripts/management_client.py", "scripts/operations/management_client.py", "tests/test_management_client.py"]
     },
     {
       "rule": "environment-identifier",
@@ -948,6 +948,7 @@
       "reason": "Public OOXML namespace constant used only by independent synthetic document packages and their parser tests; exact path/value only",
       "paths": [
         "scripts/waf_probe.py",
+        "scripts/validation/waf_probe.py",
         "tests/test_waf_probe.py"
       ]
     },
@@ -964,6 +965,7 @@
         "guest/certificate.ps1",
         "infra/guest/certificate.ps1",
         "scripts/waf_probe.py",
+        "scripts/validation/waf_probe.py",
         "tests/certificate-network-boundary-offline.ps1",
         "tests/test_publish_apis.py",
         "infra/guest/portal-auth-certificate.ps1"
@@ -2658,6 +2660,7 @@
         "guest/certificate.ps1",
         "infra/guest/certificate.ps1",
         "scripts/waf_probe.py",
+        "scripts/validation/waf_probe.py",
         "tests/certificate-azure-identity-offline.ps1",
         "tests/certificate-network-boundary-offline.ps1",
         "tests/test_publish_apis.py",
@@ -2705,7 +2708,8 @@
       "value": "::443",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "scripts/deployment/lifecycle.py"
+        "scripts/deployment/lifecycle.py",
+        "scripts/deployment/existing_resources.py"
       ]
     },
     {
@@ -2743,6 +2747,7 @@
       "paths": [
         "apps/portal/components/api-keys/create-key-dialog.tsx",
         "scripts/waf_probe.py",
+        "scripts/validation/waf_probe.py",
         "tests/test_waf_probe.py"
       ]
     },
@@ -2757,7 +2762,8 @@
         "apps/portal/tests/api-key-limit-client.test.ts",
         "apps/portal/tests/api-key-ownership-client.test.ts",
         "apps/portal/tests/graph-tool-client.test.ts",
-        "scripts/waf_probe.py"
+        "scripts/waf_probe.py",
+        "scripts/validation/waf_probe.py"
       ]
     },
     {
@@ -4335,6 +4341,7 @@
       "paths": [
         "infra/guest/prepare-management-client.sh",
         "scripts/management_client.py",
+        "scripts/operations/management_client.py",
         "tests/test_management_client_install.py"
       ]
     },
@@ -4344,6 +4351,7 @@
       "reason": "Public Azure Monitor Logs HTTP API origin, independent of the Entra token resource: https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/authentication-authorization. Exact source and independent offline regression fixture only.",
       "paths": [
         "scripts/management_client.py",
+        "scripts/operations/management_client.py",
         "tests/test_management_client.py"
       ]
     },
@@ -4353,6 +4361,7 @@
       "reason": "Public Log Analytics Entra resource identifier used by the official SDK and resource/scope token examples: https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/authentication-authorization. Exact source and independent offline regression fixture only; not a deployment hostname.",
       "paths": [
         "scripts/management_client.py",
+        "scripts/operations/management_client.py",
         "tests/test_management_client.py"
       ]
     },
@@ -4396,7 +4405,8 @@
       "value": "storage.azure.com",
       "reason": "Public Azure Storage Entra token audience, common service endpoint: https://learn.microsoft.com/en-us/rest/api/storageservices/authorize-with-azure-active-directory.",
       "paths": [
-        "scripts/management_client.py"
+        "scripts/management_client.py",
+        "scripts/operations/management_client.py"
       ]
     },
     {
@@ -4533,6 +4543,7 @@
       "paths": [
         "infra/guest/prepare-management-client.sh",
         "scripts/management_client.py",
+        "scripts/operations/management_client.py",
         "tests/test_management_client.py",
         "tests/test_management_client_install.py"
       ]
@@ -4815,7 +4826,8 @@
       "value": "database.windows.net",
       "reason": "Official shared Azure SQL token audience and generated server suffix, without tenant or resource identification; https://learn.microsoft.com/en-us/sql/connect/odbc/using-azure-active-directory",
       "paths": [
-        "scripts/management_client.py"
+        "scripts/management_client.py",
+        "scripts/operations/management_client.py"
       ]
     },
     {
@@ -5192,6 +5204,7 @@
         "guest/certificate.ps1",
         "infra/guest/certificate.ps1",
         "scripts/waf_probe.py",
+        "scripts/validation/waf_probe.py",
         "tests/certificate-network-boundary-offline.ps1",
         "tests/test_publish_apis.py"
       ]
@@ -5307,6 +5320,7 @@
         "guest/certificate.ps1",
         "infra/guest/certificate.ps1",
         "scripts/waf_probe.py",
+        "scripts/validation/waf_probe.py",
         "tests/certificate-azure-identity-offline.ps1",
         "tests/certificate-network-boundary-offline.ps1",
         "tests/test_publish_apis.py"

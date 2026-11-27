@@ -2,7 +2,7 @@
 
 このフォルダーのJSONは、Gatewayへ実際に配備する標準APIの定義です。`<API名>.json`の1 API 1ファイルで管理し、ファイル名とJSON内の`name`を一致させます。
 
-`scripts/deploy_gateway.py`は19ファイルの標準API正本を常用で読み込みます。公開params/configの`apiDefinitions`・`publishApis`による一覧置換・切替は廃止し、旧項目は空配列やfalseでも拒否します。ディレクトリ内のJSONはAPIオブジェクトだけを持ち、`apiDefinitions`等の包みは付けません。今回の公開入力整理は既存アプリID・secret・認証fallbackの切替を伴わず、Azure反映と全環境再構築E2Eは未実施です。[入力配置と移行](../../../docs/setup/07-params.md#公開入力71主項目の判断記録)を参照してください。
+`scripts/deployment/deploy_gateway.py`は19ファイルの標準API正本を常用で読み込みます。公開params/configの`apiDefinitions`・`publishApis`による一覧置換・切替は廃止し、旧項目は空配列やfalseでも拒否します。ディレクトリ内のJSONはAPIオブジェクトだけを持ち、`apiDefinitions`等の包みは付けません。今回の公開入力整理は既存アプリID・secret・認証fallbackの切替を伴わず、Azure反映と全環境再構築E2Eは未実施です。[入力配置と移行](../../../docs/setup/07-params.md#公開入力71主項目の判断記録)を参照してください。
 
 | ファイル | 主な機能 |
 | --- | --- |
