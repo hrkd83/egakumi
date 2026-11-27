@@ -114,9 +114,7 @@ python3 -B scripts/operations/certificate.py --config "$DEPLOY_PARAMS_FILE" --st
    元の結果を確認してから再開する。
 
 APIMのHTTPS保守には、Private DNSで内部VIPへ解決される標準`*.azure-api.net`名を
-HostとSNIに使用する。Microsoftが管理する既定証明書を使用するため、本workerの
-公開証明書同期対象に含めない。gRPC専用のAPIM公開名bindingと`refreshHostnames`呼出しは
-撤去する。AppGWの公開URLと証明書は維持する。
+HostとSNIに使用する。APIMはMicrosoftが管理する既定証明書を使う。公開TLS Jobの同期対象はAppGWの公開ホストと証明書。
 [APIM標準Gateway名](https://learn.microsoft.com/azure/api-management/configure-custom-domain)・
 [内部VNetのDNS](https://learn.microsoft.com/azure/api-management/api-management-using-with-internal-vnet)
 
@@ -125,3 +123,9 @@ HostとSNIに使用する。Microsoftが管理する既定証明書を使用す�
 DNS権限・Key Vault権限と経路・ACAのスケジュール・参照の対象だけを修正してから再試行する。
 公開側が旧版なら、再発行する前に同期を確認する。作業用タグ復元が未完了なら、現在の
 タグとETagを読み、同時変更を消さず該当タグだけを戻す。ログや秘密の一括取得は不要。
+
+## DNS用マネージドIDと権限を更新する
+
+Azure Public DNSは事前作成したUAMIを使います。IDを変更する場合は、新しいIDへDNS権限を付与し、paramsの`certificate.azureDnsManagedIdentityResourceId`と、必要なら`certificate.azureDnsSubscriptionId`を更新して同じ環境へ反映します。公開TLS Jobへの関連付け・実際の証明書更新を確認してから旧権限を回収します。外部で作成したDNS用ID・公開ゾーンはCoreの撤去対象に含めません。
+
+IDや権限の変更前に[DNS事前準備](../setup/05-public-dns.md)を確認してください。

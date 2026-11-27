@@ -1,25 +1,14 @@
 # Portalを修正・更新・切り戻す
 
-新構成のPortal本体は、初期構築→公開証明書取得→[手動Entra登録](../setup/09-egakumi-portal.md)の後に独立して配備します。鍵版・thumbprintは保護stateで固定します。[認証証明書の更新・復旧](portal-authentication.md)は本体・Graphジョブを同じ固定イメージで切り替える運用です。
+Portalはログインした利用者が本人のBearerでAPIを試す画面です。初回は[PortalのEntraアプリ登録](../setup/09-egakumi-portal.md)とGateway配備を済ませ、[Portalを個別配備](../setup/12-deploy-portal.md)します。署名鍵の版とthumbprintは保護stateを参照し、[認証証明書の更新](portal-authentication.md)で管理します。
 
 [共通手順](common.md) · [運用テスト](../testing/operations-tests.md)
-
-対象は既存Portalの画面・文言・ガイド・入力や結果表示の修正である。新しい管理機能やDB変更を、この手順の試験のために追加しない。手順の机上確認と、実環境への更新・受入は別に記録する。
 
 ## 業務APIのquery拒否
 
 Portalの業務APIは、認証済みの要求で未許可のquery名・空名・重複した引数をHTTP 400／`InvalidRequest`で拒否する。共通の`lib/portal-query.ts`をHTTP入口で使い、本文読取りや業務処理より前に検査する。既存のOrigin・キャンセル・本文形式の検査も維持する。匿名要求の401だけでは、この検査を確認したことにならない。
 
-正常利用で必要なqueryは次の入口だけで許可する。値の形式や必須条件は各入口の既存検査に従う。
-
-| 入口 | 許可するquery名 |
-| --- | --- |
-| `GET /api/models/keys` | `apiId` |
-| `GET /api/api-key-administration` | `cursor` |
-| `GET /api/api-keys/{id}/owner` | `search`、`cursor` |
-| `POST /api/tools/documents`のraw本文 | `model`、`apiKeyId` |
-
-その他の業務APIではquery引数を受け付けない。文書のmultipart送信と状態確認もqueryなしで使う。ログイン・OAuthコールバック・ページの検索条件・Next.js内部要求はこの共通検査の対象外である。APIM専用の内部認可やRealtimeのWebSocket境界は、既存の専用検査を維持する。
+`POST /api/tools/documents`へraw本文を送る場合は、`model`と`authentication`を受け付けます。値はDocument解析の入力schemaに従います。ほかのAPI試用、文書のmultipart送信と状態確認はqueryなしで実行します。ログイン・OAuthコールバック、APIM専用の内部認可、RealtimeのWebSocketはそれぞれの入口で検査します。
 
 共通検査はquery名や値、URL、本文、認証情報を記録・書換えしない。query付き負例は有効な認証と正常本文で送り、400／`InvalidRequest`、業務処理未呼出、queryなしの対照を確認する。WAFの403、認証の401、別の入力エラーだけではPortalのquery拒否を合格にしない。ローカルの依存差替え試験と、Azure反映後の実HTTP試験を分けて記録する。
 

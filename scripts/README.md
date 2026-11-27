@@ -6,9 +6,9 @@
 | [deployment/](deployment/) | Coreの構築・撤去、GatewayとPortalの配備 | [lifecycle.py](deployment/lifecycle.py)、[deploy_gateway.py](deployment/deploy_gateway.py)、[deploy_portal.py](deployment/deploy_portal.py) |
 | [operations/](operations/) | 構築後の更新、証明書・モデル・監視・WAFの保守 | [運用コマンド一覧](operations/README.md) |
 | [policy/](policy/) | APIMの共通ポリシーや手動追加API用のポリシーXMLをローカル生成 | [render_apim_policy.py](policy/render_apim_policy.py)、[render_apim_portal_policy.py](policy/render_apim_portal_policy.py) |
-| [clients/](clients/) | Entra認証、REST・MCP、本人接続、音声の試験と組み込み例 | [動作テスト](../docs/testing/integration-tests.md)、[本人接続クライアント](../docs/reference/connection-session-clients.md) |
+| [clients/](clients/) | Entra認証、REST・MCP、本人接続、音声の試験と組み込み例 | [動作テスト](../docs/testing/integration-tests.md)、[本人接続クライアント](../docs/reference/identity/connection-session-clients.md) |
 | [validation/](validation/) | APIの疎通とWAFの検査、公開WAF manifestの生成 | [coverage_client.py](validation/coverage_client.py)、[waf_probe.py](validation/waf_probe.py)、[waf_contracts.py](validation/waf_contracts.py) |
-| [audit/](audit/) | 監査ログのKQLとダウンロード済み本文証跡の復元 | [audit_body.py](audit/audit_body.py)、[監査資料](../docs/reference/request-body-audit.md) |
+| [audit/](audit/) | 監査ログのKQLとダウンロード済み本文証跡の復元 | [audit_body.py](audit/audit_body.py)、[監査資料](../docs/reference/audit/request-body-audit.md) |
 | [portal_local/](portal_local/) | Portalのローカル認証設定と開発用起動 | [ローカル認証テスト](../docs/testing/portal-local-auth.md) |
 | [catalog/](catalog/) | 標準APIとモデル上限の読込・合成 | 配備とローカル検査で共用するPythonモジュール |
 
@@ -25,7 +25,7 @@
 python3 -B scripts/deployment/lifecycle.py validate --config "$DEPLOY_PARAMS_FILE"
 ```
 
-構築後は `python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --component all` で更新を計画し、`--execute` を付けてGateway、Portalの順に更新します。途中で停止した場合は同じparamsとCore stateで対象工程を再試行します。撤去は `azd down` で行い、[撤去手順](../docs/operations.md#撤去する)で所有資源と削除結果を確認します。
+構築後は `python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --component all` で更新を計画し、`--execute` を付けてGateway、Portalの順に更新します。途中で停止した場合は同じparamsとCore stateで対象工程を再試行します。撤去は `azd down` で行い、[撤去手順](../docs/operations/teardown.md#撤去する)で所有資源と削除結果を確認します。
 
 ## 構築コードを読む
 

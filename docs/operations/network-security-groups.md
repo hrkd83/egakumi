@@ -1,6 +1,6 @@
 # NSGの構成と優先度
 
-[共通確認](common.md) · [基盤設定](platform-settings.md) · [NSG設計・通信対応](../reference/network-security-design.md) · [非NSG通信](../reference/platform-communications.md)
+[共通確認](common.md) · [基盤設定](platform-settings.md) · [NSG設計・通信対応](../reference/architecture/network-security-design.md) · [非NSG通信](../reference/architecture/platform-communications.md)
 
 基本構成はAppGW、APIM、Private Endpoint、管理VM、Portal用ACA、Broker用ACAでそれぞれNSGを使う。証明書用ACAの通信は専用の資材で管理し、本文監査有効時は監査用NSGを追加する。AzureFirewallSubnetにはNSGを関連付けない。
 通信の用途を1ルールずつ名前と設計IDで記録する。`auditEvidence.enabled`で本文監査の固定集合を追加し、個別規則の作成有無は公開入力で切り替えない。
@@ -26,11 +26,7 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 公開クライアントの初期IPv4範囲は`0.0.0.0/0`固定。サービス・タグはAzureが管理する範囲であり、
 そのサービスへの認証・認可を意味しない。同じタグを使う複数の用途は説明で区別する。
 
-企業のIP制限、独自DNS、ハブ＆スポーク、管理VMへのSSH接続元は構築後にPortalで手動編集する。
-公開入力の`network.clientAddressPrefixes`、`network.certificatePublicProbeEnabled`、
-`network.operatorAddressPrefixes`、`network.operatorProtocol`、`network.operatorPorts`、`network.dnsServers`、`network.firewall.dnsServers`、
-`network.ntpAddressPrefixes`、`network.ntpFqdns`、`network.managementAdditionalSecurityRules`、
-`network.apimKeyVaultAccessEnabled`と`gateway.grpc`は廃止し、空値でも入力検査で拒否する。
+企業のIP制限、独自DNS、ハブ＆スポーク、管理VMのSSH接続元は、Core構築後に環境ごとの要件に合わせてAzureポータルで設定する。 [企業ネットワークとの接続](../setup/10-hub-spoke.md) · [管理VMへの本人接続](management-vm-access.md)
 
 | Bicep | 定義区間 |
 | --- | --- |
@@ -101,7 +97,7 @@ APIMの[公式NTP要件](https://learn.microsoft.com/en-us/azure/api-management/
 
 VNetとFirewall上流はAzure標準DNSを使用します。FirewallのDNS Proxyを有効にするだけでは、APIMのDNS問い合わせ先はProxyへ切り替わりません。[Firewallの公式DNS仕様](https://learn.microsoft.com/en-us/azure/firewall/dns-settings#dns-proxy)では、Proxyを使わないクライアントとFirewallの名前解決結果に差が出る可能性を示しています。この差によるNTP遮断を避けるため、FirewallではNTP宛先をFQDNで限定せず、NSGのInternet宛UDP123制限と組み合わせます。
 
-NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Actionで検索し、許可だけでなく拒否も確認します。`allow-apim-ntp`に一致するAllowは、その通信がFirewallのAPIM用UDP123規則で許可されたことを示します。NTP応答・時計同期の成功は、このログだけでは確認できません。既存環境へまとめて反映する際は、資材・Azureの読戻し・実時計同期をそれぞれ区別して確認します。
+NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Actionで検索し、許可と拒否を確認します。`allow-apim-ntp`に一致するAllowは、FirewallのAPIM用UDP123規則で通信が許可されたことを示します。実際のNTP応答・時計同期は別に確認します。
 
 ## Private Endpoint（pep）
 
@@ -154,7 +150,7 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 324 | `allow-internet-egress` | 管理VMサブネットCIDR | `Internet`タグ | TCP／80, 443 | `B-MGMT-10` |
 | 4096 | `deny-any-egress` | Any | Any | Any／Any | `B-MGMT-20` |
 
-管理VMはUbuntu 24.04のChronyでAzureホストのPHCを唯一の同期元にします。`/dev/ptp_hyperv`のcharacter deviceと`clock_name=hyperv`を確認し、PHC／`AZUR`の選択と`Normal`の同期状態を時間を限定して確認します。VMBus／PHCはIPを使わないため、旧管理NSGの325 `allow-time-sync-egress`とFirewallの`allow-mgmt-vm-ntp`を撤去し、UDP123／319／320の代替許可を作りません。APIMの328 `allow-time-sync-egress`と`allow-apim-ntp`は維持します。既知のUbuntu外部NTP経路と完全一致する旧管理ファイルだけを移行し、未知の企業時刻設定・変更済み旧管理ファイルは変更前に停止します。サービスまたは同期確認の失敗時は元設定へ復旧します。資材、Azure読戻し、実同期・精度の結果は別に記録し、今回のAzure反映・実VM同期は未実施です。
+管理VMはUbuntu 24.04のChronyで、AzureホストのPHCを唯一の同期元にします。`/dev/ptp_hyperv`のcharacter deviceと`clock_name=hyperv`、PHC／`AZUR`の選択と`Normal`の同期状態を確認します。VMBus／PHCはIPを使いません。APIM向けUDP123はAPIM専用の規則で許可します。資材・Azure設定の読戻し・実際の時計同期は別に記録します。
 
 ### ACA Dev API向けFirewall許可
 
@@ -245,7 +241,7 @@ Brokerの業務入口をAPIMのサブネットに限定する。専用環境の�
 | Private Endpoint | 6 | 本文監査ACAと上記5種類のPEの組を許可し、管理VMからは本文BlobのPEを追加で許可する。 |
 | 管理VM | 1 | 本文BlobのPEへTCP 443を許可する。閲覧には別途、対象コンテナーへの権限を付与する。 |
 
-本文監査ACAは専用の内部環境を使う。中継アプリの入口はAPIMサブネットと認証済みAPIMのIDに限定し、保存ワーカーには入口を作成しない。具体的な規則と構築後の確認は[本文監査NSGの正本](../../infra/modules/network/nsg/audit-evidence-rules.json)と[本文監査設計](../reference/request-body-audit.md)を参照する。
+本文監査ACAは専用の内部環境を使う。中継アプリの入口はAPIMサブネットと認証済みAPIMのIDに限定し、保存ワーカーには入口を作成しない。具体的な規則と構築後の確認は[本文監査NSGの正本](../../infra/modules/network/nsg/audit-evidence-rules.json)と[本文監査設計](../reference/audit/request-body-audit.md)を参照する。
 
 ## 既定規則と末尾拒否の扱い
 
@@ -276,7 +272,7 @@ PEはサービス側から新規接続を開始しない。PEサブネットのN
 [PEポリシー](https://learn.microsoft.com/azure/private-link/disable-private-endpoint-network-policy)
 
 標準DNSはVNet DHCP・Firewall上流を空配列へ固定する。Azure提供DNS、VM IMDS、Agent host channel、
-DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と運用条件](../reference/platform-communications.md)を参照する。
+DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と運用条件](../reference/architecture/platform-communications.md)を参照する。
 
 ## 新規構築と構築の再開
 

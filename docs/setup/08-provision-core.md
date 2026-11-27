@@ -4,7 +4,7 @@
 
 第02〜04章で登録したEntraアプリと[公開DNS](05-public-dns.md)、環境別paramsを使い、`azd up`で共用基盤（Core）を作ります。このリポジトリの`azd up`は共用基盤の準備で終了します。`azd provision`でも同じ工程を実行できます。CoreはAPIM本体、Portal用の仮Container Appと、API OBO用・Portal署名用の公開証明書を準備します。証明書のEntra登録、GatewayのAPI公開、Portal本体の配備は第09〜12章で行います。
 
-この章の`azd up`からCore設備の作成と課金が始まります。事前準備で別途作成した公開DNS等の費用は[第05章](05-public-dns.md)で確認します。 [費用の目安](../../README.md#費用を確認する) · [構成と設定項目](../reference/config-options.md)
+この章の`azd up`からCore設備の作成と課金が始まります。事前準備で別途作成した公開DNS等の費用は[第05章](05-public-dns.md)で確認します。 [費用の目安](../../README.md#費用を確認する) · [構成と設定項目](../reference/configuration/config-options.md)
 
 ## 8-1. 実行フォルダと入力を確認する
 
@@ -24,9 +24,9 @@ python3 scripts/deployment/lifecycle.py validate
 
 `valid: true`、導出された5RG、公開APIの設定状態を確認します。`WORKFORCE_CONFIG`は基盤構築・撤去が読むparamsの入口です。個人用・過去試験用の`.local/<environment>/state/`内の合成設定や、他人のID・URLを含む設定を使いません。
 
-paramsの`services.apimInstanceId`は第1章の初回prepareが公開マーカー`<AUTO_GENERATED_APIM_INSTANCE_ID>`を6文字IDへ置換して保存した値を使います。未解決マーカーは配備入力として受け付けません。第03章で算出したCM戻り先がEntraに保存されていることを確認してください。構築や途中再開で識別子を生成し直すことはありません。撤去後の新規構築は[新しいAPIM識別子を準備](../operations.md#撤去後に新しく構築する)してから、この章を進めます。
+paramsの`services.apimInstanceId`は第1章の初回prepareが公開マーカー`<AUTO_GENERATED_APIM_INSTANCE_ID>`を6文字IDへ置換して保存した値を使います。未解決マーカーは配備入力として受け付けません。第03章で算出したCM戻り先がEntraに保存されていることを確認してください。構築や途中再開で識別子を生成し直すことはありません。撤去後の新規構築は[新しいAPIM識別子を準備](../operations/teardown.md#撤去後に新しく構築する)してから、この章を進めます。
 
-標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は廃止しました。旧項目は空配列やfalseでも拒否し、既存paramsを無断で自動変換しません。[入力配置と移行条件](07-params.md#既存入力の移行を確認する)を確認してから実行します。Coreの初回入力では`portal.publicHostName`を設定し、`portal.authentication`は第09章で追加します。
+標準APIの公開は[Gatewayの個別配備](11-deploy-gateway.md)で行います。Coreの初回入力では`portal.publicHostName`を設定し、`portal.authentication`は第09章で追加します。
 
 第01章で作成した環境別paramsを使います。`secrets/`・`state/`・`generated/`は同じ`.local/<environment>/`の下に置き、`.azure/`はazdだけが管理します。まだ秘密や配備記録がないことは正常です。第03章と第04章で用意したTools用とCredential用の各client secretを安全な保管先から非表示入力できる状態にし、第05章と第06章で確認したAzure DNS側Subscription IDとUAMIのリソースIDを用意します。DNS用IDの公開参照はparamsへ事前設定します。Entraのsecretをparams／configへ書き込まず、案内に従って非表示入力します。
 
@@ -92,11 +92,11 @@ Core配備の直前には、所有RGと管理VMの正確なGET結果を確認し
 
 Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenantを照合して保護記録へ確定し、公開Managed Run Command資材の名前付き`protectedParameters`だけへ元のパスワードを渡します。guestはSSHの有効設定を確認し、初期ローカル認証とlogin PAMの確認後だけ完了を記録します。SSHのパスワード認証無効と鍵認証は維持します。部分失敗でVMだけ作成済みの場合も、元Core入力とmanagement子配備の同世代・VM出力を照合するまで秘密を読みません。初期化要求が不明になった後の回復は、パスワードを再設定せず、元の資格情報によるPAM認証を最大1回だけ行います。元の初期作成証跡がない既存VMは、この秘密ファイルを読まず、既存パスワードも変更しません。
 
-これはSerial Console用のローカル認証準備です。PAM認証には認証ログやロックアウトへの影響があり、完了記録は実Serial接続の成功を示しません。Managed Run Commandの保護設定やrootプロセスのメモリー等に値が残り得るため、保持がゼロとは扱いません。実ログインの成功は[管理VMの保守手順](../operations.md#serial-consoleのローカル認証を準備する)で別に確認します。
+これはSerial Console用のローカル認証準備です。PAM認証には認証ログやロックアウトへの影響があり、完了記録は実Serial接続の成功を示しません。Managed Run Commandの保護設定やrootプロセスのメモリー等に値が残り得るため、保持がゼロとは扱いません。実ログインの成功は[管理VMの保守手順](../operations/management-vm-access.md#serial-consoleのローカル認証を準備する)で別に確認します。
 
 事前チェックは、配備先の一致、必要な秘密情報、追加配備の容量、監査データの保持保護、既存の通信・証明書・稼働アプリの維持を確認します。Azureの応答にある読取メタデータや空の既定値は、実際の設定に影響する項目と分けて扱います。
 
-既存の保護入力とAzure DNS用の公開IDが正常なら再利用します。形式検査だけでsecretの有効性やDNS権限を確認したとは扱いません。DNS用ID・権限の変更は[運用手順](../operations.md#dns用マネージドidと権限を更新する)を参照してください。
+既存の保護入力とAzure DNS用の公開IDが正常なら再利用します。形式検査だけでsecretの有効性やDNS権限を確認したとは扱いません。DNS用ID・権限の変更は[運用手順](../operations/secrets-and-certificates.md#dns用マネージドidと権限を更新する)を参照してください。
 
 ### 入力が保存される場所
 
@@ -128,7 +128,7 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 
 空環境での証明書発行、非公開ACRの通信、途中再開の条件は [証明書用Job](../operations/certificate-jobs.md) を参照します。
 
-管理VMの保守クライアントと担当者本人用のロール定義はCoreの資材で準備し、Gateway／Portalが後段で作成したApp・JobのIDを保護inventoryへ追加します。対象は構築出力から取得し、公開params/configによる作成フラグはありません。[管理VMからの保守操作](../operations.md#管理vmから保守データを取得する)で、監査Blob・保存ログ・ACAログ・App execの認可と実取得を確認してください。資材のローカル試験通過と、初期Azure配備・保守操作の実環境確認は別の結果です。
+管理VMの保守クライアントと担当者本人用のロール定義はCoreの資材で準備し、Gateway／Portalが後段で作成したApp・JobのIDを保護inventoryへ追加します。対象は構築出力から取得し、公開params/configによる作成フラグはありません。[管理VMからの保守操作](../operations/management-client.md#管理vmから保守データを取得する)で、監査Blob・保存ログ・ACAログ・App execの認可と実取得を確認してください。資材のローカル試験通過と、初期Azure配備・保守操作の実環境確認は別の結果です。
 
 標準API正本を常用で読み込み、接続先は作成済み基盤の出力からメモリー内で解決します。公開paramsにAPI一覧の選択欄は設けず、内部配列も書き戻しません。標準APIに必要なWAFの経路・本文形式と監査ログ等の情報は基盤工程へ先に反映します。
 
@@ -148,4 +148,4 @@ ARMのemail receiverの`status: Enabled`は、メールアドレスの確認完�
 
 失敗した工程の終了コードを確認し、原因を修正してから次の工程へ進みます。作成済みの基盤と記録を保持し、Coreで失敗した場合は同じ環境の入力で`azd up`を再試行します。
 
-途中まで作成された資源にも費用が発生します。撤去する場合は[同じparamsでのdownとstate不足時の扱い](../operations.md)へ進みます。構築したcloneの`.azure/`・`.local/<environment>/state/`と設定を消してから撤去を始めないでください。
+途中まで作成された資源にも費用が発生します。撤去する場合は[同じparamsでのdownとstate不足時の扱い](../operations/README.md)へ進みます。構築したcloneの`.azure/`・`.local/<environment>/state/`と設定を消してから撤去を始めないでください。

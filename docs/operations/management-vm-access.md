@@ -26,7 +26,7 @@
    az ssh vm --ip '<MANAGEMENT_VM_PRIVATE_IP>'
    ```
 
-4. 最初のSSH内で`id -un`を実行し、VM上の本人のLinuxユーザー名を確認します。保守クライアントを使う場合は、OS管理者が照合した本人のLinuxユーザーを`core-maintenance`グループに作業時間中だけ登録します。担当者はSSHへ再接続して`id -nG`でグループを確認します。OS管理者は`getent passwd '<OPERATOR_LINUX_USER>'`で照合してから、以下のコマンドで登録できます。対象資源の一時権限、ゲスト内での本人認証、SQL保守は[管理VMの保守操作](../operations.md#管理vmから保守データを取得する)を参照します。
+4. 最初のSSH内で`id -un`を実行し、VM上の本人のLinuxユーザー名を確認します。保守クライアントを使う場合は、OS管理者が照合した本人のLinuxユーザーを`core-maintenance`グループに作業時間中だけ登録します。担当者はSSHへ再接続して`id -nG`でグループを確認します。OS管理者は`getent passwd '<OPERATOR_LINUX_USER>'`で照合してから、以下のコマンドで登録できます。対象資源の一時権限、ゲスト内での本人認証、SQL保守は[管理VMの保守操作](management-client.md#管理vmから保守データを取得する)を参照します。
 
    ```bash
    sudo gpasswd --add '<OPERATOR_LINUX_USER>' core-maintenance
@@ -53,4 +53,16 @@
 
 ## 復旧時のSerial Console
 
-既存のSerial Console手順は復旧用です。Serial Consoleの利用者にはAzure側の接続権限とVM内のローカル認証情報が必要です。承認された復旧担当が`Virtual Machine Contributor`か相当の権限を確認し、VMのブート診断が有効であることを確認します。カスタムのブート診断ストレージを導入した場合はそのストレージへの要件も確認します。復旧用のローカルパスワードやSSH鍵は、通常の権限付与に含めません。 [Serial Consoleの資格情報と接続手順](../operations.md#serial-consoleのローカル認証を準備する) · [Linux Serial Consoleの公式条件](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/serial-console-linux)
+Serial Consoleは復旧時に使います。承認された担当者に`Virtual Machine Contributor`か相当の権限があり、VMのブート診断が有効であることを確認します。カスタムのブート診断ストレージを導入した場合は、そのストレージへの要件も確認します。復旧用パスワードやSSH鍵は通常の権限付与に含めません。 [Linux Serial Consoleの公式条件](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/serial-console-linux)
+
+### Serial Consoleのローカル認証を準備する
+
+初期構築は`management.adminUsername`へローカル認証用パスワードを設定し、SSHのパスワード認証無効と公開鍵を維持します。このパスワードはSerial専用の認可機能ではなく、VM内のローカル認証にも使えます。Serial Consoleへ接続する人間には、Azure側の接続権限・サービス条件と、VM内のユーザー名／パスワードの両方が必要です。[Linux Serial Consoleの公式条件](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/serial-console-linux)も確認します。
+
+生成秘密は端末の`.local/<environment>/secrets/management-serial-credential.json`に保持します。POSIXではディレクトリ700・ファイル600、Windowsでは実DACLを検査・保護し、既存の共有ACLを黙って書き換えません。パスワードをparams/config、通常ログ、チャットへ転載せず、接続時だけ保護ファイルから非公開で参照します。構築成功後の`boundVmId`と秘密世代はVM個体との対応確認用であり、ログイン成功を示す値ではありません。
+
+接続時はAzureポータルにサインインし、Core stateと同じ管理VMの「Serial console（シリアルコンソール）」を開きます。ログインプロンプトを確認して、同じ秘密ファイルの`adminUsername`と`password`を入力します。まず`id`・`pwd`など状態を変えない操作でTTYを確認し、作業後はローカルセッションからログアウトします。既存VMで手動設定したパスワードを使っている場合は、その運用秘密を使い、未結び付けの初期生成ファイルから現在のパスワードを推測しません。
+
+同じ未作成VMの初期再試行ではpendingの同じ秘密を使います。初期化完了後に同名VMを撤去し、新規構築するときは前回の秘密を保護archiveへ残して新しい秘密を作ります。元の初期作成証跡を照合できないVMは、初期認証を再設定しません。部分失敗でVMだけ作成済みになった場合は、保護stateに保存した元404・Core入力世代と、所有Core／management子配備の同世代・VM UUID出力を先に照合します。生成ARM入力を回収済みでも元証跡が残っていれば照合できますが、証跡なしで現在のVMへ結び付け直しません。guestの初期化要求が記録された後の回復ではパスワードを再送せず、元の資格情報によるlogin PAM認証を最大1回に制限します。完了済みの世代は再設定せず、その後の手動変更を保持します。
+
+Serialの接続・ローカルログイン・TTY操作と、SSH鍵認証が維持されていることを別々に実確認します。Managed Run Commandの保護入力、Ubuntuのローカル認証とPAM、Serialログインはそれぞれ実環境で確認します。PAM確認は認証ログ・ロックアウト状態へ影響し、SerialのWebSocket／TTY接続とは別の確認です。既存利用者の有無も確認してから接続します。

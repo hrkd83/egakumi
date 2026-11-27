@@ -92,9 +92,9 @@ SQL統合試験には専用のローカルSQLと追加設定が必要です。[�
 
 | 確認したいこと | 参照先 |
 | --- | --- |
-| 公開API、モデル・音声の契約 | [プラットフォーム仕様](../../docs/reference/platform.md)、[API定義](../api-gateway/apis/)、[出力上限](../api-gateway/model-capabilities.json) |
+| 公開API、モデル・音声の契約 | [プラットフォーム仕様](../../docs/reference/architecture/platform.md)、[API定義](../api-gateway/apis/)、[出力上限](../api-gateway/model-capabilities.json) |
 | 本人接続の保存・更新・失効 | [試用の認証実装](lib/api-auth/) |
-| 文書解析の対応形式・制約 | [Document Intelligence仕様](../../docs/reference/document-analysis.md) |
+| 文書解析の対応形式・制約 | [Document Intelligence仕様](../../docs/reference/gateway/document-analysis.md) |
 | 生成応答・SSEの保護上限 | [応答処理](lib/model-response.ts)、[ストリーム処理](lib/model-stream.ts)、[関連テスト](tests/model-stream.test.ts) |
 | 音声の送信・再生とHTTP／WebSocket窓口 | [音声クライアント](lib/realtime-client.ts)、[中継処理](lib/realtime-relay.ts)、[Portalサーバー](scripts/serve-portal.ts)、[関連テスト](tests/realtime-relay.test.ts) |
 | 入力上限・WAV形式 | [モデル入力](lib/model-request.ts)、[音声入力](lib/speech-request.ts)、[音声の関連テスト](tests/speech-gateway.test.ts) |

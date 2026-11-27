@@ -8,7 +8,7 @@
 
 モデルAPIの内部設定はAPI・操作とモデル名から自動選択する。操作の基本設定と`modelSettings`の差分を正本とし、クライアントにprofileを指定させない。購読の利用枠profileとCMの接続`profileName`は別用途である。[設定部品の説明](fragments/settings/core-api-settings/README.md)を参照する。
 
-本書は現在の管理仕様を説明する。変更ごとの判断は[工程1・2の棚卸報告](../../../docs/reference/apim-phase12-review.md)、環境別の反映・実接続・監査照合の状況は保護された作業記録で管理する。ソースの整理、合成検証、実環境検証を区別する。
+本書は現在の管理仕様を説明する。環境別の反映・実接続・監査照合の状況は保護された作業記録で管理する。ソースの整理、合成検証、実環境検証を区別する。
 
 初期APIの適用先は[ポリシー対応表](portal-examples/scope-map.md)、構築後の手動追加は[REST・SSEのポリシー例](portal-examples/README.md)を参照する。
 
@@ -352,7 +352,7 @@ Hostedは登録済みAgentの指示・ツールを使う。サンプル由来の
 
 開始POSTはmodelをクエリから除いてpathを書き換え、pages・features等の追加クエリを保持する。api-versionは対応版へ上書きし、stringIndexTypeは指定値を保持して未指定時だけ補完する。結果GETは固定の結果取得URIへ送り、未使用の追加クエリを転送しない。
 
-開始／状態取得の操作固有フローは`operation-policies/document-analysis/`で管理する。署名付きチケット・UUID・本人・期限・返却URIの照合と公開結果契約を維持する。本文の入力不備、認証情報の内部引き渡し不備、操作設定不備、提供元障害をそれぞれの400／500／502等へ分ける。[公開契約](../../../docs/reference/document-analysis.md)を参照する。Portalのアップロード・モデル選択・BFF制約はこの管理整理の対象外である。
+開始／状態取得の操作固有フローは`operation-policies/document-analysis/`で管理する。署名付きチケット・UUID・本人・期限・返却URIの照合と公開結果契約を維持する。本文の入力不備、認証情報の内部引き渡し不備、操作設定不備、提供元障害をそれぞれの400／500／502等へ分ける。[公開契約](../../../docs/reference/gateway/document-analysis.md)を参照する。Portalのアップロード・モデル選択・BFF制約はこの管理整理の対象外である。
 
 ## queryの観測対象と要求ごとの変数
 
@@ -396,4 +396,4 @@ Document開始／結果取得・PII・CM保護6操作も、Entra有効時は個�
 
 旧構成専用のXML・依存C#・再生成処理は現行正本へ温存しない。復旧用の過去rawと実環境の証跡は、既定の保護領域で管理する。新規構築・再配備・読戻しは現在の正本から行う。
 
-適用順序と各部品の出力は[APIMポリシー一覧](../../../docs/reference/apim-policy-catalog.md)、判断内容は[工程1・2の棚卸報告](../../../docs/reference/apim-phase12-review.md)を参照する。
+適用順序と各部品の出力は[APIMポリシー一覧](../../../docs/reference/gateway/apim-policy-catalog.md)を参照する。

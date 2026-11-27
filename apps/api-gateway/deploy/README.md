@@ -22,7 +22,7 @@ apps/
 
 ## 配備する
 
-初回構築では、`azd up`によるCore構築と公開証明書のEntra登録を済ませた後、[Gatewayを個別配備](../../../docs/setup/11-deploy-gateway.md)します。今回の公開入力整理のAzure反映と全環境再構築E2Eは未実施です。既存入力の移行は[判断記録](../../../docs/setup/07-params.md#既存入力の移行を確認する)を確認し、非標準値を自動変換しません。個別更新・再試行では、構築済み基盤と同じparamsを使い、リポジトリのルートから実行します。
+初回構築では、`azd up`によるCore構築と公開証明書のEntra登録を済ませた後、[Gatewayを個別配備](../../../docs/setup/11-deploy-gateway.md)します。個別更新・再試行では、構築済み基盤と同じparamsを使い、リポジトリのルートから実行します。
 
 ```bash
 python3 scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
@@ -43,7 +43,7 @@ Azure Speechを公開する場合は、SSMLの`/models/azure-speech/v1/synthesiz
 
 PIIのApp Gateway WAFは、RESTの`g-pii-rest`、MCPの`g-pii-mcp`、Portalの`p-pii-redact`を各入口に適用します。Gateway側のデータ欄の除外はRESTの`text`とMCPの`params.arguments.text`に限定します。運用中のWAF設定は`scripts/operations/waf.py`で確認・更新します。 [PIIの設定と受入確認](../../../docs/testing/waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)
 
-[詳細な配備手順](../../../docs/setup/11-deploy-gateway.md)・[API定義](../README.md)・[認証窓口](../../credential-broker/README.md)・[運用と更新](../../../docs/operations.md)
+[詳細な配備手順](../../../docs/setup/11-deploy-gateway.md)・[API定義](../README.md)・[認証窓口](../../credential-broker/README.md)・[運用と更新](../../../docs/operations/README.md)
 
 ## 継続配備
 

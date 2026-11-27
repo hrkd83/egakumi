@@ -15,7 +15,7 @@
 | `monitoring.py` | 対象Action groupのメール宛先、または既存アラート1規則の閾値を更新 | 現物を読んで比較する |
 | `inspect_credential_connections.py` | 対象APIMのCredential Manager接続を確認する | 対象を確認してから、接続の一覧を読み取る |
 
-`management_client.py` は構築時に管理VMへ配置される保守クライアントの正本です。運用者本人の権限で、構築時に登録した対象のSQL・ACA・監査へアクセスします。 [管理VMの保守手順](../../docs/operations.md)
+`management_client.py` は構築時に管理VMへ配置される保守クライアントの正本です。運用者本人の権限で、構築時に登録した対象のSQL・ACA・監査へアクセスします。 [管理VMの保守手順](../../docs/operations/README.md)
 
 ```sh
 python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --component all

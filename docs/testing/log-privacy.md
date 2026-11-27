@@ -1,12 +1,12 @@
 # AppGWとFirewallのURLログ保護
 
-Application Gatewayのアクセスログでは、URLのqueryを含み得る`RequestQuery`・`OriginalRequestUriWithArgs`・`RequestUri`を対象に非保持を設定します。WAFの`logScrubbing`はWAFログを対象にするため、アクセスログには別の取り込み変換が必要です。本書は配備資材の保存経路と既存環境の更新手順を説明します。実環境への反映状態・実測結果は[動作テストの判定](integration-tests.md)と、その試行の証跡で確認してください。
+Application Gatewayのアクセスログでは、URLのqueryを含み得る`RequestQuery`・`OriginalRequestUriWithArgs`・`RequestUri`を対象に非保持を設定します。WAFの`logScrubbing`はWAFログを対象にするため、アクセスログには別の取り込み変換が必要です。配備後に以下の保存経路を読み戻し、[動作テスト](integration-tests.md)と同じ試行で変換結果を記録します。
 
 コマンドはリポジトリルートで実行し、[第01章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で設定した`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を使います。計画・実測記録は同じ環境の領域へ保存します。
 
 ## Coreの保存経路
 
-`infra/modules/monitoring/log-privacy.json`をBicepと既存環境更新スクリプトで共用します。`AGWAccessLogs`に対する変換は次のとおりです。path、status、TransactionId、backend、時刻等の調査項目は保持します。
+`infra/modules/monitoring/log-privacy.json`をBicepと運用スクリプトで参照します。`AGWAccessLogs`に対する変換は次のとおりです。path、status、TransactionId、backend、時刻等の調査項目は保持します。
 
 ```kusto
 source
@@ -20,7 +20,7 @@ AppGW access → LAW WorkspaceTransforms DCR → AGWAccessLogs → LAW export �
 AppGW WAF    → 既存WAF logScrubbing → LAW、および監査Storageへの直接診断
 ```
 
-CoreのアクセスログはStorageへ直接送る設定から外し、変換後のLAW exportへ変更します。既存の6テーブル（AppRequests／AppDependencies／AppExceptions／AppTraces／AppEvents／Syslog）は同じexport設定に残します。新しい`am-agwaccesslogs`にも環境で選択した保持保護を適用し、既存のLocked保護を短縮・解除しません。以前の直接診断用コンテナーは既存記録を保持します。
+Coreのアクセスログは変換後にLAW exportで監査Storageへ送ります。保存先の保持保護と、別カテゴリの診断設定を確認します。
 
 通常の構築ではmonitoring段階でDCRと監査保存先を作成し、hookがWorkspaceへの関連付けを確認します。続くcore段階へ実DCR IDを引き継ぎ、Workspaceの再PUTで関連付けを消さないようにします。他者のWorkspace変換DCRが既に関連付いている場合、Coreがそれを置換せず、管理者による変換の統合を要求します。
 
@@ -28,9 +28,11 @@ CoreのアクセスログはStorageへ直接送る設定から外し、変換後
 
 `AZFWApplicationRule`と`AZFWThreatIntel`の`TargetUrl`にはTLS検査した要求のURLが入る場合があります。既存のWorkspace変換に2テーブルを追加し、取り込み前に`TargetUrl`を空にします。FQDN、アクション、発生時刻とTLS検査の判定は調査に使えます。 [Application Ruleのテーブル仕様](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwapplicationrule) · [Threat Intelのテーブル仕様](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwthreatintel)
 
-この2分類は専用の診断設定から変換付きLAWに送ります。既存のCore診断設定では対象2分類の直接転送を停止し、Network Rule、IDPS、メトリクスの経路と既存の監査Blobを保全します。Coreの外側に同じ分類や全ログを転送する設定がある場合は、所有者が保存先を確認するまで事前照合で停止します。
+この2分類は専用の診断設定から変換付きLAWに送ります。Network Rule、IDPS、メトリクスの診断設定も照合します。Core外の転送経路は所有者に確認します。
 
-Azure反映時は変換の適用を待ち、架空の識別文字列を含む新しいTLS検査要求で、`AZFWApplicationRule`の`IsTlsInspected`と空の`TargetUrl`を照合します。`AZFWThreatIntel`も対象行を取得できる場合は同じ列を確認します。両分類のStorage直送が停止し、他分類の保存が継続することを確認してから実利用へ進みます。以前に保持したBlobの内容は変更しません。 [Workspace変換の有効化と待ち時間](https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-transformations-create)
+Policy Analyticsの集約ログと従来形式のApplication Ruleログも、変換前のURLを転送できる経路として事前確認します。現行の資材で変換対象に含まれるのは上記の2分類です。変換対象外の分類が有効な診断設定を検出した場合、TLS検査の入口を配備する前に停止します。 [Policy Analyticsのテーブル仕様](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwapplicationruleaggregation) · [従来形式のFirewallログ](https://learn.microsoft.com/en-us/azure/firewall/monitor-firewall)
+
+Azure反映時は変換の適用を待ち、架空の識別文字列を含む新しいTLS検査要求で、`AZFWApplicationRule`の`IsTlsInspected`と空の`TargetUrl`を照合します。`AZFWThreatIntel`も対象行を取得できる場合は同じ列を確認します。両分類がStorageに直送されず、他分類が保存されることを確認してから実利用へ進みます。[Workspace変換の有効化と待ち時間](https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-transformations-create)
 
 ## 企業共通監査の別Workspace
 
@@ -63,13 +65,3 @@ source
 - [変換後データのLAW exportと非対応テーブル](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/logs-data-export)
 - [WAFログに対するSensitive Data Protection](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/waf-sensitive-data-protection)
 - [診断設定の宛先・設定数の制約](https://learn.microsoft.com/en-us/azure/azure-monitor/platform/diagnostic-settings)
-
-## FirewallのTLS検査ログ
-
-`AZFWApplicationRule`と`AZFWThreatIntel`の`TargetUrl`にはTLS検査した要求のURLが入る場合があります。既存のWorkspace変換に2テーブルを追加し、取り込み前に`TargetUrl`を空にします。FQDN、アクション、発生時刻とTLS検査の判定は調査に使えます。 [Application Ruleのテーブル仕様](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwapplicationrule) · [Threat Intelのテーブル仕様](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwthreatintel)
-
-この2分類は専用の診断設定から変換付きLAWに送ります。既存のCore診断設定では対象2分類の直接転送を停止し、Network Rule、IDPS、メトリクスの経路と既存の監査Blobを保全します。Coreの外側に同じ分類や全ログを転送する設定がある場合は、所有者が保存先を確認するまで事前照合で停止します。
-
-Policy Analyticsの集約ログと従来形式のApplication Ruleログも、変換前のURLを転送できる経路として事前確認します。現行の資材で変換対象に含まれるのは上記の2分類です。変換対象外の分類が有効な診断設定を検出した場合、TLS検査の入口を配備する前に停止します。 [Policy Analyticsのテーブル仕様](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwapplicationruleaggregation) · [従来形式のFirewallログ](https://learn.microsoft.com/en-us/azure/firewall/monitor-firewall)
-
-Azure反映時は変換の適用を待ち、架空の識別文字列を含む新しいTLS検査要求で、`AZFWApplicationRule`の`IsTlsInspected`と空の`TargetUrl`を照合します。`AZFWThreatIntel`も対象行を取得できる場合は同じ列を確認します。両分類のStorage直送が停止し、他分類の保存が継続することを確認してから実利用へ進みます。以前に保持したBlobの内容は変更しません。 [Workspace変換の有効化と待ち時間](https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-transformations-create)

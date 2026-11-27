@@ -1,19 +1,17 @@
 # テスト・検証
 
-## テスト仕様書
-
-| 文書 | 対象 |
+| 確認したいこと | 文書 |
 | --- | --- |
-| [構築テスト](construction-tests.md) | 入力検証、新規構築・再配備・構成変更、証明書、SQL初期化、API公開、撤去 |
-| [動作テスト](integration-tests.md) | 構築後の接続・認証・認可、Gateway・Portal、モデル・Tool、監査・運用 |
-| [運用テスト](operations-tests.md) | 運営・改修・FIXに必要な通常保守。secret・証明書等を含む業務単位のシナリオ |
+| 初回構築、再配備、撤去 | [構築テスト](construction-tests.md) |
+| GatewayとPortalの実接続、認証、監査 | [動作テスト](integration-tests.md) |
+| テキスト、画像、音声などの代表API | [Model Gateway](model-gateway-tests.md) |
+| Graph、文書解析、REST、MCP | [Tool Gateway](tool-gateway-tests.md) |
+| Portalの署名と認証 | [Portal受入](portal-authentication-tests.md)、[ローカル起動と認証](portal-local-auth.md) |
+| ネットワーク、Firewall、NSG、実効権限 | [ネットワークの受入](network-security-validation.md) |
+| WAFの適用範囲、正常入力と拒否 | [WAF](waf-compatibility.md) |
+| アクセスログのクエリ保護 | [ログの変換と受入](log-privacy.md) |
+| 更新、資格情報の保守、復旧 | [運用テスト](operations-tests.md) |
+| テスト用の利用者・権限 | [Entraテストデータ](entra-fixtures.md) |
+| 例外キーの利用量を観測する | [利用量観測と上限](subscription-limits.md) |
 
-ローカル試験の実行方法と共通ルールは[開発手順](../../DEVELOPMENT.md#テストの実行方法)を参照してください。
-
-## 検証用の補助資料
-
-- [Entraテストデータの準備例](entra-fixtures.md)
-- [Portalのローカル認証テスト](portal-local-auth.md)
-- [アクセスログのquery非保持](log-privacy.md)
-- [App Gateway WAFの互換性・遮断確認](waf-compatibility.md)
-- [購読単位の利用量観測と保護上限](subscription-limits.md)
+ローカル試験は[開発手順](../../DEVELOPMENT.md#テストの実行方法)を参照してください。環境の結果や証跡は同じ環境の `.local/<environment>/evidence/` に保存します。

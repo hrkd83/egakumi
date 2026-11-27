@@ -1,15 +1,12 @@
 # Portal認証証明書の運用
 
-状態：工程3のローカル検証中。以下のAzure上の発行・切替・復旧・旧版廃止は実受入前です。旧Portalのsecret参照は切替受入までの復旧用であり、恒久互換にはしません。
+PortalがEntraへのclient assertionに使う署名証明書を更新する手順です。公開TLSの証明書更新は[別の証明書Jobの運用](secrets-and-certificates.md#tls証明書を更新し公開httpsまで確認する)を参照してください。
 
 ## 管理対象
 
 | 対象 | 用途と更新 |
 | --- | --- |
 | Portal認証のKV自己署名証明書 | 専用Entraアプリのclient assertion。RSA秘密鍵はKV内に保持。既定12か月、60日前に更新準備、新しい鍵も生成 |
-| App GatewayのHTTPS証明書 | ACME/Let's Encrypt等の既存TLS処理。今回の認証証明書とは別 |
-| CMのEntra client secret | CMの既存認証。Portal切替を理由に削除しない |
-| Portal Cookie署名・保存暗号鍵 | `BETTER_AUTH_SECRET`等の既存資材。認証証明書更新で変更しない |
 
 12か月・60日前は運用既定値で、Microsoft共通の必須更新頻度ではありません。`portal.certificate`の有効期間を変更する場合は、現行証明書との整合と手順を確認してください。KVの自動更新を有効にしてもEntra登録や固定参照の切替は自動完了しません。この資材はKVの自動更新actionを設定しません。
 
@@ -21,7 +18,7 @@ KVの最新証明書GETはpolicyを含みますが、版指定GETは証明書本
 
 ## 実行前の照合
 
-同じcheckoutの`DEPLOY_PARAMS_FILE`、azd環境、Coreの`state/latest.json`、`state/portal-auth-certificate.json`を選択してください。別環境のstate・鍵を黙って探索・コピーしません。`.local/`のルートをリンクにせず、ディレクトリは所有者専用、ファイルは所有者専用にします。運用入口はparams・Core所有記録・Jobまたは旧構成の実行先・対象KVを照合します。
+同じcheckoutの`DEPLOY_PARAMS_FILE`、azd環境、Coreの`state/latest.json`、`state/portal-auth-certificate.json`を選択してください。[対象環境と保護入力](common.md)に従って、params・Coreの所有記録・証明書Jobと対象Key Vaultを照合します。
 
 `scripts/operations/portal_auth_certificate.py`は既定で計画を表示します。Azure変更には`--execute`が必要です。値や公開証明書本文は画面へ出しません。Job構成では固定イメージdigestと今回の実行を照合します。
 
@@ -48,7 +45,7 @@ python3 -B scripts/operations/portal_auth_certificate.py initialize --config "$D
 | `prepare` | Portal署名JobからKVへ新しい鍵・自己署名証明書の生成を要求。現行固定参照を維持し、`generated/portal-auth-renewal-public.cer`へ公開証明書だけを出力 |
 | 手動Entra登録 | Entra担当が新しい公開証明書を追加し、thumbprint・期限を照合。旧証明書は受入まで保持 |
 | `confirm-registration` | 担当者が手動登録の完了を明示し、対象アプリの設定とcandidateを束ねる |
-| `switch` | 現行の固定イメージを使い、本体とGraphジョブの鍵版・thumbprintを一緒に切替。設定・イメージを読み戻し、発行workerのcurrentを同期 |
+| `switch` | 現行の固定イメージを使ってPortalの鍵版とthumbprintを切替。設定・イメージを読み戻し、発行workerのcurrentを同期 |
 | `verify` | 実際のログイン・Bearer試用・Graph OBOを人が確認した後、現物設定も照合して受入記録を更新 |
 | 手動Entra旧版削除 | 受入後、Entra担当が旧公開証明書を削除 |
 | `retire` | 現行設定を再確認して、旧KV鍵のexact versionだけを無効化 |

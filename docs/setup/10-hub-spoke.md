@@ -75,4 +75,4 @@ VNetの「DNSサーバー」を変更する前に、切替先へ直接問い合�
 - DNS・往復経路・NSG／FWを照合し、変更後の通信を新規接続で確認した。
 - Coreの再配備・撤去で維持する設定と、企業側で管理・撤去する設定を明確にした。
 
-CoreとEntra登録、ハブ接続の確認が完了したら[Gatewayの個別配備](11-deploy-gateway.md)へ進みます。アプリ配備後にネットワークを変更した場合は、公開API・Portal認証・SQL／ACRへの接続を再確認します。 [更新・撤去の手順](../operations.md)
+CoreとEntra登録、ハブ接続の確認が完了したら[Gatewayの個別配備](11-deploy-gateway.md)へ進みます。アプリ配備後にネットワークを変更した場合は、公開API・Portal認証・SQL／ACRへの接続を再確認します。 [更新・撤去の手順](../operations/README.md)
