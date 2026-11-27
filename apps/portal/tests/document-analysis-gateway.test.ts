@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiKeyError } from "../lib/api-keys/contracts.ts";
+import { ApiAuthenticationError } from "../lib/api-auth/settings.ts";
+import { trialBearer } from "./helpers/trial-bearer.ts";
 import { handleDocumentAnalysis, type DocumentAnalysisDependencies } from "../lib/document-analysis-gateway.ts";
-import { DOCUMENT_ANALYSIS_API_VERSION, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_RESULT_BYTES } from "../lib/document-analysis-contracts.ts";
+import { DOCUMENT_ANALYSIS_API_VERSION, MAX_DOCUMENT_RESULT_BYTES } from "../lib/document-analysis-contracts.ts";
 
 const actor = { tenantId: "11111111-1111-4111-8111-111111111111", objectId: "22222222-2222-4222-8222-222222222222" };
-const apiKeyId = "portal-33333333-3333-4333-8333-333333333333";
 const secret = "document-private-key-must-not-leak";
 const origin = "https://portal.example.invalid";
 const gateway = "https://gateway.example.invalid";
@@ -15,7 +15,7 @@ const native = { analyzeResult: { apiVersion: DOCUMENT_ANALYSIS_API_VERSION, mod
 /** multipartはPortal専用の形で送り、公開APIへの転送は試験側で確認します。 */
 function request(options: { model?: string; type?: string; bytes?: Uint8Array; fields?: Record<string, unknown>; headers?: Record<string, string>; duplicate?: boolean; signal?: AbortSignal; search?: string } = {}): Request {
   const form = new FormData();
-  form.append("input", JSON.stringify({ model: options.model ?? "prebuilt-read", apiKeyId, ...options.fields }));
+  form.append("input", JSON.stringify({ model: options.model ?? "prebuilt-read", authentication: "bearer", ...options.fields }));
   form.append("file", new Blob([new Uint8Array(options.bytes ?? pdf).buffer], { type: options.type ?? "application/pdf" }), "input.pdf");
   if (options.duplicate) form.append("file", new Blob([pdf]), "second.pdf");
   return new Request(`${origin}/api/tools/documents${options.search ?? ""}`, { method: "POST", headers: { origin, ...options.headers }, body: form, signal: options.signal });
@@ -23,20 +23,20 @@ function request(options: { model?: string; type?: string; bytes?: Uint8Array; f
 
 /** 実際の入力検証・認可境界を通し、Azure通信だけを差し替えます。 */
 function dependencies(overrides: Partial<DocumentAnalysisDependencies> = {}): DocumentAnalysisDependencies {
-  return { readSession: async () => actor, readPortalOrigin: () => origin, readGatewayEnvironment: async () => ({ origin: gateway }), resolveSubscriptionKey: async () => secret,
+  return { readSession: async () => actor, readPortalOrigin: () => origin, readGatewayEnvironment: async () => ({ origin: gateway }), resolveBearer: async () => trialBearer(secret, actor),
     fetch: async () => Response.json(native, { headers: { "apim-request-id": "document-request-1" } }), ...overrides };
 }
 
-test("本人と選択キーの現権限を確認し、raw fileだけを固定Gatewayへ1回送信する", async () => {
-  let calls = 0; const grants: unknown[] = [];
-  const response = await handleDocumentAnalysis(request(), dependencies({ resolveSubscriptionKey: async (...args) => { grants.push(args); return secret; }, fetch: async (url, init) => {
+test("本人のBearer認可を確認し、raw fileだけを固定Gatewayへ1回送信する", async () => {
+  let calls = 0; let grants = 0;
+  const response = await handleDocumentAnalysis(request(), dependencies({ resolveBearer: async () => { grants++; return trialBearer(secret, actor); }, fetch: async (url, init) => {
     calls++; assert.equal(String(url), `${gateway}/tools/documents/v1/analyze?model=prebuilt-read`);
     assert.equal(init?.method, "POST"); assert.equal(init?.redirect, "error"); assert.equal(init?.cache, "no-store");
-    assert.equal(new Headers(init?.headers).get("api-key"), secret); assert.equal(new Headers(init?.headers).get("Content-Type"), "application/pdf");
+    assert.equal(new Headers(init?.headers).get("Authorization"), `Bearer ${secret}`); assert.equal(new Headers(init?.headers).get("Content-Type"), "application/pdf");
     assert.deepEqual(new Uint8Array(init?.body as ArrayBuffer), pdf);
     return Response.json(native, { headers: { "apim-request-id": "document-request-1", "Operation-Location": "https://private.invalid/job" } });
   } }));
-  assert.equal(response.status, 200); assert.equal(calls, 1); assert.deepEqual(grants, [[actor, apiKeyId, "document-analysis-v1"]]);
+  assert.equal(response.status, 200); assert.equal(calls, 1); assert.equal(grants, 1);
   assert.equal(response.headers.get("operation-location"), null); assert.equal(response.headers.get("cache-control"), "no-store");
   const output = await response.json(); assert.equal(output.rawResponse.analyzeResult.content, "Document text"); assert.equal("content" in output, false); assert.deepEqual(output.rawResponse, native); assert.equal(output.requestId, "document-request-1");
   assert.equal(JSON.stringify(output).includes(secret), false);
@@ -53,8 +53,8 @@ test("クロスサイト・未認証・任意URL・追加パラメーターは�
   assert.equal(calls, 0);
 });
 
-test("ファイル実体・形式・重複・サイズ・モデルの不正はキー取得前に拒否する", async () => {
-  let grants = 0; const base = dependencies({ resolveSubscriptionKey: async () => { grants++; return secret; } });
+test("ファイル実体・形式・重複・サイズ・モデルの不正はBearer取得前に拒否する", async () => {
+  let grants = 0; const base = dependencies({ resolveBearer: async () => { grants++; return trialBearer(secret, actor); } });
   const attempts = [request({ type: "image/svg+xml" }), request({ bytes: new Uint8Array([0x42, 0x4d]) }), request({ duplicate: true }), request({ model: "custom" })];
   for (const attempt of attempts) assert.ok([400, 413].includes((await handleDocumentAnalysis(attempt, base)).status));
   assert.equal(grants, 0);
@@ -62,10 +62,10 @@ test("ファイル実体・形式・重複・サイズ・モデルの不正は�
   assert.equal((await handleDocumentAnalysis(request({ bytes: maximum }), base)).status, 200);
 });
 
-test("削除・無効化・グループ脱退によるキー拒否を固定失敗として返す", async () => {
+test("期限切れの本人Bearerは上流呼び出しより先に拒否する", async () => {
   let calls = 0;
-  const result = await handleDocumentAnalysis(request(), dependencies({ resolveSubscriptionKey: async () => { throw new ApiKeyError("NotFound", 404); }, fetch: async () => { calls++; throw new Error("No call"); } }));
-  assert.equal(result.status, 403); assert.deepEqual(await result.json(), { error: { code: "ApiKeyUnavailable" } }); assert.equal(calls, 0);
+  const result = await handleDocumentAnalysis(request(), dependencies({ resolveBearer: async () => { throw new ApiAuthenticationError("ApiAuthenticationRequired", 401); }, fetch: async () => { calls++; throw new Error("No call"); } }));
+  assert.equal(result.status, 401); assert.deepEqual(await result.json(), { error: { code: "ApiAuthenticationRequired" } }); assert.equal(calls, 0);
 });
 
 test("上流エラー・HTML・秘密反射・モデル不一致は生本文や秘密を表示しない", async () => {
@@ -109,11 +109,4 @@ test("Gatewayの文書固有エラーを固定コードへ対応させ、詳細�
     const result = await handleDocumentAnalysis(request(), dependencies({ fetch: async () => Response.json({ error: { code: upstreamCode, message: secret } }, { status }) }));
     assert.equal(result.status, status); assert.deepEqual(await result.json(), { error: { code }, ...(code === "RateLimitExceeded" ? { retryAfterSeconds: 2 } : {}) });
   }
-});
-
-test("抽出本文へ引用符付きキーがJSONエスケープされても公開しない", async () => {
-  const credential = 'synthetic-document-"key"-\\-value';
-  const raw = JSON.stringify({ ...native, analyzeResult: { ...native.analyzeResult, content: credential } }); assert.equal(raw.includes(credential), false);
-  const response = await handleDocumentAnalysis(request(), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
-  assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "DocumentAnalysisFailed" } });
 });

@@ -10,7 +10,7 @@
 
 | 経路 | 確認 |
 | --- | --- |
-| Portal認証 | 独立したPortalアプリのログインとログアウト、管理Graph、定期照合、既存ユーザーとキー所有権 |
+| Portal認証 | Portalのサインインとログアウト、同一人物のBearer試用、Graph OBO |
 | API試用 | キー／Bearerで同じモデルAPI、SSE、非同期、Realtimeを呼ぶ。別本人・期限切れを拒否し、必要時に追加認証する |
 | Graph | 購読キーはToolsとCredentialの本人接続、Bearerはegakumi-apiのOBOで同じ本人の結果を得る。Graphの追加認証・同意不足・テナント不一致も確認する |
 
@@ -19,7 +19,7 @@
 ## 1. 対象と仕様の基準
 
 - 実施時には、この公開コードのrevisionと対象環境の設定を固定します。過去の非公開実行結果を合格の根拠に使いません。
-- 対象: 構築済み環境の経路・証明書・監視、APIM認可、CM本人接続、Azure SQL、Entraグループに基づくAPIキー管理、Model Gateway、Tool Gateway、監査・運用。
+- 対象: 構築済み環境の経路・証明書・監視、APIM認可、CM本人接続、Azure SQL、PortalのBearer試用とAPIM購読、Model Gateway、Tool Gateway、監査・運用。
 - 正式な提供元: [API定義](../../apps/api-gateway/apis/)、[構築入力](../../params/)、[モデル・API設定](../../config/)、[Gateway資材](../../apps/api-gateway/deploy/README.md)、[Portal](../../apps/portal/)。構築用のexample設定を実環境の設定値と取り違えません。
 - 画面の準備中機能: Hosted Agent APIとA2A。準備中表示・誤操作防止を試験し、未実装の実行成功を受入条件にしません。
 - WAFは[データ欄の個別除外](../../apps/api-gateway/waf-data-exclusions.json)、[raw本文の限定調整と補完保護](../../apps/api-gateway/waf-raw-body-controls.json)、[SSML本文検査](../../apps/api-gateway/policies/fragments/request/core-speech-ssml-guard/README.md)を仕様基準とします。正規データの通過と制御欄・隣接経路の遮断を別々に確認し、匿名401をAPI機能成功と数えません。TTSの本文読取り集約と呼出位置の変更はAzure反映・読戻しを完了しました。キー／BearerのTTS正常WAV応答、DTD宣言の400と対応する監査照合を確認しました。実サイズ超過413など残る異常系は未実施であり、既存のPASSを新構成の未確認条件の結果へ読み替えません。
@@ -116,6 +116,8 @@
 - 本書の全対象をクリアし、資材改修と修正後の再試験が完了したら、資材のGit revisionとparams・設定hashを固定する。その資材での再構築と構築テストは [別仕様書](construction-tests.md)・別試行IDで実施し、本書の既存環境の判定を流用しない。
 
 ## 3. テスト項目
+
+以下の旧Portalのグループ所有、キー選択、購読同期の結果は当時の記録です。新規構築のPortalと例外購読は[現行の受入条件](../setup/13-verify-deployment.md)で確認します。
 
 以降はテスト項目と今回までの結果要約です。`PASS`は実施した展開条件の全期待結果を確認済みの場合だけに付けます。`一部確認`には残件を、`FAIL・修正中`と`再試験待ち`には復旧確認の状況を記録します。新しい試行では別の結果票を未実施から開始します。
 

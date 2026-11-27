@@ -265,11 +265,6 @@ export function getImageGenerationModels(): ImageGenerationModel[] {
   return models;
 }
 
-/** キーの選択画面が認可を照会できる、実装済みのモデルAPIだけを返します。 */
-export function getExecutableModelTargets(): { apiId: string }[] {
-  return [...new Set([...getTextGenerationModels(), ...getEmbeddingModels(), ...getImageGenerationModels(), ...getSpeechModels(), ...getRealtimeModels(), ...getRerankModels(), ...getDecisionModels()].map((model) => model.apiId))].map((apiId) => ({ apiId }));
-}
-
 /**
  * 公開済みのSTT/TTSを、固定された言語・形式・本文上限に結び付けます。
  * @remarks Azureの認識言語はAPI定義から読み取り、接続先や認証設定はブラウザーへ渡しません。

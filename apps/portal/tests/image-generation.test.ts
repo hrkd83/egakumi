@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { crc32, deflateSync } from "node:zlib";
-import { ApiKeyError } from "../lib/api-keys/contracts.ts";
+import { ApiAuthenticationError } from "../lib/api-auth/settings.ts";
 import { getImageGenerationModels } from "../lib/model-catalog.ts";
 import { buildImageGenerationRequest, defaultImageInput, getImageGenerationEndpoint, getImageGenerationHeaders, getImageIntegrationExample, getImageRequestSchema, getImageResponseSchema, SAMPLE_IMAGE_PROMPT } from "../lib/image-integration.ts";
 import { handleImageGeneration, type ImageGenerationDependencies } from "../lib/image-gateway.ts";
 import { imageGenerationInputSchema, MAX_IMAGE_RESPONSE_BYTES } from "../lib/image-request.ts";
 import { imageExternalUrl, imagePreviewSource, imageResponsePreview, parseImageGenerationResult, rasterBase64Mime, readImageResponse, safeImageUrl } from "../lib/image-response.ts";
 import { getImageGenerationDictionary } from "../lib/i18n/image-generation.ts";
+import { trialBearer, unicodeEscaped } from "./helpers/trial-bearer.ts";
 
 const models = getImageGenerationModels();
 const openai = models.find((model) => model.operationId === "image-generate")!;
@@ -15,8 +16,7 @@ const flux = models.find((model) => model.operationId === "flux2-generate" && mo
 const fluxFlex = models.find((model) => model.operationId === "flux2-generate" && model.id === "FLUX.2-flex")!;
 const portalOrigin = "https://portal.example.invalid";
 const gatewayOrigin = "https://gateway.example.invalid";
-const secret = "test-only-private-image-key";
-const apiKeyId = "portal-11111111-1111-4111-8111-111111111111";
+const secret = "test-only-image-access-token";
 const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
 /** 外部の画像やメタデータを埋め込まず、白い1画素のRGBA PNGを合成します。 */
 function syntheticPng(): string {
@@ -53,13 +53,13 @@ test("複数画像とネイティブWebPを受理し、元の応答を保持す�
 /** 実際のAPIと同じ入力制約を通し、外部通信と本人情報だけを固定します。 */
 function dependencies(overrides: Partial<ImageGenerationDependencies> = {}): ImageGenerationDependencies {
   return { readSession: async () => actor, readPortalOrigin: () => portalOrigin, readModels: () => models,
-    readGatewayEnvironment: async () => ({ origin: gatewayOrigin }), resolveSubscriptionKey: async () => secret,
+    readGatewayEnvironment: async () => ({ origin: gatewayOrigin }), resolveBearer: async () => trialBearer(secret, actor),
     fetch: async () => Response.json({ created: 1, data: [{ b64_json: png }], usage: { total_tokens: 12 } }, { headers: { "apim-request-id": "image-request-123" } }), ...overrides };
 }
 
 /** 同一オリジンのJSON実行要求です。キー実値はブラウザーから送りません。 */
 function request(input: unknown = defaultImageInput(openai), headers: Record<string, string> = {}, signal?: AbortSignal, query = ""): Request {
-  return new Request(`${portalOrigin}/api/models/images${query}`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ apiKeyId, ...(input as object) }), signal });
+  return new Request(`${portalOrigin}/api/models/images${query}`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ authentication: "bearer", ...(input as object) }), signal });
 }
 
 test("画像入力はプロンプトを受け付け、任意接続先・キー実値は拒否する", () => {
@@ -103,7 +103,7 @@ test("コード例は全言語で固定公開URLと現在のモデル本文を�
       assert.ok(code.includes(`${gatewayOrigin}${model.path}`));
       assert.ok(code.includes(SAMPLE_IMAGE_PROMPT));
       assert.ok(code.includes(model.id));
-      assert.ok(code.includes("GATEWAY_API_KEY"));
+      assert.ok(code.includes("GATEWAY_ACCESS_TOKEN"));
       assert.ok(!code.includes(secret));
       assert.ok(!code.includes("X-Egakumi-Profile"));
     }
@@ -127,10 +127,10 @@ test("同一オリジン・本人認証・JSONがない場合は画像を生成�
   assert.equal(calls, 0);
 });
 
-test("画像APIの同名queryやAPI版queryは本文・購読・上流処理の前に拒否する", async () => {
+test("画像APIの同名queryやAPI版queryは本文・API認証・上流処理の前に拒否する", async () => {
   let calls = 0;
   const forbidden = () => { calls++; throw new Error("not called"); };
-  const context = dependencies({ readModels: forbidden, resolveSubscriptionKey: forbidden, fetch: forbidden });
+  const context = dependencies({ readModels: forbidden, resolveBearer: forbidden, fetch: forbidden });
   for (const query of ["?prompt=synthetic", "?%70rompt=synthetic", "?prompt=one&prompt=two", "?api-version=preview", "?input_image=synthetic", "?unexpected", "?=synthetic"]) {
     const incoming = request(undefined, {}, undefined, query);
     const response = await handleImageGeneration(incoming, context);
@@ -160,9 +160,9 @@ test("query拒否を追加しても同一オリジン・本人認証・JSONの�
   assert.equal((await handleImageGeneration(request(undefined, { "Content-Type": "application/json; charset=utf-8" }), dependencies())).status, 200);
 });
 
-test("制約違反とパス改変は購読キーの取得・上流通信より先に拒否する", async () => {
+test("制約違反とパス改変はBearerトークンの取得・上流通信より先に拒否する", async () => {
   let calls = 0;
-  const context = dependencies({ resolveSubscriptionKey: async () => { calls++; return secret; } });
+  const context = dependencies({ resolveBearer: async () => { calls++; return trialBearer(secret, actor); } });
   for (const input of [{ ...defaultImageInput(openai), modelId: "unknown-model" }, { ...defaultImageInput(openai), count: 11 }, { ...defaultImageInput(flux), width: 0 }, { ...defaultImageInput(openai), prompt: "" }]) assert.equal((await handleImageGeneration(request(input), context)).status, 400);
   assert.equal((await handleImageGeneration(request(), { ...context, readModels: () => [{ ...openai, path: "/models/other/generate" }] })).status, 400);
   assert.equal((await handleImageGeneration(request(undefined, { "Content-Length": "524288001" }), context)).status, 413);
@@ -170,11 +170,11 @@ test("制約違反とパス改変は購読キーの取得・上流通信より�
   assert.equal(calls, 0);
 });
 
-test("本人に認可された選択キーをサーバーで解決し、APIMへ1回だけ送る", async () => {
+test("本人のBearerをサーバーで解決し、APIMへ一度だけ送る", async () => {
   let calls = 0;
-  const response = await handleImageGeneration(request(), dependencies({ resolveSubscriptionKey: async (owner, id, apiId) => { assert.deepEqual(owner, actor); assert.equal(id, apiKeyId); assert.equal(apiId, openai.apiId); return secret; }, fetch: async (url, init) => {
+  const response = await handleImageGeneration(request(), dependencies({ resolveBearer: async () => trialBearer(secret, actor), fetch: async (url, init) => {
     calls++; assert.equal(String(url), `${gatewayOrigin}${openai.path}`); assert.equal(init?.redirect, "error"); assert.equal(init?.cache, "no-store");
-    const headers = new Headers(init?.headers); assert.equal(headers.get("api-key"), secret); assert.equal(headers.get("cookie"), null);
+    const headers = new Headers(init?.headers); assert.equal(headers.get("Authorization"), `Bearer ${secret}`); assert.equal(headers.get("cookie"), null);
     assert.deepEqual(JSON.parse(String(init?.body)), buildImageGenerationRequest(openai, defaultImageInput(openai)));
     return dependencies().fetch!(url, init);
   } }));
@@ -182,10 +182,10 @@ test("本人に認可された選択キーをサーバーで解決し、APIMへ1
   const result = await response.json(); assert.equal(result.images[0].mimeType, "image/png"); assert.equal(result.rawResponse.data[0].b64_json, png); assert.equal(result.requestId, "image-request-123"); assert.ok(!JSON.stringify(result).includes(secret)); assert.equal(calls, 1);
 });
 
-test("購読の失効・権限不足は秘密や内部例外を表示せず拒否する", async () => {
-  for (const error of [new ApiKeyError("Forbidden", 403), new Error(secret)]) {
-    const response = await handleImageGeneration(request(), dependencies({ resolveSubscriptionKey: async () => { throw error; } }));
-    assert.equal(response.status, error instanceof ApiKeyError ? 403 : 503); assert.ok(!(await response.text()).includes(secret));
+test("API認証の失効・障害は秘密や内部例外を表示せず拒否する", async () => {
+  for (const error of [new ApiAuthenticationError("ApiAuthenticationRequired", 401), new Error(secret)]) {
+    const response = await handleImageGeneration(request(), dependencies({ resolveBearer: async () => { throw error; } }));
+    assert.equal(response.status, error instanceof ApiAuthenticationError ? 401 : 503); assert.ok(!(await response.text()).includes(secret));
   }
 });
 
@@ -220,7 +220,7 @@ test("上流エラー・不正Content-Type・大きすぎる画像を成功扱�
   for (const body of [{ data: [] }, { data: [{ b64_json: Buffer.from("<svg>unsafe</svg>").toString("base64") }] }, { data: [{ url: "http://127.0.0.1/test" }] }, { error: { code: "blocked" }, data: [{ b64_json: png }] }]) assert.equal((await handleImageGeneration(request(), dependencies({ fetch: async () => Response.json(body) }))).status, 502);
 });
 
-test("JSONのUnicodeエスケープで隠れた購読キーも画像の正常JSONへ含めない", async () => {
+test("JSONのUnicodeエスケープで隠れたBearerトークンも画像の正常JSONへ含めない", async () => {
   const encoded = [...secret].map((character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
   const raw = JSON.stringify({ data: [{ b64_json: png }], metadata: { reflected: secret } }).replace(secret, encoded);
   assert.equal(raw.includes(secret), false);
@@ -231,12 +231,12 @@ test("JSONのUnicodeエスケープで隠れた購読キーも画像の正常JSO
   assert.equal(calls, 1);
 });
 
-test("画像のraw JSONでも引用符付きキーの値・プロパティ名への反射を拒否する", async () => {
-  const credential = 'synthetic-image-"key"-\\-value';
+test("画像のraw JSONでもUnicodeエスケープしたBearerの値・プロパティ名への反射を拒否する", async () => {
+  const credential = "synthetic-image-bearer-token";
   for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
-    const raw = JSON.stringify({ data: [{ b64_json: png }], ...reflected });
+    const raw = JSON.stringify({ data: [{ b64_json: png }], ...reflected }).replaceAll(credential, unicodeEscaped(credential));
     assert.equal(raw.includes(credential), false);
-    const response = await handleImageGeneration(request(), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+    const response = await handleImageGeneration(request(), dependencies({ resolveBearer: async () => trialBearer(credential, actor), fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
     assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
   }
 });
@@ -287,7 +287,7 @@ test("Base64の画面表示だけを省略し、コピーする実JSONと画像�
 });
 
 test("クライアントの画像応答読取りも中断でき、エラー本文を公開しない", async () => {
-  await assert.rejects(readImageResponse(Response.json({ error: { code: "ApiKeyUnavailable" }, requestId: "valid-id" }, { status: 403 })), (error: unknown) => error instanceof Error && error.message === "ApiKeyUnavailable");
+  await assert.rejects(readImageResponse(Response.json({ error: { code: "ApiAuthenticationRequired" }, requestId: "valid-id" }, { status: 401 })), (error: unknown) => error instanceof Error && error.message === "ApiAuthenticationRequired");
   await assert.rejects(readImageResponse(Response.json({ error: { code: secret } }, { status: 500 })), (error: unknown) => error instanceof Error && !error.message.includes(secret));
   const abort = new AbortController(); const keepAlive = setTimeout(() => abort.abort(), 10);
   try { await assert.rejects(readImageResponse(new Response(new ReadableStream({ start() {} })), abort.signal)); } finally { clearTimeout(keepAlive); }

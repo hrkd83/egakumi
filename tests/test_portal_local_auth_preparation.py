@@ -19,19 +19,22 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve() / "repository"
         self.root.mkdir()
-        self.secret = Path(self.temporary.name) / "existing-client-secret.txt"
-        self.secret.write_text('test.secret$with"special\\characters', encoding="utf-8")
-        self.secret.chmod(0o600)
         self.configuration = {
             "environmentName": "example",
-            "portalAuthentication": {"credentialProviderName": "graph-delegated"},
-            "credentialProviders": [{
-                "name": "graph-delegated",
-                "clientId": "00000000-0000-0000-0000-000000000001",
-                "oauthTenantId": "00000000-0000-0000-0000-000000000002",
-                "clientSecretFile": str(self.secret),
-            }],
+            "azureTenantId": "<AZURE_TENANT_ID>",
+            "portal": {"authentication": {
+                "clientId": "<PORTAL_ENTRA_CLIENT_ID>",
+                "tenantId": "<ENTRA_TENANT_ID>",
+            }},
         }
+        def certificate(configuration, workspace):
+            return {**configuration["portal"]["authentication"],
+                    "keyId": "https://vault.example.invalid/keys/portal-auth/" + "a" * 32,
+                    "certificateThumbprint": "b" * 40}
+
+        binding = patch.object(preparation, "deployment_authentication", side_effect=certificate)
+        binding.start()
+        self.addCleanup(binding.stop)
         # ACLのOS差を避け、実ファイルは各テストの一時フォルダーだけに限定する。
         self.protection = patch.object(preparation, "protect_new_file", lambda path: path.chmod(0o600))
         self.protection.start()
@@ -40,8 +43,7 @@ class LocalPortalPreparationTests(unittest.TestCase):
     def prepare(self, **arguments):
         return preparation.prepare(self.configuration, self.root, **arguments)
 
-    def test_plan_does_not_read_secret_or_create_files(self):
-        self.secret.unlink()
+    def test_plan_does_not_create_files(self):
         result = self.prepare(execute=False, accept_sql_eula=False)
         self.assertEqual("create", result["action"])
         self.assertEqual(0, result["azureWrites"])
@@ -54,7 +56,7 @@ class LocalPortalPreparationTests(unittest.TestCase):
                          Path(result["sqlAdminEnvironmentFile"]))
 
     def test_plan_only_needs_the_environment_and_never_reads_values(self):
-        with patch.object(preparation, "_read_protected_file", side_effect=AssertionError("secret read")), \
+        with patch.object(preparation, "deployment_authentication", side_effect=AssertionError("certificate state read")), \
                 patch.object(preparation, "read_environment", side_effect=AssertionError("settings read")):
             result = preparation.prepare({"environmentName": "example"}, self.root,
                                          execute=False, accept_sql_eula=False)
@@ -74,9 +76,10 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertEqual("sa", admin["PORTAL_SQL_USER"])
         self.assertEqual(runtime["PORTAL_SQL_PASSWORD"], admin["PORTAL_SQL_RUNTIME_PASSWORD"])
         self.assertNotEqual(runtime["PORTAL_SQL_PASSWORD"], admin["MSSQL_SA_PASSWORD"])
-        self.assertEqual(self.secret.read_text(), runtime["MICROSOFT_CLIENT_SECRET"])
+        self.assertEqual("azure-cli", runtime["PORTAL_AUTH_SIGNING_MODE"])
+        self.assertEqual("b" * 40, runtime["PORTAL_AUTH_CERTIFICATE_THUMBPRINT"])
+        self.assertNotIn("MICROSOFT_CLIENT_SECRET", runtime)
         self.assertNotIn("MICROSOFT_CLIENT_SECRET", admin)
-        self.assertNotIn(self.secret.read_text(), json.dumps(result))
         self.assertGreaterEqual(len(runtime["BETTER_AUTH_SECRET"]), 32)
         self.assertFalse(result["containerStarted"])
         self.assertFalse((self.root / "apps/portal/.env.local").exists())
@@ -102,7 +105,6 @@ class LocalPortalPreparationTests(unittest.TestCase):
         runtime = preparation.read_environment(paths[0])
         runtime.update({
             "PORTAL_GATEWAY_URL": "https://gateway.example.invalid",
-            "PORTAL_GATEWAY_SUBSCRIPTION_KEY_FILE": str(self.root / "private-model-users.key"),
         })
         paths[0].write_text(preparation.encode_environment(runtime), encoding="utf-8")
         before = [path.read_bytes() for path in paths]
@@ -110,7 +112,6 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertEqual("reuse", second["action"])
         self.assertEqual(before, [path.read_bytes() for path in paths])
         self.assertNotIn(runtime["PORTAL_GATEWAY_URL"], json.dumps(second))
-        self.assertNotIn(runtime["PORTAL_GATEWAY_SUBSCRIPTION_KEY_FILE"], json.dumps(second))
 
     def test_reuse_still_rejects_unexpected_or_missing_runtime_settings(self):
         first = self.prepare(execute=True, accept_sql_eula=True)
@@ -147,7 +148,7 @@ class LocalPortalPreparationTests(unittest.TestCase):
         for execute in (False, True):
             with self.subTest(execute=execute), \
                     patch.object(preparation, "read_environment", side_effect=AssertionError("legacy read")), \
-                    patch.object(preparation, "_read_protected_file", side_effect=AssertionError("secret read")):
+                    patch.object(preparation, "deployment_authentication", side_effect=AssertionError("certificate state read")):
                 with self.assertRaisesRegex(preparation.PreparationError, "migrate"):
                     self.prepare(execute=execute, accept_sql_eula=True)
         self.assertEqual("OWNER_SETTING=keep\n", target.read_text())
@@ -170,7 +171,7 @@ class LocalPortalPreparationTests(unittest.TestCase):
         first = self.prepare(execute=True, accept_sql_eula=True)
         path = Path(first["runtimeEnvironmentFile"])
         previous = path.read_bytes()
-        self.configuration["credentialProviders"][0]["clientId"] = "different-client"
+        self.configuration["portal"]["authentication"]["clientId"] = "different-client"
         with self.assertRaisesRegex(preparation.PreparationError, "selected configuration"):
             self.prepare(execute=True, accept_sql_eula=True)
         self.assertEqual(previous, path.read_bytes())

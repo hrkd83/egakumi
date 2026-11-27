@@ -1,19 +1,8 @@
 import { z } from "zod";
-import { apiAuthPurposeHeader, subscriptionManagementRequiredCode, type ApiAuthPurpose } from "./purpose.ts";
 
-export const subscriptionManagementRequiredEvent = "egakumi:subscription-management-authentication-required";
-
-/** APIが購読管理用の再認証を求めたときに、現在の画面へ知らせます。 */
-export function notifySubscriptionManagementRequired(code: string): void {
-  if (code === subscriptionManagementRequiredCode && typeof window !== "undefined") {
-    window.dispatchEvent(new Event(subscriptionManagementRequiredEvent));
-  }
-}
-
-/** 試用・購読管理とも、同じPortalから固定のEntra認可先へ移動します。 */
-export async function startPortalApiAuthorization(returnTo: string, purpose: ApiAuthPurpose = "gateway", claims?: string): Promise<void> {
+/** Gateway試用の認証は固定のEntra認可先へ移動します。 */
+export async function startPortalApiAuthorization(returnTo: string, claims?: string): Promise<void> {
   const headers = new Headers({ "Content-Type": "application/x-www-form-urlencoded" });
-  if (purpose !== "gateway") headers.set(apiAuthPurposeHeader, purpose);
   const fields = new URLSearchParams({ returnTo });
   if (claims !== undefined) fields.set("claims", claims);
   const response = await fetch("/api/api-auth/start", {

@@ -151,14 +151,13 @@ class SourceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             publication.read_policy_graph(manifest, transport)
 
-    def connection_fixture(self, *, enabled=True):
+    def connection_fixture(self):
         current, transport = fixture()
-        host = ".".join(("ca-test-fixture-sub-profile", "synthetic", "japaneast", "azurecontainerapps.io"))
+        host = ".".join(("ca-test-fixture-credentials", "synthetic", "japaneast", "azurecontainerapps.io"))
         app_provider = APIM.split("/providers/", 1)[0] + "/providers/Microsoft.App/"
-        app_id = app_provider + "containerApps/ca-test-fixture-sub-profile"
+        app_id = app_provider + "containerApps/ca-test-fixture-credentials"
         values = {"core-l7-ingress-enabled": "false", "core-l7-ingress-secret": "ingress-disabled",
-                  "core-subscription-profile-enabled": "true" if enabled else "false",
-                  "core-subscription-profile-url": "https://" + host + "/api/internal/subscription-profile" if enabled else "https://profile.invalid"}
+                  "core-credential-broker-url": "https://" + host}
         # The template comment contains literal {{...}}; it is not a dependency.
         current.policies[GLOBAL] = xml("old").replace("<inbound>", '<!-- {{...}} is explanatory --><inbound>'
             + ''.join('<set-variable name="fixture" value="{{' + name + '}}" />' for name in values))
@@ -167,14 +166,14 @@ class SourceTests(unittest.TestCase):
             resource_id = APIM + "/namedValues/" + name
             transport.inventory[resource_id] = response(resource_id, {"displayName": name, "secret": False, "value": value})
         transport.inventory[app_id] = response(app_id, {
-            "managedEnvironmentId": app_provider + "managedEnvironments/cae-test-fixture",
+            "managedEnvironmentId": app_provider + "managedEnvironments/cae-test-fixture-broker",
             "configuration": {"ingress": {"fqdn": host, "external": True, "allowInsecure": False}},
         })
         plan = {"resourceStem": "test-fixture", "parameters": {"names": {"value": {"keyVault": "kv-test-fixture"}},
                 "l7IngressSecretIdentifier": {"value": ""}}, "commonAuthentication": {"core-subscription-key-header": "api-key"}}
         return current, transport, plan, app_id
 
-    def test_core_profile_endpoint_binds_exact_owned_app_readback_and_disabled_l7_placeholder(self):
+    def test_broker_endpoint_binds_exact_owned_app_readback_and_disabled_l7_placeholder(self):
         current, transport, plan, app_id = self.connection_fixture()
         manifest = publication.complete_named_value_expectations(current, plan, transport)
         publication.read_policy_graph(manifest, transport)
@@ -183,9 +182,9 @@ class SourceTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 current, transport, plan, app_id = self.connection_fixture()
                 if mutation == "same-prefix-other-environment":
-                    transport.inventory[APIM + "/namedValues/core-subscription-profile-url"]["body"]["properties"]["value"] = (
+                    transport.inventory[APIM + "/namedValues/core-credential-broker-url"]["body"]["properties"]["value"] = (
                         "https://" + transport.inventory[app_id]["body"]["properties"]["configuration"]["ingress"]["fqdn"].replace(
-                            ".synthetic.", ".other-example.") + "/api/internal/subscription-profile")
+                            ".synthetic.", ".other-example."))
                 elif mutation == "wrong-owned-resource":
                     transport.inventory[app_id]["body"]["id"] = app_id.replace("rg-fixture", "rg-outside-fixture")
                 elif mutation == "wrong-cae":
@@ -198,13 +197,6 @@ class SourceTests(unittest.TestCase):
                     publication.complete_named_value_expectations(current, plan, transport)
                 self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
 
-    def test_disabled_profile_placeholder_needs_no_app_but_cannot_be_enabled(self):
-        current, transport, plan, app_id = self.connection_fixture(enabled=False)
-        publication.complete_named_value_expectations(current, plan, transport)
-        self.assertFalse(any(resource_id == app_id for _, resource_id, *_ in transport.calls))
-        transport.inventory[APIM + "/namedValues/core-subscription-profile-enabled"]["body"]["properties"]["value"] = "true"
-        with self.assertRaises(ValueError):
-            publication.complete_named_value_expectations(current, plan, transport)
 
 
 class GraphTests(unittest.TestCase):

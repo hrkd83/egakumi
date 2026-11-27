@@ -48,7 +48,7 @@ class GeneratedQueryObservationPublicationTests(unittest.TestCase):
         config = self.config if config is None else config
         return {"apiDefinitions": config["apiDefinitions"], "credentialLogin": {},
                 "subscriptionKeyHeader": config["gateway"]["authentication"]["subscriptionKeyHeader"],
-                "entraTenantId": config["entraTenantId"], "rateLimits": config["gateway"]["rateLimits"]}
+                "entraTenantId": config["entraTenantId"]}
 
     def evaluate(self, value, config=None, index=0):
         supplied = {name: definition["defaultValue"]

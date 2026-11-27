@@ -1,5 +1,5 @@
 // 目的：共通認証が保持した社員の利用枠を、回数・トークン計数へ渡します。
-// 同名XMLのgatewaySubscriptionProfile式全体へ展開し、Azure名core-entra-user-profileを維持します。
+// 同名XMLのgatewayUserLimits式全体へ展開し、Azure名core-entra-user-profileを維持します。
 // 認証結果の引き渡しに失敗した要求は先行処理で停止するため、allowedと認証成功印を再確認しません。
 
 // 共通認証は元設定の構造・必須項目・型・範囲・期間を検査し、不備なら先に500で停止します。

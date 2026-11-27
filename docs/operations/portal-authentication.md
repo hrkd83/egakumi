@@ -49,7 +49,7 @@ python3 -B scripts/operations/portal_auth_certificate.py initialize --config "$D
 | 手動Entra登録 | Entra担当が新しい公開証明書を追加し、thumbprint・期限を照合。旧証明書は受入まで保持 |
 | `confirm-registration` | 担当者が手動登録の完了を明示し、対象アプリの設定とcandidateを束ねる |
 | `switch` | 現行の固定イメージを使い、本体とGraphジョブの鍵版・thumbprintを一緒に切替。設定・イメージを読み戻し、発行workerのcurrentを同期 |
-| `verify` | 実際のログイン・Graph管理・定期ジョブを人が確認した後、現物設定も照合して受入記録を更新 |
+| `verify` | 実際のログイン・Bearer試用・Graph OBOを人が確認した後、現物設定も照合して受入記録を更新 |
 | 手動Entra旧版削除 | 受入後、Entra担当が旧公開証明書を削除 |
 | `retire` | 現行設定を再確認して、旧KV鍵のexact versionだけを無効化 |
 | `rollback` | 旧公開証明書と鍵が有効な間だけ、保存した旧固定参照と同じイメージへ復旧 |
@@ -59,7 +59,7 @@ python3 -B scripts/operations/portal_auth_certificate.py prepare --config "$DEPL
 # Entra担当が新しい公開 .cer を追加し、thumbprint・期限・対象アプリを確認
 python3 -B scripts/operations/portal_auth_certificate.py confirm-registration --config "$DEPLOY_PARAMS_FILE" --entra-registration-confirmed --execute
 python3 -B scripts/operations/portal_auth_certificate.py switch --config "$DEPLOY_PARAMS_FILE" --execute
-# ログイン、Graph管理画面、定期ジョブの実行結果を確認してから進める
+# ログイン、Bearer試用、Graph OBOの結果を確認してから進める
 python3 -B scripts/operations/portal_auth_certificate.py verify --config "$DEPLOY_PARAMS_FILE" --login-verified --graph-verified --job-verified --execute
 # Entra担当が旧公開証明書を削除
 python3 -B scripts/operations/portal_auth_certificate.py retire --config "$DEPLOY_PARAMS_FILE" --entra-old-certificate-removed --execute

@@ -51,7 +51,7 @@ test("モデルや接続方式を変えても対応する声は保持し、系�
   const mini = models.find((model) => model.modelId.endsWith("-mini"))!;
   const voiceLive = models.find((model) => model.family === "voice-live")!;
   const transcribe = models.find((model) => model.family === "transcription")!;
-  const current = { input: { ...defaultRealtimeInput(rtc), voice: "cedar" }, apiKeyId: "" };
+  const current = { input: { ...defaultRealtimeInput(rtc), voice: "cedar" } };
   assert.equal(updateRealtimeModelSelection(current, rtc, mini).input.voice, "cedar");
   assert.equal(updateRealtimeModelSelection(current, rtc, voiceLive).input.voice, undefined);
   assert.equal(updateRealtimeModelSelection(current, rtc, transcribe).input.voice, undefined);

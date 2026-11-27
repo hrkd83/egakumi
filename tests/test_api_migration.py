@@ -21,7 +21,7 @@ def legacy_api(name, operation, *, contract="original-contract", model="approved
     return {
         "name": name, "displayName": name, "path": "legacy/" + name,
         "backendService": "foundryOpenAi", "backendAudience": "https://cognitiveservices.azure.com",
-        "productId": "model-users", "keySubscriptions": [],
+        "productId": "model-users",
         "operations": [{"name": operation, "method": method, "urlTemplate": route, "templateParameters": []}],
         "authorization": {
             "mode": "subscriptionKey",

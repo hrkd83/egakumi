@@ -154,7 +154,7 @@ class ProtocolGraphTests(unittest.TestCase):
 
 def fresh_fixture():
     plan = {"apimId": APIM, "publishedApiIds": [APIM + "/apis/new-api"], "parameters": {
-        "apiDefinitions": {"value": [{"name": "new-api", "productId": "model-users", "keySubscriptions": []}]},
+        "apiDefinitions": {"value": [{"name": "new-api", "productId": "model-users"}]},
         "names": {"value": {"keyVault": "kv-fixture"}}, "l7IngressSecretIdentifier": {"value": ""}}}
     _, transport = fixture()
     transport.inventory = {GLOBAL: response(GLOBAL, {"value": '<policies><inbound /><backend /><outbound /><on-error /></policies>'})}
@@ -335,7 +335,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
                     operation["backendOverride"].setdefault("backendUrl", "https://provider.example.com")
         template = compile_bicep("apps/api-gateway/api-publication.bicep")
         parameters = {"apiDefinitions": definitions, "names": {"apim": "apim-test-fixture"}, "publishApis": True,
-                      "rateLimits": config["gateway"]["rateLimits"], "credentialLogin": credential_login.settings(config)}
+                      "credentialLogin": credential_login.settings(config)}
         expanded = expand(template, parameters)
         reader = SizeExpression("[true()]", template["variables"], {}, template.get("functions", []))
         source = reader.resolve(template["outputs"]["entraPublicationSource"]["value"], expanded["parameters"])

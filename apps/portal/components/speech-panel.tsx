@@ -1,13 +1,12 @@
 "use client";
 
-import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+import { TryAuthenticationControl, useTryAuthentication } from "@/components/try-authentication";
 
 import { inspectSpeechUpload, MAX_TRANSCRIPTION_FILE_BYTES, TRANSCRIPTION_FILE_ACCEPT } from "@/lib/speech-upload";
 
 import { useFieldIds } from "@/lib/use-field-ids";
 
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { Check, Copy, Download, LoaderCircle, Play, Square } from "lucide-react";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
@@ -20,7 +19,6 @@ import { usePortalStore } from "@/components/portal-store-provider";
 import { useModelSelection } from "@/components/use-model-selection";
 import { restoreModelSettings } from "@/lib/model-settings";
 import { getSpeechDictionary } from "@/lib/i18n/speech";
-import { loadModelKeyChoices, type ModelKeyChoice } from "@/lib/model-key-choices";
 import { INTEGRATION_LANGUAGES, type IntegrationLanguage } from "@/lib/model-integration";
 import { ModelResponseError } from "@/lib/model-response";
 import { MAX_SPEECH_UPLOAD_BYTES, MAX_SPEECH_TEXT_CHARACTERS, speechInputSchema, type SpeechInput, type SpeechResult } from "@/lib/speech-request";
@@ -33,10 +31,9 @@ import type { TextGenerationFailure } from "@/lib/model-request";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { Locale } from "@/lib/i18n/config";
 
-/** 画面内の選択値と実行結果です。購読キーの秘密値は保持しません。 */
+/** 画面内の選択値と実行結果です。試用資格情報はサーバーで扱います。 */
 type SpeechPanelState = {
   input: SpeechInput;
-  apiKeyId: string;
   language: IntegrationLanguage | "body";
   tab: "request" | "schema" | "response";
   loading: boolean;
@@ -86,19 +83,14 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
   const guide = text.integration;
   const speech = getSpeechDictionary(locale);
   const drafts = usePortalStore((state) => state.modelDrafts), updateDrafts = usePortalStore((state) => state.updateModelDrafts);
-  const [store] = useState(() => createStore<SpeechPanelState>(() => ({ input: { ...restoreModelSettings("speech", initialModel ? defaultSpeechInput(initialModel) : { modelId: "", voice: "ja-JP-NanamiNeural" as const, rate: "0%" as const, text: SAMPLE_SPEECH_TEXT }, savedSettings, (input) => { if (initialModel) buildSpeechRequest(initialModel, input); }), ...(drafts.speechText !== null ? { text: drafts.speechText } : {}) }, apiKeyId: "", language: "body", tab: "request", loading: false, result: null, audioUrl: null, failure: null, cancelled: false, inputFile: drafts.speechFile, inputAudioUrl: null, fileChecking: false, fileError: false })));
+  const [store] = useState(() => createStore<SpeechPanelState>(() => ({ input: { ...restoreModelSettings("speech", initialModel ? defaultSpeechInput(initialModel) : { modelId: "", voice: "ja-JP-NanamiNeural" as const, rate: "0%" as const, text: SAMPLE_SPEECH_TEXT }, savedSettings, (input) => { if (initialModel) buildSpeechRequest(initialModel, input); }), ...(drafts.speechText !== null ? { text: drafts.speechText } : {}) }, language: "body", tab: "request", loading: false, result: null, audioUrl: null, failure: null, cancelled: false, inputFile: drafts.speechFile, inputAudioUrl: null, fileChecking: false, fileError: false })));
   const state = useStore(store);
   const requestRef = useRef<AbortController | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const outputAudioRef = useRef<HTMLAudioElement | null>(null), inputAudioRef = useRef<HTMLAudioElement | null>(null);
   const inputAudioUrlRef = useRef<string | null>(null), fileSelectionRef = useRef(0);
-  const [keyState, setKeyState] = useState<{ apiId: string; status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] }>({ apiId: "", status: "loading", keys: [] });
-  const [refresh, setRefresh] = useState(0);
   const model = models.find((entry) => entry.id === state.input.modelId) ?? models[0];
-  const apiId = model?.apiId ?? "";
-  const keysReady = keyState.apiId === apiId && keyState.status === "ready";
-  const selectedKey = keysReady ? keyState.keys.find((key) => key.id === state.apiKeyId) : undefined;
-  const authentication = useTryAuthentication(selectedKey?.id);
+  const authentication = useTryAuthentication();
   const parsed = speechInputSchema.safeParse(state.input);
   const origin = gatewayOrigin ?? "https://gateway.example.com";
   const number = new Intl.NumberFormat(locale);
@@ -138,12 +130,6 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
       const url = URL.createObjectURL(current.inputFile); inputAudioUrlRef.current = url; store.setState({ inputAudioUrl: url });
     }
   }, [state.tab, model?.kind, state.result, state.audioUrl, state.inputFile, state.inputAudioUrl, store]);
-  useEffect(() => {
-    if (!apiId) return;
-    const controller = new AbortController();
-    void loadModelKeyChoices(apiId, controller.signal).then((keys) => { if (!controller.signal.aborted) setKeyState({ apiId, status: "ready", keys }); }).catch(() => { if (!controller.signal.aborted) setKeyState({ apiId, status: "error", keys: [] }); });
-    return () => controller.abort();
-  }, [apiId, refresh]);
 
   /** 以前の音声URLを解放し、設定と実行結果が食い違う表示を残しません。 */
   function clearResult() {
@@ -154,7 +140,6 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
   /** 選択内容を同じ状態へ保存し、組み込み例と実送信を揃えます。 */
   function updateInput(patch: Partial<SpeechInput>) { if (patch.text !== undefined) updateDrafts({ speechText: patch.text }); const input = { ...store.getState().input, ...patch }; clearResult(); rememberSettings("speech", scope, input); store.setState({ input }); }
   /** 現在の所属で使えるキーを読み直し、古い結果を消します。 */
-  function refreshKeys() { clearResult(); setKeyState({ apiId, status: "loading", keys: [] }); setRefresh((value) => value + 1); }
 
   /** ファイル名だけで判断せず、有限サイズのWAV本文を検査してプレビューに使います。 */
   async function selectAudio(file: File | undefined) {
@@ -215,16 +200,8 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
     <div className="max-w-xl"><div className="space-y-2"><label htmlFor={fieldId("speech-operation")} className="text-sm font-medium">{speech.operation}</label><Select value={model.id} disabled={state.loading || state.fileChecking} onValueChange={(id) => { const next = models.find((entry) => entry.id === id); if (next) { rememberModel({ id: next.id }); updateInput({ ...defaultSpeechInput(next), text: state.input.text }); } }}><SelectTrigger id={fieldId("speech-operation")} className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{models.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.kind === "tts" ? speech.tts : speech.stt}{entry.modelId ? ` · ${entry.modelId}` : ""}</SelectItem>)}</SelectContent></Select></div></div>
   </div>;
   const settings = <form onSubmit={execute} className="space-y-5">
-        <TryAuthenticationPicker model={authentication} locale={locale} disabled={state.loading} />
+        <TryAuthenticationControl model={authentication} locale={locale} disabled={state.loading} />
 
-      <div className="space-y-2 rounded-lg border border-border bg-white p-3" hidden={authentication.selection.mode === "bearer"}>
-        <div className="flex items-center justify-between gap-3"><label htmlFor={fieldId("speech-api-key")} className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || keyState.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button></div>
-        <Select value={selectedKey?.id ?? ""} disabled={state.loading || !keysReady || !keyState.keys.length} onValueChange={(apiKeyId) => { clearResult(); store.setState({ apiKeyId }); }}><SelectTrigger id={fieldId("speech-api-key")} aria-describedby={fieldId("speech-key-help")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{keyState.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block min-w-0 truncate" title={[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}>{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
-        <p id={fieldId("speech-key-help")} className="text-sm leading-5 text-muted-foreground">{guide.apiKeyHelp}</p>
-        {(keyState.apiId !== apiId || keyState.status === "loading") && <p role="status" className="text-sm text-muted-foreground">{guide.loadingKeys}</p>}
-        {keyState.apiId === apiId && keyState.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
-        {keysReady && !keyState.keys.length && <p role="status" className="text-sm leading-6 text-muted-foreground">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="text-primary underline underline-offset-4">{guide.manageKeys}</Link></p>}
-      </div>
 
       {model.kind === "tts" ? <>
         <div className="grid gap-4 sm:grid-cols-2">

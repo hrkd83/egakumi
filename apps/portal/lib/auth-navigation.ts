@@ -7,7 +7,7 @@ import type { Locale } from "./i18n/config";
  */
 export function isPortalReturnPath(candidate: string | undefined, locale: Locale): candidate is string {
   if (!candidate || candidate.length > 256) return false;
-  const allowed = new Set([`/${locale}`, `/${locale}/models`, `/${locale}/tools`, `/${locale}/agents`, `/${locale}/api-keys`, `/${locale}/api-key-administration`, `/${locale}/company-administration`, `/${locale}/subscription-sync`]);
+  const allowed = new Set([`/${locale}`, `/${locale}/models`, `/${locale}/tools`, `/${locale}/agents`]);
   if (allowed.has(candidate)) return true;
   const prefix = `/${locale}/`;
   if (!candidate.startsWith(prefix)) return false;

@@ -5,7 +5,6 @@
   "backendService": "foundry",
   "backendAuthentication": {"mode": "auditRelay"},
   "responseTransport": "sse",
-  "keyFallbackRate": {"calls": 60, "renewalPeriodSeconds": 60},
   "operations": [
     {
       "operationId": "messages",

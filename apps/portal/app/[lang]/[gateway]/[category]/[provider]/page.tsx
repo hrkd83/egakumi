@@ -11,7 +11,6 @@ import { hasLocale } from "@/lib/i18n/config";
 import { getDictionary } from "@/lib/i18n/dictionaries";
 import { getGraphToolDictionary } from "@/lib/i18n/graph-tool";
 import { requirePortalSession } from "@/lib/auth-session";
-import { canAdministerApiKeys } from "@/lib/api-key-administration/page-access";
 import { getDecisionModels, getEmbeddingModels, getImageGenerationModels, getModelCatalog, getRealtimeModels, getRerankModels, getSpeechModels, getTextGenerationModels } from "@/lib/model-catalog";
 import { getPublicModelGatewayOrigin } from "@/lib/model-public-config";
 import { groupRealtimeSeries } from "@/lib/realtime-series";
@@ -48,7 +47,7 @@ async function ApiDocumentContent({ params }: { params: Promise<{ lang: string; 
   const title = gateway === "models" ? series?.label ?? operations[0]?.provider ?? models[0]?.provider : item!.title;
   const subtitle = gateway === "models" ? dictionary.modelGateway.categories[catalog!.id] : item!.protocol.toUpperCase();
   const description = series ? dictionary.modelGateway.realtimeSeriesDescriptions[series.id] : gateway === "models" ? dictionary.modelGateway.descriptions[catalog!.id] : "";
-  return <PortalShell locale={lang} dictionary={dictionary} gateway={parsed.data} account={account} canAdministerApiKeys={await canAdministerApiKeys()}>
+  return <PortalShell locale={lang} dictionary={dictionary} gateway={parsed.data} account={account}>
     <div className="mx-auto max-w-[1440px]">
       <nav aria-label={lang === "ja" ? "パンくず" : "Breadcrumb"} className="mb-8 flex flex-wrap items-center gap-2 text-sm text-muted-foreground"><Link href={`/${lang}/${gateway}`} className="inline-flex items-center gap-2 hover:text-primary"><ArrowLeft className="size-4" />{dictionary.catalog.titles[parsed.data]}</Link><ChevronRight className="size-3" /><span>{subtitle}</span><ChevronRight className="size-3" /><span className="font-medium text-foreground">{title}</span></nav>
       {gateway === "models" && <header className="mb-9"><div className="flex items-center gap-4"><ProviderMark providerId={series?.providerId ?? provider} /><div><p className="mb-1 text-sm font-semibold text-primary">{subtitle}</p><h1 className="text-4xl font-semibold tracking-tight">{title}</h1></div></div><p className="mt-4 max-w-4xl text-base leading-8 text-muted-foreground">{description}</p></header>}

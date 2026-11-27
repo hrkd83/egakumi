@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bot, BookOpen, Building2, ChevronRight, CircleHelp, Cpu, Globe2, KeyRound, Menu, ShieldCheck, Wrench, X } from "lucide-react";
+import { Bot, BookOpen, ChevronRight, CircleHelp, Cpu, Globe2, Menu, Wrench, X } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -27,15 +27,15 @@ const navigation = [
 
 /** サイドバーとコンテンツに共有する、検証済みの表示情報です。 */
 type ShellProps = {
-  locale: Locale; dictionary: Dictionary; children: ReactNode; account: PortalAccount; canAdministerApiKeys?: boolean;
-} & ({ gateway: Gateway; section?: never } | { section: "api-keys" | "api-key-administration" | "company-administration" | "subscription-sync"; gateway?: never });
+  locale: Locale; dictionary: Dictionary; children: ReactNode; account: PortalAccount; gateway: Gateway;
+};
 
 /**
  * 元のブランド画像を使い、サービスの切り替えとガイドを表示します。
  * @param props - 現在の言語、サービス区分、表示文言。
  * @returns デスクトップとモバイルで共有するサイドバーの内容。
  */
-function Sidebar({ locale, dictionary, gateway, section, canAdministerApiKeys }: Omit<ShellProps, "children">) {
+function Sidebar({ locale, dictionary, gateway }: Omit<ShellProps, "children">) {
   const resetFilters = usePortalStore((state) => state.resetFilters);
 
   return (
@@ -64,32 +64,6 @@ function Sidebar({ locale, dictionary, gateway, section, canAdministerApiKeys }:
         ))}
       </nav>
 
-      <p className="mb-3 mt-8 px-3 text-xs font-semibold tracking-[.18em] text-muted-foreground">{dictionary.navigation.management}</p>
-      <nav aria-label={dictionary.navigation.management} className="space-y-1.5">
-        <Link href={`/${locale}/api-keys`} onClick={resetFilters} aria-current={section === "api-keys" ? "page" : undefined} className={`nav-item flex h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium ${section === "api-keys" ? "bg-primary/9 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
-          <KeyRound className="size-[18px] shrink-0" strokeWidth={1.7} /><span>{dictionary.navigation.apiKeys}</span>
-          {section === "api-keys" && <ChevronRight className="ml-auto size-3.5" />}
-        </Link>
-      </nav>
-
-      {canAdministerApiKeys && <>
-        <p className="mb-3 mt-8 px-3 text-xs font-semibold tracking-wide text-muted-foreground">{dictionary.navigation.systemAdministration}</p>
-        <nav aria-label={dictionary.navigation.systemAdministration} className="space-y-1.5">
-        <Link href={`/${locale}/subscription-sync`} onClick={resetFilters} aria-current={section === "subscription-sync" ? "page" : undefined} className={`nav-item flex h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium ${section === "subscription-sync" ? "bg-primary/9 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
-          <ShieldCheck className="size-[18px] shrink-0" strokeWidth={1.7} /><span>{dictionary.navigation.subscriptionSync}</span>
-          {section === "subscription-sync" && <ChevronRight className="ml-auto size-3.5" />}
-        </Link>
-        <Link href={`/${locale}/api-key-administration`} onClick={resetFilters} aria-current={section === "api-key-administration" ? "page" : undefined} className={`nav-item flex h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium ${section === "api-key-administration" ? "bg-primary/9 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
-          <ShieldCheck className="size-[18px] shrink-0" strokeWidth={1.7} /><span>{dictionary.navigation.apiKeyAdministration}</span>
-          {section === "api-key-administration" && <ChevronRight className="ml-auto size-3.5" />}
-        </Link>
-        <Link href={`/${locale}/company-administration`} onClick={resetFilters} aria-current={section === "company-administration" ? "page" : undefined} className={`nav-item flex h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium ${section === "company-administration" ? "bg-primary/9 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
-          <Building2 className="size-[18px] shrink-0" strokeWidth={1.7} /><span>{dictionary.navigation.companyAdministration}</span>
-          {section === "company-administration" && <ChevronRight className="ml-auto size-3.5" />}
-        </Link>
-        </nav>
-      </>}
-
       <div className="mt-auto pt-10">
         <div className="rounded-xl border border-border bg-muted/50 px-4 pb-2 pt-4">
           <span className="mb-2 flex size-8 items-center justify-center rounded-lg bg-white text-primary"><CircleHelp className="size-[17px]" /></span>
@@ -97,7 +71,7 @@ function Sidebar({ locale, dictionary, gateway, section, canAdministerApiKeys }:
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{dictionary.catalog.guide.description}</p>
           <div className="mt-1"><GuideDialog dictionary={dictionary} compact /></div>
         </div>
-        <div className="mt-5 flex items-center gap-2 px-2 text-xs text-muted-foreground"><span className={`size-1.5 rounded-full ${gateway === "models" || gateway === "tools" || section ? "bg-primary" : "bg-amber-500"}`} />{section === "api-key-administration" || section === "company-administration" || section === "subscription-sync" ? dictionary.apiKeyAdministration.adminOnly : section === "api-keys" ? dictionary.apiKeys.groupOwned : gateway === "agents" ? getHostedAgentDictionary(locale).status : dictionary.modelGateway.connected}<span className="ml-auto">v0.1</span></div>
+        <div className="mt-5 flex items-center gap-2 px-2 text-xs text-muted-foreground"><span className={`size-1.5 rounded-full ${gateway === "models" || gateway === "tools" ? "bg-primary" : "bg-amber-500"}`} />{gateway === "agents" ? getHostedAgentDictionary(locale).status : dictionary.modelGateway.connected}<span className="ml-auto">v0.1</span></div>
       </div>
     </div>
   );
@@ -109,7 +83,7 @@ function Sidebar({ locale, dictionary, gateway, section, canAdministerApiKeys }:
  * @returns レスポンシブ対応の画面枠。
  */
 export function PortalShell({ children, ...props }: ShellProps) {
-  const { locale, dictionary, gateway, section } = props;
+  const { locale, dictionary, gateway } = props;
   const mobileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const pathname = usePathname();
   const router = useRouter();
@@ -131,7 +105,7 @@ export function PortalShell({ children, ...props }: ShellProps) {
           <div className="flex min-w-0 items-center gap-3">
             <Button ref={mobileMenuButtonRef} variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileNavOpen(true)} aria-label={dictionary.common.openMenu}><Menu className="size-5" /></Button>
             <span className="hidden text-sm text-muted-foreground sm:block">egakumi</span><ChevronRight className="hidden size-3.5 text-muted-foreground/60 sm:block" />
-            <span className="truncate text-xs font-medium">{section === "subscription-sync" ? dictionary.navigation.subscriptionSync : section === "company-administration" ? dictionary.navigation.companyAdministration : section === "api-key-administration" ? dictionary.navigation.apiKeyAdministration : gateway ? dictionary.catalog.titles[gateway] : dictionary.navigation.apiKeys}</span>
+            <span className="truncate text-xs font-medium">{dictionary.catalog.titles[gateway]}</span>
           </div>
           <div className="flex shrink-0 items-center gap-3 sm:gap-5">
             <div className="flex items-center gap-1.5 text-muted-foreground"><Globe2 className="hidden size-4 sm:block" /><Select value={locale} onValueChange={changeLanguage}><SelectTrigger className="w-24 border-none bg-transparent text-xs shadow-none" aria-label={dictionary.common.language}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ja">日本語</SelectItem><SelectItem value="en">English</SelectItem></SelectContent></Select></div>

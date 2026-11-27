@@ -32,10 +32,6 @@ TOP_LEVEL_FILES = frozenset({
     'Dockerfile', '.dockerignore', 'package.json', 'package-lock.json',
     'next.config.ts', 'tsconfig.json', 'proxy.ts',
 })
-SUBSCRIPTION_ENTRYPOINTS = (
-    'subscription-admin/server.mjs',
-    'subscription-profile/server.mjs',
-)
 SOURCE_EXTENSIONS = {
     'app': {'.ts', '.tsx', '.css', '.json', '.ico', '.svg', '.png', '.jpg', '.jpeg', '.webp', '.avif'},
     'components': {'.ts', '.tsx', '.css'},
@@ -45,9 +41,6 @@ SOURCE_EXTENSIONS = {
     'sql': {'.sql'},
 }
 EXTRA_FILES = frozenset({'scripts/migrate-auth.ts', 'scripts/auth-migrations.ts', 'scripts/auth-runtime-grants.ts',
-                         'scripts/api-key-group-config.ts', 'scripts/api-key-administration-config.ts',
-                         'scripts/reconcile-api-key-groups.ts',
-                         'scripts/api-key-subscription-import.ts', 'scripts/bootstrap-api-key-subscriptions.ts',
                          'scripts/prepare-model-catalog.ts',
                          'scripts/prepare-realtime-worklet.ts', 'scripts/serve-portal.ts',
                          'deploy/build-image.sh', 'styles/shadcn.LICENSE.md'})
@@ -140,8 +133,6 @@ def source_bundle(root=REPOSITORY):
                     files.append(path)
     files.extend(source / name for name in EXTRA_FILES if (source / name).exists())
     paths = {path.relative_to(source).as_posix(): (path, source) for path in files}
-    for name in SUBSCRIPTION_ENTRYPOINTS:
-        paths['services/' + name] = (source.parent / name, source.parent)
     if len(paths) > 1000:
         raise ValueError('Portal source contains too many files for the inline build')
     if not (source / 'app').is_dir() or not (source / 'sql/001_initial.sql').is_file():

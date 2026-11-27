@@ -35,13 +35,12 @@ class PortalAuthenticationOptionsTests(unittest.TestCase):
         settings = result["portalAuthentication"]
         self.assertEqual(settings["sqlTier"], "Basic")
         self.assertEqual(settings["sqlCapacity"], 5)
-        self.assertEqual(settings["credentialProviderName"], "graph-delegated")
         self.assertEqual(build_bicep_configuration(result)["portalAuthentication"], settings)
 
     def test_normalization_rejects_invalid_database_combinations(self):
         for key, value in (("sqlSkuName", "GP_Gen5_2"), ("sqlCapacity", 2),
                            ("sqlMaxSizeGB", 3), ("backupRetentionDays", 8),
-                           ("zoneRedundant", True), ("credentialProviderName", "contains/slash")):
+                           ("zoneRedundant", True)):
             with self.subTest(key=key):
                 raw = fixture()
                 raw["portalAuthentication"][key] = value
@@ -58,8 +57,7 @@ class PortalAuthenticationOptionsTests(unittest.TestCase):
             settings = json.loads((ROOT / "config" / (profile + ".json")).read_text(encoding="utf-8"))["portalAuthentication"]
             self.assertEqual(list(self.validator.iter_errors(settings)), [])
             self.assertEqual(settings["sqlTier"], tier)
-            self.assertEqual(settings["credentialProviderName"], "graph-delegated")
-            self.assertTrue(set(settings) <= {"credentialProviderName", "sqlSkuName", "sqlTier", "sqlCapacity",
+            self.assertTrue(set(settings) <= {"sqlSkuName", "sqlTier", "sqlCapacity",
                                              "sqlMaxSizeGB", "backupRetentionDays", "zoneRedundant", "backupRedundancy"})
 
     def test_basic_configuration_rejects_unavailable_size_retention_and_zone_features(self):
@@ -152,7 +150,7 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         self.assertEqual(role['properties']['permissions'][0]['dataActions'], ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/sign/action'])
         assignments = [item for item in resources if item['type'].endswith('/roleAssignments')]
         self.assertEqual({item['properties']['principalId'] for item in assignments},
-                         {"[parameters('authIdentity').principalId]", "[parameters('managementIdentity').principalId]"})
+                         {"[parameters('authIdentity').principalId]"})
         self.assertTrue(all('Microsoft.KeyVault/vaults/keys' in item['scope'] for item in assignments))
 
     def test_certificate_worker_can_disable_a_portal_key_but_only_read_the_obo_key(self):
@@ -200,21 +198,13 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
     def test_secret_read_rights_are_scoped_to_each_workload(self):
         resources = self.module("portal-database", "portal")["properties"]["template"]["resources"]
         secrets = [item for item in resources if item["type"] == "Microsoft.KeyVault/vaults/secrets"]
-        self.assertEqual(len(secrets), 3)
-        for name, parameter in (("core-portal-auth-secret", "signingSecret"),
-                                ("core-subscription-profile-key", "profileSecret"),
-                                ("core-subscription-sync-key", "subscriptionSyncSecret")):
-            secret, = [item for item in secrets if name in item["name"]]
-            self.assertEqual(secret["condition"], "[not(empty(parameters('" + parameter + "')))]")
-        roles = [item for item in resources if item["type"] == "Microsoft.Authorization/roleAssignments"]
-        self.assertEqual(len(roles), 4)
-        for secret, identity in (("core-portal-auth-secret", "runtimeIdentity"),
-                                 ("core-credential-", "runtimeIdentity"),
-                                 ("core-subscription-profile-key", "profileIdentity"),
-                                 ("core-subscription-sync-key", "managementIdentity")):
-            role, = [item for item in roles if secret in item["scope"]]
-            self.assertIn("Microsoft.KeyVault/vaults/secrets", role["scope"])
-            self.assertEqual(role["properties"]["principalId"], f"[parameters('{identity}').principalId]")
+        secret, = secrets
+        self.assertIn("core-portal-auth-secret", secret["name"])
+        self.assertEqual(secret["condition"], "[not(empty(parameters('signingSecret')))]")
+        role, = [item for item in resources if item["type"] == "Microsoft.Authorization/roleAssignments"]
+        self.assertIn("Microsoft.KeyVault/vaults/secrets", role["scope"])
+        self.assertIn("core-portal-auth-secret", role["scope"])
+        self.assertEqual(role["properties"]["principalId"], "[parameters('runtimeIdentity').principalId]")
         self.assertNotIn("Microsoft.Authorization/roleDefinitions", {item["type"] for item in resources})
 
     def test_existing_portal_identity_and_schema_identity_are_reused(self):
@@ -247,17 +237,10 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         self.assertEqual(config["manualTriggerConfig"]["parallelism"], 1)
         self.assertEqual(schema["variables"]["variables"]["AZURE_CLIENT_ID"], "[parameters('schemaIdentity').clientId]")
         self.assertEqual(schema["variables"]["variables"]["PORTAL_SQL_RUNTIME_CLIENT_ID"], "[parameters('runtimeIdentity').clientId]")
-        self.assertEqual(schema["variables"]["variables"]["PORTAL_API_KEY_GROUPS"], "[concat(' ', string(parameters('apiKeyGroups')))]")
-        self.assertEqual(schema["variables"]["variables"]["PORTAL_API_KEY_TENANT_ID"], "[parameters('apiKeyTenantId')]")
-        self.assertEqual(schema["variables"]["variables"]["PORTAL_API_KEY_VERIFICATION_SUBSCRIPTIONS"], "[concat(' ', string(parameters('apiKeyVerificationSubscriptions')))]")
-        self.assertEqual(schema["variables"]["variables"]["PORTAL_API_KEY_APIM_CLIENT_ID"], "[parameters('managementIdentity').clientId]")
-        self.assertEqual(schema["variables"]["variables"]["PORTAL_APIM_RESOURCE_ID"], "[parameters('apimResourceId')]")
-        self.assertIn("parameters('managementIdentity').id", json.dumps(migration["identity"]))
-        self.assertNotIn("parameters('runtimeIdentity').id", json.dumps(migration["identity"]))
-        for role in ('management', 'profile'):
-            for suffix, property_name in (('CLIENT_ID', 'clientId'), ('USER_NAME', 'name')):
-                self.assertEqual(schema["variables"]["variables"][f'PORTAL_SQL_{role.upper()}_{suffix}'],
-                                 f"[parameters('{role}Identity').{property_name}]")
+        self.assertEqual(schema["variables"]["variables"]["PORTAL_SQL_RUNTIME_USER_NAME"],
+                         "[parameters('runtimeIdentity').name]")
+        self.assertEqual(migration["identity"]["userAssignedIdentities"],
+                         {"[format('{0}', parameters('schemaIdentity').id)]": {}})
         container = migration["properties"]["template"]["containers"][0]
         self.assertIn("scripts/migrate-auth.ts", container["command"])
         image_access, = [item for item in schema["resources"] if item["type"] == "Microsoft.Authorization/roleAssignments"]
@@ -312,137 +295,25 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         template = self.module("portal-application", "portal")["properties"]["template"]
         app, = [item for item in template["resources"] if item["type"] == "Microsoft.App/containerApps"]
         secrets = app["properties"]["configuration"]["secrets"]
-        self.assertIsInstance(secrets, str)
-        self.assertIn("if(empty(parameters('authentication'))", secrets)
-        self.assertIn("auth-signing-secret", secrets)
-        self.assertNotIn("subscription-profile-secret", secrets)
-        self.assertNotIn("subscription-sync-key", secrets)
-        self.assertIn("microsoft-client-secret", secrets)
-        self.assertIn("parameters('runtimeIdentity').id", secrets)
+        self.assertEqual(secrets, [{
+            "name": "auth-signing-secret", "identity": "[parameters('runtimeIdentity').id]",
+            "keyVaultUrl": "[parameters('signingSecretUri')]",
+        }])
         environment = template["variables"]["variables"]
         for name, expression in {
             'PORTAL_SQL_AUTH': "'managed-identity'",
             'PORTAL_CANONICAL_SQL_SERVER': "parameters('sqlServer')", 'PORTAL_CANONICAL_SQL_DATABASE': "parameters('database')",
             'AZURE_CLIENT_ID': "parameters('runtimeIdentity').clientId", 'MICROSOFT_TENANT_ID': "parameters('tenantId')",
             'AZURE_TENANT_ID': 'tenant().tenantId', 'PORTAL_GATEWAY_URL': "parameters('gatewayOrigin')",
-            'PORTAL_SUBSCRIPTION_MANAGER_URL': "format('https://{0}', parameters('subscriptionManagerFqdn'))",
-            'PORTAL_SUBSCRIPTION_MANAGEMENT_SCOPE': "format('api://{0}/Subscription.Manage', parameters('subscriptionServiceAudience'))",
         }.items():
             self.assertIn("'" + name + "', " + expression, environment)
         certificate_variables = template['variables']['certificateVariables']
-        self.assertIn("'PORTAL_AUTH_KEY_ID', parameters('authentication').keyId", certificate_variables)
-        self.assertIn("'PORTAL_AUTH_CERTIFICATE_THUMBPRINT', parameters('authentication').certificateThumbprint", certificate_variables)
-        self.assertNotIn("PORTAL_GATEWAY_SUBSCRIPTION_KEY", environment)
-        self.assertNotIn("PORTAL_GATEWAY_SUBSCRIPTION_KEY_FILE", environment)
-        self.assertNotIn("PORTAL_APIM_RESOURCE_ID", environment)
-        self.assertNotIn("PORTAL_SUBSCRIPTION_SYNC_ENABLED", environment)
+        self.assertEqual(certificate_variables["PORTAL_AUTH_KEY_ID"], "[parameters('authentication').keyId]")
+        self.assertEqual(certificate_variables["PORTAL_AUTH_CERTIFICATE_THUMBPRINT"],
+                         "[parameters('authentication').certificateThumbprint]")
         self.assertEqual(self.module("portal-application", "portal")["properties"]["parameters"]["gatewayOrigin"],
                          {"value": "[parameters('gatewayOrigin')]"})
-        self.assertNotIn("PORTAL_API_KEY_GROUPS", environment)
         self.assertEqual(app["properties"]["configuration"]["ingress"]["targetPort"], 3000)
-
-    def test_group_observation_is_scheduled_only_after_the_schema_phase(self):
-        module = self.module("portal-group-reconciliation", "portal")
-        self.assertEqual(module["condition"], "[parameters('deployApplication')]")
-        resources = module["properties"]["template"]["resources"]
-        job, = [item for item in resources if item["type"] == "Microsoft.App/jobs"]
-        self.assertEqual(job["name"], "[format('caj-{0}-psync', parameters('stem'))]")
-        config = job["properties"]["configuration"]
-        self.assertEqual(config["triggerType"], "Schedule")
-        self.assertEqual(config["scheduleTriggerConfig"], {
-            "cronExpression": "*/15 * * * *", "replicaCompletionCount": 1, "parallelism": 1})
-        self.assertEqual(config["replicaRetryLimit"], 0)
-        self.assertEqual(config["replicaTimeout"], 300)
-        self.assertNotIn('secrets', config)
-        container, = job["properties"]["template"]["containers"]
-        self.assertIn("scripts/reconcile-api-key-groups.ts", container["command"])
-        environment = {item['name']: item['value'] for item in container['env']}
-        self.assertEqual(environment['PORTAL_SQL_AUTH'], 'managed-identity')
-        self.assertEqual(environment['AZURE_CLIENT_ID'], "[parameters('managementIdentity').clientId]")
-        self.assertEqual(environment['PORTAL_AUTH_IDENTITY_CLIENT_ID'], "[parameters('authIdentity').clientId]")
-        self.assertEqual(environment['PORTAL_AUTH_SIGNING_MODE'], 'managed-identity')
-        self.assertIn("PORTAL_AUTH_KEY_ID", environment)
-        self.assertIn("PORTAL_AUTH_CERTIFICATE_THUMBPRINT", environment)
-        self.assertNotIn("PORTAL_APIM_RESOURCE_ID", environment)
-        self.assertFalse(any(item["type"].startswith("Microsoft.Authorization/") for item in resources))
-        schema = self.module("portal-schema-job", "portal")["properties"]["template"]["variables"]["variables"]
-        self.assertEqual(schema["PORTAL_API_KEY_PLATFORM_GROUP_ID"], "[parameters('apiKeyPlatformGroupId')]")
-        self.assertEqual(schema["PORTAL_API_KEY_GROUP_NAME_PATTERN"], "[parameters('apiKeyGroupNamePattern')]")
-        self.assertEqual(schema["PORTAL_API_KEY_CATALOG_PRODUCTS"], "[concat(' ', string(parameters('apiKeyCatalogProducts')))]")
-
-    def test_api_key_management_grants_only_the_six_needed_actions_to_its_identity(self):
-        template = self.module("portal-api-keys", "portal")["properties"]["template"]
-        definition, = [item for item in template['resources'] if item['type'].endswith('/roleDefinitions')]
-        assignment, = [item for item in template['resources'] if item['type'].endswith('/roleAssignments')]
-        permission, = definition['properties']['permissions']
-        self.assertEqual(set(permission['actions']), {
-            'Microsoft.ApiManagement/service/subscriptions/read',
-            'Microsoft.ApiManagement/service/subscriptions/write',
-            'Microsoft.ApiManagement/service/subscriptions/delete',
-            'Microsoft.ApiManagement/service/subscriptions/listSecrets/action',
-            'Microsoft.ApiManagement/service/products/read',
-            'Microsoft.ApiManagement/service/apis/products/read',
-        })
-        self.assertEqual(permission['dataActions'], [])
-        self.assertIn("Microsoft.ApiManagement/service", assignment['scope'])
-        self.assertIn("parameters('apimName')", assignment['scope'])
-        self.assertEqual(assignment['properties']['principalId'], "[parameters('managementIdentity').principalId]")
-
-    def test_subscription_services_expose_only_their_intended_private_ingress(self):
-        module = self.module('subscription-services', 'portal')
-        self.assertEqual(module['condition'], "[parameters('deployApplication')]")
-        template = module['properties']['template']
-        app, = template['resources']
-        self.assertEqual(app['type'], 'Microsoft.App/containerApps')
-        self.assertEqual(app['properties']['environmentId'],
-                         "[resourceId('Microsoft.App/managedEnvironments', parameters('environmentName'))]")
-        subnet = '192.0.2.0/26'
-        management_client, profile_client, portal_client = [str(UUID(int=value)) for value in range(1, 4)]
-        parameters = {'apimSubnetPrefix': subnet, 'stem': 'fixture-long-name',
-                      'managementIdentity': {'id': '/synthetic/management', 'clientId': management_client},
-                      'profileIdentity': {'id': '/synthetic/profile', 'clientId': profile_client},
-                      'subscriptionSyncSecretUri': 'https://vault.example.com/secrets/sync',
-                      'profileSecretUri': 'https://vault.example.com/secrets/profile',
-                      'publicOrigin': 'https://portal.example.com', 'clientId': portal_client,
-                      'apimResourceId': '/synthetic/apim', 'subscriptionServiceAudience': 'subscription-api',
-                      'authentication': {'keyId': 'certificate-key', 'certificateThumbprint': 'key-thumbprint'}}
-        configuration = app['properties']['configuration']
-        paths = NetworkArmExpression(configuration['ingress'], template)
-        for index, expected in enumerate(({'external': False}, {'external': True, 'ipSecurityRestrictions': [
-                {'name': 'apim', 'action': 'Allow', 'ipAddressRange': subnet}]})):
-            self.assertEqual(paths.evaluate(parameters, index),
-                             {'targetPort': 3000, 'transport': 'http', 'allowInsecure': False, **expected})
-            name = NetworkArmExpression(app['name'], template).evaluate(parameters, index)
-            self.assertLessEqual(len(name), 32)
-            self.assertTrue(name.endswith(('-sub-admin', '-sub-profile')[index]))
-            command = app['properties']['template']['containers'][0]['command']
-            launcher = NetworkArmExpression(command[-1], template).evaluate(parameters, index)
-            self.assertEqual(launcher, ('../subscription-admin/server.mjs', '../subscription-profile/server.mjs')[index])
-        management, profile = template['variables']['serviceAccounts']
-        self.assertEqual(management['identity'], "[parameters('managementIdentity')]")
-        self.assertEqual(management['secretEnv'], 'BETTER_AUTH_SECRET')
-        self.assertEqual(management['secretUri'], "[parameters('subscriptionSyncSecretUri')]")
-        self.assertEqual(profile['identity'], "[parameters('profileIdentity')]")
-        self.assertEqual(profile['secretUri'], "[parameters('profileSecretUri')]")
-        self.assertEqual(profile['env'], {})
-
-    def test_apim_subscription_profile_named_values_use_only_the_profile_service(self):
-        module = self.module('portal-subscription-profile', 'portal')
-        self.assertEqual(module['condition'], "[parameters('deployApplication')]")
-        connection = module['properties']['parameters']['profileFqdn']['value']
-        self.assertIn('subscription-services', connection)
-        self.assertIn('outputs.profileFqdn.value', connection)
-        resources = module['properties']['template']['resources']
-        role, = [item for item in resources if item['type'].endswith('/roleAssignments')]
-        self.assertIn('core-subscription-profile-key', role['scope'])
-        self.assertIn("parameters('apimName')", role['properties']['principalId'])
-        values = {item['properties']['displayName']: item['properties'] for item in resources
-                  if item['type'].endswith('/namedValues')}
-        self.assertEqual(values['core-subscription-profile-url']['value'],
-                         "[format('https://{0}/api/internal/subscription-profile', parameters('profileFqdn'))]")
-        self.assertEqual(values['core-subscription-profile-secret']['keyVault'],
-                         {'secretIdentifier': "[parameters('profileSecretUri')]"})
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -121,7 +121,7 @@ Windowsでは仮想環境の `Scripts/python.exe` を使い、環境変数は利
 | 構築・公開 | 計画モード、所有環境の照合、失敗時の停止、既存設定・データの保持、一時資源・権限の回収 |
 | APIM | 生成したARM／XML、認可、入力・出力制約、下流への書換え、各プロトコルの契約、監査の相関 |
 | 認証窓口 | 取引とセッションの所有者・期限・一度限りの利用、Cookie、CM接続、SQL競合・利用枠 |
-| Portal | 認証、テナント・グループ・所有者の認可、APIキー管理、購読同期、モデル応答とstream |
+| Portal | Entraサインイン、本人のBearer試用、モデル応答・ストリーミング |
 
 以下の出力を保存する場合は、[第01章](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で`DEPLOY_ENVIRONMENT`・`DEPLOY_LOCAL_DIRECTORY`・`DEPLOY_PARAMS_FILE`を設定します。架空データだけの確認でも保存先を環境別領域へ揃えます。
 
@@ -181,7 +181,7 @@ Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshe
 
 初回構築では[空環境からの構築手順](docs/setup/08-provision-core.md)に沿って段階的に行います。標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は空配列やfalseでも拒否します。既存local paramsと非標準値を無断変換せず、[入力配置・移行条件](docs/setup/07-params.md#既存入力の移行を確認する)を確認します。基盤に必要なWAF・監査ログの情報も同じ正本から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
 
-構築済み環境の更新・途中失敗からの再開では、同じparamsとCoreの`.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。Portalの初回対話は`portalApiKeys.platformGroupId`と`groupNamePattern`だけを同じparamsへ保存します。非対話ならこの2項目を事前設定します。内部groups・検証購読は管理グループ1件、標準API正本の全製品、configのverificationMaxSubscriptions（初期5）から生成し、公開paramsへ書き戻しません。
+構築済み環境の更新・途中失敗からの再開では、同じparamsとCoreの`.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。
 
 APIM全体ポリシーは[service.xml](apps/api-gateway/policies/service.xml)、各APIのXMLは`apps/api-gateway/policies/`、標準APIのJSONは[apps/api-gateway/apis/](apps/api-gateway/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。モデルの配備・SKU・容量は`config/test.json`または`config/production.json`、標準GraphのClient ID・秘密参照と環境固有値はparams、Graph表示名・scope・poolはconfigの`credentialProviders.graphDelegated`で管理します。追加providerは双方の`additional[]`を論理名で照合します。`apps/api-gateway/api-publication.bicep`と`apps/api-gateway/deploy/api_publication.py`が登録を担当し、`apps/credential-broker/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
 

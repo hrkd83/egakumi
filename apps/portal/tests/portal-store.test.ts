@@ -48,11 +48,10 @@ test("新しいページ・ログインのstoreへ文章やファイルを共有
   assert.equal("persist" in first, false); assert.deepEqual(second.getState().textModelDrafts, {});
 });
 
-test("提供元の結果・キーIDを別パネルへ共有せず、設定変更でそのパネルの結果だけ消す", () => {
+test("提供元の結果を別パネルへ共有せず、設定変更でそのパネルの結果だけ消す", () => {
   const first = createTextPanelStore(), second = createTextPanelStore();
-  first.getState().setModelApiKeyId("synthetic-key-id");
   first.getState().completeGeneration({ text: "合成応答", model: "synthetic-model", durationMs: 1, rawResponse: {} });
-  assert.equal(second.getState().modelApiKeyId, ""); assert.equal(second.getState().generationResult, null);
+  assert.equal(second.getState().generationResult, null);
   first.getState().resetGeneration(); assert.equal(first.getState().generationStatus, "idle"); assert.equal(first.getState().generationResult, null);
   first.getState().failGeneration({ error: { code: "InvalidRequest" } }); first.getState().resetGeneration();
   assert.equal(first.getState().generationFailure, null);

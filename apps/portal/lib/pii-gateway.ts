@@ -2,7 +2,7 @@ import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.t
 import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 import { containsModelCredential } from "./model-credential.ts";
-import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
+import type { GatewayActor } from "./api-auth/gateway-credential.ts";
 import { apiAuthenticationFailure, resolveGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
 import type { PortalBearer } from "./api-auth/service.ts";
 import { getModelGatewayEnvironment, type ModelGatewayEnvironment } from "./model-gateway.ts";
@@ -14,10 +14,10 @@ const responseHeaders = { "Cache-Control": "no-store", "X-Content-Type-Options":
 
 /** 本人確認と上流通信をテストで差し替えるための依存です。 */
 export type PiiGatewayDependencies = {
-  readSession: () => Promise<ApiKeyActor | null>; readPortalOrigin: () => string;
+  readSession: () => Promise<GatewayActor | null>; readPortalOrigin: () => string;
   readGatewayEnvironment?: () => Promise<ModelGatewayEnvironment>;
-  resolveSubscriptionKey?: (actor: ApiKeyActor, apiKeyId: string, apiId: string) => Promise<string>;
   resolveBearer?: () => Promise<PortalBearer>;
+  verifyCredential?: (credential: GatewayCredential) => Promise<void>;
   fetch?: typeof globalThis.fetch; timeoutMs?: number;
 };
 
@@ -26,13 +26,13 @@ function failure(code: ModelGatewayErrorCode, status: number, details: Omit<Text
   return Response.json({ error: { code }, ...details }, { status, headers: responseHeaders });
 }
 
-/** 本人が現在使用できる購読だけで、固定PII操作へ一度だけ本文を中継します。 */
+/** 本人のBearerで、固定PII操作へ一度だけ本文を中継します。 */
 export async function handlePiiRedaction(request: Request, dependencies: PiiGatewayDependencies): Promise<Response> {
   let portalOrigin: string;
   try { portalOrigin = new URL(dependencies.readPortalOrigin()).origin; } catch { return failure("GatewayNotConfigured", 503); }
   const site = request.headers.get("sec-fetch-site");
   if (request.method !== "POST" || request.headers.get("origin") !== portalOrigin || (site && site !== "same-origin")) return failure("RequestNotAllowed", 403);
-  let actor: ApiKeyActor | null;
+  let actor: GatewayActor | null;
   try { actor = await dependencies.readSession(); if (!actor) return failure("AuthenticationRequired", 401); } catch { return failure("AuthenticationUnavailable", 503); }
   if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   if (request.signal.aborted) return failure("RequestCancelled", 499);
@@ -53,12 +53,11 @@ export async function handlePiiRedaction(request: Request, dependencies: PiiGate
   } catch { return failure("GatewayNotConfigured", 503); }
   let credential: GatewayCredential;
   try {
-    credential = await resolveGatewayCredential(request, actor, input, PII_API.apiId, gateway.origin,
-      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+    credential = await resolveGatewayCredential(request, actor, gateway.origin, dependencies.resolveBearer);
   } catch (error) {
     const apiAuth = apiAuthenticationFailure(error);
     if (apiAuth) return failure(apiAuth.code, apiAuth.status);
-    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
+    return failure("ApiAuthenticationUnavailable", 503); }
   const timeout = modelDeadline(dependencies.timeoutMs), signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();
   let identifier: string | undefined;

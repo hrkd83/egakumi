@@ -9,7 +9,7 @@ import time
 
 from management_client import validate_inventory
 from .paths import REPOSITORY, local_paths
-from .portal_resources import subscription_app_names
+from .portal_resources import resource_names as portal_resource_names
 from .private_permissions import check_private_permissions
 
 
@@ -65,9 +65,8 @@ def _expected_targets(config, *, broker_separated=False):
             'sqlDatabaseIds': [sql + 'credentials'],
         },
         'portal': {
-            'applicationIds': [base + 'containerApps/' + name
-                               for name in ('ca-' + stem + '-portal', *subscription_app_names(config).values())],
-            'jobIds': [base + 'jobs/caj-' + stem + '-psql', base + 'jobs/caj-' + stem + '-psync'],
+            'applicationIds': [base + 'containerApps/ca-' + stem + '-portal'],
+            'jobIds': [base + 'jobs/' + portal_resource_names(config)['schemaJob']],
             'environmentIds': [base + 'managedEnvironments/cae-' + stem],
             'sqlDatabaseIds': [sql + 'portal'],
         },
@@ -153,21 +152,6 @@ def _merge_outputs(config, inventory, outputs, component):
     broker_environment, = separated['gateway']['environmentIds']
     broker_separated = broker_environment.casefold() in {item.casefold() for item in inventory['environments']}
     expected = (separated if broker_separated else _expected_targets(config))[component]
-    if component == 'portal' and any(key in outputs for key in subscription_app_names(config)):
-        service_ids = dict(zip(subscription_app_names(config), expected['applicationIds'][1:]))
-        endpoint_states = set()
-        for key, target in service_ids.items():
-            service = outputs.get(key)
-            if (not isinstance(service, dict) or str(service.get('id', '')).casefold() != target.casefold()
-                    or str(service.get('name', '')).casefold() != target.rsplit('/', 1)[-1].casefold()
-                    or not isinstance(service.get('fqdn'), str)):
-                raise ValueError('A subscription service output differs from its exact constructed app')
-            endpoint_states.add(bool(service['fqdn']))
-        expected_apps = expected['applicationIds'] if endpoint_states == {True} else []
-        if (len(endpoint_states) != 1 or not isinstance(metadata['applicationIds'], list)
-                or sorted(str(item).casefold() for item in metadata['applicationIds']) != sorted(
-                    target.casefold() for target in expected_apps)):
-            raise ValueError('The subscription service maintenance output is incomplete')
     additions = []
     for output, family in FAMILIES.items():
         ids = metadata[output]

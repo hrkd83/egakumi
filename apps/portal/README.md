@@ -1,6 +1,6 @@
 # egakumi AI Gateway Portal
 
-Egakumi Coreに含まれる管理ポータルです。AIモデルとツールAPIの利用方法を確認し、実際のAPIを試し、組織のグループ単位でAPIキーを管理できます。Microsoft Entra IDでサインインし、日本語・英語の画面を利用します。
+EgakumiのAIモデルとツールAPIのガイドを確認し、Microsoft Entraでサインインした本人のBearerトークンで試用できます。
 
 ## できること
 
@@ -9,12 +9,10 @@ Egakumi Coreに含まれる管理ポータルです。AIモデルとツールAPI
 | Model Gateway | テキスト生成、埋め込み、画像生成、音声STT/TTS、リアルタイム音声、リランク、意思決定 |
 | Tool Gateway・REST | Microsoft Graph /meによる本人プロフィール取得、PII Redaction、Document Analysis |
 | Tool Gateway・MCP | PII Redactionの接続・ツール照会・実行 |
-| APIキー管理 | グループ所有キーの発行、明示的なキー表示、停止・再開、棚卸確認、所有グループ移管、削除、利用制限の設定 |
-| 基盤管理者向け機能 | 所有グループの健全性確認、会社情報管理、SQL台帳を基準としたAPIM購読の同期 |
 
 モデル・ツールの詳細ページには「使い方ガイド」「API仕様」「試す」を用意しています。入力や選択に応じた要求例・組み込みコード例と、実APIの応答を確認できます。利用できるモデル・操作・入力上限は、配備したAPI定義と画面の案内に従います。
 
-モデルAPIでは利用者がモデルと対応するAPI方式を選び、profileは選択しません。要求例・実送信とも`X-Egakumi-Profile`を付けず、APIMがAPI・操作とモデル名から内部設定を自動選択します。Portalのカタログも操作の基本設定に`modelSettings[モデル名]`を項目単位で上書きして読み、モデル一覧の順序・出力設定・画像設定を引き継ぎます。内部の設定IDや転送先は公開せず、購読の利用枠やGraph等のCM接続profileとは区別します。今回の設定構造の整理では、既存の入力・モデル制約は維持します。
+モデルAPIでは利用者がモデルと対応するAPI方式を選び、profileは選択しません。要求例・実送信とも`X-Egakumi-Profile`を付けず、APIMがAPI・操作とモデル名から内部設定を自動選択します。Portalのカタログも操作の基本設定に`modelSettings[モデル名]`を項目単位で上書きして読み、モデル一覧の順序・出力設定・画像設定を引き継ぎます。内部の設定IDや転送先は公開せず、接続先はGatewayのAPI定義が選びます。今回の設定構造の整理では、既存の入力・モデル制約は維持します。
 
 Model Gatewayのリアルタイム音声は、次の4シリーズで案内します。WebRTC対応モデルは初回にWebRTCを選び、WebSocketのみ対応するモデルはWebSocketを選びます。利用者が明示的に選んだモデル・接続方式はシリーズごとに保持し、各ページには公開APIが対応する選択肢だけを表示します。
 
@@ -25,7 +23,7 @@ Model Gatewayのリアルタイム音声は、次の4シリーズで案内しま
 | Voice Live + GPT | `/ja/models/realtime/voice-live-gpt` | Azureの音声認識・GPT・音声合成を連携。現行の会話モデルは`gpt-6.1-sol` |
 | GPT Live Transcribe | `/ja/models/realtime/gpt-live-transcribe` | マイクの音声を継続して文字起こし。AIの音声応答は返さない |
 
-旧リアルタイム音声の`openai`詳細URLはGPT Realtimeへ、`azure-ai-speech`詳細URLはVoice Live + GPTへ案内します。シリーズの分類は表示・選択用であり、APIの提供元ID・接続契約・キーの利用権限は各APIの定義に従います。
+旧リアルタイム音声の`openai`詳細URLはGPT Realtimeへ、`azure-ai-speech`詳細URLはVoice Live + GPTへ案内します。シリーズの分類は表示・選択用であり、APIの提供元ID・接続契約・利用権限は各APIの定義に従います。
 
 Azure SpeechのTTSは「読み上げ（TTS）」→「試す」で、日本語の標準Neural音声7種から選べます。同じ文章で声を変えて生成し、返ったWAVを再生して比較します。音声を変えると以前の生成結果を消し、選択した音声名をSSMLとコード例にも反映します。[Microsoftの音声一覧](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts)
 
@@ -36,9 +34,8 @@ Hosted Agent APIとA2Aは準備中です。画像編集はGateway APIで提供�
 ## 使い始める
 
 1. 配備先の`https://portal.<domain>`を開き、許可されたEntraテナントのアカウントでサインインします。
-2. 「管理」のAPIキー管理で、所属グループが所有するキーを確認します。初回は購読管理用の本人認証を完了します。発行可能なグループでは、会社・用途・連絡先を指定して新しいキーを発行できます。
-3. Model GatewayまたはTool Gatewayで対象を選び、使い方とAPI仕様を確認します。「試す」で利用するキーを選び、入力して実行します。
-4. Microsoft Graphの本人接続を求められた場合は、案内されたMicrosoft認証をPortalと同じアカウントで完了します。完了確認後、元の操作へ戻ります。
+2. Model GatewayまたはTool Gatewayで対象を選び、使い方とAPI仕様を確認します。「試す」を開き、本人のAPI試用認証を済ませてから実行します。
+3. Microsoft Graphの本人接続を求められた場合は、案内されたMicrosoft認証をPortalと同じアカウントで完了します。完了確認後、元の操作へ戻ります。
 
 音声会話は利用者が開始し、マイクの許可・ミュート・停止を操作します。ファイルを使う機能は、画面に表示された対応形式とサイズ内のファイルを選びます。APIの実行には利用料金が発生する場合があります。
 
@@ -46,36 +43,22 @@ Hosted Agent APIとA2Aは準備中です。画像編集はGateway APIで提供�
 
 ## 認証・権限とデータの扱い
 
-| 利用者 | 操作範囲 |
-| --- | --- |
-| サインインした利用者 | カタログ・ガイドの参照と、現在所属するグループが所有する有効キーによるAPI実行 |
-| 所有グループのメンバー | そのグループのキーの発行・管理。候補グループと発行条件は環境設定に従う |
-| 基盤管理グループのメンバー | グループ健全性、会社情報、購読同期などの管理画面 |
-
-Portalのログイン、購読管理の`Subscription.Manage`、API試用の`Gateway.Invoke`は用途ごとに管理します。Graphの購読キー経路では本人と購読に結び付いた接続をCredential Managerで管理します。GraphのBearer経路はGatewayのOBOで本人のトークンを取得します。PortalのAPI実行処理はキーと接続セッションをサーバー側で扱います。
-
-通常の新規キーは、リリース済みAPIをまとめた`released-apis`製品を使います。利用範囲はAPIMの製品・APIの関連付けと購読状態で決まり、Portalは操作直前にも現在のグループ所属と所有権を確認します。回数・対応LLMのトークン制限はキー詳細で設定できます。
-
-SQLには利用者の識別情報とログインセッション、購読メタデータと監査、暗号化した本人接続状態と用途別のPortal委任トークンを保存します。APIキーの実値はAPIMが保持します。購読キーで呼び出すGraphの下流トークンはCredential Managerが保持します。生成内容、アップロードした文書、解析結果、マイク音声はPortalのSQL保存の対象外です。ローカルSQLとAzure SQLのデータは同期しません。
-
-購読同期はSQL台帳にAPIMを合わせる管理操作で、購読の再作成・有効化・削除を伴います。差分と確認画面を確認してから実行してください。[配備・権限・同期の詳細](../../docs/setup/12-deploy-portal.md)を参照してください。
+PortalへのサインインとGateway APIの試用を別の認証取引として扱います。試用時は同じ本人の `Gateway.Invoke` トークンを使い、Graphの本人情報はGatewayからOBOで取得します。PortalのSQLには利用者とログインセッション、暗号化済みの試用資格情報を保存します。文書・生成内容・マイク音声をPortalのSQLには保存しません。
 
 ## Azureへ導入・更新する
 
-新規導入は[空の環境からの構築手順](../../docs/setup/08-provision-core.md)に従い、Core、Entraの公開証明書登録、Gateway、Portalの順に配備します。公開Portalと専用の購読管理・プロファイル照会は同じ不変のイメージを使い、別のACA、起動入口、実行IDで動きます。Portalから購読管理へ、APIMからプロファイル照会へ、内部HTTPSで接続します。 [Portal配備手順](../../docs/setup/12-deploy-portal.md)
+新規導入はCore、Entraの公開証明書登録、Gateway、Portalの順です。Portal配備では管理VMでイメージを作り、SQL初期化ジョブの完了後に認証と試用のContainer Appを配備します。[Portal配備手順](../../docs/setup/12-deploy-portal.md)
 
-構築済み環境のPortalだけを更新・再試行する場合は、構築に使用したparamsとstateを使い、リポジトリ直下で計画を確認してから実行します。
+更新・再試行は構築に使用したparamsとstateで、リポジトリのルートから計画を確認して実行します。
 
 ```sh
-python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
-python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
+python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
-
-配備コマンドは管理VMでイメージを作成し、SQL初期化後に3つのアプリを配備します。専用アプリの準備と公開ヘルスを確認し、APIM側の内部URLと鍵参照を読み戻して照会を有効にします。更新・失敗時の再試行・撤去は[運用手順](../../docs/operations.md)を使います。
 
 ## ローカルで起動する
 
-Node.js 24、Docker Engine・Compose、開発用Entraの戻り先と資格情報を用意します。初回は[ローカル認証テストの準備](../../docs/testing/portal-local-auth.md)に従って、`.local/<environment>/portal/runtime.env`と同じ環境のSQL管理用設定を作成してください。アプリ直下に`.env.local`を作らず、launcherから保護した設定を子プロセスへ渡します。Gatewayを実行する場合は、構築済みGatewayへの接続設定と、ローカル台帳のグループ・購読設定も必要です。
+Node.js 24、Docker Engine・Compose、開発用Entraの戻り先と資格情報を用意します。初回は[ローカル認証テストの準備](../../docs/testing/portal-local-auth.md)に従って、`.local/<environment>/portal/runtime.env`と同じ環境のSQL管理用設定を作成してください。アプリ直下に`.env.local`を作らず、launcherから保護した設定を子プロセスへ渡します。HTTPSでのBearer実接続は配備後の受入で確認します。
 
 準備後、`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を設定して、リポジトリ直下から実行します。
 
@@ -110,7 +93,7 @@ SQL統合試験には専用のローカルSQLと追加設定が必要です。[�
 | 確認したいこと | 参照先 |
 | --- | --- |
 | 公開API、モデル・音声の契約 | [プラットフォーム仕様](../../docs/reference/platform.md)、[API定義](../api-gateway/apis/)、[出力上限](../api-gateway/model-capabilities.json) |
-| 本人接続の保存・更新・失効 | [共通クライアント契約](../../docs/reference/connection-session-clients.md)、[接続セッション実装](lib/connection-session/) |
+| 本人接続の保存・更新・失効 | [試用の認証実装](lib/api-auth/) |
 | 文書解析の対応形式・制約 | [Document Intelligence仕様](../../docs/reference/document-analysis.md) |
 | 生成応答・SSEの保護上限 | [応答処理](lib/model-response.ts)、[ストリーム処理](lib/model-stream.ts)、[関連テスト](tests/model-stream.test.ts) |
 | 音声の送信・再生とHTTP／WebSocket窓口 | [音声クライアント](lib/realtime-client.ts)、[中継処理](lib/realtime-relay.ts)、[Portalサーバー](scripts/serve-portal.ts)、[関連テスト](tests/realtime-relay.test.ts) |

@@ -12,7 +12,6 @@ import { requirePortalSession } from "@/lib/auth-session";
 import { getEmbeddingModels, getImageGenerationModels, getModelCatalog, getRealtimeModels, getSpeechModels, getTextGenerationModels } from "@/lib/model-catalog";
 import { getPublicModelGatewayOrigin } from "@/lib/model-public-config";
 import Loading from "../loading";
-import { canAdministerApiKeys } from "@/lib/api-key-administration/page-access";
 
 /** ビルド時に用意する、カタログのサービス区分です。 */
 export function generateStaticParams() {
@@ -44,7 +43,7 @@ async function GatewayContent({ params }: Pick<PageProps<"/[lang]/[gateway]">, "
   if (!hasLocale(lang) || !parsed.success) notFound();
   const account = await requirePortalSession(lang, `/${lang}/${parsed.data}`);
   const dictionary = await getDictionary(lang);
-  return <PortalShell locale={lang} dictionary={dictionary} gateway={parsed.data} account={account} canAdministerApiKeys={await canAdministerApiKeys()}>
+  return <PortalShell locale={lang} dictionary={dictionary} gateway={parsed.data} account={account}>
     {parsed.data === "models"
       ? <ModelGateway locale={lang} dictionary={dictionary} categories={getModelCatalog()} models={getTextGenerationModels()} embeddingModels={getEmbeddingModels()} imageModels={getImageGenerationModels()} speechModels={getSpeechModels()} realtimeModels={getRealtimeModels()} gatewayOrigin={getPublicModelGatewayOrigin()} />
       : parsed.data === "tools" ? <ToolGateway locale={lang} dictionary={dictionary} graphText={getGraphToolDictionary(lang)} gatewayOrigin={getPublicModelGatewayOrigin()} />

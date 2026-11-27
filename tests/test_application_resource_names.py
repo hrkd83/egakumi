@@ -21,7 +21,6 @@ class ApplicationResourceNameTests(unittest.TestCase):
     def setUpClass(cls):
         cls.broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
         cls.portal_sql = compile_bicep('apps/portal/deploy/schema-job.bicep')
-        cls.portal_sync = compile_bicep('apps/portal/deploy/group-reconciliation-job.bicep')
         cls.portal = compile_bicep('infra/modules/container-apps/portal-platform.bicep')
 
     def configurations(self):
@@ -47,11 +46,9 @@ class ApplicationResourceNameTests(unittest.TestCase):
                                  for item in self.broker['resources']
                                  if item['type'].lower() in ('microsoft.app/containerapps', 'microsoft.app/jobs')}
                 self.assertEqual(actual_broker, expected_broker)
-                actual_portal_jobs = []
-                for template in (self.portal_sql, self.portal_sync):
-                    job, = [item for item in template['resources'] if item['type'].lower() == 'microsoft.app/jobs']
-                    actual_portal_jobs.append(ArmExpression(job['name']).evaluate(parameters, 0))
-                self.assertEqual(actual_portal_jobs, [portal['schemaJob'], portal['reconcileJob']])
+                job, = [item for item in self.portal_sql['resources'] if item['type'].lower() == 'microsoft.app/jobs']
+                actual_portal_jobs = [ArmExpression(job['name']).evaluate(parameters, 0)]
+                self.assertEqual(actual_portal_jobs, [portal['schemaJob']])
                 application = ArmExpression(self.portal['variables']['applicationName']).evaluate(parameters, 0)
                 app, = [item for item in self.portal['resources'] if item['type'].lower() == 'microsoft.app/containerapps']
                 self.assertEqual(ArmExpression(app['name']).evaluate({'__variables': {'applicationName': application}}, 0), application)

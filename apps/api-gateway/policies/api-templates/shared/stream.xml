@@ -80,7 +80,11 @@
     __STREAM_HANDSHAKE_SESSION_XML__
     <!-- WSは所有者検査を通した補助観測だけ、MCPは検査した取消/終了だけを免除します。 -->
     __RATE_LIMIT_CLEANUP_XML__
-    __SUBSCRIPTION_PROFILE_XML__
+    <choose>
+      <when condition="@((string)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;method&quot;] == &quot;user&quot;)">
+        <include-fragment fragment-id="core-entra-user-profile" />
+      </when>
+    </choose>
     <include-fragment fragment-id="core-rate-limit" />
     <set-header name="X-Core-L7-Ingress" exists-action="delete" />
     __STREAM_BACKEND_XML__

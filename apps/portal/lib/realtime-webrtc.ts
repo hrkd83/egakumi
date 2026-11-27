@@ -4,16 +4,13 @@ import { isAllowedPortalQuery } from "./portal-query.ts";
 
 import { randomUUID } from "node:crypto";
 import WebSocket, { type RawData } from "ws";
-import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
-import { apiAuthenticationFailure, readGatewayBearer, resolveGatewayCredential, watchGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
+import { apiAuthenticationFailure, resolveGatewayCredential, watchGatewayCredential, type GatewayActor, type GatewayCredential } from "./api-auth/gateway-credential.ts";
 import { getPortalApiAuthentication, type PortalApiAuthentication, type PortalBearer } from "./api-auth/service.ts";
-import type { TryCredential } from "./api-auth/try-credential.ts";
-import { getAuthEnvironment } from "./auth-environment.ts";
 import { getRealtimeModels } from "./model-catalog.ts";
 import { getPublicModelGatewayOrigin } from "./model-public-config.ts";
 import { getTextGenerationEndpoint } from "./model-integration.ts";
 import type { RealtimeModel } from "./model-types.ts";
-import { bearerRealtimeCallSchema, openRealtimeCallHandle, sealRealtimeCallHandle, type RealtimeCall } from "./realtime-call-handle.ts";
+import { bearerRealtimeCallSchema, type RealtimeCall } from "./realtime-call-handle.ts";
 import { REALTIME_MAX_DURATION_MS, realtimeStopSchema, realtimeStreamEventSchema, realtimeWebRtcExecutionSchema, resolveRealtimeOutputTokens, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
 import { readSpeechBody } from "./speech-response.ts";
 import { REALTIME_CONVERSATION_INSTRUCTIONS as conversationInstructions } from "./realtime-protocol.ts";
@@ -25,15 +22,14 @@ const usageNames = new Set(["input_tokens", "output_tokens", "total_tokens", "in
 
 /** 固定の上流WSSだけへ接続する、テストで差し替え可能な制御チャネルです。 */
 export type RealtimeControlSocket = { send: (value: unknown) => Promise<void>; receive: (signal: AbortSignal) => Promise<unknown>; close: () => Promise<void> };
-/** WebRTC開始・停止の依存です。本人確認・購読権限・本文検査を保ち、上流通信だけを差し替えられます。 */
+/** WebRTC開始・停止の依存です。本人確認・Bearer認可・本文検査を保ち、上流通信だけを差し替えられます。 */
 export type RealtimeWebRtcDependencies = {
-  readSession: () => Promise<ApiKeyActor | null>; readPortalOrigin: () => string;
+  readSession: () => Promise<GatewayActor | null>; readPortalOrigin: () => string;
   readModels?: () => readonly RealtimeModel[] | Promise<readonly RealtimeModel[]>;
   readGatewayEnvironment?: () => Promise<{ origin: string }>;
-  resolveSubscriptionKey?: (actor: ApiKeyActor, keyId: string, apiId: string) => Promise<string>;
   resolveBearer?: () => Promise<PortalBearer>;
   bearerOperations?: Pick<PortalApiAuthentication, "sealOperation" | "openOperation" | "stopRealtimeCall">;
-  readHandleSecret?: () => string; fetch?: typeof globalThis.fetch;
+  fetch?: typeof globalThis.fetch;
   connectWebSocket?: (url: string, headers: Record<string, string>, signal: AbortSignal) => Promise<RealtimeControlSocket>;
   timeoutMs?: number;
 };
@@ -42,7 +38,7 @@ export type RealtimeWebRtcDependencies = {
 function failure(code: string, status: number): Response { return Response.json({ error: { code } }, { status, headers: privateHeaders }); }
 
 /** ブラウザーのCookie本人確認と、状態変更のOrigin照合を共通化します。 */
-async function authorize(request: Request, dependencies: RealtimeWebRtcDependencies): Promise<ApiKeyActor | Response> {
+async function authorize(request: Request, dependencies: RealtimeWebRtcDependencies): Promise<GatewayActor | Response> {
   let origin: string;
   try { origin = new URL(dependencies.readPortalOrigin()).origin; } catch { return failure("GatewayNotConfigured", 503); }
   const site = request.headers.get("sec-fetch-site");
@@ -57,7 +53,7 @@ export function validateRealtimeSdp(value: unknown): string {
   return value;
 }
 
-/** 定義と異なるパス・モデル・チケット契約を、キーの取得より先に拒否します。 */
+/** 定義と異なるパス・モデル・チケット契約を、Bearerの取得より先に拒否します。 */
 function validateModel(model: RealtimeModel): void {
   if (model.transport !== "webrtc") throw new Error("A WebRTC operation is required");
   const expected = model.family === "realtime" ? ["openai-realtime-control-v1", "/models/openai-realtime/v1/calls", "gpt-realtime-2.1"]
@@ -80,7 +76,7 @@ function voiceLiveOffer(model: RealtimeModel, sdp: string, input: RealtimeInput)
   } };
 }
 
-/** TLS・転送禁止・フレーム上限を固定し、サーバーだけでキーを付けてWSSを開きます。 */
+/** TLS・転送禁止・フレーム上限を固定し、サーバーだけでBearerを付けてWSSを開きます。 */
 async function openControlSocket(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<RealtimeControlSocket> {
   // 公開APIMはSec-WebSocket-Protocolを返しません。必須でないsubprotocolを要求するとwsが正しい101接続を拒否します。
   const socket = new WebSocket(url, { headers, followRedirects: false, handshakeTimeout: 15_000, maxPayload: 1_048_576, perMessageDeflate: false });
@@ -118,25 +114,22 @@ async function openControlSocket(url: string, headers: Record<string, string>, s
 function credentialFailure(error: unknown): Response {
   const apiAuth = apiAuthenticationFailure(error);
   if (apiAuth) return failure(apiAuth.code, apiAuth.status);
-  return error instanceof ApiKeyError && error.status < 500
-    ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503);
+  return failure("ApiAuthenticationUnavailable", 503);
 }
 
 /** 上流の所有者情報を、期限より長く使える復旧参照にしないための検査です。 */
-function captureCall(response: Response, actor: ApiKeyActor, selection: TryCredential, modelId: string): RealtimeCall | undefined {
+function captureCall(response: Response, actor: GatewayActor, modelId: string): RealtimeCall | undefined {
   const callId = response.headers.get("X-Core-Call-Id") ?? ""; const ticket = response.headers.get("X-Core-Call-Ticket") ?? "";
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(callId) || !/^[A-Za-z0-9_.-]{1,4096}$/.test(ticket)) return;
   try {
     const payload = JSON.parse(Buffer.from(ticket.split(".")[0], "base64url").toString("utf8")); const now = Date.now();
     // APIMとアプリの時計差を許容しても、暗号化参照自体はローカルの590秒以内に制限します。
     // 実際の所有者・期限は、observer／hangupを受けるAPIMが署名とともに検証します。
-    const bearer = selection.authentication === "bearer";
-    if (payload.v !== (bearer ? 4 : 3) || payload.callId !== callId || !Number.isInteger(payload.exp)
+    if (payload.v !== 4 || payload.callId !== callId || !Number.isInteger(payload.exp)
       || payload.exp * 1000 <= now || payload.exp * 1000 > now + 660_000) return;
-    if (bearer && (payload.subscriptionId !== "" || payload.callerId !== `user:${actor.tenantId}:${actor.objectId}`)) return;
+    if (payload.subscriptionId !== "" || payload.callerId !== `user:${actor.tenantId}:${actor.objectId}`) return;
     const call = { modelId, callId, ticket, expiresAt: Math.min(payload.exp * 1000, now + 590_000) };
-    return selection.authentication === "bearer" ? { ...call, version: 2 }
-      : { ...call, version: 1, tenantId: actor.tenantId, objectId: actor.objectId, apiKeyId: selection.apiKeyId };
+    return { ...call, version: 2 };
   } catch { return; }
 }
 
@@ -153,39 +146,29 @@ async function stopCall(call: RealtimeCall, model: RealtimeModel, origin: string
       void response.body?.cancel().catch(() => undefined);
       return response.status === 200 || response.status === 204;
     };
-    if (credential.bearer) return await (bearerOperations ?? getPortalApiAuthentication()).stopRealtimeCall(credential.bearer, call,
+    return await (bearerOperations ?? getPortalApiAuthentication()).stopRealtimeCall(credential.bearer, call,
       (access, ticket, signal) => send({ Authorization: `Bearer ${access}` }, ticket, signal));
-    return await send(credential.headers, call.ticket, AbortSignal.timeout(12_000));
   } catch { return false; }
 }
 
-/** 本人に束縛された停止参照を復号し、現在も使える同じ購読で通話の停止を再確認します。 */
+/** 本人に束縛された停止参照を復号し、現在も有効な本人の認可で通話の停止を再確認します。 */
 export async function handleRealtimeStop(request: Request, dependencies: RealtimeWebRtcDependencies): Promise<Response> {
   const actor = await authorize(request, dependencies); if (actor instanceof Response) return actor;
   if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
-  let call: RealtimeCall; let model: RealtimeModel; let origin: string; let bearer: PortalBearer | undefined;
+  let call: RealtimeCall; let model: RealtimeModel; let origin: string; let credential: GatewayCredential;
   try {
     const input = realtimeStopSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readSpeechBody(request.body, 17_000, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])))));
     origin = (dependencies.readGatewayEnvironment ? await dependencies.readGatewayEnvironment() : { origin: getPublicModelGatewayOrigin() ?? "" }).origin;
-    if (input.handle.startsWith("r2.")) {
-      bearer = await (dependencies.resolveBearer?.() ?? readGatewayBearer(request, actor, origin));
-      call = bearerRealtimeCallSchema.parse(await (dependencies.bearerOperations ?? getPortalApiAuthentication()).openOperation(bearer, "realtime", input.handle.slice(3)));
-      if (call.expiresAt <= Date.now()) return failure("InvalidRequest", 400);
-    } else {
-      call = openRealtimeCallHandle(input.handle, (dependencies.readHandleSecret ?? (() => getAuthEnvironment().secret))(), actor);
-    }
+    credential = await resolveGatewayCredential(request, actor, origin, dependencies.resolveBearer);
+    call = bearerRealtimeCallSchema.parse(await (dependencies.bearerOperations ?? getPortalApiAuthentication())
+      .openOperation(credential.bearer, "realtime", input.handle.slice(3)));
+    if (call.expiresAt <= Date.now()) return failure("InvalidRequest", 400);
     const selected = (await (dependencies.readModels ?? getRealtimeModels)()).find((entry) => entry.id === call.modelId); if (!selected) throw new Error("Missing model"); model = selected; validateModel(model);
     getTextGenerationEndpoint(model, origin);
   } catch (error) {
     return apiAuthenticationFailure(error) ? credentialFailure(error) : failure("InvalidRequest", 400);
   }
-  let credential: GatewayCredential;
-  try {
-    const selection: TryCredential = call.version === 2 ? { authentication: "bearer" } : { apiKeyId: call.apiKeyId };
-    credential = await resolveGatewayCredential(request, actor, selection, model.apiId, origin, dependencies.resolveSubscriptionKey,
-      bearer ? async () => bearer! : undefined);
-  } catch (error) { return credentialFailure(error); }
   const confirmed = await stopCall(call, model, origin, credential, dependencies.fetch ?? globalThis.fetch, dependencies.bearerOperations);
   return Response.json({ stopStatus: confirmed ? "confirmed" : "unconfirmed" }, { status: confirmed ? 200 : 502, headers: privateHeaders });
 }
@@ -210,18 +193,9 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
   } catch { return failure("InvalidRequest", 400); }
   try { origin = (dependencies.readGatewayEnvironment ? await dependencies.readGatewayEnvironment() : { origin: getPublicModelGatewayOrigin() ?? "" }).origin; getTextGenerationEndpoint(model, origin); }
   catch { return failure("GatewayNotConfigured", 503); }
-  let credential: GatewayCredential; let secret: string | undefined;
+  let credential: GatewayCredential;
   try {
-    credential = await resolveGatewayCredential(request, actor, input, model.apiId, origin,
-      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
-    if (model.observer && credential.scheme === "api-key") {
-      const observer = await resolveGatewayCredential(request, actor, input, model.observer.apiId, origin, dependencies.resolveSubscriptionKey);
-      if (observer.value !== credential.value) throw new Error("Inconsistent subscription");
-    }
-    if (model.family === "realtime" && credential.scheme === "api-key") {
-      secret = (dependencies.readHandleSecret ?? (() => getAuthEnvironment().secret))();
-      if (secret.length < 32) return failure("GatewayNotConfigured", 503);
-    }
+    credential = await resolveGatewayCredential(request, actor, origin, dependencies.resolveBearer);
   } catch (error) { return credentialFailure(error); }
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   const cancelled = new AbortController(); const deadline = AbortSignal.timeout(Math.min(dependencies.timeoutMs ?? REALTIME_MAX_DURATION_MS, REALTIME_MAX_DURATION_MS));
@@ -251,9 +225,8 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
               body: JSON.stringify(model.family === "realtime" ? { sdp: input.sdp } : { sdp: input.sdp, instructions: conversationInstructions, voice: selectedVoice }), redirect: "error", cache: "no-store", signal });
             upstreamStatus = upstream.status; stage = "validating-answer";
             if (model.family === "realtime") {
-              call = captureCall(upstream, actor, input, model.id);
-              if (call?.version === 1) handle = sealRealtimeCallHandle(call, secret!);
-              if (call?.version === 2 && credential.bearer) {
+              call = captureCall(upstream, actor, model.id);
+              if (call) {
                 handle = `r2.${await (dependencies.bearerOperations ?? getPortalApiAuthentication()).sealOperation(credential.bearer, "realtime", randomUUID(), call, call.expiresAt)}`;
               }
             }

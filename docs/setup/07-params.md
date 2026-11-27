@@ -50,7 +50,6 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 5. `management.adminUsername`・SSH公開鍵参照・VMログイン主体を設定する。
 6. `credentialProviders.graphDelegated.clientId`にToolsアプリのClient IDを設定し、`clientSecretFile`の保護参照を確認する。
 7. `gateway.authentication.entra.audience`にAPIアプリのClient IDを設定する。`gateway.authentication.credentialLogin.identity`にはCredentialアプリの`clientId`と、Tools用とは異なる`clientSecretFile`を設定する。
-8. Portal初回の管理グループObject IDと表示名正規表現を用意する。対話なしで実行する場合は`portalApiKeys.platformGroupId`と`groupNamePattern`を事前に設定する。
 
 ### 基盤用Entraアプリの登録情報を記入する
 
@@ -61,7 +60,7 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 | Credential | `gateway.authentication.credentialLogin.identity.clientId`と`clientSecretFile`。Tools用とは別のファイル |
 | Portal | 公開証明書登録後に`portal.authentication.tenantId`と`clientId`を追加 |
 
-すべてのアプリでApplication (client) IDを使い、認証用`entraTenantId`に登録します。API試用はこの基盤構成で既定有効です。既存環境の切替中に試用を停止する場合は`portal.apiAuthentication.enabled`を`false`にしてPortalだけ再配備します。通常のOBO初回は保護stateの証明書を固定します。管理者が別版を発行・Entra登録済みの場合だけ、`gateway.authentication.entra.obo.keyId`と公開証明書DERのSHA-256の`certificateThumbprint`を組で指定します。
+すべてのアプリでApplication (client) IDを使い、認証用`entraTenantId`に登録します。API試用はこの基盤構成で既定有効です。試用をメンテナンスで一時停止する場合は`portal.apiAuthentication.enabled`を`false`にしてPortalだけ再配備します。通常のOBO初回は保護stateの証明書を固定します。管理者が別版を発行・Entra登録済みの場合だけ、`gateway.authentication.entra.obo.keyId`と公開証明書DERのSHA-256の`certificateThumbprint`を組で指定します。
 
 ### 同一テナントと別テナントの指定
 
@@ -179,8 +178,6 @@ python3 -B scripts/deployment/helpers/configuration.py validate --config "$DEPLO
 | `certificate.azureDnsManagedIdentityResourceId` | 完全なResource ID | 事前付与済みDNS更新UAMI |
 | `tags` | 文字列map | 利用者タグ。システムタグは別途生成 |
 | `portal.publicHostName` | `portal.example.com`の架空例 | Portal公開DNS名 |
-| `portalApiKeys.platformGroupId` | 初回対話のため省略可 | 管理画面と検証用購読の管理グループObject ID |
-| `portalApiKeys.groupNamePattern` | 初回未設定は`""` | 所有候補の表示名RE2正規表現。空欄は全許可ではない |
 
 #### ネットワーク・監査の接続設定
 
@@ -209,7 +206,7 @@ SSH公開鍵は、利用者が明示した保護入力にある有効なRSA 2048
 | `gateway.authentication.credentialLogin.transactionLifetimeSeconds` | 600秒。省略時の内部既定値300秒と区別 |
 | `gateway.authentication.credentialLogin.loginCallsPerMinute` | 10 |
 
-Graph表示名・scope・poolの4末端値とPortal共通購読数上限は、下の分割項目で記録します。これらを主項目14件へ加算しません。
+Graph表示名・scope・poolの4末端値は、下の分割項目で記録します。
 
 ## 公開入力71主項目の判断記録
 
@@ -221,9 +218,9 @@ Graph表示名・scope・poolの4末端値とPortal共通購読数上限は、�
 | 資材固定・内部導出 | 20 |
 | config移設 | 14 |
 | 分割 | 2 |
-| 合計 | 71 |
+| 71 | `portalApiKeys.groups` | 撤廃済み | Portalでの購読管理を終了 |
 
-63の内部16項目と71の内部3項目は、分割判断の内訳です。主項目総数へ二重加算せず、末端の配置数は別に数えます。下表の項目名は棚卸時の入力名であり、資材固定とした旧入力を現行params/configへ再追加する一覧ではありません。
+下表は当時の判断記録です。63の内部16項目は分割判断の内訳です。主項目総数へ二重加算せず、末端の配置数は別に数えます。下表の項目名は棚卸時の入力名であり、資材固定とした旧入力を現行params/configへ再追加する一覧ではありません。
 
 | 番号 | 棚卸対象 | 配置 | 判断・初期動作 |
 | ---: | --- | --- | --- |
@@ -272,7 +269,7 @@ Graph表示名・scope・poolの4末端値とPortal共通購読数上限は、�
 | 43 | `gateway.authentication.credentialLogin.loginCallsPerMinute` | config | 毎分10回を保持 |
 | 44 | `gateway.publicHostName` | params | Gateway公開DNS名 |
 | 45 | `gateway.existingWafPolicyId` | 資材固定 | 資材所有の用途別WAFへ固定 |
-| 46 | `gateway.rateLimits.subscriptionKey.overrides` | 資材固定 | 静的caller別上書きを廃止し購読SQL profileを使用 |
+| 46 | `gateway.rateLimits.subscriptionKey.overrides` | 撤廃済み | 購読の上限が必要な場合はAPIMで設定 |
 | 47 | `gateway.rateLimits.application.overrides` | 資材固定 | 追加アプリ区分の静的上書きを廃止 |
 | 48 | `management.adminUsername` | params | 初期Linux管理者名 |
 | 49 | `management.sshPublicKeyFile` | params | 既存保護鍵参照と同環境内生成 |
@@ -294,10 +291,10 @@ Graph表示名・scope・poolの4末端値とPortal共通購読数上限は、�
 | 65 | `tags` | params | 利用者タグmapを保持 |
 | 66 | `publishApis` | 資材固定 | 内部trueとし実行入口の計画／反映境界を保持 |
 | 67 | `portal.publicHostName` | params | Portal公開DNS名 |
-| 68 | `portalApiKeys.platformGroupId` | params | 初回の管理グループObject ID |
-| 69 | `portalApiKeys.groupNamePattern` | params | 環境別の所有候補表示名正規表現 |
-| 70 | `portalApiKeys.verificationSubscriptions` | 資材固定 | 安定した検証購読を内部生成、同一IDの既存キー保持 |
-| 71 | `portalApiKeys.groups` | 分割 | 管理グループと全標準製品を導出し共通上限をconfig化 |
+| 68 | `portalApiKeys.platformGroupId` | 撤廃済み | Portalでの購読管理を終了 |
+| 69 | `portalApiKeys.groupNamePattern` | 撤廃済み | Portalでの所有グループ管理を終了 |
+| 70 | `portalApiKeys.verificationSubscriptions` | 撤廃済み | 購読は基盤管理者がAPIMで例外発行 |
+| 71 | `portalApiKeys.groups` | 撤廃済み | Portalでの購読管理を終了 |
 
 
 ### 63. 標準Graph providerの内部16項目
@@ -324,16 +321,6 @@ Graph表示名・scope・poolの4末端値とPortal共通購読数上限は、�
 | 63.16 | `pool.capacity` | config：8000を保持 |
 
 12×8000は設定上の割当枠であり、保証される利用者数・スループットやAzure公式quotaではありません。pool数・容量の変更は、既存接続・suffix・割当済み数を別途確認し、値の移設と同時に変更しません。
-
-### 71. 検証用所有グループの内部3項目
-
-| 番号 | 旧末端 | 配置・現行形 |
-| --- | --- | --- |
-| 71.1 | `groups[].groupId` | 資材固定：paramsの`platformGroupId`から管理グループ1件を生成 |
-| 71.2 | `groups[].products[].productId` | 資材固定：標準API正本にある全承認製品を管理グループへ適用 |
-| 71.3 | `groups[].products[].maxSubscriptions` | config：`portalApiKeys.verificationMaxSubscriptions`、初期5 |
-
-管理グループへの全標準製品承認は初期構成の判断です。すべての利用者へ検証用製品を許可する意味ではありません。既存の追加所有グループ・製品subset・異なる件数上限は、意図した移行を確認するまで自動で置換しません。
 
 ## OAuth providerの登録と定義
 
@@ -385,26 +372,7 @@ Graph表示名・scope・poolの4末端値とPortal共通購読数上限は、�
 }
 ```
 
-identityは任意で、指定時はClient IDと保護秘密参照を両方設定します。tenantは`entraTenantId`から導出します。省略時の選択CM provider由来の本人確認と、Portalが`portalAuthentication.credentialProviderName`で選ぶ既存アプリ／secretは維持します。今回の配置整理だけでTools用アプリや新しい認証方式へ切り替えません。アプリ移行・権限・同意・旧取引排出・既存refresh tokenの扱いは[別のEntra作業計画](../reference/entra-app-rollout-plan.md)で確認します。
-
-## PortalのAPIキー所有グループ（portalApiKeys）
-
-公開paramsは`platformGroupId`と`groupNamePattern`だけです。公開例は`groupNamePattern:""`で、`platformGroupId`を省略しています。初回Portal配備の対話でこの2項目を入力し、同じ保護paramsへ保存します。表示名・製品・購読数を対話入力しません。
-
-```json
-{
-  "portalApiKeys": {
-    "platformGroupId": "<PLATFORM_GROUP_OBJECT_ID>",
-    "groupNamePattern": "^ORG_"
-  }
-}
-```
-
-`^ORG_`は独立した架空の命名規則例で、既定値ではありません。Graphから取得した表示名・現在の所属・`securityEnabled=true`を確認します。空欄は初回入力待ちであり全許可ではありません。無人実行では2項目を事前に設定します。
-
-configは`portalApiKeys.verificationMaxSubscriptions:5`を共通初期値にします。管理グループ1件・標準API正本の全製品・この上限から内部`groups`を生成し、製品ごとに`platform-<productId>`の安定した内部検証購読を生成します。`groups`と`verificationSubscriptions`を公開paramsへ保存しません。同一ID・同一製品スコープの既存APIM購読はキーを保持して採用し、明示的404だけを新規作成の根拠にします。
-
-通常の新規キーは固定の`released-apis`製品に紐づき、利用者に製品を選ばせません。通常キーの所有候補の発見と購読数上限は、管理グループ向け検証購読の設定とは別です。会社情報はPortalの会社管理から登録し、paramsに会社台帳を作りません。[Portal配備・受入手順](12-deploy-portal.md)を参照してください。
+identityは任意で、指定時はClient IDと保護秘密参照を両方設定します。tenantは`entraTenantId`から導出します。省略時の選択CM provider由来の本人確認は維持します。今回の配置整理だけでTools用アプリや新しい認証方式へ切り替えません。アプリ移行・権限・同意・旧取引排出・既存refresh tokenの扱いは[別のEntra作業計画](../reference/entra-app-rollout-plan.md)で確認します。
 
 本文監査が有効な場合は中継の認証に同じAzure・Entraテナントが必要です。異なる認証テナントを使う環境での本文監査は残作業です。 [本文監査の構築条件](../reference/request-body-audit.md#初回構築)
 
@@ -412,7 +380,7 @@ configは`portalApiKeys.verificationMaxSubscriptions:5`を共通初期値にし�
 
 資材固定とした旧入力は、空配列・空object・空文字・`false`・`null`でも公開params/configで拒否します。配置を移した共通値も旧paramsの位置では受け付けません。検査を通すために未知項目の除外やschemaの緩和を行いません。
 
-既存paramsとstateを保護保存してから、旧値と新しい内部生成値を比較します。標準と一致する空／固定値の削除、共通値のconfig移設、標準provider slotへの登録分離を人が確認し、現在のID・secret参照・認証方式・pool値を保持します。既存の非標準／非空権限、WAF参照、IP例外、caller上書き、API置換、別tenant、Portal所有グループ／製品subset／購読IDを自動変換・削除しません。標準との差があれば、影響・所有者・復旧と対象限定の移行方法を確定してから進みます。
+既存paramsとstateを保護保存してから、旧値と新しい内部生成値を比較します。標準と一致する空／固定値の削除、共通値のconfig移設、標準provider slotへの登録分離を人が確認し、現在のID・secret参照・認証方式・pool値を保持します。既存の非標準／非空権限、WAF参照、IP例外、caller上書き、API置換、別tenantを自動変換・削除しません。標準との差があれば、影響・所有者・復旧と対象限定の移行方法を確定してから進みます。
 
 新しい公開例のコピーで稼働中設定を置換したり、公開入力整理の一括反映だけを理由に認証方式やClient IDを切り替えたりしません。Azure反映と全環境再構築E2Eは未実施であり、既存環境の受入完了を意味しません。
 
@@ -437,7 +405,6 @@ configは`portalApiKeys.verificationMaxSubscriptions:5`を共通初期値にし�
 | `A.released` | 省略時false、標準19 APIはtrue | 通常キー用`released-apis`製品への所属。生成MCPも同じ状態です。falseへ変更してGateway配備すると通常製品との関連だけを解除し、API本体・検証用所属・購読を保持します。 |
 | `A.subscriptionKeyHeader` | 固定の`api-key` | 内部共通認証と一致させる。公開params/configにヘッダー選択入力は設けない。 |
 | `A.backendHeaders` | 通常{} | 非秘密の固定ヘッダー。鍵やtokenは格納不可。 |
-| `A.keySubscriptions` | 省略する場合は`[]` | このAPIのProductに作成するAPIM購読の配列。 |
 | `A.operations` | 操作ごとの例 | 公開操作配列。 |
 | `O.name` | 操作ごとの例 | 操作識別名。 |
 | `O.displayName` | 操作ごとの例 | 操作表示名。 |
@@ -484,9 +451,6 @@ configは`portalApiKeys.verificationMaxSubscriptions:5`を共通初期値にし�
 | 設定 | 値の入手先・決め方 |
 | --- | --- |
 | `A.productId` | 利用範囲をまとめるAPIM製品ID。例：`model-users` |
-| `A.keySubscriptions[].subscriptionId` | 作成する購読リソース名。例：`sales-models` |
-| `A.keySubscriptions[].displayName` | 購読の表示名 |
-| `A.keySubscriptions[].enabled` | trueで有効、falseで停止 |
 | `__CM_CLIENT_ID__` | CM providerが利用するEntraアプリのApplication（client）ID |
 | `__TENANT_ID__` | CMのOAuth認証先テナント |
 

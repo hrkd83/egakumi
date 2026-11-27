@@ -648,201 +648,6 @@
         "realtimeControlEnabled": {
           "type": "boolean",
           "default": false
-        },
-        "rateLimits": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "APIMが検証した購読IDごとに要求回数を制限します。既定は無効（無制限）です。",
-          "default": {
-            "user": {
-              "enabled": false,
-              "calls": 60,
-              "renewalPeriodSeconds": 60
-            },
-            "subscriptionKey": {
-              "enabled": false,
-              "calls": 60,
-              "renewalPeriodSeconds": 60,
-              "overrides": []
-            },
-            "application": {
-              "enabled": false,
-              "calls": 60,
-              "renewalPeriodSeconds": 60,
-              "overrides": []
-            }
-          },
-          "properties": {
-            "user": {
-              "type": "object",
-              "additionalProperties": false,
-              "description": "共通の要求回数制限はsubscriptionKeyで設定します。",
-              "default": {
-                "enabled": false,
-                "calls": 60,
-                "renewalPeriodSeconds": 60
-              },
-              "properties": {
-                "enabled": {
-                  "type": "boolean",
-                  "default": false,
-                  "description": "購読IDの共通制限を使用する設定です。",
-                  "const": false
-                },
-                "calls": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 1000000,
-                  "default": 60,
-                  "description": "本人1人が期間内に利用できる要求回数です。"
-                },
-                "renewalPeriodSeconds": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 300,
-                  "default": 60,
-                  "description": "本人の要求回数を集計する期間（秒）です。"
-                }
-              }
-            },
-            "subscriptionKey": {
-              "type": "object",
-              "additionalProperties": false,
-              "description": "APIM購読IDごとの共通要求回数制限です。既定は無効（無制限）で、明示的に有効化した場合のみcallsとrenewalPeriodSecondsを適用します。",
-              "default": {
-                "enabled": false,
-                "calls": 60,
-                "renewalPeriodSeconds": 60,
-                "overrides": []
-              },
-              "properties": {
-                "enabled": {
-                  "type": "boolean",
-                  "default": false,
-                  "description": "この区分の要求回数制限を有効にします。"
-                },
-                "calls": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 1000000,
-                  "default": 60,
-                  "description": "overrideのない契約が期間内に利用できる要求回数です。"
-                },
-                "renewalPeriodSeconds": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 300,
-                  "default": 60,
-                  "description": "既定の回数上限を集計する期間（秒）です。"
-                },
-                "overrides": {
-                  "type": "array",
-                  "default": [],
-                  "uniqueItems": true,
-                  "description": "契約ごとの回数と期間を上書きします。同じcallerIdの重複は値が異なっても構築前検査で拒否します。未登録の契約も事前宣言できますが、利用許可は別途登録が必要です。",
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "callerId",
-                      "calls",
-                      "renewalPeriodSeconds"
-                    ],
-                    "properties": {
-                      "calls": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 1000000,
-                        "description": "この契約に適用する要求回数の上限です。"
-                      },
-                      "renewalPeriodSeconds": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 300,
-                        "description": "この契約の集計期間（秒）です。"
-                      },
-                      "callerId": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 512,
-                        "pattern": "^\\S(?:[\\s\\S]*\\S)?(?![\\s\\S])",
-                        "description": "key/token登録と同じ契約IDです。前後の空白を含まない1〜512字。大文字と小文字を区別します。"
-                      }
-                    }
-                  }
-                }
-              }
-            },
-            "application": {
-              "type": "object",
-              "additionalProperties": false,
-              "description": "共通の要求回数制限はsubscriptionKeyで設定します。",
-              "default": {
-                "enabled": false,
-                "calls": 60,
-                "renewalPeriodSeconds": 60,
-                "overrides": []
-              },
-              "properties": {
-                "enabled": {
-                  "type": "boolean",
-                  "default": false,
-                  "description": "購読IDの共通制限を使用する設定です。",
-                  "const": false
-                },
-                "calls": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 1000000,
-                  "default": 60,
-                  "description": "overrideのない契約が期間内に利用できる要求回数です。"
-                },
-                "renewalPeriodSeconds": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 300,
-                  "default": 60,
-                  "description": "既定の回数上限を集計する期間（秒）です。"
-                },
-                "overrides": {
-                  "type": "array",
-                  "default": [],
-                  "uniqueItems": true,
-                  "description": "契約ごとの回数と期間を上書きします。同じcallerIdの重複は値が異なっても構築前検査で拒否します。未登録の契約も事前宣言できますが、利用許可は別途登録が必要です。",
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "callerId",
-                      "calls",
-                      "renewalPeriodSeconds"
-                    ],
-                    "properties": {
-                      "calls": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 1000000,
-                        "description": "この契約に適用する要求回数の上限です。"
-                      },
-                      "renewalPeriodSeconds": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 300,
-                        "description": "この契約の集計期間（秒）です。"
-                      },
-                      "callerId": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 512,
-                        "pattern": "^\\S(?:[\\s\\S]*\\S)?(?![\\s\\S])",
-                        "description": "key/token登録と同じ契約IDです。前後の空白を含まない1〜512字。大文字と小文字を区別します。"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
         }
       },
       "required": [
@@ -1347,9 +1152,6 @@
           "productId": {
             "type": "string"
           },
-          "keySubscriptions": {
-            "type": "array"
-          },
           "apiType": {
             "type": "string"
           },
@@ -1560,12 +1362,6 @@
       "additionalProperties": false,
       "description": "ポータル認証専用DBの性能・バックアップ設定。EntraのID・秘密は既存の論理資格情報プロバイダーから参照します。",
       "properties": {
-        "credentialProviderName": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
-          "default": "graph-delegated",
-          "description": "Entraアプリを共用する既存のcredentialProviders.name。物理プール名ではありません。"
-        },
         "sqlSkuName": {
           "type": "string",
           "minLength": 1,
@@ -1651,9 +1447,6 @@
           }
         }
       ]
-    },
-    "portalApiKeys": {
-      "$ref": "#/$defs/portalApiKeys"
     }
   },
   "$defs": {
@@ -2547,110 +2340,6 @@
         "clientSecretFile": {
           "type": "string",
           "minLength": 1
-        }
-      }
-    },
-    "portalApiKeys": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "Portal配備向けに解決した内部設定です。管理グループはparams.platformGroupId、承認製品はAPI正本、共通購読数上限はconfigから求めます。groups・verificationSubscriptionsは公開入力やparams書き戻しの対象ではありません。",
-      "properties": {
-        "platformGroupId": {
-          "$ref": "#/$defs/guid",
-          "description": "管理ダッシュボードと検証用購読を所有する管理グループのObject IDです。"
-        },
-        "groupNamePattern": {
-          "type": "string",
-          "maxLength": 512,
-          "default": "",
-          "examples": [
-            "^ORG_",
-            "^(ORG_|DEPT_)",
-            "^組織_.+$"
-          ],
-          "description": "対象セキュリティグループの表示名を選ぶRE2互換の正規表現。通常は大文字小文字を区別します。空欄は初回未設定で、azd up後段または個別のPortal配備で対話入力します。非対話では事前設定が必要です。空欄を全許可にはしません。"
-        },
-        "verificationSubscriptions": {
-          "type": "array",
-          "maxItems": 100,
-          "default": [],
-          "description": "標準API正本の承認製品ごとに内部生成する検証用購読です。安定した購読IDを使い、同一IDの既存キーを維持します。キー値は含めません。",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "subscriptionId",
-              "productId",
-              "displayName"
-            ],
-            "properties": {
-              "subscriptionId": {
-                "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$",
-                "not": {
-                  "pattern": "^[Mm][Aa][Ss][Tt][Ee][Rr]$"
-                }
-              },
-              "productId": {
-                "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
-              },
-              "displayName": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              }
-            }
-          }
-        },
-        "groups": {
-          "type": "array",
-          "maxItems": 1000,
-          "default": [],
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "groupId",
-              "products"
-            ],
-            "properties": {
-              "groupId": {
-                "$ref": "#/$defs/guid"
-              },
-              "products": {
-                "type": "array",
-                "minItems": 1,
-                "maxItems": 100,
-                "items": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "productId"
-                  ],
-                  "properties": {
-                    "productId": {
-                      "type": "string",
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
-                    },
-                    "maxSubscriptions": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 1000,
-                      "default": 5
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "verificationMaxSubscriptions": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1000,
-          "default": 5,
-          "description": "検証用の管理グループに適用する共通購読数上限です。"
         }
       }
     }

@@ -193,19 +193,11 @@ class EntraRenderingTests(unittest.TestCase):
             validate_common_authentication_policy(ET.tostring(current, encoding="unicode"), entra=settings())
 
     def test_employee_profile_fragment_has_no_nested_includes(self):
-        profile = ET.fromstring(render_audit_policy(policy_fixture_path(POLICIES, "subscription-profile.xml").read_text(encoding="utf-8")))
-        initial = profile[0]
-        self.assertEqual(initial.tag, "set-variable")
-        self.assertEqual(initial.get("name"), "gatewaySubscriptionProfile")
-        self.assertEqual(json.loads(initial.get("value")), {"requestRate": None, "tokensPerMinute": None, "tokenQuota": None})
-        employee = profile.find("choose/when")
-        self.assertEqual([node.tag for node in employee], ["include-fragment"])
-        self.assertEqual(employee[0].get("fragment-id"), "core-entra-user-profile")
         fragment = ET.fromstring(render_audit_policy(policy_fixture_path(POLICIES, "entra-user-profile.xml").read_text(encoding="utf-8")))
         self.assertEqual(fragment.tag, "fragment")
         self.assertEqual([node.tag for node in fragment], ["set-variable"])
         self.assertFalse(fragment.findall(".//include-fragment"))
-        self.assertEqual(fragment[0].get("name"), "gatewaySubscriptionProfile")
+        self.assertEqual(fragment[0].get("name"), "gatewayUserLimits")
 
     def test_explicit_broker_and_entra_migrations_can_be_composed(self):
         from test_credential_login import settings as login_settings
@@ -489,14 +481,12 @@ public class Response {''')
             raw = node.get(attribute) if attribute else node.text
             raw = raw.replace("__AUTHORIZATION_BASE64__", encoded({"mode": "subscriptionKey"}))
             raw = raw.replace("__CREDENTIAL_CONNECTION_BASE64__", "")
-            raw = raw.replace("__RATE_LIMITS_BASE64__", encoded({"subscriptionKey": {"enabled": True, "calls": 10, "renewalPeriodSeconds": 30, "overrides": []}}))
-            raw = raw.replace("{{core-subscription-profile-enabled}}", "false")
             return "static " + return_type + " " + name + "(Context context) { " + csharp_expression(raw) + " }"
         methods += "\n" + "\n".join([
             method("Decision", "core-api-authentication-result.xml", ".//set-variable[@name='gatewayDecision']"),
             method("Protocol", "stream.xml", ".//set-variable[@name='gatewayDecision']"),
             method("Mcp", "generated.xml", ".//set-variable[@name='gatewayDecision']"),
-            method("UserProfile", "entra-user-profile.xml", "set-variable[@name='gatewaySubscriptionProfile']"),
+            method("UserProfile", "entra-user-profile.xml", "set-variable[@name='gatewayUserLimits']"),
             method("Rate", "rate-limit.xml", ".//set-variable[@name='gatewayRateDecision']"),
             method("TokenEnabled", "token-limit.xml", ".//set-variable[@name='gatewayLlmTokenLimitEnabled']", return_type="bool"),
             method("TokenKey", "token-limit.xml", ".//set-variable[@name='gatewayTokenCounterKey']"),
@@ -527,8 +517,6 @@ public class Response {''')
             failure_methods = re.sub(r"\bExpression(\d+)\b", label + r"Expression\1", failure_methods)
             failure_inbound = re.sub(r"\bExpression(\d+)\b", label + r"Expression\1", failure_inbound)
             methods += "\n" + failure_methods + "\nstatic int " + label + "(Context context) { " + failure_inbound + " return 200; }"
-        profile_template = ET.fromstring(render_audit_policy(policy_fixture_path(POLICIES, "subscription-profile.xml").read_text(encoding="utf-8")))
-        profile_initial = profile_template.find('./set-variable[@name="gatewaySubscriptionProfile"]').get("value")
         source = base + r'''
 public static class EntraFixture {
  __METHODS__
@@ -722,7 +710,7 @@ public static class EntraFixture {
        if (item["profileOriginalLimits"] is JObject originalLimits) c.Variables["gatewayEntraUserLimits"] = originalLimits.ToString(Formatting.None);
        c.Variables.ProfileLocked = true;
        try {
-        c.Variables["gatewaySubscriptionProfile"] = (string)result["decision"]["method"] == "user" ? UserProfile(c) : __PROFILE_INITIAL__;
+        if ((string)result["decision"]["method"] == "user") c.Variables["gatewayUserLimits"] = UserProfile(c);
         } catch (Exception error) {
          // 取得式から出た例外をadapterで観測し、検査での拒否や公開HTTP応答は追加しません。
          result["profileReadError"] = error.GetType().Name;
@@ -741,10 +729,10 @@ public static class EntraFixture {
         result["profileDecisionReads"] = c.Variables.ProfileDecisionReads;
         result["profileOriginalLimitsReads"] = c.Variables.ProfileUserLimitsReads;
        }
-      result["profile"] = JObject.Parse((string)c.Variables["gatewaySubscriptionProfile"]);
+      if (c.Variables.ContainsKey("gatewayUserLimits")) result["profile"] = JObject.Parse((string)c.Variables["gatewayUserLimits"]);
        if (normalProfileBefore != null) {
         // 返却された人工snapshotはprofileへ記録済みです。後続は正式認証済みの正常枠で確認します。
-        c.Variables["gatewaySubscriptionProfile"] = normalProfileBefore;
+        c.Variables["gatewayUserLimits"] = normalProfileBefore;
         result["countedProfile"] = JObject.Parse(normalProfileBefore);
        }
       result["rate"] = JObject.Parse(Rate(c));
@@ -825,7 +813,7 @@ public static class EntraFixture {
   }
   return output.ToString(Formatting.None);
  }
-}'''.replace("__METHODS__", methods).replace("__INBOUND__", inbound).replace("__PARENT__", PARENT).replace("__OPEN_PRODUCT__", ENTRA_OPEN_PRODUCT_ID).replace("__DEFAULT_SETTINGS__", encoded(settings())).replace("__PROFILE_INITIAL__", json.dumps(profile_initial))
+}'''.replace("__METHODS__", methods).replace("__INBOUND__", inbound).replace("__PARENT__", PARENT).replace("__OPEN_PRODUCT__", ENTRA_OPEN_PRODUCT_ID).replace("__DEFAULT_SETTINGS__", encoded(settings()))
         claims = {"ver": "2.0", "tid": TENANT, "oid": PERSON, "azp": CLIENT, "scp": "Other.Read Gateway.Invoke"}
         cases = []
         def add(name, **changes):
@@ -984,10 +972,7 @@ public static class EntraFixture {
         add("token-enabled-isolated-original-mismatch", tokenUserLimits={**LIMITS, "tokensPerMinute": None})
         cls.token_operation_errors = {}
         cls.token_operation_controls = {}
-        for caller, context in (("user", {}), ("key", {
-            "headers": {"X-Gateway-Key": "SYNTHETIC_KEY", "Authorization": "Basic arbitrary"},
-            "subscription": True,
-        })):
+        for caller, context in (("user", {}),):
             for exempt in (False, True):
                 suffix = caller + ("-exempt" if exempt else "-counted")
                 for label, value, exception in (
@@ -1371,12 +1356,14 @@ public static class EntraFixture {
                 self.assertTrue(row["decision"]["allowed"])
                 self.assertEqual(row["decision"]["verifiedPrincipalId"], PERSON)
 
-    def test_key_precedence_and_legacy_counter_are_preserved(self):
+    def test_native_key_precedence_is_preserved_without_user_limits(self):
         key = self.results["key"]
         self.assertEqual(key["status"], 200); self.assertFalse(key["nativeOutput"])
         self.assertEqual(key["decision"]["method"], "subscriptionKey")
-        self.assertEqual(key["tokenKey"], "core-tokens-v1:subscription-a")
-        self.assertEqual(key["rate"]["counterKey"], "ai-gateway-rate-v3:subscriptionKey:" + base64.b64encode(b"subscription-a").decode())
+        self.assertNotIn("profile", key)
+        self.assertNotIn("tokenKey", key)
+        self.assertFalse(key["rate"]["enabled"])
+        self.assertFalse(key["tokenEnabled"])
         for name in ("key", "key-product", "key-api-scope", "key-all-api-scope", "key-service-scope", "key-duplicate-auth", "new-api-key"):
             self.assertEqual(self.results[name]["status"], 200)
             self.assertFalse(self.results[name]["nativeOutput"])

@@ -43,7 +43,7 @@ test("公開URLは認証情報・任意パス・クエリを含む起点やパ�
   assert.equal(getEmbeddingEndpoint(cohere, "https://gateway.example.invalid"), "https://gateway.example.invalid/models/cohere/v1/embed");
   for (const origin of ["http://other.invalid", "https://user:secret@other.invalid", "https://other.invalid/path", "https://other.invalid?secret=value"]) assert.throws(() => getEmbeddingEndpoint(small, origin));
   for (const path of ["//other.invalid", "/models/../auth", "/models/openai?key=value", "/models/\\secret"]) assert.throws(() => getEmbeddingEndpoint({ ...small, path }, "https://gateway.example.invalid"));
-  assert.equal(getEmbeddingHeaders()["api-key"], "${GATEWAY_API_KEY}");
+  assert.equal(getEmbeddingHeaders()["Authorization"], "Bearer ${GATEWAY_ACCESS_TOKEN}");
 });
 
 test("全言語の組み込み例は選択した本文・モデル・次元・バッチに連動し、ブラウザー用キーを含めない", () => {
@@ -52,7 +52,7 @@ test("全言語の組み込み例は選択した本文・モデル・次元・�
     const code = getEmbeddingIntegrationExample(language, model, input, "https://gateway.example.invalid");
     assert.ok(code.includes(model.id));
     assert.ok(code.includes(model.path));
-    assert.ok(code.includes("GATEWAY_API_KEY"));
+    assert.ok(code.includes("GATEWAY_ACCESS_TOKEN"));
     assert.ok(code.includes(EMBEDDING_SAMPLE_TEXTS[0]) && code.includes(EMBEDDING_SAMPLE_TEXTS[1]));
     assert.ok(code.includes(model.providerId === "cohere" ? '"output_dimension": 256' : '"dimensions": 256'));
     assert.equal(code.includes("X-Egakumi-Profile"), false);

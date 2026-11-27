@@ -91,7 +91,6 @@ def api_fixture():
         "backendService": "foundryOpenAi", "backendAudience": "https://cognitiveservices.azure.com",
         "productId": "model-users", "subscriptionKeyHeader": "api-key",
         "operations": [{"name": "responses-create", "displayName": "Create stateless response", "method": "POST", "urlTemplate": "/responses", "templateParameters": []}],
-        "keySubscriptions": [{"subscriptionId": "system-a", "displayName": "System A", "enabled": True}],
         "authorization": {
             "mode": "subscriptionKey",
             "operationConstraints": {"responses-create": {"kind": "statelessResponses", "allowedModels": ["gpt-approved"], "maxRequestBytes": 32768, "maxOutputTokens": 128, "outputTokenParameter": "max_output_tokens"}},
@@ -132,7 +131,7 @@ def connection_fixture():
         "name": "profile", "displayName": "Registered owner profile", "path": "tools/profile/v1",
         "backendService": "external", "backendUrl": "https://graph.microsoft.com/v1.0", "backendAudience": "https://graph.microsoft.com",
         "backendAuthentication": {"mode": "none"}, "productId": "profile-users",
-        "subscriptionKeyHeader": "api-key", "keySubscriptions": [],
+        "subscriptionKeyHeader": "api-key",
         "operations": [{"name": "read-profile", "displayName": "Read profile", "method": "GET", "urlTemplate": "/me", "templateParameters": []}],
         "authorization": {"mode": "subscriptionKey",
                           "operationConstraints": {"read-profile": {"kind": "registeredOperation", "maxRequestBytes": 32768}}},
@@ -149,7 +148,7 @@ def pii_fixture():
         "name": "pii-v1", "displayName": "PII redaction", "path": "tools/pii/v1",
         "backendService": "foundryCognitive", "backendAudience": "https://cognitiveservices.azure.com",
         "productId": "pii-users",
-        "subscriptionKeyHeader": "api-key", "keySubscriptions": [],
+        "subscriptionKeyHeader": "api-key",
         "operations": [{"name": "pii_redact_text", "displayName": "Redact text", "method": "POST", "urlTemplate": "/redact", "templateParameters": []}],
         "authorization": {"mode": "subscriptionKey",
                           "operationConstraints": {"pii_redact_text": {"kind": "pii", "maxRequestBytes": 32768, "modelVersion": "2025-11-15", "allowedLanguages": ["ja", "en"], "allowedWarningCodes": []}}},
@@ -164,5 +163,4 @@ def pii_key_fixture():
     raw = pii_fixture()
     api = raw["apiDefinitions"][0]
     api["authorization"]["mode"] = "subscriptionKey"
-    api["keySubscriptions"] = [{"subscriptionId": "pii-system", "displayName": "PII service", "enabled": True}]
     return raw

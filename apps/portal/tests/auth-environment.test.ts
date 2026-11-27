@@ -19,8 +19,11 @@ function environment(values: Record<string, string | undefined>, run: () => void
 test("本番は平文HTTPを許容せず、エラーへ秘密値を出さない", () => {
   environment({ NODE_ENV: "production", BETTER_AUTH_URL: "http://localhost:3000", BETTER_AUTH_SECRET: "a".repeat(40),
     MICROSOFT_CLIENT_ID: "11111111-1111-4111-8111-111111111111", MICROSOFT_TENANT_ID: "22222222-2222-4222-8222-222222222222",
+    PORTAL_AUTH_KEY_ID: undefined, PORTAL_AUTH_CERTIFICATE_THUMBPRINT: undefined,
     MICROSOFT_CLIENT_SECRET: "secret-sentinel" }, () => {
     assert.throws(getAuthEnvironment, /HTTPS origin/);
+    process.env.BETTER_AUTH_URL = "https://portal.example.com";
+    assert.throws(getAuthEnvironment, /requires a certificate/);
     process.env.BETTER_AUTH_SECRET = "secret-sentinel";
     assert.throws(getAuthEnvironment, (error: unknown) => {
       assert.ok(error instanceof Error);

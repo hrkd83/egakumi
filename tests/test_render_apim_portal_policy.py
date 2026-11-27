@@ -69,24 +69,19 @@ class ManualPortalPolicyTests(unittest.TestCase):
         self.assertIsNotNone(root.find("outbound/include-fragment[@fragment-id='core-backend-audit']"))
         self.assertIsNotNone(root.find("on-error/base"))
 
-    def test_rest_reuses_quota_and_emits_scoped_fallback_only_when_shared_rate_is_disabled(self):
+    def test_rest_reuses_user_limits_without_a_default_key_limit(self):
         config = load_example("rest")
         root = ET.fromstring(portal.render_portal_policy(config))
         self.assertIsNone(root.find(".//authentication-managed-identity"))
         self.assertEqual(root.find("backend/forward-request").get("buffer-response"), "true")
         inbound = root.find("inbound")
-        peer_profile = inbound.find(".//send-request/set-url")
-        self.assertEqual(peer_profile.text, "{{core-subscription-profile-url}}")
+        user_limits = next(node for node in inbound.iter("when")
+                           if node.find("include-fragment[@fragment-id='core-entra-user-profile']") is not None)
+        self.assertIn('["method"] == "user"', user_limits.get("condition"))
         self.assertIsNotNone(inbound.find("include-fragment[@fragment-id='core-rate-limit']"))
-        when = next(node for node in inbound.iter("when") if node.find("rate-limit-by-key") is not None)
-        self.assertIn('"subscriptionKey"', when.get("condition"))
-        self.assertIn('"gatewayRateDecision"', when.get("condition"))
-        limit = when.find("rate-limit-by-key")
-        self.assertIn("context.Api.Id", limit.get("counter-key"))
-        self.assertIn("context.Subscription.Id", limit.get("counter-key"))
+        self.assertIsNone(inbound.find(".//rate-limit-by-key"))
         handler = root.find("on-error/choose/when")
         self.assertIn('context.LastError.PolicyId == "core-rate-limit"', handler.get("condition"))
-        self.assertIn('context.LastError.PolicyId == "manual-key-rate-limit"', handler.get("condition"))
         self.assertEqual(handler.find("return-response/set-status").get("code"), "429")
         owned_fragments = {item.stem for item in (portal.POLICIES / "fragments").glob("*/*/*.xml")}
         used_fragments = {item.get("fragment-id") for item in root.iter("include-fragment")}
@@ -102,7 +97,6 @@ class ManualPortalPolicyTests(unittest.TestCase):
                          {"backendAuthentication": []}, {"backendAuthentication": {"mode": "managedIdentity", "resource": 1}},
                          {"backendAuthentication": {"mode": "managedIdentity", "resource": "https://example.com/?credential=synthetic"}},
                          {"responseTransport": "websocket"}, {"responseTransport": "rest"}, {"bodyAudit": True},
-                         {"keyFallbackRate": {"calls": 0, "renewalPeriodSeconds": 60}},
                          {"operations": [{**sample["operations"][0], "backendPath": "//example.com"}]},
                          {"operations": [{**sample["operations"][0], "backendPath": "/v1/../private"}]},
                          {"operations": [{**sample["operations"][0], "backendPath": "/v1/{destination}"}]},

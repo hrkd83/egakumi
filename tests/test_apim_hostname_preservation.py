@@ -252,6 +252,7 @@ class ApimHostnameBicepTests(unittest.TestCase):
             "[coalesce(tryGet(parameters('existingApimHostnameConfigurations'), parameters('names').apim), createArray())]")
         self.assertIn("sku", apim)
         self.assertIn("virtualNetworkConfiguration", apim["properties"])
+        self.assertEqual(apim["properties"]["developerPortalStatus"], "Disabled")
         self.assertFalse(any(resource["type"].startswith("Microsoft.ApiManagement/service/apis")
                              or resource["type"] == "Microsoft.ApiManagement/service/policies"
                              for resource in nested_resources))

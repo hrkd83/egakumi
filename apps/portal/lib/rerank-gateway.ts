@@ -2,7 +2,7 @@ import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.t
 import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 import { containsModelCredential } from "./model-credential.ts";
-import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
+import type { GatewayActor } from "./api-auth/gateway-credential.ts";
 import { apiAuthenticationFailure, resolveGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
 import type { PortalBearer } from "./api-auth/service.ts";
 import { getRerankModels } from "./model-catalog.ts";
@@ -18,10 +18,9 @@ const responseHeaders = { "Cache-Control": "no-store", "X-Content-Type-Options":
 
 /** 上流通信と本人確認を差し替えて、BFFの境界を検証する依存です。 */
 export type RerankGatewayDependencies = {
-  readSession: () => Promise<ApiKeyActor | null>;
+  readSession: () => Promise<GatewayActor | null>;
   readPortalOrigin: () => string;
   readGatewayEnvironment?: () => Promise<ModelGatewayEnvironment>;
-  resolveSubscriptionKey?: (actor: ApiKeyActor, apiKeyId: string, apiId: string) => Promise<string>;
   resolveBearer?: () => Promise<PortalBearer>;
   readModels?: () => readonly RerankModel[] | Promise<readonly RerankModel[]>;
   fetch?: typeof globalThis.fetch;
@@ -34,7 +33,7 @@ function failure(code: ModelGatewayErrorCode, status: number, details: Omit<Text
 }
 
 /**
- * 本人が利用できる購読キーだけを解決し、固定されたリランクAPIへ一度だけ送信します。
+ * 本人のBearerを取得し、固定されたリランクAPIへ一度だけ送信します。
  * @remarks 失敗時に代替キー・別モデルへ切り替えず、ブラウザーへ秘密値を返しません。
  */
 export async function handleRerank(request: Request, dependencies: RerankGatewayDependencies): Promise<Response> {
@@ -42,7 +41,7 @@ export async function handleRerank(request: Request, dependencies: RerankGateway
   try { portalOrigin = new URL(dependencies.readPortalOrigin()).origin; } catch { return failure("GatewayNotConfigured", 503); }
   const site = request.headers.get("sec-fetch-site");
   if (request.method !== "POST" || request.headers.get("origin") !== portalOrigin || (site && site !== "same-origin")) return failure("RequestNotAllowed", 403);
-  let actor: ApiKeyActor | null;
+  let actor: GatewayActor | null;
   try { actor = await dependencies.readSession(); if (!actor) return failure("AuthenticationRequired", 401); } catch { return failure("AuthenticationUnavailable", 503); }
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
@@ -67,12 +66,11 @@ export async function handleRerank(request: Request, dependencies: RerankGateway
   } catch { return failure("GatewayNotConfigured", 503); }
   let credential: GatewayCredential;
   try {
-    credential = await resolveGatewayCredential(request, actor, input, model.apiId, gateway.origin,
-      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+    credential = await resolveGatewayCredential(request, actor, gateway.origin, dependencies.resolveBearer);
   } catch (error) {
     const apiAuth = apiAuthenticationFailure(error);
     if (apiAuth) return failure(apiAuth.code, apiAuth.status);
-    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
+    return failure("ApiAuthenticationUnavailable", 503); }
   const timeout = modelDeadline(dependencies.timeoutMs), signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();
   let identifier: string | undefined;

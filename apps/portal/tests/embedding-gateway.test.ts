@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiKeyError } from "../lib/api-keys/contracts.ts";
+import { ApiAuthenticationError } from "../lib/api-auth/settings.ts";
 import { handleEmbeddings, type EmbeddingGatewayDependencies } from "../lib/embedding-gateway.ts";
 import { defaultEmbeddingInput, EMBEDDING_SAMPLE_TEXTS } from "../lib/embedding-integration.ts";
 import { parseEmbeddingResult, readEmbeddingResponse } from "../lib/embedding-response.ts";
 import { smallEmbedding as small, cohereEmbedding as cohere } from "./helpers/embedding-fixtures.ts";
+import { trialBearer, unicodeEscaped } from "./helpers/trial-bearer.ts";
 
 const portalOrigin = "https://portal.example.invalid";
 const gatewayOrigin = "https://gateway.example.invalid";
-const key = "test-only-embedding-subscription-key";
-const apiKeyId = "portal-11111111-1111-4111-8111-111111111111";
+const accessToken = "fixture".repeat(4);
 const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
 const input = { ...defaultEmbeddingInput(small), dimensions: 3 };
 
@@ -24,12 +24,12 @@ test("任意の複数文章を順序どおり送信し、その件数のベク�
 
 /** 認証済みの同一オリジンPOSTを、固定された公開入力で作ります。 */
 function request(value: unknown = input, headers: Record<string, string> = {}, signal?: AbortSignal, query = ""): Request {
-  return new Request(`${portalOrigin}/api/models/embeddings${query}`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ apiKeyId, ...(value as Record<string, unknown>) }), signal });
+  return new Request(`${portalOrigin}/api/models/embeddings${query}`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ authentication: "bearer", ...(value as Record<string, unknown>) }), signal });
 }
 
 /** 上流通信と認証だけを置き換え、ハンドラー自身の制約はそのまま検証します。 */
 function dependencies(overrides: Partial<EmbeddingGatewayDependencies> = {}): EmbeddingGatewayDependencies {
-  return { readSession: async () => actor, readPortalOrigin: () => portalOrigin, readGatewayEnvironment: async () => ({ origin: gatewayOrigin }), resolveSubscriptionKey: async () => key, readModels: () => [small, cohere], fetch: async () => Response.json({ model: small.id, data: [{ index: 0, embedding: [0.1, -0.2, 0.3] }], usage: { prompt_tokens: 12, total_tokens: 12 } }, { headers: { "apim-request-id": "request_123" } }), ...overrides };
+  return { readSession: async () => actor, readPortalOrigin: () => portalOrigin, readGatewayEnvironment: async () => ({ origin: gatewayOrigin }), resolveBearer: async () => trialBearer(accessToken, actor), readModels: () => [small, cohere], fetch: async () => Response.json({ model: small.id, data: [{ index: 0, embedding: [0.1, -0.2, 0.3] }], usage: { prompt_tokens: 12, total_tokens: 12 } }, { headers: { "apim-request-id": "request_123" } }), ...overrides };
 }
 
 test("認証と同一オリジンを確認できない埋め込み要求はAPIMへ送らない", async () => {
@@ -44,10 +44,10 @@ test("認証と同一オリジンを確認できない埋め込み要求はAPIM�
   assert.equal(calls, 0);
 });
 
-test("埋め込みAPIの同名queryやAPI版queryは本文・購読・上流処理の前に拒否する", async () => {
+test("埋め込みAPIの同名queryやAPI版queryは本文・API認証・上流処理の前に拒否する", async () => {
   let calls = 0;
   const forbidden = () => { calls++; throw new Error("not called"); };
-  const context = dependencies({ readModels: forbidden, readGatewayEnvironment: forbidden, resolveSubscriptionKey: forbidden, fetch: forbidden });
+  const context = dependencies({ readModels: forbidden, readGatewayEnvironment: forbidden, resolveBearer: forbidden, fetch: forbidden });
   for (const value of [input, defaultEmbeddingInput(cohere)]) {
     for (const query of ["?texts=synthetic", "?%74exts=synthetic", "?texts=one&texts=two", "?input=synthetic", "?api-version=v1", "?api-version=preview", "?unexpected", "?=synthetic"]) {
       const incoming = request(value, {}, undefined, query);
@@ -93,15 +93,15 @@ test("未知項目・未知モデル・不正な寸法と用途・過大本文�
   assert.equal(calls, 0);
 });
 
-test("OpenAIを選んだ本人の購読キーと入力本文で一回だけ実行し、全ベクトルと実JSONを返す", async () => {
+test("OpenAIを選んだ本人のBearerトークンと入力本文で一回だけ実行し、全ベクトルと実JSONを返す", async () => {
   let calls = 0;
   const result = await handleEmbeddings(request(), dependencies({
-    resolveSubscriptionKey: async (owner, id, apiId) => { assert.deepEqual(owner, actor); assert.equal(id, apiKeyId); assert.equal(apiId, "openai-embeddings-v1"); return key; },
+    resolveBearer: async () => trialBearer(accessToken, actor),
     fetch: async (url, options) => {
       calls++;
       assert.equal(String(url), `${gatewayOrigin}${small.path}`);
       assert.equal(options?.redirect, "error"); assert.equal(options?.cache, "no-store");
-      assert.equal(new Headers(options?.headers).get("api-key"), key);
+      assert.equal(new Headers(options?.headers).get("Authorization"), `Bearer ${accessToken}`);
       assert.equal(new Headers(options?.headers).get("cookie"), null);
       assert.deepEqual(JSON.parse(String(options?.body)), { model: small.id, input: [EMBEDDING_SAMPLE_TEXTS[0]], encoding_format: "float", dimensions: 3 });
       return dependencies().fetch!(url, options);
@@ -115,7 +115,7 @@ test("OpenAIを選んだ本人の購読キーと入力本文で一回だけ実�
   assert.deepEqual(data.usage, { inputTokens: 12, totalTokens: 12 });
   assert.equal(data.rawResponse.data[0].embedding.length, 3);
   assert.equal(data.requestId, "request_123");
-  assert.equal(JSON.stringify(data).includes(key), false);
+  assert.equal(JSON.stringify(data).includes(accessToken), false);
   assert.equal(calls, 1);
 });
 
@@ -132,11 +132,11 @@ test("Cohereは実配備名とfloat配列を使い、billed_units.input_tokens�
   assert.equal(data.rawResponse.response_type, "embeddings_floats");
 });
 
-test("現在の所属で選択キーを利用できない場合やキー解決失敗時に代替キーで実行しない", async () => {
+test("Bearerの再接続が必要な場合と認証障害で上流を呼ばない", async () => {
   let calls = 0;
-  const context = dependencies({ fetch: async () => { calls++; throw new Error("should not call"); }, resolveSubscriptionKey: async () => { throw new ApiKeyError("AccessDenied", 403); } });
-  assert.equal((await handleEmbeddings(request(), context)).status, 403);
-  assert.equal((await handleEmbeddings(request(), { ...context, resolveSubscriptionKey: async () => { throw new Error("private ARM details"); } })).status, 503);
+  const context = dependencies({ fetch: async () => { calls++; throw new Error("should not call"); }, resolveBearer: async () => { throw new ApiAuthenticationError("ApiAuthenticationRequired", 401); } });
+  assert.equal((await handleEmbeddings(request(), context)).status, 401);
+  assert.equal((await handleEmbeddings(request(), { ...context, resolveBearer: async () => { throw new Error("private authentication details"); } })).status, 503);
   assert.equal(calls, 0);
 });
 
@@ -147,8 +147,8 @@ test("公開APIと違うパスや関係のないAPIのモデル定義を実行�
 
 test("上流の認可エラー・リダイレクト・任意本文は隠し、429だけは待機秒数を返す", async () => {
   for (const status of [302, 400, 401, 403, 500]) {
-    const result = await handleEmbeddings(request(), dependencies({ fetch: async () => new Response(`secret=${key}`, { status }) }));
-    assert.equal(result.status, 502); assert.equal((await result.text()).includes(key), false);
+    const result = await handleEmbeddings(request(), dependencies({ fetch: async () => new Response(`secret=${accessToken}`, { status }) }));
+    assert.equal(result.status, 502); assert.equal((await result.text()).includes(accessToken), false);
   }
   const limited = await handleEmbeddings(request(), dependencies({ fetch: async () => new Response("private", { status: 429, headers: { "retry-after": "45" } }) }));
   assert.equal(limited.status, 429); assert.deepEqual(await limited.json(), { error: { code: "RateLimitExceeded" }, retryAfterSeconds: 45 });
@@ -159,10 +159,10 @@ test("上流の欠損・不正な数値・次元ずれ・件数ずれ・重複in
     { model: small.id, data: [{ index: 0, embedding: [1, null, 3] }] },
     { model: small.id, data: [{ index: 0, embedding: [1, 2] }] },
     { model: small.id, data: [{ index: 0, embedding: [1, 2, 3] }, { index: 0, embedding: [1, 2, 3] }] },
-    { model: small.id, data: [{ index: 0, embedding: [1, 2, 3] }], privateField: key },
+    { model: small.id, data: [{ index: 0, embedding: [1, 2, 3] }], privateField: accessToken },
     { error: { code: "private" } },
   ];
-  for (const value of values) { const result = await handleEmbeddings(request(), dependencies({ fetch: async () => Response.json(value) })); assert.equal(result.status, 502); assert.equal((await result.text()).includes(key), false); }
+  for (const value of values) { const result = await handleEmbeddings(request(), dependencies({ fetch: async () => Response.json(value) })); assert.equal(result.status, 502); assert.equal((await result.text()).includes(accessToken), false); }
   assert.throws(() => parseEmbeddingResult({ model: small.id, data: [{ index: 0, embedding: [Infinity] }] }, small, { ...input, dimensions: 1 }, 0));
 });
 
@@ -171,10 +171,10 @@ test("Content-Lengthがない過大応答も中止する", async () => {
   assert.equal(result.status, 502);
 });
 
-test("JSONのUnicodeエスケープで隠れた購読キーも正常応答として返さない", async () => {
-  const encoded = [...key].map((character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
-  const raw = JSON.stringify({ model: small.id, data: [{ index: 0, embedding: [1, 2, 3] }], metadata: { reflected: key } }).replace(key, encoded);
-  assert.equal(raw.includes(key), false);
+test("JSONのUnicodeエスケープで隠れたBearerトークンも正常応答として返さない", async () => {
+  const encoded = [...accessToken].map((character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+  const raw = JSON.stringify({ model: small.id, data: [{ index: 0, embedding: [1, 2, 3] }], metadata: { reflected: accessToken } }).replace(accessToken, encoded);
+  assert.equal(raw.includes(accessToken), false);
   let calls = 0;
   const response = await handleEmbeddings(request(), dependencies({ fetch: async () => { calls++; return new Response(raw, { headers: { "content-type": "application/json" } }); } }));
   assert.equal(response.status, 502);
@@ -182,12 +182,12 @@ test("JSONのUnicodeエスケープで隠れた購読キーも正常応答とし
   assert.equal(calls, 1);
 });
 
-test("引用符やバックスラッシュを含むキーの値・プロパティ名への反射も拒否する", async () => {
-  const credential = 'synthetic-embedding-"key"-\\-value';
+test("UnicodeエスケープしたBearerの値・プロパティ名への反射も拒否する", async () => {
+  const credential = "synthetic-embedding-bearer-token";
   for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
-    const raw = JSON.stringify({ model: small.id, data: [{ index: 0, embedding: [1, 2, 3] }], ...reflected });
+    const raw = JSON.stringify({ model: small.id, data: [{ index: 0, embedding: [1, 2, 3] }], ...reflected }).replaceAll(credential, unicodeEscaped(credential));
     assert.equal(raw.includes(credential), false);
-    const response = await handleEmbeddings(request(), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+    const response = await handleEmbeddings(request(), dependencies({ resolveBearer: async () => trialBearer(credential, actor), fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
     assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
   }
 });

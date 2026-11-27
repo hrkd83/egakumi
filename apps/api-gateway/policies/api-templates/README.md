@@ -133,11 +133,8 @@ Hostedのinput／text非空判定撤去（MOD-48）はローカル実装・関�
 
 社員profile／requestRateの再検査撤去（MOD-52）はローカル実装・関連検証済みです。計数式のDeepEqualsと必須・型・範囲の再検査を直前UserProfileへ集約し、先行共通認証／UserProfileの同じ不備拒否を維持します。追加API・免除でもUserProfileを通し、profile／requestRate読取り・値適用、null無制限・counter・免除・キー側処理を維持します。前段とは別実行の関連65件が全件成功しました（18.122s、失敗・スキップなし）。実Bicepコンパイル・生成一致も成功しています。他の未判断条件は残り、Azure未反映・実カウンター未確認です。
 
-キー側の認証結果再確認撤去（MOD-53）はローカル実装・関連検証済みです。認証方式・購読ID非空・caller一致の3条件を撤去し、共通認証済みcontext.Subscription.Idを直接使います。キー用設定のBase64復元・JObject解析を社員側のreturn後へ移し、社員要求では復元しません。先行共通認証・引渡しの不正キー拒否と失敗停止、override／SQL profile・null無制限・回数期間・counter・免除は維持します。関連66件が全件成功しました（15.960s、失敗・スキップなし）。社員の非復元、先行401後の未実行と残る枠条件を確認し、実Bicepコンパイル・生成一致も成功しました。MOD-49～52の維持条件と結果は各変更時点の別記録で、他のキー側処理は残件です。Azure未反映・実カウンター未確認です。
 
-キー側のprofile存在再確認撤去（MOD-54）はローカル実装・関連検証済みです。profile存在確認・有効時の欠落throw・空JObject fallback・requestRate存在再確認を撤去し、準備済みprofileを直接読みます。全入口で回数枠を含む初期値を用意する先行subscription-profileと、そのSQL不備503停止、社員UserProfileの不備停止を維持します。profileEnabled切替・優先順位・明示null無制限・値・counter・免除は維持します。関連73件が全件成功しました（17.597s、失敗・スキップなし）。SQL契約不備503とrate未実行、正規null無制限・counter、全入口の準備を確認し、実Bicepコンパイル・生成一致も成功しました。MOD-53の66件は別時点の結果で、他のキー側処理は残件です。Azure未反映・実カウンター未確認です。
 
-SQL回数枠の直接選択（MOD-55）はローカル実装・関連検証済みです。SQL有効かつrequestRateがObjectのキー要求ではvaluesにprofileRateを直接選び、埋込みBase64設定の復元とoverride探索を省きます。それ以外は従来の設定選択を維持し、制限なし時を含む内部calls／periodも同値を保ちます。公開設定・APIM変数フラグを追加せず、profile切替・優先順位・明示null無制限・counter・免除・先行不備停止は維持します。関連74件が全件成功しました（20.304s、失敗・スキップなし）。SQL Objectの非復元と免除、それ以外の内部値・counterと先行拒否を確認し、実Bicepコンパイル・生成一致も成功しました。MOD-54の73件と残件は当時の別記録です。
 
 回数枠のInbound棚卸・ローカル検証はここで一区切りです。この部品に未判断の独自拒否・設定再検査は残らず、枠選択・Object／null分岐・免除・APIM標準ポリシーへの引渡しは必要な処理として維持します。工程1全体は未完了で、トークン枠全体・社員profile・CM等の棚卸は未完了、APIM標準429・on-error・実分散カウンターは未確認、Azure未反映です。
 
@@ -165,7 +162,6 @@ core-token-limitsのローカルInbound棚卸はここで一区切りです。pa
 
 core-entra-user-profileのローカルInbound棚卸はここで一区切りです。必要な供給3処理を維持し、未判断の独自拒否は残りません。工程1全体と実SQL経路の受入は未完了、Azure未反映・実native動作／on-error応答分類は未確認です。
 
-SQL購読profileの503監査追加（MOD-66）はローカル実装・関連検証済みです。正本を[subscription-profile snippet](../snippets/quota/subscription-profile/README.md)のXML・同名C#へ移し、C#はgatewayFetchedProfile式だけを所有します。503応答の直前に既存telemetryへpolicy-error／LIMIT_PROFILE_UNAVAILABLE／503を1回記録します。受入検査・503応答・Retry-After: 5・no-store・30秒cache・社員分岐・明示null・共有APIへの生成時inline方式は維持し、新しいAzure fragmentは登録しません。関連164件が全件成功しました（33.446s、失敗・スキップなし）。実取得式・503監査・cache／bypass、全HTTP／WebSocket／外部MCPの生成・実行順と実Bicepコンパイル・生成一致・同名所有・Razor・日本語説明を確認しました。独立レビューでも取得式と監査追加以外の旧フローが同一でした。MOD-65の社員profileの125件（29.737s）とローカルInbound一区切りは当時の別部品記録です。
 
 SQL応答は別供給経路の受入検査で、撤去すると不備を後段で制限なしと解釈する場合があるため維持します。読取り棚卸で削除推奨のAPIM内重複はなく、この取得snippetのローカルInboundは一区切りです。実SQL経路の受入と工程1全体は未完了、Azure未反映です。
 

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { createClientAssertion, validateCertificateAuthentication } from "../lib/client-assertion.ts";
-import { GraphApiKeyMembership } from "../lib/api-keys/graph.ts";
 
 // 実環境から独立した合成値。RSA秘密鍵は試験中のメモリーだけで保持します。
 const tenant = "11111111-1111-4111-8111-111111111111";
@@ -38,28 +37,4 @@ test("署名失敗と不完全な設定は入力値を例外へ含めず停止�
   for (const changed of [{ keyId: certificate.keyId.slice(0, -33) }, { thumbprint: "bad" }, { identityClientId: "bad" }]) {
     assert.throws(() => validateCertificateAuthentication({ ...certificate, ...changed }), /configuration is invalid/);
   }
-});
-
-test("Graph管理は証明書方式のApplication tokenを使用し、取得失敗でsecret方式へ切り替えない", async () => {
-  let tokenCalls = 0;
-  const urls: string[] = [];
-  const graph = new GraphApiKeyMembership({ microsoftClientId: client, microsoftTenantId: tenant, certificate }, {
-    getToken: async () => { tokenCalls++; return { token: "synthetic-graph-token", expiresOnTimestamp: Date.now() + 600_000 }; },
-    fetch: async (input, init) => {
-      urls.push(String(input));
-      assert.ok(String(input).startsWith("https://graph.microsoft.com/"));
-      assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer synthetic-graph-token");
-      return Response.json({ value: [client] });
-    },
-  });
-  const actor = { tenantId: tenant, objectId: client, name: "Synthetic user" };
-  assert.deepEqual(await graph.check(actor, [client]), new Set([client]));
-  await graph.check(actor, [client]);
-  assert.equal(tokenCalls, 1);
-  const failing = new GraphApiKeyMembership({ microsoftClientId: client, microsoftTenantId: tenant, certificate }, {
-    getToken: async () => { throw new Error("synthetic-token-error"); },
-    fetch: async () => { throw new Error("must not contact a token or Graph endpoint"); },
-  });
-  await assert.rejects(failing.check(actor, [client]), (error: Error) => !error.message.includes("synthetic-token-error"));
-  assert.equal(urls.length, 2);
 });

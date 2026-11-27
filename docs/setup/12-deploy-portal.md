@@ -2,240 +2,43 @@
 
 前：[11. Gatewayの個別配備](11-deploy-gateway.md) · [README](../../README.md) · 次：[13. 初回構築の受入確認](13-verify-deployment.md)
 
-`apps/portal`はAIゲートウェイのサービス提供用フロントアプリです。Next.js・TypeScriptを使い、Better AuthによるMicrosoft Entraサインイン、SQLでのセッション管理、グループ所有のAPIキー管理を実装しています。Model Gatewayの各モデル、Tool GatewayのMicrosoft Graph /me・PII Redaction・Document Analysisを実行できます。Hosted Agent APIは準備中ページです。
+PortalはMicrosoft Entraでサインインし、Model GatewayとTool Gatewayを本人の `Gateway.Invoke` アクセストークンで試す画面です。Microsoft Graphの本人プロフィールはGatewayからBrokerのOBOを通じて取得します。例外発行の購読キーについては[APIMの購読運用](../operations/access-and-keys.md)を参照してください。
 
-Tool GatewayはREST・MCP・A2Aに分けて案内します。RESTは上記3 API、MCPはPII RedactionのStreamable HTTP接続を掲載し、A2Aは準備中です。MCPの初期化・ツール照会・実行と購読キーの扱いはPortalのサーバー側が担当します。Document Analysisのファイル受付と解析結果は画面表示のために使い、PortalのSQLへ保存しません。[文書解析の仕様と配備](../reference/document-analysis.md)
-
-公開入口は`https://portal.<domain>`です。Gatewayの`https://gateway.<domain>`とは共通App Gatewayのホスト名で振り分けます。
-
-App Gatewayは公開HTTPSを終端してWAFで検査します。Portalへの通信とプローブはHTTPS443でFirewall Premiumを経由し、TLS検査後に再暗号化してACA内部VIPへ送ります。PortalのACA ingressは `allowInsecure: false` です。ACAからコンテナー内のHTTPへ転送します。APIMからCredential BrokerにはVNet内でHTTPS接続します。
-
-言語付きURLへの転送、OAuthの戻り先、Secure CookieとOrigin検査は公開`BETTER_AUTH_URL=https://...`を基準にします。ACAが`X-Forwarded-Proto`を`http`へ上書きしても、内部HTTP URLをブラウザーへ案内しません。FirewallのIDPSはテスト・本番ともDeny（Alert and Deny）で開始します。
-
-今回の公開入力整理は資材に実装しています。Azureへの一括反映、全環境再構築E2Eと実受入は未実施です。ローカル試験結果の最終集約前に一式成功と判断しません。[入力の配置判断と移行条件](07-params.md#公開入力71主項目の判断記録)を確認してください。
-
-## 配備資材の置き場所
-
-```text
-apps/portal/
-├── app/・components/・lib/   Next.jsアプリ本体
-├── Dockerfile              Linux用コンテナーイメージ
-├── .dockerignore           ローカル設定・秘密・生成物の除外
-├── deploy/
-│   ├── main.bicep          Portal配備の入口
-│   ├── database.bicep      認証DB・バックアップ・必要な権限
-│   ├── api-keys.bicep      既存APIMへの購読管理権限
-│   ├── schema-job.bicep    SQL初期化ジョブ
-│   ├── subscription-services.bicep  購読管理・照会サービス
-│   ├── group-reconciliation-job.bicep  所有グループの定期照合
-│   ├── application.bicep   Container Appと認証用設定
-│   ├── gateway-egress.bicep Portalから公開GatewayへのHTTPS許可
-│   └── build-image.sh     管理VM上でのイメージ作成・ACR登録
-├── scripts/                SQL初期化・実行用権限の設定
-└── sql/                    バージョン付きテーブル定義
-
-scripts/deploy_portal.py     手元とCIから共通で使う配備コマンド
-.github/workflow-templates/portal.yml.example GitHub Actionsの入口
-```
-
-## コア基盤とPortal配備の分担
+## CoreとPortal配備の分担
 
 | 工程 | 作成・更新するもの |
 | --- | --- |
-| [Core構築](08-provision-core.md) | 共通SQLサーバー、Private EndpointとDNS、ネットワーク、ACR、Container Apps環境、Portal用実行ID、初期Container Appと認証用公開証明書を準備 |
-| Entra登録とGateway配備 | Portal専用アプリを手動で作成し、公開証明書を登録。paramsに登録情報を追加し、Gatewayを個別配備 |
-| Portal配備工程 | Portal専用DB、Cookie署名・購読profileの秘密と読み取り権限、認証証明書の署名権限、SQL初期化ジョブ、認証・APIキー台帳と実行用SQL権限、管理グループと標準API正本から生成する製品承認・検証用APIM購読の作成・台帳登録、APIMの購読管理権限、Portalイメージ、既存Container Appの本体 |
+| [Core構築](08-provision-core.md) | 共通SQLサーバーとPrivate Endpoint、ACR、Container Apps環境、初期Container App、Portalの実行IDと認証用公開証明書 |
+| [Entra登録](09-egakumi-portal.md)と[Gateway配備](11-deploy-gateway.md) | Portalの専用アプリ登録・証明書と委任の設定、APIMのAPIとポリシー、Brokerの配備 |
+| Portal配備 | PortalのSQLデータベース、SQL初期化ジョブ、認証と試用に必要なKey Vault参照、Gateway宛のFirewall許可、PortalのContainer App |
 
-**Portal専用DBはPortal配備資材で管理します。構築済み基盤のPortalだけを更新・再試行するときは、`deploy_portal.py --execute` を使えます。** 共通SQLサーバー`sql-<環境>-<製品>`を再利用し、その中へ`sqldb-<環境>-<製品>-portal`を作成します。CM用の`...-credentials` DBとは分離します。
+Coreが作る初期Container AppにはMicrosoftの初期イメージが載ります。公開App Gatewayが使うHTTPSプローブは `/api/health` のHTTP 200を要求するため、Portal本体の配備まではバックエンドが異常と判定されます。
 
-CoreはPortal用Container AppにMicrosoftのQuickstartイメージを載せます。同じ工程で公開DNSとApp GatewayのPortal入口も準備します。App Gatewayの正常性プローブは`/api/health`のHTTP 200を要求します。仮イメージは正常判定の対象外で、Portalの画面・認証・ヘルスAPIはPortal本体の配備後に利用可能になります。
+実装は [apps/portal](../../apps/portal/) にあり、[deploy](../../apps/portal/deploy/) にBicepとビルド処理、[sql](../../apps/portal/sql/) にSQLマイグレーションがあります。端末とCIは同じ [deploy_portal.py](../../scripts/deploy_portal.py) を使います。
 
-Portal配備はネットワークRGの専用Firewall規則グループ `rcg-portal-gateway` も管理します。ACAサブネットから、構築入力の `gateway.publicHostName` だけへのHTTPS/443を許可します。既存の共通規則を置き換えず、PortalのサーバーからAPIM経由でモデルを実行するための通信経路を追加します。
+## 配備する
 
-DBのSKU・容量・バックアップは標準`config`の`portalAuthentication`で管理します。検証用はBasic・5 DTU・2 GB・バックアップ7日・Local、本番用はGeneral Purpose・2 vCore・32 GB・14日・Geoです。配備コマンドは既存の`.local/<environment>/params.local.json`を正本として読みます。管理グループObject IDとグループ表示名の正規表現が未設定の場合だけ、初回対話で入力し、同じparamsの`portalApiKeys.platformGroupId`と`groupNamePattern`へ保存します。製品・購読数・内部配列はparamsへ保存しません。
+Core、Entra登録、Gateway配備が完了したら、同じ環境の保護paramsと `.local/<environment>/state/latest.json` を使います。設定するEntra値と証明書については[第09章](09-egakumi-portal.md)を参照してください。
 
-## Entraと認証の準備
-
-Portal専用アプリの登録・管理者同意を第09章で終え、paramsの`portal.authentication.tenantId`・`clientId`と証明書の保護記録を確認します。 [Core後のEntra登録](09-egakumi-portal.md)
-
-ログイン時に要求するスコープは`openid profile email`です。グループ所属照会には専用Portalアプリのアプリケーション権限`GroupMember.Read.All`と`User.ReadBasic.All`、および管理者同意を準備します。専用UAMIからKV内の非exportable鍵でclient assertionへ署名し、新Portalのclient secretは作成しません。Portal本体は`portal.authentication.tenantId/clientId`と保護certificate stateを使います。本人は検証済みのテナントIDとオブジェクトIDで識別します。
-
-CM用アプリは[egakumi-toolsの登録](03-entra-tools.md)で管理します。標準Graphの登録値はparamsの`credentialProviders.graphDelegated.clientId`・`clientSecretFile`に置き、共通表示名・scope・poolはconfigに置きます。内部の論理名`graph-delegated`、秘密参照名と選択profile、CMの既存Client ID・secretは維持します。移行対象の旧Portalが使う共用アプリ・secret参照は新Portalの実受入まで復旧用に保持し、受入後にPortal用途の参照を撤去します。
-
-PortalのSQLには利用者・アカウントの対応、ログインセッション、暗号化したCM本人接続状態を保存します。Bearer試用のGateway向けアクセストークンと更新トークンは、試用専用のKey Vault版付き鍵で暗号化し、Portalサーバーで扱います。Graphの下流トークンは購読キー利用時はCM、Bearer利用時はBrokerのOBOにより取得します。BFFは本人のtid/oidと用途を照合し、ブラウザーへこれらのトークンを公開しません。
-
-運用時は公開Portalと同じ内部ACA環境に、購読管理と照会の専用アプリを配置します。購読管理はPortal経由の本人委任 `Subscription.Manage`、照会はAPIMからの専用資格情報を使用します。 [分離の受入](../reference/network-security-validation.md#購読管理とプロファイル照会の分離)
-
-## 配備の実行
-
-Coreと[Gatewayの個別配備](11-deploy-gateway.md)が完了したことを確認して、リポジトリのルートから実行します。[第07章のparams](07-params.md)と同じ環境の`state/latest.json`を使用します。Azure CLIで対象環境にログインし、Python 3.11以上とBicep CLIを使います。イメージは既存管理VMで作成して非公開ACRに登録します。
-
-Portal配備が失敗した場合は、原因を修正してこの工程から再試行します。作成済みのCore・Gatewayと同じ環境の配備記録を使います。
-
-最初にリポジトリ直下で計画を確認します。
+対象Azure環境へログインし、Python 3.11以上とBicep CLIを使える端末で、リポジトリのルートから計画を確認して実行します。
 
 ```sh
-python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
-既定の計画モードは配備先と作業内容を表示し、Azureリソースの変更・イメージ作成・秘密の生成は行いません。既定では構築時の`.local/<environment>/state/latest.json`を参照します。
+1. 管理VMで公開ソースをビルドし、非公開ACRへPortalイメージを登録します。管理VMにビルド時だけ必要な `AcrPush` を割り当て、終了後に回収します。
+2. 共通SQLサーバー上にPortal専用DBを作成し、手動のSQL初期化ジョブでマイグレーションと実行IDのデータベース権限を設定します。再配備では適用済みのマイグレーションと既存の認証データを保持します。
+3. 認証コールバックのWAF設定、Portalサブネットから公開GatewayへのHTTPS許可、Key VaultとマネージドIDの設定を配備し、Portal本体をdigest指定のイメージへ更新します。
+4. Portalの正常なリビジョン、App GatewayのHTTPSバックエンドとプローブ、公開 `/api/health` を確認します。Container Appsの `/api/health/ready` はSQLを検査し、配備コマンドは公開 `/api/health/api-auth` でSQLと試用の暗号鍵を確認します。
 
-実行するときは`--execute`を追加します。
+終了コード `0` と今回の配備に対応する `.local/<environment>/state/portal-deployment.json` の `status: deployed`、`publicHealthVerified: true` を確認します。途中で失敗した場合は、同じ環境の入力でPortal配備を再試行できます。別の完了済みCore記録を使う場合は `--state-file` または `--deployment-name`、既存イメージを使う場合は `--image-digest sha256:<digest>` を指定します。
 
-```sh
-python3 scripts/deploy_portal.py \
-  --config "$DEPLOY_PARAMS_FILE" \
-  --execute
-```
+## 認証と保存データ
 
-Portal本体の初回個別配備では、管理グループObject IDと対象グループ表示名の正規表現だけを対話入力します。`platformGroupId`は管理画面と検証用購読の管理グループです。表示名は入力・保存せずGraphから取得し、現在の所属、`securityEnabled=true`、正規表現との一致を確認します。無人実行ではこの2項目をparamsへ事前設定してください。
+公開URLは `https://portal.<domain>` です。App GatewayでTLSを終端し、WAFで検査してからFirewallを経由してACAへHTTPSで転送します。ブラウザー向けの戻り先、Secure Cookie、Origin検査は公開URLを基準にします。
 
-公開例は`groupNamePattern:""`で、`platformGroupId`を省略しています。準備コマンドが作成した保護paramsへ次の2項目を設定するか、初回対話を使います。`<...>`は用途付きプレースホルダーです。
-
-```json
-{
-  "portalApiKeys": {
-    "platformGroupId": "<PLATFORM_GROUP_OBJECT_ID>",
-    "groupNamePattern": "^ORG_"
-  }
-}
-```
-
-共通configは次の形です。初期値5を現在値のまま移設しています。
-
-```json
-{
-  "portalApiKeys": { "verificationMaxSubscriptions": 5 }
-}
-```
-
-管理グループ1件と標準API正本の全製品から、内部の製品承認と検証用購読を自動生成します。製品subsetと購読数を初回対話で選ばせず、生成済みの`groups`・`verificationSubscriptions`を公開paramsへ書き戻しません。旧項目は空配列でも入力検査で拒否します。
-
-`groupNamePattern`は企業・環境ごとのRE2互換の正規表現です。上の`^ORG_`は独立した架空の命名規則例であり、既定値ではありません。
-
-| 設定例 | 対象の名前 |
-| --- | --- |
-| `^ORG_` | `ORG_`で始まる名前 |
-| `^(ORG_|DEPT_)` | どちらかの接頭辞で始まる名前 |
-| `^組織_[0-9]{3}$` | `組織_`の後に数字3桁が続く名前 |
-| `_HR$` | `_HR`で終わる名前 |
-
-通常は大文字小文字を区別します。先頭一致は`^`、完全一致は`^...$`で指定します。最大512文字で、空欄・不正な構文・先読み・後方参照は実行設定として受け付けません。配備ジョブとアプリは共通のRE2検証を使い、Node標準の正規表現へフォールバックしません。空欄は初回入力待ちであり、全グループの許可にはなりません。
-
-Graphへ正規表現を送るのではなく、取得した名前をサーバー側で評価します。移管先の検索語は名前の先頭から入力し、検索結果にも同じ正規表現を適用します。対象がないページに続きがある場合は、画面の追加取得で次を確認できます。セキュリティグループ条件は正規表現にかかわらず必須です。
-
-既存の`006_group_name_pattern.sql`には初回の固定`ORG_`から`^ORG_`へのSQL移行があります。適用前に現行DBと移行内容を確認し、非標準値をこの例へ無断変換しません。今回の公開params整理は、旧グループ／承認／購読の自動変換を許可するものではありません。
-
-通常の所有候補は、Graphで現在の所属を確認でき、`securityEnabled=true`で表示名が`groupNamePattern`に一致するグループです。初回利用時にObject IDで台帳へ登録し、通常発行カタログを適用します。管理グループの検証製品承認をすべての利用者へ配布する設定ではありません。キーの表示・発行・更新時にも現在の所属と属性を確認します。
-
-内部の検証用購読は、標準製品ごとに`platform-<productId>`という安定した購読IDと標準表示名で生成します。Gatewayで製品を登録した後にPortalを配備し、SQL初期化で購読の作成・登録を行います。個別更新でもGateway→Portalの順を守ります。
-
-同じ生成ID・同じ製品スコープの購読がAPIMに存在すれば、既存キーを変更せず採用します。明示的404の場合だけ新規作成し、通信障害や権限不足を不存在へ読み替えません。APIM側の既存表示名を勝手に変更せず、masterや生成対象外の共有購読を一括採用しません。
-
-旧paramsに追加所有グループ、限定した製品、異なる上限、任意の購読IDがある場合は、保護params・SQL台帳・APIM metadataを確認してから個別に移行します。旧入力を削除するだけで新生成IDへ付け替えず、所有者・製品範囲・購読ID・キー保持と復旧方法を確定するまで停止します。
-
-新規処理はAPIM操作前にSQLへ`creating`の予約を残し、同じ購読の削除や並行配備と排他します。途中で失敗した場合も、次のPortal配備でその予約から再開します。登録完了までは購読数の枠を確保し、同じキーを重複発行したり、削除済みの購読を復活させたりしません。
-
-検証用管理グループの共通購読数上限はconfigの`portalApiKeys.verificationMaxSubscriptions`から内部`maxSubscriptions`へ適用し、初期値は製品ごとに5件です。通常発行キーのカタログ上限とは別です。作成中、停止中、削除処理中も含め、削除が確定するまで枠を維持します。この値は購読数の制限であり、利用金額の上限ではありません。現在の購読は金額上限なしの`budgetMode: "unlimited"`として保存します。JPY・月次リセットによる金額上限の指定は、Gateway側の金額集計・停止処理を実装するまでは提供しません。
-
-処理は次の順で進みます。
-
-1. 管理VMに一時的な組み込み`AcrPush`を付与し、公開ソースだけを渡してイメージを作成します。非公開ACRの`portal`へ登録し、digestを取得します。一時ロールとRun Commandは回収します。
-2. 共通SQLサーバーへPortal専用DBを作成・更新し、`caj-<環境>-<製品>-psql`を配備します。購読管理用のIDに、購読の操作と製品の参照に必要なカスタムロールを、対象APIM単体の範囲で割り当てます。
-3. この手動ジョブを配備スクリプトが起動し、`sql/`のDDL、管理グループとAPI正本から生成した製品承認、検証用購読の作成・台帳登録、実行用IDのSQL権限を設定します。SQL初期化に成功するまでアプリ本体は更新しません。
-4. Microsoft認証の戻り先には、後述の限定WAF設定を適用します。この段階ではPortalの稼働中backendを切り替えません。
-5. 既存の`ca-<環境>-<製品>-portal`をdigest指定のイメージへ更新し、購読管理と照会の専用アプリを配備します。HTTPS受付、認証用環境変数とKey Vault参照を設定し、今回のイメージを使う正常なリビジョンの起動を待ちます。
-6. 今回のイメージと正常なリビジョンを確認し、App GatewayのHTTPS443設定、Firewall CAへの信頼、認証不要の `/api/health` と200判定を読み戻します。公開URLでヘルス応答を確認します。Readinessでは `/api/health/ready` から実行IDによるSQL照会と専用鍵の準備も確認します。
-7. Gatewayの固定ポリシーとKey Vault参照を確認して、購読プロファイルの参照を有効化します。終了コード`0`と、今回更新された`.local/<environment>/state/portal-deployment.json`の`status: deployed`・`publicHealthVerified: true`を確認し、[第13章の疎通確認](13-verify-deployment.md)へ進みます。
-
-SQL初期化ジョブはスケジュール実行しません。テーブル初期化をアプリの起動処理にも含めません。再配備では既存データを維持し、未適用のマイグレーションを適用します。
-
-本人接続の保存用`010_connection_sessions.sql`も同じSQL初期化工程で適用します。`portalConnectionState`に暗号化した本人接続・認証取引・日次更新候補を保存し、実行IDへSELECT・INSERT・UPDATEだけを許可します。Readinessでも010と表の利用可否を確認します。Graph用に別DBや新しいジョブを用意する必要はありません。対象環境へはGateway、Portalの順に配備し、12属性の実取得と本人接続の継続利用を別途確認します。
-
-このジョブにはスキーマ管理IDと購読管理用IDを割り当てます。SQL初期化はスキーマ管理ID、APIMのメタデータ確認と購読作成は購読管理用IDを使います。
-
-アプリ更新工程では`caj-<環境>-<製品>-psync`も配備します。このジョブは15分ごとに、台帳にある所有グループのうち観測が古いものを最大100件照合します。Portalと同じイメージを使い、SQLには購読管理用ID、Graphの認証にはPortal用の署名IDを使います。Entra全体のメンバー名簿は複製せず、購読の停止・削除・メール通知も行いません。総グループ数や通信状況によって全件の照合に複数回必要なため、各行の確認日時を参照します。
-
-別の構築記録を使う場合は`--state-file <path>`、Azureに記録された完了済みのコア構築出力を読む場合は`--deployment-name <構築名>`を指定します。作成済みのPortalイメージを使う場合は`--image-digest sha256:<digest>`を指定できます。
-
-### App Gatewayのバックエンド
-
-新規構築前に、[Firewall TLS検査の準備](../reference/config-options.md#firewallのtls検査を準備する)を行います。初期Container Appは配備先を確保する仮イメージです。認証不要の `/api/health` はPortal本体の配備後に使用でき、その時点でApp Gatewayのバックエンドの正常性を確認します。
-
-既存のHTTPバックエンドは、CoreまたはPortalの再配備前に[既存環境の切替計画](../operations/platform-settings.md#appgw後段のtls検査を検証する)を確認してください。
-
-## SQLと秘密情報
-
-### 通常発行キー・会社情報
-
-通常のキーは、リリース済みAPIをまとめたAPIM製品`released-apis`に固定します。Gateway配備資材がこの製品を作り、API定義の`released: true`に従って関連付けます。`false`へ変更したAPIは公開製品から外し、API本体と既存の検証用製品は維持します。独自APIの未指定は`false`です。Graphの本人接続に必要な認証開始・完了確認等の補助APIも、同じキーで使えるよう配備資材で関連付けます。
-
-初回はCoreと証明書登録を済ませ、Gateway → Portalの順で個別配備します。構築済み環境では個別コマンドで更新でき、Portalからの製品選択・製品作成は不要です。`model-users`・`pii-users`・`connection-users`等の検証用製品と宣言済みの検証用購読は保持します。
-
-発行フォームでは、所有グループ・用途名に加えて、クライアント種別・会社・連絡先メールを必須入力とします。クライアント種別はスクラッチ開発システム、SaaS、OSSベース、ローコード／ノーコード、その他です。システム／サービス／プロダクト名とチーム名は任意です。連絡先は担当者が交代しても連絡できるメーリングリストを推奨します。これらの情報は統計・棚卸に使い、会社によるワークスペース分割やキーの所有権判定には使いません。
-
-会社は`/<言語>/company-administration`から、基盤管理グループの現在のメンバーだけが登録・改名・選択停止できます。paramsや構築時の会社seedは使用しません。最初に管理者が実際の会社を登録します。選択停止は新規発行の候補から外す操作であり、既存キーを失効させません。更新は読込時の版と照合し、並行編集は409で検出します。
-
-新規発行するAPIM購読の表示名は、選択した会社のマスタ名を使用します。APIM側の上限に合わせ100文字までとし、Portal側では会社の正式名と用途名を別々に保持します。既存購読の表示名は自動で一括変更しません。制限編集画面では数値欄の上下限を常時表示します。
-
-Model Gatewayの実行パネルでは、現在の所属グループで利用できるキーから選択して実行します。候補は有効な台帳と対象APIを含む製品に限定し、実行時にも現在の所属・APIMの有効状態・製品/API関連を再確認します。ブラウザーへ渡すのは台帳IDと表示情報だけです。モデル実行には選択キーを使用し、Portal共通の組み込みキーへは代替しません。
-
-`008_key_usage_companies.sql`が会社マスタ`portalCompany`・会社操作監査`portalCompanyAudit`とキーの利用元属性を追加します。既存の検証用キーは属性を推測せずNULLのまま移行します。会社の物理削除は提供せず、参照と監査を保持します。Portal配備のSQLジョブにこの移行と最小権限を含め、実行用IDにはDDLや監査の変更・削除を許可しません。
-
-Azure SQLは公開アクセスを無効にし、Private EndpointとEntra認証を使います。SQL初期化ジョブはスキーマ管理IDを使います。Portal本体、購読管理、照会には別々のSQL権限を付与し、購読台帳・監査の書込みは購読管理用IDに限定します。Graphによる観測と適格グループの初回登録には、限定ストアドプロシージャの実行権限を付けます。 [実行IDごとのSQL権限](../../apps/portal/scripts/auth-runtime-grants.ts)
-
-APIキー管理用のカスタムロールは、対象APIMの購読操作と製品参照を許可します。通常のキー管理では、アプリ側が承認されたグループ・製品と、Portalから発行した購読または配備正本で明示採用した検証用購読を照合します。APIM全体の購読一覧からの自動取り込みは行いません。 [購読管理ロールの定義](../../apps/portal/deploy/api-keys.bicep)
-
-`007_apim_subscription_identity.sql`は`portal-UUID`形式の内部IDを維持したまま、実際の`apimSubscriptionId`との対応を追加します。APIM操作は実ID、所有権・利用制限・既存の外部キーは内部IDを使います。配備による初回登録は`creationSource: "deployment"`・`createdByObjectId: NULL`とし、架空の個人OIDを作らず`portalApiKeyImportAudit`へ実行ごとの`runId`・メタデータのSHA-256要約・APIMスコープを記録します。秘密キーは保存しません。
-
-登録時の利用制限は無制限です。再配備では処理途中の`creating`予約だけを再開し、登録完了済みの対応は読み飛ばします。所有グループの移管、削除済み状態、設定した利用制限、既存の監査を維持し、削除済みの検証用購読を再作成・復活させません。
-
-## ローカルSQLへの既存購読登録
-
-この節はローカル開発・試験専用です。通常のAzure配備では前述のSQL初期化ジョブが購読を準備するため、この手動importは使いません。ローカルSQLとAzure SQLは同期しません。
-
-既存APIMのID・製品スコープ・状態を確認したメタデータマニフェストを用意すれば、ローカルの管理者用SQL設定で台帳登録だけを試せます。このCLIはAPIMへ接続せず、新しいキーを発行しません。先にローカルSQLのマイグレーションと、同じテナントの基盤管理グループ・製品承認を準備します。
-
-```json
-{
-  "schemaVersion": 1,
-  "tenantId": "<利用者EntraテナントID>",
-  "platformGroupId": "<基盤管理グループObject ID>",
-  "apimResourceId": "/subscriptions/<AzureサブスクリプションID>/resourceGroups/<サービスRG>/providers/Microsoft.ApiManagement/service/<APIM名>",
-  "subscriptions": [
-    {
-      "subscriptionId": "<確認済みAPIM購読ID>",
-      "productId": "model-users",
-      "displayName": "基盤管理用Model Gateway検証",
-      "state": "active",
-      "scope": "/subscriptions/<AzureサブスクリプションID>/resourceGroups/<サービスRG>/providers/Microsoft.ApiManagement/service/<APIM名>/products/model-users"
-    }
-  ]
-}
-```
-
-リポジトリルートで、絶対パスの`DEPLOY_LOCAL_DIRECTORY`と同じ環境の`DEPLOY_PARAMS_FILE`を設定し、最初は`--execute`を付けず計画を確認します。マニフェストは`.local/<environment>/evidence/`へ保存します。`--apim-resource-id`には配備先のAPIMリソースIDを独立に指定し、マニフェストの対象と照合します。`PORTAL_APIM_RESOURCE_ID`が設定済みなら、この引数は省略できます。
-
-```sh
-python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" --admin -- \
-  node --conditions=react-server --experimental-strip-types \
-  scripts/import-local-api-key-subscriptions.ts \
-  --manifest "$DEPLOY_LOCAL_DIRECTORY/evidence/portal-subscription-import.json" \
-  --apim-resource-id '<配備先APIMリソースID>'
-```
-
-計画が正しければ同じコマンドの末尾に`--execute`を追加します。変更先はローカルSQLだけで、登録完了済みの台帳対応は読み飛ばします。購読キーやトークンをマニフェストへ含めると検証エラーになります。
-
-## 実行時の秘密・権限
-
-Portalや購読照会は、用途ごとのマネージドIDでKey Vaultを参照します。秘密値をイメージ・`params`・ブラウザーへ埋め込みません。
-
-- `core-portal-auth-secret`：Better Auth専用の署名鍵。初回だけ作成し、存在する場合は更新しません。
-- `core-subscription-profile-key`：APIMから購読照会アプリへの専用鍵。APIMと照会アプリの実行IDへ、このsecretを読むための権限を割り当てます。
-
-Better Auth用の新規署名鍵は端末の環境別領域に保護保存してからsecureパラメーターでKey Vaultへ渡します。`portal/runtime.env`はローカル検証専用です。
-
-配備を実行するIDには、サービスRGへの配備、既存管理VMでのRun Command、対象マネージドIDの割当、対象ACR・Key Vaultシークレットへの必要なロールの割当、購読管理用のカスタムロールの定義と対象APIMへの割当、既存App Gatewayの設定確認に必要な権限が必要です。利用者のPortalログイン権限は別に扱います。
+PortalのサインインはOIDCを使います。Gateway向けのアクセストークンは本人の同意済み `Gateway.Invoke` を使って別に取得します。PortalはKey Vaultにある非エクスポート鍵でEntraのクライアントアサーションへ署名します。専用DBに利用者とログインセッションを保存し、試用資格情報は専用のKey Vault鍵で暗号化してサーバー内に保持します。文書・音声などの業務本文はPortal DBへ保存しません。[基盤の本文監査](../reference/apim-policy-catalog.md)を参照してください。
 
 ## GitHub Actions
 
@@ -255,75 +58,11 @@ OIDCのfederated credentialは`repo:<owner>/<repository>:environment:portal`を�
 
 ## 受入確認
 
-### 購読ごとの保護上限
+1. 許可されたテナントの利用者でサインインし、API試用時に同一人物のBearer認証が完了することを確認します。
+2. JSON・SSE・音声・MCPの代表的な試用を行います。Graphでは本人のプロフィールを取得し、追加認証の要求がある場合は同じアカウントで再試行します。
+3. 別のアカウント、期限切れの取引、ログアウト後の利用が拒否されることを確認します。
+4. [第13章の受入](13-verify-deployment.md)へ進みます。購読キーの例外経路も検証する場合は、基盤管理者が発行した限定スコープのキーで外部クライアントから確認します。
 
-Portal配備がSQLの`003_api_key_limits.sql`と専用のKey Vault鍵`core-subscription-profile-key`を準備し、照会アプリの内部URLと鍵参照をAPIMへ設定します。ログイン用の鍵やEntraアプリのシークレットは流用しません。
+## ローカル起動と撤去
 
-APIキー管理画面のキー詳細から「利用制限の設定」を開きます。初期値は全項目無制限です。要求回数と期間（1〜300秒）、対応するLLMの毎分トークン数、期間内トークン数を個別に設定できます。設定の保存はSQLの行と監査の更新だけで、APIMのXMLや購読キーを書き換えません。競合した更新は409で停止し、最新値を読み直します。
-
-APIMは検証済み購読IDを使って専用の内部APIへ照会し、正常な応答を30秒キャッシュします。キャッシュのない状態でSQL・通信・認証が失敗した場合は503を返し、無制限へ切り替えません。Portal管理外の既存購読は、SQL照会に成功した場合だけ未設定の無制限として扱います。全体ポリシー`service.xml`の再生成は不要です。
-
-[SQL購読profileのsnippet](../../apps/api-gateway/policies/snippets/quota/subscription-profile/README.md)はXMLと同名C#で管理し、キャッシュポリシーの制約によりAPIMのfragmentリソースにはせず、Gateway配備時に各APIのXMLへ展開します。購読設定の変更では再展開しません。[core-rate-limit](../../apps/api-gateway/policies/fragments/quota/core-rate-limit/README.md)が取得済みデータで回数制限を適用し、[core-token-limits](../../apps/api-gateway/policies/fragments/quota/core-token-limits/README.md)は対応するHTTP APIだけから参照します。取得不備503の直前に、既存監査へpolicy-error／LIMIT_PROFILE_UNAVAILABLE／503を記録します。取得応答本文や例外詳細は記録しません。
-
-トークン制限は現在、Foundry OpenAIのHTTP Chat Completions / stateless Responses操作が対象です。入力と出力の合計を扱い、SSEはAPIMの推計を含みます。画像・音声・Realtime・Embedding等へトークン制限を推測適用しません。期間の境界はUTCで、月次は毎月1日00:00 UTC（日本時間09:00）です。金額上限の保証ではありません。
-
-保存済み表示はSQLへの保存成功を示し、Azureの実際の制限適用まで検証したという意味ではありません。Gateway→Portalの配備後、少数のリクエストで無制限・設定した上限・主副キー共通のカウンターを確認してください。観測手順と読み取り専用KQLは[購読単位の利用量観測](../testing/subscription-limits.md)にあります。
-
-### 認証とキー管理
-
-- 公開URLを未認証で開くとカタログを表示せずサインイン画面へ移動する。
-- Microsoft認証後はカタログへ戻り、再読み込みでログインを維持する。
-- ログアウト後はカタログを再び保護する。
-- `/api/health`がHTTP 200と`{"status":"ok","service":"egakumi-portal"}`を返し、App GatewayのbackendがHealthyになる。
-- SQL初期化ジョブが成功し、Portal用DBとCM用DBが分離されている。
-- APIキー管理画面で、本人が所属する承認済みグループだけを選択できる。
-- グループ所有の購読を発行・表示・停止／再開・棚卸・削除でき、別グループの利用者からは参照できない。
-- 対象外接頭辞・セキュリティグループ以外の候補は、URLや本文でIDを直接指定しても発行・移管先に指定できない。
-
-### API試用とTool GatewayのGraph本人接続
-
-- 各試用画面で購読キーと「本人のアクセストークン」を選び、同じGateway APIで受理されることを確認します。
-- Bearer試用で追加のEntra認証を完了し、同じ本人に結び付くこと、失効後に再認証へ戻ること、Portalログアウトで保存した試用状態を使えなくなることを確認します。
-- GraphはBearerのOBOと購読キーのCM接続を別々に確認します。条件付きアクセスが追加認証を要求した場合は、同じ本人への再認証が完了してから再試行します。
-
-GatewayのGraph APIは`graph-profile-v1.json`の`$select`で、本人の表示名・名・姓・UPN・ID・役職・会社・部署・従業員ID・勤務先所在地・メール・アカウントの有効状態の12項目に固定します。Portalで任意のGraph URLや取得項目を入力させません。GatewayのAPI定義を更新してからPortalを配備します。
-
-`/<言語>/tools`のMicrosoft Graph /meカードからグループ所有の有効な購読を選んで実行します。BFFがGraphへ先にアクセスし、接続が必要なときだけ認証URLを返します。同じ本人のMicrosoft認証を完了すると、BFFで完了状態と本人を確認してから読み取りを一度再開します。12属性と実際のJSONを確認してください。null・未返却の属性は「－」、アカウントの有効状態がfalseの場合は「無効」と表示します。継続利用では保存済み本人接続を使い、認証画面を再表示しません。
-
-キー・本人接続セッション・pollSecret・日次更新候補がブラウザーの応答へ含まれないこと、本人が一致しない場合にプロフィールを返さないこと、認証待ちでパネルを閉じると照会が停止することも確認します。条件付きアクセスによる拒否を自動認証ループへ変換しません。詳細は[ローカル確認手順](../testing/portal-local-auth.md#5-tool-gatewayのgraph確認)と[共通クライアント契約](../reference/connection-session-clients.md)を参照してください。
-
-保存状態はAES-256-GCMで暗号化し、`core-portal-auth-secret`（実行時の`BETTER_AUTH_SECRET`）から用途を分けて鍵を導出します。この秘密を更新すると既存のGraph暗号文は復号できなくなるため、管理者による保存状態の初期化後に本人の再認証が必要です。画面の再実行だけでは復旧せず、暗号化状態の不正は自動破棄せず利用を停止します。CMのMicrosoftトークンをPortalが保管する構成には変更しません。
-
-### 所有グループの変更と管理ダッシュボード
-
-キー詳細の所有者変更では、移管元の現在の所属メンバーが、環境の対象条件に一致するセキュリティグループへ直接変更できます。移管先への所属や承認は要求しません。候補には「所属中／未所属」を表示し、確認画面に移管元・移管先の名称とObject IDを出します。未所属の移管先へ移すと、以後そのキーをPortalで参照・管理できなくなることを明示します。変更は移管先の製品承認と購読数上限を守り、変更元・変更先・操作者・日時を同じSQLトランザクションで監査へ残します。
-
-所有者変更はSQL台帳の変更で、APIM購読ID・主キー・副キー・製品・利用制限は維持します。移管元の人が既に取得したキー値は失効しないため、失効が必要なら別途キーを再生成・切替します。
-
-`/<言語>/api-key-administration`は、`platformGroupId`で指定した基盤管理グループの現在のメンバーだけに表示します。サイドメニューを隠すだけでなく、ページとAPIの両方で認可します。登録済み所有グループの正常・削除・対象外・確認不能、影響する購読数、各行の最終確認日時を確認できます。Graphの403・429・通信障害をグループ削除とは扱いません。ダッシュボードの再照合も同じ管理グループに限定します。グループの廃止だけを理由に購読を自動停止・削除することはありません。
-
-ログインは設定した単一Entraテナントを使用します。会社マスタはキーの利用元属性であり、認証テナントやワークスペースを分離する設定ではありません。グループ操作は前述のGraphアプリケーション権限を使います。
-
-この確認でGraph等の実API呼び出しが完了したという意味にはなりません。購読キーの管理と、CMによる本人のGraph接続は別に検証します。
-
-`/api/health`はログイン不要のプロセス稼働確認用APIです。応答に`Cache-Control: no-store`を付け、SQLへのアクセスや秘密情報の返却は行いません。
-
-Microsoftから返る認証コードには、WAFのSQL文字列検出で誤検知される文字列が含まれることがあります。現行資材の`wafpol-p-auth-<ID>`は共通WAF設定を引き継ぎ、Portalログインの`/api/auth/callback/microsoft`とAPI試用の`/api/api-auth/callback`に適用します。この2つの完全パスの`code`引数の値だけを、規則`942430`・`942440`・`942450`から除外します。`<ID>`はparamsの`services.apimInstanceId`に保存した構築識別子です。その他の画面・APIと、他の規則・引数は通常どおり検査します。認証コードはアプリ側でもstate・PKCE・Microsoftとのコード交換で検証します。
-
-HTTPSのセッションCookie値にも不透明な文字列が含まれるため、Portal HTTPS listener専用の`wafpol-p-base-<ID>`を使います。正本`apps/portal/waf-session-exclusions.json`に従い、`__Secure-egakumi.portal.session_token`の値を規則942450だけから除外します。URI別policyはlistener側のpolicyを継承しないため、上記callbackとPortalのデータ欄policyにも同じ除外を合成します。共通WAFの本文検査・サイズ制限・ログのマスク・customRulesを保ち、Gateway側のpolicyや他のCookie・規則は変更しません。
-
-## 購読台帳からAPIMへの同期
-
-Portal配備で`009_subscription_sync.sql`を適用します。購読を同期するサービスは、この配備で作成・利用したAzure SQLのサーバー名・DB名を固定接続先として使います。既存環境で同期機能を更新するときも、この章の個別配備コマンドを使用します。
-
-配備後、基盤管理グループのメンバーで`/<言語>/subscription-sync`を開きます。接続先が意図したAzure SQLとAPIMであることを確認し、差分を選択して確認画面から同期します。最大10件ずつ、作成・更新・削除をSQLの台帳へ一致させます。SQL未登録のAPIM購読も削除します。`master`と処理途中のSQL行は対象外です。再作成時のキー変更、activeへの再有効化、削除を確認画面で確認してください。キー値は画面・監査で取得しません。
-
-反映後に一致していることと、各件の結果・監査を確認します。失敗時は最新一覧を取得し、反映済みの操作を推測して繰り返さないでください。非同期削除待ちは未完了として表示します。ローカルSQLを使う画面の同期はサーバー側で禁止しており、ローカルとAzureのSQLデータを転送・統合する処理はありません。
-
-## ローカル開発と撤去（開発環境）
-
-ローカルSQL・localhostのEntra戻り先・環境別の`portal/runtime.env`の作成とlauncherは[ローカル認証テスト](../testing/portal-local-auth.md)を使います。実装・検証コマンドは[PortalのREADME](../../apps/portal/README.md)を参照してください。
-
-コア基盤全体の`azd down`は同じRG内のPortal DB・初期化ジョブ・Container App・ACRも撤去対象にします。Portalだけの再配備では共有リソースや既存DBを削除しません。
-
-公開版のActionsファイルは無効な `.yml.example` テンプレートです。自身のrunner・Environment・OIDCを設定してから必要なファイルを `.github/workflows/` へコピーします。[設定上の注意](../../.github/workflow-templates/README.md)を参照してください。
+[ローカル認証テスト](../testing/portal-local-auth.md)には、開発用Entraの戻り先、ローカルSQL、保護された環境設定と起動方法を記載しています。基盤全体の `azd down` は同じリソースグループ内のPortal DB、初期化ジョブ、Container App、ACRも撤去対象にします。

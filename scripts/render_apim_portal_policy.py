@@ -32,7 +32,7 @@ METHODS = {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 MAX_APIM_PATH_SEGMENT_LENGTH = 1024
 MAX_APIM_POLICY_BYTES = 512 * 1024
 CLAUDE_AUDIT_PATHS = {"/anthropic/v1/messages", "/anthropic/v1/messages/count_tokens"}
-PORTAL_POLICY_FIELDS = "apiId keyProductId backendId backendService backendAuthentication responseTransport keyFallbackRate operations"
+PORTAL_POLICY_FIELDS = "apiId keyProductId backendId backendService backendAuthentication responseTransport operations"
 
 
 def require_fields(data, fields):
@@ -140,10 +140,6 @@ def render_portal_policy(configuration):
     body_audit = configuration.get("bodyAudit", False)
     if type(body_audit) is not bool or (body_audit and transport != "rest"):
         raise ValueError("APIM body submission requires a buffered REST policy")
-    rate = configuration["keyFallbackRate"]
-    require_fields(rate, "calls renewalPeriodSeconds")
-    require_integer(rate["calls"], 1, 1000000)
-    require_integer(rate["renewalPeriodSeconds"], 1, 300)
     auth = configuration["backendAuthentication"]
     backend_auth = backend_auth_xml(auth)
     routes, control = operation_settings(configuration["operations"])
@@ -165,14 +161,11 @@ def render_portal_policy(configuration):
         "API_SETTINGS": base64.b64encode(settings.encode()).decode(),
         "API_ID": configuration["apiId"], "KEY_PRODUCT_ID": configuration["keyProductId"],
         "BACKEND_ID": configuration["backendId"], "BUFFER_RESPONSE": str(transport == "rest").lower(),
-        "RATE_CALLS": str(rate["calls"]), "RATE_INTERVAL": str(rate["renewalPeriodSeconds"]),
     }.items():
         xml = xml.replace(f"__{key}__", value)
     rate_error = snippet("rate-limit-error").replace("__GATEWAY_TELEMETRY_XML__", '<include-fragment fragment-id="core-gateway-telemetry" />')
-    core_id = "context.LastError.PolicyId == &quot;core-rate-limit&quot;"
-    rate_error = rate_error.replace(core_id, f"({core_id} || context.LastError.PolicyId == &quot;manual-key-rate-limit&quot;)")
     for marker, block in (("REGISTERED_ROUTES_XML", routes), ("BACKEND_AUTH_XML", backend_auth),
-                          ("SUBSCRIPTION_PROFILE_XML", snippet("subscription-profile")), ("RATE_LIMIT_ERROR_XML", rate_error)):
+                          ("RATE_LIMIT_ERROR_XML", rate_error)):
         xml = insert_block(xml, f"__{marker}__", block)
     for stage in ("snapshot", "request", "response"):
         block = (f'<set-variable name="gatewayEvidenceDirection" value="{stage}" />\n'

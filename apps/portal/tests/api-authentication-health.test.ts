@@ -17,11 +17,7 @@ test("試用OAuthの準備失敗はPortal本体を停止させず、同時プロ
   const oauth = new URL("../app/api/health/api-auth/route.ts", import.meta.url).href;
   const imports: Record<string, string> = {
     "next/server": "export const connection=async()=>{}",
-    "@/lib/api-keys/gateway-profile": "export const getGatewayProfileSettings=()=>({tenantId:'example'})",
-    "@/lib/api-keys/limit-repository": "export const getApiKeyLimitRepository=()=>({getGatewayProfile:async()=>{}})",
-    "@/lib/company-administration/repository": "export const getCompanyRepository=()=>({assertReady:async()=>{}})",
-    "@/lib/connection-session/store": "export const assertConnectionSessionStoreReady=async()=>{}",
-    "@/lib/subscription-service/client": "export const subscriptionManagerOrigin=()=>null",
+    "@/lib/api-auth/store": "export const getApiAuthStore=()=>({assertReady:async()=>{}})",
     "@/lib/api-auth/settings": `export const apiAuthenticationEnabled=()=>${access}.enabled`,
     "@/lib/api-auth/service": `export const scheduleApiAuthCleanup=()=>{${access}.cleanup++};
       export const getPortalApiAuthentication=()=>({assertReady:async()=>{${access}.probes++;throw new Error('synthetic key failure')}})`,

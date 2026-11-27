@@ -30,7 +30,7 @@ from .configuration import API_NAME, load_configuration
 from .grpc_lifecycle import apim_name_matches
 from .apim_naming import apim_instance_id, apim_name
 from .credential_pools import resource_names
-from .portal_resources import resource_names as portal_resource_names, subscription_app_names
+from .portal_resources import resource_names as portal_resource_names
 
 
 class CleanupError(RuntimeError):
@@ -986,15 +986,6 @@ def _validate_portal_record(record: Any, targets: dict, configuration: dict) -> 
     }
     if any(not _same(record.get(key), value) for key, value in expected.items()):
         _error("portal-state-mismatch", "PortalのCA・CAEの配備出力が今回の命名とsvc RGに一致しません。", targets["applicationId"])
-    prefix = _rg_id(configuration, 'svc') + '/providers/Microsoft.App/containerApps/'
-    for key, name in subscription_app_names(configuration).items():
-        if key not in record:
-            continue
-        service_id = prefix + name
-        service = record[key]
-        if (not isinstance(service, Mapping) or not _same(service.get('name'), name)
-                or not _same(service.get('id'), service_id)):
-            _error('portal-state-mismatch', '購読サービスの配備記録が今回の固定IDに一致しません。', service_id)
 
 
 def _portal_resource_owner(configuration: dict, targets: dict, kind: str, resource: Mapping) -> None:
@@ -1462,19 +1453,14 @@ def _credential_apps_preflight(configuration, state, transport, environment):
 
 
 def _portal_children_preflight(configuration, targets, transport):
-    """Portalのジョブと購読サービスを、共用CAEより先に解放する。"""
+    """PortalのSQL初期化ジョブを、共用CAEより先に解放する。"""
     prefix = _rg_id(configuration, 'svc') + '/providers/Microsoft.App/'
-    children = [('jobs', name) for name in portal_resource_names(configuration).values()]
-    children.extend(('containerApps', name) for name in subscription_app_names(configuration).values())
-    result = []
-    for kind, name in children:
-        resource_id = f'{prefix}{kind}/{name}'
-        resource = _expect_read(_request(transport, 'GET', resource_id, API['containerApps']), resource_id)
-        if resource is None:
-            continue
-        _app_resource_owner(configuration, resource_id, targets['environmentId'], resource, code='portal-owner-mismatch')
-        result.append(resource_id)
-    return result
+    resource_id = prefix + 'jobs/' + portal_resource_names(configuration)['schemaJob']
+    resource = _expect_read(_request(transport, 'GET', resource_id, API['containerApps']), resource_id)
+    if resource is None:
+        return []
+    _app_resource_owner(configuration, resource_id, targets['environmentId'], resource, code='portal-owner-mismatch')
+    return [resource_id]
 
 
 def _audit_preflight(configuration, state, portal, transport):
@@ -1745,9 +1731,7 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
               "modelDeployments": models,
               "apiManagement": apim,
               "credentialApplications": credential_apps,
-              "portalJobs": [resource for resource in portal_children if resource.rsplit('/', 2)[-2] == 'jobs'],
-              "portalSubscriptionApplications": [resource for resource in portal_children
-                                                 if resource.rsplit('/', 2)[-2] == 'containerApps'],
+              "portalJobs": portal_children,
               "portal": portal,
               "management": management,
               "activityDiagnostic": {"resourceId": diagnostic_id, "status": "absent", "httpStatus": 404}}

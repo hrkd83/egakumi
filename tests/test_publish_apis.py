@@ -18,7 +18,6 @@ import api_publication as publish
 from deployment.helpers.configuration import build_bicep_configuration
 from deployment.helpers.apim_authentication import render_service_policy, validate_common_authentication_policy
 from deployment.helpers.apim_common_authentication import render_common_authentication_fragments
-from deployment.helpers.subscription_profiles import DEFAULTS as PROFILE_DEFAULTS, PREFIX as PROFILE_PREFIX
 import render_apim_policy
 from standard_apis import API_DEFINITION_DIRECTORY, load_api_definitions
 
@@ -224,9 +223,6 @@ class PublicationTests(unittest.TestCase):
             self.inventory[ids["apim"] + "/namedValues/" + name] = ok({"properties": {
                 "displayName": name, "secret": False, "value": value}})
         # 通常の再配備fixtureでは接続初期化済み。初回作成は専用ケースで検証する。
-        for suffix, value in PROFILE_DEFAULTS.items():
-            self.inventory[ids["apim"] + "/namedValues/" + PROFILE_PREFIX + suffix] = ok({"properties": {
-                "displayName": PROFILE_PREFIX + suffix, "secret": suffix == "secret", "value": value}})
         self.inventory[identity_id] = ok({"id": identity_id, "tags": self.tags, "properties": {"clientId": client_id}})
         policy = self.plan["firewall"]["policyId"]
         self.inventory[policy] = ok({"id": policy, "tags": self.tags})
@@ -257,37 +253,6 @@ class PublicationTests(unittest.TestCase):
         self.assertNotIn("l7IngressSecret", params)
         self.assertNotIn("l7IngressIdentityClientId", params)
         self.assertNotIn("realtimeTicketIdentityClientId", params)
-
-    def test_first_publication_initializes_missing_profile_connection_before_policy_deployment(self):
-        """未構成の照会を無効で用意し、既存のAPI公開と別の所有範囲へ広げない。"""
-        for suffix in PROFILE_DEFAULTS:
-            self.inventory[self.plan["apimId"] + "/namedValues/" + PROFILE_PREFIX + suffix] = ok({}, 404)
-        transport = Transport(self.inventory)
-        publish.execute_plan(self.config, self.state, self.plan, self.template, transport, sleep=lambda _: None)
-        writes = [call for call in transport.calls if call[0] == "PUT" and "/namedValues/" + PROFILE_PREFIX in call[1]]
-        self.assertEqual(len(writes), 3)
-        deployment_index = next(index for index, call in enumerate(transport.calls)
-                                if call[0] == "PUT" and call[1].split("?")[0] == self.plan["deploymentId"])
-        for call in writes:
-            self.assertLess(transport.calls.index(call), deployment_index)
-            self.assertEqual(call[3], {"If-None-Match": "*"})
-        enabled = self.inventory[self.plan["apimId"] + "/namedValues/" + PROFILE_PREFIX + "enabled"]
-        self.assertEqual(enabled["body"]["properties"]["value"], "false")
-
-    def test_gateway_republication_preserves_active_portal_profile_connection(self):
-        """Gateway公開ではPortalが所有するURL・KV参照・有効化状態を上書きしない。"""
-        root = self.plan["apimId"] + "/namedValues/" + PROFILE_PREFIX
-        self.inventory[root + "enabled"] = ok({"properties": {"value": "true"}})
-        self.inventory[root + "url"] = ok({"properties": {
-            "value": "https://ca-test-fixture-portal.private.example/api/internal/subscription-profile"}})
-        self.inventory[root + "secret"] = ok({"properties": {"secret": True, "keyVault": {
-            "secretIdentifier": "https://kv-test-fixture.vault.azure.net/secrets/core-subscription-profile-key"}}})
-        before = {suffix: copy.deepcopy(self.inventory[root + suffix]) for suffix in PROFILE_DEFAULTS}
-        transport = Transport(self.inventory)
-        publish.execute_plan(self.config, self.state, self.plan, self.template, transport, sleep=lambda _: None)
-        self.assertEqual({suffix: self.inventory[root + suffix] for suffix in PROFILE_DEFAULTS}, before)
-        self.assertFalse(any(method != "GET" and "/namedValues/" + PROFILE_PREFIX in path
-                             for method, path, _, _ in transport.calls))
 
     def renamed_apim_state(self, name):
         """APIM 本体の出力だけを切り替え、他サービスを変更しない配備記録を作る。"""
@@ -1274,7 +1239,7 @@ class PublicationTests(unittest.TestCase):
         transport = Transport(self.inventory)
         phases = []
         summary = {"status": "complete", "deletedApiIds": [], "deletedProductIds": [],
-                   "deletedSubscriptionIds": [], "skipped": []}
+                   "skipped": []}
 
         def finalize(*args):
             phases.append("catalog")

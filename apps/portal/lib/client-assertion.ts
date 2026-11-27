@@ -60,7 +60,7 @@ export function createClientAssertion(tenantId: string, clientId: string, certif
   };
 }
 
-/** 定期Graph jobも同じ固定鍵参照と署名主体を読みます。 */
+/** Portalの認証に使う固定鍵参照と署名主体を読みます。 */
 export function readCertificateAuthentication(environment: Readonly<Record<string, string | undefined>> = process.env): CertificateAuthentication | undefined {
   if (!environment.PORTAL_AUTH_KEY_ID && !environment.PORTAL_AUTH_CERTIFICATE_THUMBPRINT) return undefined;
   return validateCertificateAuthentication({ keyId: environment.PORTAL_AUTH_KEY_ID ?? "",

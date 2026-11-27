@@ -13,11 +13,10 @@ GENERATION = 'egakumi-portal-api-auth-generation'
 API_VERSION = '2024-11-01'
 
 
-def deployment_settings(config, portal, identity_scope, *, management=False):
+def deployment_settings(config, portal, identity_scope):
     """API試用のscopeと用途専用の読取IDを照合する。"""
     settings = config['portal'].get('apiAuthentication', {})
-    trial_enabled = settings.get('enabled') is True
-    if not (trial_enabled or management):
+    if settings.get('enabled') is not True:
         return {}
     authentication = config['portal']['authentication']
     gateway = config['gateway']['authentication']['entra']
@@ -27,7 +26,7 @@ def deployment_settings(config, portal, identity_scope, *, management=False):
             or gateway['requiredScope'] != 'Gateway.Invoke'
             or not isinstance(identity, dict) or str(identity.get('id', '')).casefold() != expected.casefold()):
         raise ValueError('Portal API authentication requires the dedicated identity and the Gateway API registration')
-    return {'identity': identity, 'scope': 'api://' + gateway['audience'] + '/Gateway.Invoke' if trial_enabled else '',
+    return {'identity': identity, 'scope': 'api://' + gateway['audience'] + '/Gateway.Invoke',
             'previousKeyVersions': settings.get('previousKeyVersions', [])}
 
 

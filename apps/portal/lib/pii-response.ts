@@ -4,7 +4,7 @@ import { ModelResponseError } from "./model-response.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
 import { piiResultSchema, type PiiResult } from "./pii-contract.ts";
 
-const errorCodes = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable", "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable"]);
+const errorCodes = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiAuthenticationRequired", "ApiAuthenticationBusy", "ApiAuthenticationUnavailable"]);
 
 /** 固定エラー以外を破棄し、元テキストや上流の診断文を表示しません。 */
 function failure(value: unknown): TextGenerationFailure {

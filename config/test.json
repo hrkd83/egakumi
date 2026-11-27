@@ -334,23 +334,6 @@
     "wafRequestBodyInspectLimitInKb": 2000,
     "wafFileUploadLimitInMb": 4,
     "realtimeControlEnabled": true,
-    "rateLimits": {
-      "user": {
-        "enabled": false,
-        "calls": 60,
-        "renewalPeriodSeconds": 60
-      },
-      "subscriptionKey": {
-        "enabled": false,
-        "calls": 60,
-        "renewalPeriodSeconds": 60
-      },
-      "application": {
-        "enabled": false,
-        "calls": 60,
-        "renewalPeriodSeconds": 60
-      }
-    },
     "authentication": {
       "entra": {
         "userLimits": {
@@ -425,7 +408,6 @@
     "maxReplicas": 4
   },
   "portalAuthentication": {
-    "credentialProviderName": "graph-delegated",
     "sqlSkuName": "Basic",
     "sqlTier": "Basic",
     "sqlCapacity": 5,
@@ -443,8 +425,5 @@
         "capacity": 8000
       }
     }
-  },
-  "portalApiKeys": {
-    "verificationMaxSubscriptions": 5
   }
 }

@@ -17,7 +17,6 @@ from deployment.helpers.apim_audit import (
     CORE_RATE_LIMIT_MARKER,
     CORE_TOKEN_LIMITS_MARKER,
     CORE_ENTRA_USER_PROFILE_MARKER,
-    SUBSCRIPTION_PROFILE_MARKER,
     CORE_CREDENTIAL_CALLER_MARKER,
     CORE_CREDENTIAL_USE_RESULT_MARKER,
     CORE_BACKEND_AUDIT_MARKER,
@@ -178,28 +177,6 @@ class FragmentSourceOwnershipTests(unittest.TestCase):
             self.assertEqual(source.count('context.Variables.TryGetValue("gatewayAuthenticatedSubject"'), 1)
             self.assertIn('obs.Properties().Count()==obsN.Length', source)
             self.assertIn('"inconsistent"', source)
-
-    def test_subscription_profile_snippet_has_one_same_named_direct_expression_owner(self):
-        directory = POLICIES / "snippets/quota/subscription-profile"
-        xml = directory / "subscription-profile.xml"
-        cs = directory / "subscription-profile.cs"
-        self.assertTrue(xml.is_file())
-        self.assertTrue(cs.is_file())
-        self.assertEqual(policy_fixture_path(POLICIES, xml.name), xml)
-        self.assertEqual(policy_fixture_path(POLICIES, cs.name), cs)
-        self.assertEqual(SOURCE_EXPRESSION_FILES[SUBSCRIPTION_PROFILE_MARKER], cs.relative_to(POLICIES).as_posix())
-        self.assertFalse((POLICIES / xml.name).exists())
-        references = [path for path in POLICIES.rglob("*.xml")
-                      if SUBSCRIPTION_PROFILE_MARKER in path.read_text(encoding="utf-8")]
-        self.assertEqual(references, [xml])
-        source = xml.read_text(encoding="utf-8")
-        self.assertEqual(source.count(SUBSCRIPTION_PROFILE_MARKER), 1)
-        self.assertIn('<set-variable name="gatewayFetchedProfile" value="@{', source)
-        self.assertIn('<cache-lookup-value ', source)
-        self.assertIn('<cache-store-value ', source)
-        publication = (POLICIES.parent / "api-publication.bicep").read_text(encoding="utf-8")
-        self.assertNotIn("resource subscriptionProfileFragment ", publication)
-        self.assertNotIn("policies/subscription-profile.xml", publication)
 
 
 if __name__ == "__main__":

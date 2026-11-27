@@ -145,9 +145,6 @@ APIMが参照するKVは、`publicNetworkAccess: Disabled`と`defaultAction: Den
 | `gateway.wafRequestBodyInspectLimitInKb` | `2000` | base・認証等の本文検査枠、KiB。AIパスは専用設定で2000 KiB。 |
 | `gateway.wafFileUploadLimitInMb` | `4` | base・認証等のmultipartファイル上限、MiB。管理対象AIパスでは強制しない。 |
 | `gateway.realtimeControlEnabled` | `true` | Realtimeの所有者確認・停止制御用の鍵等を準備。 |
-| `gateway.rateLimits.subscriptionKey.enabled` | `false` | APIM購読ID単位の共通上限を明示的に有効にするか。既定は無制限。 |
-| `gateway.rateLimits.subscriptionKey.calls` | `60` | 有効化した場合のみ適用する期間内要求数、整数1〜1,000,000。 |
-| `gateway.rateLimits.subscriptionKey.renewalPeriodSeconds` | `60` | 有効化した場合のみ適用する計数期間、整数1〜300秒。 |
 
 gRPCは基盤の提供要件から廃止しました。`gateway.grpc`ブロック全体（公開ホスト名だけの指定や空オブジェクトも含む）と、APIの`apiType: "grpc"`・proto定義は入力検査で拒否します。AppGWのfrontend HTTP/2は維持し、内部APIM／ACAへはFirewallのTLS検査を経由してHTTPS443で転送します。APIMの`Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2`は文字列`"false"`に固定します。
 
@@ -163,9 +160,8 @@ API公開前には、通常HTTP用の配備出力`ingressSecrets`と、常設L7�
 | `gateway.authentication.credentialLogin` | providerNames=`["graph-delegated"]`と共通セッション値。明示transactionLifetimeSeconds=600秒を保持 |
 | `credentialProviders.graphDelegated` | displayName=`Delegated Graph connection`、既存scope文字列、pool.count=12／capacity=8000 |
 | `credentialProviders.additional[]` | name・displayName・identityProvider・scopesとプロトコル別定義。params側登録と1対1照合 |
-| `portalApiKeys.verificationMaxSubscriptions` | 5。内部で管理グループ1件と全標準製品に適用 |
 
-Graph Client ID・秘密ファイル参照と、任意の独立接続窓口identityのClient ID・秘密参照はparamsに残します。標準Graph名・プロトコル・tenant・Graph URL・本人ID契約は資材固定です。追加aad別tenantと汎用OAuth2の定義／登録契約、既存identity省略時fallbackとPortalの選択CM profileは維持します。
+Graph Client ID・秘密ファイル参照と、任意の独立接続窓口identityのClient ID・秘密参照はparamsに残します。標準Graph名・プロトコル・tenant・Graph URL・本人ID契約は資材固定です。追加aad別tenantと汎用OAuth2の定義／登録契約、既存identity省略時fallbackは維持します。
 
 API配列の置換、`publishApis`切替、既存WAF Resource ID、caller別`rateLimits.*.overrides`、監査公開IP・追加reader・追加Foundry／API Center権限は公開入力に設けません。旧入力は空やfalseでも拒否します。既存の非標準値は削除・初期値置換を自動実行せず、影響と復旧を確認して個別移行します。今回の配置整理だけで認証方式やClient IDを切り替えません。Azure一括反映・全環境再構築E2Eは未実施です。
 

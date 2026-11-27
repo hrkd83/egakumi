@@ -2,7 +2,7 @@ import type { Locale } from "./config.ts";
 import type { RealtimeModel } from "../model-types.ts";
 
 const ja = {
-  guideTitle: "接続から会話の終了まで", guideConversation: "接続後は発話検知に合わせて応答を受信し、同じ接続で会話を続けます。終了時はマイクと音声接続を解放し、対応するAPIではサービス側の停止も確認します。", guideTry: "「試す」ではAPIキーと出力設定を選び、マイクで会話できます。利用ガイドを表示しただけではマイクは起動しません。接続中は同じ画面に停止操作を表示します。",
+  guideTitle: "接続から会話の終了まで", guideConversation: "接続後は発話検知に合わせて応答を受信し、同じ接続で会話を続けます。終了時はマイクと音声接続を解放し、対応するAPIではサービス側の停止も確認します。", guideTry: "「試す」では本人の試用認証を済ませ、出力設定を選び、マイクで会話できます。利用ガイドを表示しただけではマイクは起動しません。接続中は同じ画面に停止操作を表示します。",
   introduction: "マイクでAIとリアルタイムに会話し、アプリに組み込む際の接続・イベント・字幕を確認します。応答が終わっても接続は続き、利用者の終了操作でマイクと接続を閉じます。",
   parameters: "リアルタイム音声の設定", model: "モデル", transport: "接続方式", transportHelp: "選択したモデルが対応する接続方式だけを表示します。", websocket: "WebSocket", webrtc: "WebRTC", realtime: "GPT Realtime", live: "GPT-Live", transcription: "GPT Live Transcribe", voiceLive: "Voice Live + GPT",
   voice: "応答の声", voiceHelp: "開始前に声を選べます。接続中は変更できません。別の声を試すときは、接続を終了してから選び直してください。", fixedVoice: "このシリーズでは{voice}を使用します。",
@@ -18,12 +18,12 @@ const ja = {
   elapsed: "経過時間", events: "イベント数", timeline: "接続・会話イベント", timelineHelp: "直近200件の種類と経過時間だけを表示します。SDP・トークン・セッションIDは表示しません。", usage: "直近の応答で返った使用量", usageHelp: "APIが返した項目だけを表示します。会話全体の確定請求額ではありません。", turnFailed: "この応答は生成できませんでした。接続は継続しています。もう一度話しかけてください。",
   MicrophoneDenied: "マイクへのアクセスが許可されませんでした。ブラウザーのサイト設定でマイクを許可してから開始してください。", MicrophoneUnavailable: "利用できるマイクがありません。マイクの接続と、ほかのアプリによる使用状況を確認してください。", BrowserUnsupported: "このブラウザーでは必要な音声機能を利用できません。HTTPSまたはlocalhostで、現在のChrome／Edgeなどを使用してください。",
   InvalidRequest: "リアルタイム音声の接続設定または音声データを受け付けられませんでした。選択したモデルと入力設定を確認し、もう一度開始してください。",
-  body: "接続・イベントの例", language: "組み込み例の言語", backend: "APIキーと接続チケットはアプリのバックエンドで管理します。ブラウザーへ購読キーを渡しません。", protocol: "接続と終了の手順", schema: "通常のHTTP JSONに加えて、WebSocketイベントまたはWebRTCの制御・音声メディアを使います。下は各APIを組み込むための部分スキーマです。", requestSchema: "送信形式・スキーマ", responseSchema: "応答イベントの形式・スキーマ", source: "Microsoft公式の仕様", rtcDocs: "Realtime WebRTC", wsDocs: "Realtime WebSocket", voiceDocs: "Voice Live WebRTC", voiceWsDocs: "Voice Live WebSocket", liveDocs: "GPT-Live", transcriptionDocs: "Realtime transcription",
+  body: "接続・イベントの例", language: "組み込み例の言語", backend: "アクセストークンと接続チケットはアプリのバックエンドで管理します。ブラウザーへアクセストークンを渡しません。", protocol: "接続と終了の手順", schema: "通常のHTTP JSONに加えて、WebSocketイベントまたはWebRTCの制御・音声メディアを使います。下は各APIを組み込むための部分スキーマです。", requestSchema: "送信形式・スキーマ", responseSchema: "応答イベントの形式・スキーマ", source: "Microsoft公式の仕様", rtcDocs: "Realtime WebRTC", wsDocs: "Realtime WebSocket", voiceDocs: "Voice Live WebRTC", voiceWsDocs: "Voice Live WebSocket", liveDocs: "GPT-Live", transcriptionDocs: "Realtime transcription",
 };
 /** 会話画面の翻訳項目です。日本語と英語で同じキーを維持します。 */
 export type RealtimeAudioDictionary = { [K in keyof typeof ja]: string };
 const en: RealtimeAudioDictionary = {
-  guideTitle: "From connection to conversation shutdown", guideConversation: "After connecting, receive replies as speech is detected and continue talking over the same connection. On exit, release the microphone and media connection and confirm service shutdown where the API supports it.", guideTry: "Open Try it to select an API key and output settings, then talk through your microphone. Reading this guide never starts the microphone. Stop controls stay visible while connected.",
+  guideTitle: "From connection to conversation shutdown", guideConversation: "After connecting, receive replies as speech is detected and continue talking over the same connection. On exit, release the microphone and media connection and confirm service shutdown where the API supports it.", guideTry: "Open Try it to authenticate for API access and output settings, then talk through your microphone. Reading this guide never starts the microphone. Stop controls stay visible while connected.",
   introduction: "Talk to the AI through your microphone and inspect connection events and captions for application integration. The connection remains open across replies until you end the conversation.",
   parameters: "Realtime audio parameters", model: "Model", transport: "Connection method", transportHelp: "Only connection methods supported by the selected model appear.", websocket: "WebSocket", webrtc: "WebRTC", realtime: "GPT Realtime", live: "GPT-Live", transcription: "GPT Live Transcribe", voiceLive: "Voice Live + GPT",
   voice: "Response voice", voiceHelp: "Choose a voice before starting. To try another voice, end the connection and select it before reconnecting.", fixedVoice: "This series uses {voice}.",
@@ -36,7 +36,7 @@ const en: RealtimeAudioDictionary = {
   elapsed: "Elapsed time", events: "Events", timeline: "Connection and conversation events", timelineHelp: "Only types and elapsed times for the latest 200 events appear. SDP, tokens, and session IDs never appear.", usage: "Usage returned for the latest reply", usageHelp: "Only measurements returned by the API appear. This is not the final bill for the conversation.", turnFailed: "This reply could not be generated. The connection remains open; try speaking again.",
   MicrophoneDenied: "Microphone access was denied. Allow microphone access in your browser's site settings, then start again.", MicrophoneUnavailable: "No microphone is available. Check its connection and whether another application is using it.", BrowserUnsupported: "This browser does not support the required audio features. Use HTTPS or localhost with a current browser such as Chrome or Edge.",
   InvalidRequest: "The realtime connection settings or audio data could not be accepted. Check the selected model and input settings, then start again.",
-  body: "Connection / event example", language: "Integration example language", backend: "Keep API keys and connection tickets in your application backend. Never expose subscription keys to the browser.", protocol: "Connection and shutdown steps", schema: "These APIs use WebSocket events or WebRTC control and media in addition to ordinary HTTP JSON. Partial integration schemas follow.", requestSchema: "Request format / schema", responseSchema: "Response event format / schema", source: "Microsoft API documentation", rtcDocs: "Realtime WebRTC", wsDocs: "Realtime WebSocket", voiceDocs: "Voice Live WebRTC", voiceWsDocs: "Voice Live WebSocket", liveDocs: "GPT-Live", transcriptionDocs: "Realtime transcription",
+  body: "Connection / event example", language: "Integration example language", backend: "Keep access tokens and connection tickets in your application backend. Never expose access tokens to the browser.", protocol: "Connection and shutdown steps", schema: "These APIs use WebSocket events or WebRTC control and media in addition to ordinary HTTP JSON. Partial integration schemas follow.", requestSchema: "Request format / schema", responseSchema: "Response event format / schema", source: "Microsoft API documentation", rtcDocs: "Realtime WebRTC", wsDocs: "Realtime WebSocket", voiceDocs: "Voice Live WebRTC", voiceWsDocs: "Voice Live WebSocket", liveDocs: "GPT-Live", transcriptionDocs: "Realtime transcription",
 };
 
 /** 文字起こし専用の接続を、音声応答のある会話として案内しないための差分です。 */
@@ -44,7 +44,7 @@ const transcriptionOverrides = {
   ja: {
     guideTitle: "接続から文字起こしの終了まで",
     guideConversation: "接続後はマイクの発話を継続して文字起こしします。AIの音声応答は返しません。終了操作でマイクと文字起こし接続を閉じます。",
-    guideTry: "「試す」でAPIキーを選ぶと、マイクの文字起こしを開始できます。利用ガイドを表示しただけではマイクは起動しません。接続中は同じ画面に停止操作を表示します。",
+    guideTry: "「試す」で試用認証を済ませると、マイクの文字起こしを開始できます。利用ガイドを表示しただけではマイクは起動しません。接続中は同じ画面に停止操作を表示します。",
     introduction: "マイクの発話をリアルタイムに文字起こしし、アプリに組み込む際の接続・イベント・認識結果を確認します。文字起こし専用のため、AIの音声応答は返しません。終了操作まで接続を維持します。",
     parameters: "リアルタイム文字起こしの設定", start: "マイクの文字起こしを開始", stop: "文字起こしを終了", stopping: "マイクと文字起こし接続を終了中…",
     permission: "開始するとブラウザーがマイクの許可を求めます。接続後は発話を文字起こしサービスへ送り、認識結果をテキストで表示します。AIの音声応答は返しません。",
@@ -56,13 +56,13 @@ const transcriptionOverrides = {
     ended: "文字起こしを終了しました", transportClosed: "マイク音声と文字起こし接続を終了", stopHelp: "マイクの停止と接続の終了を確認します。通信終了だけでは、サービス側の停止が確認できたことにはなりません。",
     timeline: "接続・文字起こしイベント", usage: "文字起こしAPIが返した使用量", usageHelp: "APIが返した項目だけを表示します。", turnFailed: "文字起こしを処理できませんでした。接続は継続しています。もう一度話しかけてください。",
     InvalidRequest: "文字起こしの接続設定または音声データを受け付けられませんでした。選択したモデルと入力設定を確認し、もう一度開始してください。",
-    body: "文字起こしの接続・イベント例", backend: "APIキーはアプリのバックエンドで管理し、文字起こし用WebSocketへ接続します。ブラウザーへ購読キーを渡しません。",
+    body: "文字起こしの接続・イベント例", backend: "アクセストークンはアプリのバックエンドで管理し、文字起こし用WebSocketへ接続します。ブラウザーへアクセストークンを渡しません。",
     schema: "マイク音声の送信と認識結果の受信には文字起こし用WebSocketイベントを使います。下は組み込みのための部分スキーマです。", responseSchema: "文字起こしイベントの形式・スキーマ",
   },
   en: {
     guideTitle: "From connection to transcription shutdown",
     guideConversation: "After connecting, continuously transcribe microphone input. No AI speech replies are generated. End transcription to close the microphone and transcription connection.",
-    guideTry: "Open Try it to select an API key and start microphone transcription. Reading this guide never starts the microphone. Stop controls stay visible while connected.",
+    guideTry: "Open Try it to sign in for API access and start microphone transcription. Reading this guide never starts the microphone. Stop controls stay visible while connected.",
     introduction: "Transcribe microphone input in real time and inspect connection events and recognized text for application integration. This transcription-only connection does not generate AI speech replies. It remains open until you stop it.",
     parameters: "Realtime transcription parameters", start: "Start microphone transcription", stop: "End transcription", stopping: "Closing microphone and transcription connection…",
     permission: "Starting requests microphone permission. After connecting, speech is sent to the transcription service and recognized text appears here. No AI speech replies are generated.",
@@ -74,7 +74,7 @@ const transcriptionOverrides = {
     ended: "Transcription ended", transportClosed: "Microphone audio and transcription connection closed", stopHelp: "Check microphone shutdown and connection closure. Transport closure alone does not confirm service shutdown.",
     timeline: "Connection and transcription events", usage: "Usage returned by the transcription API", usageHelp: "Only measurements returned by the API appear.", turnFailed: "This transcription could not be processed. The connection remains open; try speaking again.",
     InvalidRequest: "The transcription connection settings or audio data could not be accepted. Check the selected model and input settings, then start again.",
-    body: "Transcription connection / event example", backend: "Keep API keys in your application backend and connect to the transcription WebSocket there. Never expose subscription keys to the browser.",
+    body: "Transcription connection / event example", backend: "Keep access tokens in your application backend and connect to the transcription WebSocket there. Never expose access tokens to the browser.",
     schema: "Transcription WebSocket events send microphone audio and return recognized text. Partial integration schemas follow.", responseSchema: "Transcription event format / schema",
   },
 } satisfies Record<Locale, Partial<RealtimeAudioDictionary>>;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MAX_BUFFERED_BODY_BYTES, MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
-import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
+import { tryBearerFields } from "./api-auth/try-credential.ts";
 
 /** プロンプト欄の文字数上限です。本文のバイト数はモデルの公開上限でも検査します。 */
 export const MAX_IMAGE_PROMPT_CHARACTERS = MAX_RUNTIME_STRING_CHARACTERS;
@@ -18,7 +18,7 @@ export const imageGenerationInputSchema = z.object({
 export type ImageGenerationInput = z.infer<typeof imageGenerationInputSchema>;
 
 /** 実行時だけ、利用者が選択した台帳のキーIDを要求します。 */
-export const imageGenerationExecutionSchema = z.union([imageGenerationInputSchema.safeExtend(tryApiKeyFields), imageGenerationInputSchema.safeExtend(tryBearerFields)]);
+export const imageGenerationExecutionSchema = imageGenerationInputSchema.safeExtend(tryBearerFields);
 
 /** 画像本文を二重に送らず、検証済みの応答内の位置と表示方法を示します。 */
 export type GeneratedImage = { index: number; kind: "base64"; mimeType: "image/png" | "image/jpeg" | "image/webp" } | { index: number; kind: "url" };

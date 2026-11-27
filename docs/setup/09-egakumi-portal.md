@@ -7,7 +7,7 @@
 | Coreの出力 | Entraでの登録先 | 確認すること |
 | --- | --- | --- |
 | `generated/gateway-obo-public.cer` | 第02章で登録した`egakumi-api` | API用の証明書と、Microsoft Graphの委任`User.Read`の管理者同意 |
-| `generated/portal-auth-public.cer` | この章で作成する`egakumi-portal` | Portal用の証明書、2つのWeb戻り先、GraphとAPIの許可・管理者同意 |
+| `generated/portal-auth-public.cer` | この章で作成する`egakumi-portal` | Portal用の証明書、2つのWeb戻り先、GraphのOIDCとGateway APIの委任許可・管理者同意 |
 
 ## APIのOBO用公開証明書を登録する
 
@@ -19,7 +19,7 @@
 
 ## Portal専用アプリを作成する
 
-Portalログイン、Graph所属照会とAPI試用のために、専用のWebアプリを登録します。同じ依頼でログインとAPI試用の戻り先・権限を登録し、管理者同意を確認します。
+PortalログインとBearerによるAPI試用のために、専用のWebアプリを登録します。同じ依頼でログインとAPI試用の戻り先・権限を登録し、管理者同意を確認します。
 
 ### 初期構築で用意するもの
 
@@ -38,7 +38,7 @@ flowchart LR
   Entra -->|Tenant ID / Client ID| Params[同じ環境のparamsを更新]
   Params --> Gateway[Gatewayを配備]
   Gateway --> Deploy[Portal本体をビルド・配備]
-  Deploy --> ACA[ACA / Graphジョブ]
+  Deploy --> ACA[PortalのACA]
   ACA -->|専用UAMIで署名要求| KV
   ACA -->|署名したclient assertion| Entra
 ```
@@ -65,12 +65,10 @@ KVの秘密鍵、PFX、backing secretは取り出しません。Entra担当へ�
 | サポートされるアカウント | この組織ディレクトリ内のアカウントのみ（Single tenant） |
 | プラットフォーム | Web |
 | PortalログインのRedirect URI | `https://portal.example.com/api/auth/callback/microsoft` |
-| 工程4のAPI用Redirect URI | `https://portal.example.com/api/api-auth/callback`。API試用・購読管理の追加認証からPortalへ戻る固定経路 |
+| 工程4のAPI用Redirect URI | `https://portal.example.com/api/api-auth/callback`。API試用の追加認証からPortalへ戻る固定経路 |
 | 証明書 | 初期構築で取得した`portal-auth-public.cer` |
-| Graph Application権限 | `GroupMember.Read.All`、`User.ReadBasic.All`。Portal管理と定期照合用 |
 | GraphのOIDC Delegated権限 | `openid`、`profile`、`email`、`offline_access`。ID tokenとAPI用更新トークン要求に対応する同意を同じ作業で確認 |
 | API Delegated権限 | 既存のAPI用アプリが公開する`Gateway.Invoke`を、新しいPortal用アプリに追加。完全なscopeは`api://<API_APP_CLIENT_ID>/Gateway.Invoke`。ユーザー本人のアクセストークンでGateway APIを呼ぶための許可。API用アプリの構築・scope公開は[APIアプリの準備](02-entra-api.md)の前提 |
-| 購読管理の委任権限 | API用アプリが公開する `api://<API_APP_CLIENT_ID>/Subscription.Manage` をPortalクライアントへ追加 |
 | 管理者同意 | 上記権限を組織の手続きに従って同意 |
 | Implicit grant / Public client flows | 無効 |
 | 新Portalのclient secret | 作成しない |
@@ -78,7 +76,7 @@ KVの秘密鍵、PFX、backing secretは取り出しません。Entra担当へ�
 
 Portalログインで要求する`openid profile email`はOIDCのscopeです。API用OAuthの`offline_access`は更新トークンを要求するscopeです。どちらもKV鍵やGraph Application権限を表すものではありません。Portalログイン用ID tokenをAPI試行へ送信しません。GraphのBearer試用はAPIアプリのOBO資格情報と委任許可を使います。 [APIアプリのOBO設定](02-entra-api.md#6-core配備後にobo用の公開証明書を登録する)
 
-`/api/api-auth/complete`はPortal内部の完了処理で、Entraの戻り先には登録しません。既存APIアプリへPortalの証明書や戻り先を追加する操作はありません。公開済みの`Gateway.Invoke`と`Subscription.Manage`を新しいPortalクライアントへ許可し、管理者同意を付与します。
+`/api/api-auth/complete`はPortal内部の完了処理で、Entraの戻り先には登録しません。既存APIアプリへPortalの証明書や戻り先を追加する操作はありません。公開済みの`Gateway.Invoke`を新しいPortalクライアントへ許可し、管理者同意を付与します。
 
 ### Azureポータルで操作する
 
@@ -86,11 +84,11 @@ Portalログインで要求する`openid profile email`はOIDCのscopeです。A
 2. 「認証」（`Authentication (Preview)`と表示される場合があります）でWebのRedirect URIを確認し、API用戻り先も同時に追加します。タブに分かれている画面では「リダイレクト URI の構成」からWebを選んで追加し、「設定」でフローを確認します。2件とも実際のPortal公開HTTPSホストを使い、表の固定パスと一致させます。Implicit grantのアクセストークン・IDトークンのチェック、Public client flowsはOFFにします。ローカル開発を行う場合だけ、専用の開発用アプリとlocalhost戻り先を別途設計します。
 3. 「証明書とシークレット」→「証明書」→「証明書のアップロード」から公開`.cer`を登録します。「クライアントシークレット」で新しいsecretを作成しません。
 4. 登録されたthumbprintと有効期限が、保護stateの`current.certificateThumbprint`・`current.expires`と一致することを確認します。別用途のTLS証明書を選んでいないことも確認します。
-5. 「APIのアクセス許可」→「アクセス許可の追加」でMicrosoft Graphの「アプリケーションの許可」を選び、`GroupMember.Read.All`と`User.ReadBasic.All`を追加します。権限グループを展開し、行頭の選択欄で対象の行を選びます。Graphの「委任されたアクセス許可」では、未使用の既定`User.Read`の選択を外し、OIDC用の`openid`・`profile`・`email`・`offline_access`を追加・確認します。次に「所属する組織で使用しているAPI」から、保護paramsの`gateway.authentication.entra.audience`で特定した既存APIアプリを選び、「委任されたアクセス許可」の`Gateway.Invoke`と`Subscription.Manage`を追加します。保存後に、Graphの2件がApplication、OIDCの4件、`Gateway.Invoke`と`Subscription.Manage`がDelegatedであり、新Portalアプリに`User.Read`が残っていないことを確認します。
+5. 「APIのアクセス許可」→「アクセス許可の追加」でMicrosoft Graphの委任アクセス許可を選び、OIDC用の `openid`、`profile`、`email`、`offline_access` を追加します。Portalで使用しない既定の `User.Read` は削除します。次に「所属する組織で使用しているAPI」で `gateway.authentication.entra.audience` に対応するAPIアプリを選び、委任アクセス許可の `Gateway.Invoke` を追加します。
 6. 必要な管理者同意を実施し、許可の種類・対象API・同意状態を確認します。Entra担当が必要とする申請・承認は組織の手続きに従います。
 7. 「概要」のDirectory tenant IDとApplication client IDを構築担当へ安全に渡します。Object IDをClient IDの代わりに入力しません。利用者割当必須や条件付きアクセスがある場合は、受入用の利用者も許可されていることを確認します。
 
-同じ作業の最後に、2件のWeb戻り先、公開証明書と期限、Graphの許可種類、既存APIの`Gateway.Invoke`と`Subscription.Manage`、管理者同意、受入利用者の割当を保存後の画面で再確認します。構築担当へはDirectory tenant ID・新PortalのApplication client IDと、この確認が完了した結果を引き継ぎます。登録だけをPortalログインや工程4の実接続の成功に数えません。
+同じ作業の最後に、2件のWeb戻り先、公開証明書と期限、OIDCの委任アクセス許可、既存APIの`Gateway.Invoke`、管理者同意、受入利用者の割当を保存後の画面で再確認します。構築担当へはDirectory tenant ID・新PortalのApplication client IDと、この確認が完了した結果を引き継ぎます。登録だけをPortalログインや工程4の実接続の成功に数えません。
 
 ### 操作画面を取得する
 
@@ -107,7 +105,7 @@ Portalログインで要求する`openid profile email`はOIDCのscopeです。A
 | 新規登録 | 名前・Single tenant・Web戻り先を入力した画面と、作成後の概要 |
 | 認証 | 2件のWeb戻り先と、Implicit grant／Public client flowsの保存後の状態 |
 | 証明書 | 公開`.cer`の選択・登録操作と、保存後の証明書一覧・thumbprint・期限 |
-| APIのアクセス許可 | Graph Application権限、OIDC委任権限、既存APIの`Gateway.Invoke`と`Subscription.Manage`を選択する画面と、追加後の一覧 |
+| APIのアクセス許可 | OIDC委任権限、既存APIの`Gateway.Invoke`を選択する画面と、追加後の一覧 |
 | 管理者同意・利用者割当 | 同意操作と保存後の状態。利用者割当が必要な場合は割当後の確認 |
 
 原本と操作記録は`.local/<environment>/evidence/`へ所有者限定で保存します。サインイン・MFA・認証コード・秘密値が表示される画面は撮影しません。公開手順へ画像を追加する前には[公開情報の混入検査](../public-data-guard.md)とルートの[AGENTS.md](../../AGENTS.md)に従い、実情報の除去と内容確認を行います。画面の未取得・登録未実施・未確認を、撮影済み・登録成功として扱いません。

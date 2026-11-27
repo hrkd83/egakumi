@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MAX_BUFFERED_BODY_BYTES, MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
-import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
+import { tryBearerFields } from "./api-auth/try-credential.ts";
 import type { TextGenerationModel } from "./model-types.ts";
 
 /** APIごとの出力下限を返します。Responsesは上流契約により16未満を受理しません。 */
@@ -33,7 +33,7 @@ export const textGenerationInputSchema = z.object({
 export type TextGenerationInput = z.infer<typeof textGenerationInputSchema>;
 
 /** 実行時だけ台帳IDを必須にし、モデルへ送る本文やコード例へ認証情報を混ぜません。 */
-export const textGenerationExecutionSchema = z.union([textGenerationInputSchema.safeExtend(tryApiKeyFields), textGenerationInputSchema.safeExtend(tryBearerFields)]);
+export const textGenerationExecutionSchema = textGenerationInputSchema.safeExtend(tryBearerFields);
 
 /** APIMの応答本文と、表示用に取り出した生成文・使用量です。 */
 export type TextGenerationResult = {
@@ -52,7 +52,6 @@ export type ModelGatewayErrorCode =
   | "ModelUnavailable" | "GatewayNotConfigured" | "GatewayUnauthorized"
   | "RateLimitExceeded" | "OutputLimitReached" | "GatewayTimeout" | "GenerationFailed"
   | "AuthenticationUnavailable" | "RequestCancelled"
-  | "ApiKeyUnavailable" | "ApiKeyAccessUnavailable"
   | "ApiAuthenticationRequired" | "ApiAuthenticationBusy" | "ApiAuthenticationUnavailable";
 
 /** 生成失敗時の公開応答です。上流の任意のエラー本文は含めません。 */

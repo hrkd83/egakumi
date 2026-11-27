@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
-import { getDecisionModels, getEmbeddingModels, getExecutableModelTargets, getImageGenerationModels, getModelCatalog, getRealtimeModels, getRerankModels, getSpeechModels, getTextGenerationModels } from "../lib/model-catalog.ts";
+import { getDecisionModels, getEmbeddingModels, getImageGenerationModels, getModelCatalog, getRealtimeModels, getRerankModels, getSpeechModels, getTextGenerationModels } from "../lib/model-catalog.ts";
 
 const definitionDirectory = new URL("../../api-gateway/apis/", import.meta.url);
 
@@ -173,10 +173,4 @@ test("リアルタイムは公開APIと方式を束縛し、観測・終了を�
     if (model.modelId.endsWith("-mini")) assert.equal(model.transport, "websocket");
   }
   assert.ok(!JSON.stringify(models).includes("backendUrl"));
-});
-
-test("購読候補は実装済みの全カテゴリを含み、各APIを重複させない", () => {
-  assert.deepEqual(getExecutableModelTargets().map((target) => target.apiId).sort(), [
-    "azure-speech-v1", "azure-voice-live-webrtc-v1", "azure-voice-live-ws-v1", "blackforest-images-v1", "cohere-inference-v1", "microsoft-decision-v1", "openai-audio-v1", "openai-embeddings-v1", "openai-images-v1", "openai-inference-v1", "openai-live-control-v1", "openai-live-ws-v1", "openai-realtime-control-v1", "openai-realtime-ws-v1", "openai-transcription-ws-v1",
-  ]);
 });

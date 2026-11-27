@@ -64,8 +64,7 @@ def populated():
         t.collections[product + "/apis"] = [entity(product + "/apis/" + ("model-v1" if product == BUSINESS else "echo-api"))]
     t.resources[APIM + "/apis/model-v1"] = entity(APIM + "/apis/model-v1", path="models", serviceUrl="https://backend.example.com")
     t.collections[ECHO + "/products"] = [entity(STARTER), entity(UNLIMITED)]
-    scopes = {"starter-sub": STARTER, "unlimited-sub": UNLIMITED, "model-sub": BUSINESS,
-              "master": APIM, "all-api-sub": APIM + "/apis"}
+    scopes = {"model-sub": BUSINESS, "master": APIM, "all-api-sub": APIM + "/apis"}
     t.collections[APIM + "/subscriptions"] = []
     for name, scope in scopes.items():
         resource_id = APIM + "/subscriptions/" + name
@@ -86,24 +85,24 @@ class DefaultSampleCleanupTests(unittest.TestCase):
         self.assertFalse(t.mutations())
         self.assertEqual(len(t.calls), 3)
 
-    def test_only_sample_scopes_are_deleted_in_dependency_order(self):
+    def test_unsubscribed_samples_are_deleted_in_dependency_order(self):
         t = populated()
         t.pending[ECHO] = 2
         result = self.cleanup(t)
         deleted = [urlsplit(call[1]).path for call in t.mutations()]
-        self.assertEqual(deleted, [APIM + "/subscriptions/starter-sub", APIM + "/subscriptions/unlimited-sub", STARTER, UNLIMITED, ECHO])
+        self.assertEqual(deleted, [STARTER, UNLIMITED, ECHO])
         self.assertEqual(result["deletedApiIds"], [ECHO])
-        self.assertEqual(len(result["deletedSubscriptionIds"]), 2)
         for name in ("model-sub", "master", "all-api-sub"):
             self.assertIn(APIM + "/subscriptions/" + name, t.resources)
         self.assertIn(APIM + "/apis/model-v1", t.resources)
         self.assertTrue(all(call[3] == {"If-Match": '"entity-version"'} for call in t.mutations()))
         self.assertNotIn("SECRET_SENTINEL", str(result))
+        self.assertIn("deleteSubscriptions=false", t.mutations()[0][1])
         for collection in t.collections:
             t.collections[collection] = []
         again = self.cleanup(t)
         self.assertEqual(again["deletedApiIds"], [])
-        self.assertEqual(len(t.mutations()), 5)
+        self.assertEqual(len(t.mutations()), 3)
 
     def test_named_echo_with_another_backend_or_revision_is_preserved_with_its_products(self):
         for changes in ({"serviceUrl": "https://business.example.com/api"}, {"apiRevision": "2"}, {"path": "business"}):
@@ -124,7 +123,6 @@ class DefaultSampleCleanupTests(unittest.TestCase):
                                                           for name in ("starter", "unlimited")]
                 result = self.cleanup(t)
                 self.assertEqual([urlsplit(call[1]).path for call in t.mutations()], [
-                    APIM + "/subscriptions/starter-sub", APIM + "/subscriptions/unlimited-sub",
                     STARTER, UNLIMITED, ECHO])
                 self.assertEqual(result["skipped"], [])
                 self.assertTrue(all(call[3] == {"If-Match": '\"entity-version\"'} for call in t.mutations()))
@@ -173,12 +171,11 @@ class DefaultSampleCleanupTests(unittest.TestCase):
         self.assertEqual(plan["productNames"], ["unlimited"])
         self.assertFalse(plan["inventoryChecked"])
 
-    def test_sample_product_with_a_business_or_mcp_api_keeps_its_subscription(self):
+    def test_sample_product_with_a_business_or_mcp_api_is_preserved(self):
         t = populated()
         t.collections[STARTER + "/apis"].append(entity(STARTER + "/apis/pii-v1-mcp"))
         result = self.cleanup(t)
         self.assertIn(STARTER, t.resources)
-        self.assertIn(APIM + "/subscriptions/starter-sub", t.resources)
         self.assertIn(ECHO, t.resources)
         self.assertNotIn(UNLIMITED, t.resources)
         self.assertEqual(result["deletedProductIds"], [UNLIMITED])
@@ -191,24 +188,26 @@ class DefaultSampleCleanupTests(unittest.TestCase):
         self.assertEqual(result["deletedApiIds"], [])
         self.assertEqual(len(result["deletedProductIds"]), 2)
 
-    def test_subscriptions_are_read_through_all_pages_and_api_scopes_are_cleaned(self):
-        t = populated()
-        api_sub = entity(APIM + "/subscriptions/echo-sub", scope=ECHO)
-        t.resources[api_sub["id"]] = api_sub
-        collection = APIM + "/subscriptions"
-        next_link = "https://management.azure.com" + collection + "?api-version=2024-05-01&$skipToken=opaque"
-        t.pages[collection + "?api-version=2024-05-01"] = {"statusCode": 200, "body": {"value": t.collections[collection][:1], "nextLink": next_link}}
-        t.pages[next_link] = {"statusCode": 200, "body": {"value": t.collections[collection][1:] + [api_sub], "nextLink": ""}}
-        result = self.cleanup(t)
-        self.assertEqual(len(result["deletedSubscriptionIds"]), 3)
-        self.assertIn(APIM + "/subscriptions/model-sub", t.resources)
+    def test_manual_product_and_api_subscriptions_are_preserved_through_all_pages(self):
+        for short_scope in (False, True):
+            with self.subTest(short_scope=short_scope):
+                t = populated()
+                collection = APIM + "/subscriptions"
+                list_path = collection + "?api-version=2024-05-01"
+                next_link = "https://management.azure.com" + list_path + "&$skipToken=opaque"
+                keys = [entity(collection + "/echo-sub", scope="/apis/echo-api" if short_scope else ECHO),
+                        entity(collection + "/starter-sub", scope="/products/starter" if short_scope else STARTER)]
+                t.resources.update({key["id"]: key for key in keys})
+                t.pages[list_path] = {"statusCode": 200, "body": {"value": t.collections[collection], "nextLink": next_link}}
+                t.pages[next_link] = {"statusCode": 200, "body": {"value": keys}}
+                result = self.cleanup(t)
+                self.assertEqual(result["deletedApiIds"], [])
+                self.assertEqual(result["deletedProductIds"], [UNLIMITED])
+                self.assertTrue(all(key["id"] in t.resources for key in keys))
+                self.assertTrue(all("/subscriptions/" not in urlsplit(path).path.removeprefix(APIM)
+                                    for method, path, *_ in t.mutations()))
 
-    def test_changed_subscription_scope_and_foreign_next_link_do_not_delete_business_keys(self):
-        t = populated()
-        t.before_delete_read = lambda rid, value: entity(rid, scope=BUSINESS) if rid.endswith("/starter-sub") else value
-        result = self.cleanup(t)
-        self.assertIn(APIM + "/subscriptions/starter-sub", t.resources)
-        self.assertTrue(any(item["reason"] == "changed-before-deletion" for item in result["skipped"]))
+    def test_foreign_inventory_next_link_stops_cleanup(self):
         t = populated()
         t.pages[APIM + "/subscriptions?api-version=2024-05-01"] = {"statusCode": 200, "body": {"value": [], "nextLink": "https://other.example.com/elsewhere?api-version=2024-05-01"}}
         with self.assertRaisesRegex(ValueError, "APIM collection"):
@@ -218,7 +217,7 @@ class DefaultSampleCleanupTests(unittest.TestCase):
 
     def test_failed_or_pending_deletion_is_not_reported_as_success(self):
         t = populated()
-        t.fail_delete[APIM + "/subscriptions/starter-sub"] = 403
+        t.fail_delete[STARTER] = 403
         with self.assertRaisesRegex(ValueError, "HTTP 403") as context:
             self.cleanup(t)
         self.assertNotIn("SECRET_SENTINEL", str(context.exception))

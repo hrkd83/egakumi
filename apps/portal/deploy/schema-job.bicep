@@ -7,19 +7,9 @@ param environmentName string
 param registryName string
 param imageDigest string
 param runtimeIdentity object
-param managementIdentity object
-param profileIdentity object
 param schemaIdentity object
 param sqlServer string
 param database string
-param apiKeyGroups array = []
-param apiKeyTenantId string
-param apiKeyPlatformGroupId string = ''
-param apiKeyGroupNamePattern string = ''
-param apiKeyCatalogProducts array = []
-param apiKeyVerificationSubscriptions array = []
-param apimResourceId string
-
 resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = { name: environmentName }
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: registryName }
 // CMを使わない環境でもジョブが取得できます。同じIDの既存割り当ては再利用します。
@@ -40,27 +30,12 @@ var variables = {
   AZURE_CLIENT_ID: schemaIdentity.clientId
   PORTAL_SQL_RUNTIME_CLIENT_ID: runtimeIdentity.clientId
   PORTAL_SQL_RUNTIME_USER_NAME: runtimeIdentity.name
-  PORTAL_SQL_MANAGEMENT_CLIENT_ID: managementIdentity.clientId
-  PORTAL_SQL_MANAGEMENT_USER_NAME: managementIdentity.name
-  PORTAL_SQL_PROFILE_CLIENT_ID: profileIdentity.clientId
-  PORTAL_SQL_PROFILE_USER_NAME: profileIdentity.name
-  // 配列JSONの先頭「[」が入れ子のARM評価で式として再解釈されないようにします。
-  // JSON.parseは先頭空白を許容するため、SQL初期化へ渡す配列の内容は変わりません。
-  PORTAL_API_KEY_GROUPS: concat(' ', string(apiKeyGroups))
-  PORTAL_API_KEY_TENANT_ID: apiKeyTenantId
-  PORTAL_API_KEY_PLATFORM_GROUP_ID: apiKeyPlatformGroupId
-  PORTAL_API_KEY_GROUP_NAME_PATTERN: apiKeyGroupNamePattern
-  PORTAL_API_KEY_CATALOG_PRODUCTS: concat(' ', string(apiKeyCatalogProducts))
-  PORTAL_API_KEY_VERIFICATION_SUBSCRIPTIONS: concat(' ', string(apiKeyVerificationSubscriptions))
-  PORTAL_APIM_RESOURCE_ID: apimResourceId
-  PORTAL_APIM_AUTH: 'managed-identity'
-  PORTAL_API_KEY_APIM_CLIENT_ID: managementIdentity.clientId
 }
 resource migration 'Microsoft.App/jobs@2025-01-01' = {
   name: 'caj-${stem}-psql'
   location: location
   tags: tags
-  identity: { type: 'UserAssigned', userAssignedIdentities: { '${schemaIdentity.id}': {}, '${managementIdentity.id}': {} } }
+  identity: { type: 'UserAssigned', userAssignedIdentities: { '${schemaIdentity.id}': {} } }
   properties: {
     environmentId: environment.id
     workloadProfileName: 'Consumption'

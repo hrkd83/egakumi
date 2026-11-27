@@ -1,8 +1,6 @@
 import { getAuthEnvironment } from "@/lib/auth-environment";
 import { readPortalPrincipal } from "@/lib/auth-session";
-import { ApiKeyError } from "@/lib/api-keys/contracts";
 import { apiAuthenticationFailure, readGatewayBearer } from "@/lib/api-auth/gateway-credential";
-import { getPortalApiKeyService } from "@/lib/subscription-service/client";
 import { getRealtimeModels } from "@/lib/model-catalog";
 import { getPublicModelGatewayOrigin } from "@/lib/model-public-config";
 import { getRealtimeEndpoint } from "@/lib/realtime-integration";
@@ -12,7 +10,7 @@ import { resolveRealtimeVoice } from "@/lib/realtime-voices";
 import { readSpeechBody } from "@/lib/speech-response";
 import { MAX_BUFFERED_BODY_BYTES } from "@/lib/model-runtime-limits";
 
-/** 外側のサーバーが遮断したloopback専用口で、SQL本人と最新のGraph所属・購読権限を照合します。 */
+/** 外側のサーバーが遮断したloopback専用口で、SQL本人とBearer試用の認可を照合します。 */
 export async function POST(request: Request): Promise<Response> {
   const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
   const failure = (status: number) => new Response(null, { status, headers });
@@ -27,13 +25,7 @@ export async function POST(request: Request): Promise<Response> {
     try { resolveRealtimeOutputTokens(model, input); resolveRealtimeVoice(model, input); } catch { return failure(400); }
     const gatewayOrigin = getPublicModelGatewayOrigin(); if (!gatewayOrigin) return failure(503); getRealtimeEndpoint(model, gatewayOrigin);
     const relay = { actor: { tenantId: actor.tenantId, objectId: actor.objectId }, model, gatewayOrigin, portalOrigin };
-    if (input.authentication === "bearer") {
-      const bearer = await readGatewayBearer(request, actor, gatewayOrigin);
-      return Response.json({ ...relay, bearer }, { headers });
-    }
-    const key = await getPortalApiKeyService().executionKey(actor, input.apiKeyId, model.apiId);
-    if (model.observer && await getPortalApiKeyService().executionKey(actor, input.apiKeyId, model.observer.apiId) !== key) return failure(403);
-    // 公開frontはこのURLを全拒否します。キーの送信先は同じコンテナのloopbackプロセスだけです。
-    return Response.json({ ...relay, key, apiKeyId: input.apiKeyId }, { headers });
-  } catch (error) { return failure(apiAuthenticationFailure(error)?.status ?? (error instanceof ApiKeyError && error.status < 500 ? 403 : 503)); }
+    const bearer = await readGatewayBearer(request, actor, gatewayOrigin);
+    return Response.json({ ...relay, bearer }, { headers });
+  } catch (error) { return failure(apiAuthenticationFailure(error)?.status ?? 503); }
 }

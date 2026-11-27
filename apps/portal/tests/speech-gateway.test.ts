@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiKeyError } from "../lib/api-keys/contracts.ts";
+import { ApiAuthenticationError } from "../lib/api-auth/settings.ts";
 import { handleSpeech, type SpeechDependencies } from "../lib/speech-gateway.ts";
 import { buildSpeechRequest, defaultSpeechInput, getSpeechEndpoint, getSpeechHeaders, getSpeechIntegrationExample, getSpeechRequestSchema, getSpeechResponseSchema, SAMPLE_SPEECH_TEXT } from "../lib/speech-integration.ts";
 import { MAX_SPEECH_AUDIO_BYTES, MAX_SPEECH_JSON_BYTES, speechInputSchema } from "../lib/speech-request.ts";
@@ -8,12 +8,13 @@ import { inspectSpeechWav, parseSpeechTranscript, readSpeechResponse, speechAudi
 import type { SpeechModel } from "../lib/model-types.ts";
 import { AZURE_SPEECH_VOICES, AZURE_SPEECH_VOICE_IDS, AZURE_SPEECH_TTS_VOICES, AZURE_SPEECH_TTS_VOICE_IDS } from "../lib/speech-voices.ts";
 import { buildSpeechExecutionRequest } from "../lib/speech-client.ts";
+import { trialBearer, unicodeEscaped } from "./helpers/trial-bearer.ts";
 
 const tts: SpeechModel = { id: "azure-speech-tts", label: "Azure Speech TTS", providerId: "azure-ai-speech", provider: "Azure AI Speech", apiId: "azure-speech-v1", operationId: "tts", kind: "tts", path: "/models/azure-speech/v1/synthesize", maxRequestBytes: 8192, language: "ja-JP" };
 const stt: SpeechModel = { ...tts, id: "azure-speech-stt", label: "Azure Speech STT", operationId: "stt", kind: "stt", path: "/models/azure-speech/v1/recognize", maxRequestBytes: 1_048_576 };
 const openai: SpeechModel = { ...stt, id: "gpt-transcribe", label: "GPT Transcribe", providerId: "openai", provider: "OpenAI", apiId: "openai-audio-v1", operationId: "audio-transcriptions", modelId: "gpt-transcribe", path: "/models/openai-audio/v1/deployments/gpt-transcribe/transcriptions", maxRequestBytes: 4_194_304 };
 const models = [tts, stt, openai]; const portalOrigin = "https://portal.example.invalid"; const gatewayOrigin = "https://gateway.example.invalid";
-const secret = "test-only-private-speech-key"; const apiKeyId = "portal-11111111-1111-4111-8111-111111111111";
+const secret = "test-only-speech-access-token";
 const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
 
 /** PCMフレームを含むテスト用WAVです。実APIの固定音声とは分けて扱います。 */
@@ -21,14 +22,14 @@ function wav(samples = 2000): Uint8Array {
   const bytes = Buffer.alloc(44 + samples * 2); bytes.write("RIFF", 0); bytes.writeUInt32LE(bytes.length - 8, 4); bytes.write("WAVEfmt ", 8); bytes.writeUInt32LE(16, 16); bytes.writeUInt16LE(1, 20); bytes.writeUInt16LE(1, 22); bytes.writeUInt32LE(16000, 24); bytes.writeUInt32LE(32000, 28); bytes.writeUInt16LE(2, 32); bytes.writeUInt16LE(16, 34); bytes.write("data", 36); bytes.writeUInt32LE(samples * 2, 40); return bytes;
 }
 const audio = wav();
-/** 本人・購読認可・実際の本文検証を通し、外部通信だけを差し替えます。 */
+/** 本人の認証と実際の本文検証を通し、外部通信だけを差し替えます。 */
 function dependencies(overrides: Partial<SpeechDependencies> = {}): SpeechDependencies {
-  return { readSession: async () => actor, readPortalOrigin: () => portalOrigin, readModels: () => models, readGatewayEnvironment: async () => ({ origin: gatewayOrigin }), resolveSubscriptionKey: async () => secret,
+  return { readSession: async () => actor, readPortalOrigin: () => portalOrigin, readModels: () => models, readGatewayEnvironment: async () => ({ origin: gatewayOrigin }), resolveBearer: async () => trialBearer(secret, actor),
     fetch: async () => new Response(new Uint8Array(audio).buffer, { headers: { "Content-Type": "audio/wav", "apim-request-id": "speech-request-123" } }), ...overrides };
 }
-/** ブラウザーが選択できるのは公開設定と購読の台帳IDだけです。 */
+/** ブラウザーは公開設定と認証方式を送ります。 */
 function request(model: SpeechModel = tts, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}, signal?: AbortSignal, bytes = audio): Request {
-  const input = { ...defaultSpeechInput(model), apiKeyId, ...extra };
+  const input = { ...defaultSpeechInput(model), authentication: "bearer", ...extra };
   if (model.kind === "stt") {
     const form = new FormData(); form.append("input", JSON.stringify(input)); form.append("file", new Blob([new Uint8Array(bytes).buffer], { type: "audio/wav" }), "user-recording.wav");
     return new Request(`${portalOrigin}/api/models/speech`, { method: "POST", headers: { origin: portalOrigin, ...headers }, body: form, signal });
@@ -86,7 +87,7 @@ test("代表12音声の選択とlocaleをSSML・5言語例・ブラウザーか�
       assert.ok(code.includes("同じ文章で声を比較します &amp; &lt;テスト&gt;"), language);
     }
     let calls = 0;
-    const init = buildSpeechExecutionRequest(tts, input, apiKeyId, null);
+    const init = buildSpeechExecutionRequest(tts, input, { authentication: "bearer" }, null);
     const headers = new Headers(init.headers); headers.set("origin", portalOrigin);
     const response = await handleSpeech(new Request(`${portalOrigin}/api/models/speech`, { ...init, headers }), dependencies({
       fetch: async (_url, options) => {
@@ -124,9 +125,9 @@ test("STTは選択ファイルの実WAV形式を検査し、重複フィール�
   let calls = 0; const context = dependencies({ fetch: async () => { calls++; return Response.json({ text: "ok" }); } });
   const invalid = Buffer.from(audio); invalid.writeUInt32LE(48_000, 24);
   assert.equal((await handleSpeech(request(stt, {}, {}, undefined, invalid), context)).status, 400);
-  const jsonOnly = new Request(`${portalOrigin}/api/models/speech`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json" }, body: JSON.stringify({ ...defaultSpeechInput(openai), apiKeyId }) });
+  const jsonOnly = new Request(`${portalOrigin}/api/models/speech`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json" }, body: JSON.stringify({ ...defaultSpeechInput(openai), authentication: "bearer" }) });
   assert.equal((await handleSpeech(jsonOnly, context)).status, 400);
-  const form = new FormData(); form.append("input", JSON.stringify({ ...defaultSpeechInput(openai), apiKeyId })); form.append("file", new Blob([new Uint8Array(audio).buffer]), "input.wav"); form.append("file", new Blob([new Uint8Array(audio).buffer]), "second.wav");
+  const form = new FormData(); form.append("input", JSON.stringify({ ...defaultSpeechInput(openai), authentication: "bearer" })); form.append("file", new Blob([new Uint8Array(audio).buffer]), "input.wav"); form.append("file", new Blob([new Uint8Array(audio).buffer]), "second.wav");
   assert.equal((await handleSpeech(new Request(`${portalOrigin}/api/models/speech`, { method: "POST", headers: { origin: portalOrigin }, body: form }), context)).status, 400); assert.equal(calls, 0);
 });
 
@@ -139,7 +140,7 @@ test("TTSの空欄を保ったSTT切替は実行でき、TTSへ戻した場合�
 test("5言語の例は選択に追従し、実際のWAV・multipartと固定配備名を使う", () => {
   for (const model of models) for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) {
     const code = getSpeechIntegrationExample(language, model, { ...defaultSpeechInput(model), rate: "+20%" }, gatewayOrigin);
-    assert.ok(code.includes(gatewayOrigin + model.path)); assert.ok(code.includes("GATEWAY_API_KEY")); assert.ok(code.includes("egakumi-portal-speech/1.0")); assert.ok(!code.includes(secret));
+    assert.ok(code.includes(gatewayOrigin + model.path)); assert.ok(code.includes("GATEWAY_ACCESS_TOKEN")); assert.ok(code.includes("egakumi-portal-speech/1.0")); assert.ok(!code.includes(secret));
     if (model.kind === "tts") { assert.ok(code.includes(SAMPLE_SPEECH_TEXT)); assert.ok(code.includes("+20%")); assert.ok(code.includes("speech-result.wav")); }
     else { assert.ok(code.includes("input.wav")); assert.ok(!code.includes(SAMPLE_SPEECH_TEXT)); }
   }
@@ -157,9 +158,9 @@ test("本人認証と同一オリジンを確認し、拒否時は課金対象�
   assert.equal((await handleSpeech(request(tts, {}, { "Content-Type": "audio/wav" }), context)).status, 415); assert.equal(calls, 0);
 });
 
-test("音声のJSONとmultipartはqueryを本文読込・購読キー取得より前に拒否する", async () => {
-  let keys = 0, calls = 0;
-  const context = dependencies({ resolveSubscriptionKey: async () => { keys++; return secret; }, fetch: async () => { calls++; throw new Error("not expected"); } });
+test("音声のJSONとmultipartはqueryを本文読込・Bearer取得より前に拒否する", async () => {
+  let tokenReads = 0, calls = 0;
+  const context = dependencies({ resolveBearer: async () => { tokenReads++; return trialBearer(secret, actor); }, fetch: async () => { calls++; throw new Error("not expected"); } });
   for (const type of ["Application/JSON; charset=UTF-8", "multipart/form-data; boundary=synthetic-audio-boundary"]) {
     for (const query of ["text=synthetic", "input=synthetic", "file=synthetic", "input=one&input=two", "arbitrary=synthetic"]) {
       const incoming = new Request(`${portalOrigin}/api/models/speech?${query}`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": type }, body: "{" });
@@ -170,24 +171,24 @@ test("音声のJSONとmultipartはqueryを本文読込・購読キー取得よ�
   }
   const anonymous = new Request(`${portalOrigin}/api/models/speech?input=synthetic`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json" }, body: "{" });
   assert.equal((await handleSpeech(anonymous, { ...context, readSession: async () => null })).status, 401);
-  assert.equal(anonymous.bodyUsed, false); assert.equal(keys, 0); assert.equal(calls, 0);
+  assert.equal(anonymous.bodyUsed, false); assert.equal(tokenReads, 0); assert.equal(calls, 0);
 });
 
 test("パス・配備名・サイズ・設定の改変をキーの取得より先に拒否する", async () => {
-  let keys = 0; const context = dependencies({ resolveSubscriptionKey: async () => { keys++; return secret; } });
+  let tokenReads = 0; const context = dependencies({ resolveBearer: async () => { tokenReads++; return trialBearer(secret, actor); } });
   for (const extra of [{ modelId: "unknown" }, { text: "" }, { rate: "100%" }, { voice: "unapproved" }]) assert.equal((await handleSpeech(request(tts, extra), context)).status, 400);
   assert.equal((await handleSpeech(request(), { ...context, readModels: () => [{ ...tts, path: "/models/other" }] })).status, 400);
   assert.equal((await handleSpeech(request(), { ...context, readModels: () => [{ ...tts, maxRequestBytes: 1 }] })).status, 413);
   assert.equal((await handleSpeech(request(tts, {}, { "Content-Length": "524288001" }), context)).status, 413);
   assert.equal((await handleSpeech(request(stt, {}, {}, undefined, new Uint8Array([1, 2, 3])), context)).status, 400);
-  assert.equal(keys, 0);
+  assert.equal(tokenReads, 0);
 });
 
 test("TTSは本人が選んだキーを1回だけ使い、検証済みWAVと形式情報を返す", async () => {
   let calls = 0;
-  const response = await handleSpeech(request(), dependencies({ resolveSubscriptionKey: async (owner, id, apiId) => { assert.deepEqual(owner, actor); assert.equal(id, apiKeyId); assert.equal(apiId, tts.apiId); return secret; }, fetch: async (url, init) => {
+  const response = await handleSpeech(request(), dependencies({ resolveBearer: async () => trialBearer(secret, actor), fetch: async (url, init) => {
     calls++; assert.equal(String(url), gatewayOrigin + tts.path); assert.equal(init?.redirect, "error"); assert.equal(init?.cache, "no-store");
-    const headers = new Headers(init?.headers); assert.equal(headers.get("api-key"), secret); assert.equal(headers.get("User-Agent"), "egakumi-portal-speech/1.0"); assert.equal(headers.get("Content-Type"), "application/ssml+xml"); assert.equal(headers.get("cookie"), null); assert.equal(init?.body, buildSpeechRequest(tts, defaultSpeechInput(tts))); return dependencies().fetch!(url, init);
+    const headers = new Headers(init?.headers); assert.equal(headers.get("Authorization"), `Bearer ${secret}`); assert.equal(headers.get("User-Agent"), "egakumi-portal-speech/1.0"); assert.equal(headers.get("Content-Type"), "application/ssml+xml"); assert.equal(headers.get("cookie"), null); assert.equal(init?.body, buildSpeechRequest(tts, defaultSpeechInput(tts))); return dependencies().fetch!(url, init);
   } }));
   assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store"); const result = await readSpeechResponse(response); assert.equal(result.kind, "tts"); if (result.kind !== "tts") return;
   assert.equal(result.audioBase64, Buffer.from(audio).toString("base64")); assert.equal(result.audioDurationMs, 125); assert.equal(result.requestId, "speech-request-123"); assert.equal(result.rawResponse.format, "riff-16khz-16bit-mono-pcm"); assert.equal(calls, 1); assert.ok(!JSON.stringify(result).includes(secret));
@@ -206,8 +207,8 @@ test("OpenAI STTはfileのみをmultipartにし、modelの本文上書きを送�
   assert.equal(response.status, 200); assert.equal((await response.json()).transcript, SAMPLE_SPEECH_TEXT);
 });
 
-test("購読の失効や認可不能を秘密値や内部エラーを含めずに返す", async () => {
-  for (const error of [new ApiKeyError("Forbidden", 403), new Error(secret)]) { const response = await handleSpeech(request(), dependencies({ resolveSubscriptionKey: async () => { throw error; } })); assert.equal(response.status, error instanceof ApiKeyError ? 403 : 503); assert.ok(!(await response.text()).includes(secret)); }
+test("API認証の失効や障害を秘密値や内部エラーを含めずに返す", async () => {
+  for (const error of [new ApiAuthenticationError("ApiAuthenticationRequired", 401), new Error(secret)]) { const response = await handleSpeech(request(), dependencies({ resolveBearer: async () => { throw error; } })); assert.equal(response.status, error instanceof ApiAuthenticationError ? 401 : 503); assert.ok(!(await response.text()).includes(secret)); }
 });
 
 test("上流エラーと応答型・サイズ違反は成功扱いしない", async () => {
@@ -232,7 +233,7 @@ test("音声の読取り期限・取消を監視し、自動再試行しない",
   } finally { clearTimeout(keepAlive); }
 });
 
-test("両STTのJSONでUnicodeエスケープされた購読キーも画面へ返さない", async () => {
+test("両STTのJSONでUnicodeエスケープされたBearerトークンも画面へ返さない", async () => {
   for (const model of [stt, openai]) {
     const value = model === stt ? { RecognitionStatus: "Success", NBest: [{ Display: "synthetic transcript", Confidence: 0.9 }] } : { text: "synthetic transcript" };
     const encoded = [...secret].map((character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
@@ -246,13 +247,13 @@ test("両STTのJSONでUnicodeエスケープされた購読キーも画面へ返
   }
 });
 
-test("両STTで引用符付きキーの値・プロパティ名への反射を拒否する", async () => {
-  const credential = 'synthetic-speech-"key"-\\-value';
+test("両STTでUnicodeエスケープしたBearerの値・プロパティ名への反射を拒否する", async () => {
+  const credential = "synthetic-speech-bearer-token";
   for (const model of [stt, openai]) {
     const value = model === stt ? { RecognitionStatus: "Success", NBest: [{ Display: "synthetic transcript", Confidence: 0.9 }] } : { text: "synthetic transcript" };
     for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
-      const raw = JSON.stringify({ ...value, ...reflected }); assert.equal(raw.includes(credential), false);
-      const response = await handleSpeech(request(model), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+      const raw = JSON.stringify({ ...value, ...reflected }).replaceAll(credential, unicodeEscaped(credential)); assert.equal(raw.includes(credential), false);
+      const response = await handleSpeech(request(model), dependencies({ resolveBearer: async () => trialBearer(credential, actor), fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
       assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
     }
   }
@@ -298,7 +299,7 @@ test("AzureのSuccessに明示された空文字を無音として保持し、�
 });
 
 test("ブラウザーの読取りも認可エラー・壊れた音声・中断を正しく扱う", async () => {
-  await assert.rejects(readSpeechResponse(Response.json({ error: { code: "ApiKeyUnavailable" } }, { status: 403 })), (error: unknown) => error instanceof Error && error.message === "ApiKeyUnavailable");
+  await assert.rejects(readSpeechResponse(Response.json({ error: { code: "ApiAuthenticationRequired" } }, { status: 401 })), (error: unknown) => error instanceof Error && error.message === "ApiAuthenticationRequired");
   await assert.rejects(readSpeechResponse(Response.json({ error: { code: secret } }, { status: 500 })), (error: unknown) => error instanceof Error && !error.message.includes(secret));
   const good = await (await handleSpeech(request(), dependencies())).json(); await assert.rejects(readSpeechResponse(Response.json({ ...good, byteLength: 1 })));
   const abort = new AbortController(); const keepAlive = setTimeout(() => abort.abort(), 10); try { await assert.rejects(readSpeechResponse(new Response(new ReadableStream({ start() {} }), { headers: { "Content-Type": "application/json" } }), abort.signal)); } finally { clearTimeout(keepAlive); }

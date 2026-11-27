@@ -1,10 +1,12 @@
 # Portal証明書認証の構築・受入試験
 
-この文書は、工程3のローカル試験の記録と、現在の専用ACA Job方式の受入項目を扱います。現行資材でのAzure・Entra受入は未実施です。工程4のAPI用OAuthとTry接続は[工程4の詳細設計](../reference/portal-stage4-design.md)に沿って受け入れます。 [実施計画](../reference/portal-stages-3-4-plan.md) · [手動Entra登録](../setup/09-egakumi-portal.md)
+この文書は、工程3のローカル試験の記録と、現在の専用ACA Job方式の受入項目を扱います。現行資材でのAzure・Entra受入は未実施です。工程4のAPI用OAuthとTry接続は[初回構築の受入](../setup/13-verify-deployment.md)で確認します。 [当初の実施計画](../reference/portal-stages-3-4-plan.md) · [手動Entra登録](../setup/09-egakumi-portal.md)
 
 SQLはProxy維持、Redirect変更とPortal driver試作は取りやめと決定しました。既存Tedious/Kysely・SQL用MI認証を維持し、証明書認証の受入を独立して進めます。Networkの取消コミット`5f72d83`をローカルへ取り込み、SQL/NSGと証明書資材の保持を確認しました。以下の172試験は旧Redirect案のローカル統合時の履歴であり、取消後の資材を確認した結果ではありません。
 
 ## ローカル確認結果
+
+以下の旧Portalでの結果は取得時の記録です。現在の機能は[配備後の受入](../setup/13-verify-deployment.md)を基準にします。
 
 | 対象 | 結果 |
 | --- | --- |
@@ -62,7 +64,7 @@ ACA Jobへ移行する前は、管理VMへ初回発行用のRun Commandを追加
 | `tests/test_portal_authentication_infra.py` | Bicepコンパイル、CoreとPortal本体の資源責任、専用ID、鍵scope権限、secretと証明書の設定、ジョブ・DB・Gateway既存設定 |
 | `tests/test_portal_certificate_initialization.py` | ACA Jobが保存した初期状態の読取り、旧構成への初期配備の停止、保護runtimeと排他、旧Coreの発行済み結果の収集 |
 | `tests/test_deploy_applications.py` | アプリ配備補助入口のGateway-only指定と、両アプリの配備順、失敗時の停止、state選択 |
-| Portalの認証・Graphテスト | client assertionの固定宛先・thumbprint・短命性・digest署名・秘密非露出、ログインのtid/oid、Graph管理契約、既存セッション・実行用SQL権限 |
+| Portalの認証・Graphテスト | client assertionの固定宛先・thumbprint・短命性・digest署名・秘密非露出、ログインのtid/oid、Graphの本人照合、既存セッション・実行用SQL権限 |
 
 ローカル試験ではAzure/KV/Entraへ通信せず、実値をfixtureへコピーしません。型検査・lint・build・依存auditと混入検査も確認します。試験に使った合成秘密鍵をファイルへ保存しません。
 
@@ -78,21 +80,20 @@ ACA Jobへ移行する前は、管理VMへ初回発行用のRun Commandを追加
 | 6 | 手動Entra登録 | 専用アプリ作成・公開証明書・固定callback・権限・同意を一度の依頼にまとめて照合。新Portal secretを作らない |
 | 7 | Gateway、Portalの順に個別配備 | stateと登録結果を使用し、Gateway成功後にPortalのイメージ・DB初期化・権限・ジョブを準備する。本体の公開ヘルスを確認する |
 
-証明書専用ACA JobからのKV PEへのHTTPS、Portal本体とGraph定期ジョブからのKV PEとEntraへのHTTPSを実効経路とともに確認します。認証用証明書はKVが自己署名します。公開TLS向けのACME通信は公開TLS Jobの受入で確認します。SQLはProxyとSQL向けNSGのTCP1433を照合します。
+証明書専用ACA JobからのKV PEへのHTTPS、Portal本体からのKV PEとEntraへのHTTPSを実効経路とともに確認します。認証用証明書はKVが自己署名します。公開TLS向けのACME通信は公開TLS Jobの受入で確認します。SQLはProxyとSQL向けNSGのTCP1433を照合します。
 
 ## 認証・更新・復旧試験
 
 | 対象 | 合格条件 |
 | --- | --- |
 | ログイン | 固定認証tenantへ認証コードを交換し、公開HTTPS callback・Secure Cookie・署名済みtid/oidを維持。必要な構成でAzure tenantと認証Entra tenantの相違も確認 |
-| Graph管理 | 専用アプリのApplication tokenでグループ・ユーザー基本情報を照会。APIキー管理と所有者判定が維持される |
-| 定期ジョブ | 本体と同じkeyId/thumbprintと専用署名UAMIで、実際のスケジュール実行が完了 |
+| Graph OBO | PortalのBearer試用から本人の `/me` が取得でき、別人・無効なトークンで取得できないことを確認 |
 | 署名権限 | 対象鍵scopeのみread/sign。誤ったID・鍵版・disabled鍵・KV不通で署名失敗を秘匿し、他方式へfallbackしない |
 | 更新準備 | 運用入口からPortal署名用のACA Jobを実行し、現行と異なる公開鍵・新しい鍵版を生成。公開`.cer`だけを出力し、現行参照を維持 |
 | 手動登録前 | candidateの切替を拒否。旧公開証明書・旧鍵を維持 |
-| 更新切替 | 本体とジョブの固定参照・イメージを読戻し、実ログイン・Graph管理・定期実行を確認して受入 |
-| 復旧 | 旧版有効期間中、保存した旧固定参照と同じイメージへ戻し、認証・Graph・ジョブを再確認 |
+| 更新切替 | 本体の固定参照とイメージを読み戻し、ログインとBearer試用・Graph OBOを確認して受入 |
+| 復旧 | 旧版有効期間中、保存した旧固定参照と同じイメージへ戻し、ログインとBearer試用を再確認 |
 | 旧版廃止 | 受入と手動Entra旧証明書削除の後だけ、旧鍵exact versionを無効化。現行鍵名全体を削除しない |
-| 旧Portal撤去 | 本体・ジョブの旧secret参照、Portal用途の旧secret読取割当、旧Portal専用callbackを利用先照合後に撤去。CMのsecret/callbackを維持 |
+| 既存環境から移行する場合 | 旧Portalの秘密参照とアクセス割当、不要になった専用の戻り先を受入後に回収。既存CMのsecret/callbackを保持 |
 
 HTTPヘルス、設定の読戻し、ローカル署名テストをEntraの実ログイン成功と同一視しません。実施していない項目、失敗、対象構成不足は成功件数へ含めません。実環境の正確な出力・参照・証跡は`.local/<environment>/evidence/`へ保護保存し、公開文書には転載しません。

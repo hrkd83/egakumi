@@ -8,7 +8,7 @@
 2. APIポリシーが固有の設定データを保存し、`core-api-settings`で監査・制御の2変数を準備してから、`<base/>`で全体ポリシーを継承する。WebSocketは接続開始の`onHandshake`で実行する。
 3. 全体ポリシーが共通の要求情報と信頼した入口経路を確認する。設定済みキーヘッダーがあれば購読キー、なければ`Authorization: Bearer`のEntraアクセストークンを検証する。無効なキーをBearerで救済しない。
 4. APIポリシーが`<base/>`直後に`core-api-request-preparation`で要求ヘッダーを整え、共通認証の完了を確認してから、Operation、モデル、入力形式・サイズ、残存する本文項目条件を確認する。
-5. 検証済みの購読またはユーザーを呼出主体として回数・利用量を計数し、要求ID・API・Operation等の監査情報を確定する。
+5. 検証済みのユーザーにBearerの利用上限を適用し、要求ID・API・Operation等の監査情報を確定する。
 6. CMが必要なAPIで、同じ呼出主体に結び付いた本人接続セッションを確認する。
 7. 入口のキー・ユーザートークン・接続セッション等を除去し、下流専用のMI・OAuth・登録済み資格情報で接続する。
 
@@ -458,7 +458,7 @@ APIと操作のスコープに登録するテンプレートは、[REST、WebSoc
 | 回数制限 | キーは検証済み購読、Bearerは検証済みユーザーのcounterを使用。CMの追加資格情報で入口の利用枠を切り替えない |
 | queryの観測 | `core-query-observation`がAPIの明示した参照から観測ラベルを選び、有無・複数値だけを記録用JSONへまとめる。標準3ラベルと対象を維持し、modeや共有Named Valueは使わない |
 | 操作の入力契約 | query観測の後、本文読取りより前に`core-api-input-validation`が対象表`inputContracts`を選び、共通のContent-Type宣言条件を確認する。対象13操作は`inputContract={}`、生成表の対象値も`{}`。会社のMIME一覧比較・メソッド再確認・query拒否は撤去する |
-| 利用枠の設定 | キーは[SQL購読profileのsnippet](../../apps/api-gateway/policies/snippets/quota/subscription-profile/subscription-profile.xml)でPortalのSQL設定を内部APIから取得し、正常な値を30秒キャッシュする。Bearerは[社員profileの正本](../../apps/api-gateway/policies/fragments/quota/core-entra-user-profile/core-entra-user-profile.xml)から共通認証が確認した社員利用枠を後段へ渡す。取得障害や不完全な設定を無制限へ変換しない |
+| 利用枠の設定 | Bearerは共通認証で検証済みの利用者に設定済みの上限を適用する。購読キーの共通上限は標準資材で設定しない。[購読運用](../operations/access-and-keys.md) |
 | LLMトークン上限 | `token-limit.xml`を対応HTTP APIだけから参照。検証済み利用枠の毎分・期間内トークン数をAPIM標準ポリシーへ渡す。明示した制限なしの設定と設定欠落を区別する |
 | 下流認証 | Foundry等はMI、外部サービスは登録済みの認証設定。キー・入口のユーザートークン・本人sessionを下流へ流さない |
 | 監査 | 要求ID、呼出主体、認証方式、購読またはユーザー・テナント・クライアント、API、Operation、モデル、状態、使用量を記録。本文・token・keyを含めない |

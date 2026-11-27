@@ -325,7 +325,6 @@ class SplitConfigurationTests(unittest.TestCase):
                 self.assertEqual(options["network"]["firewall"]["sku"], "Premium")
                 self.assertEqual(options["network"]["firewall"]["idpsMode"], "Deny")
                 self.assertNotIn("operatorPorts", options["network"])
-                self.assertIn("rateLimits", options["gateway"])
                 for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
                     self.assertNotIn(key, options["network"])
                     self.assertNotIn(key, parameters["network"])
@@ -354,8 +353,7 @@ class SplitConfigurationTests(unittest.TestCase):
                     self.assertNotIn("ENTERPRISE-VALUE-SENTINEL", str(caught.exception))
 
     def test_nested_params_expose_only_environment_fields_and_not_platform_options(self):
-        for settings in ({"gateway": {"rateLimits": {"user": {"calls": 1}}}},
-                         {"gateway": {"rateLimits": {"application": {"calls": 1}}}},
+        for settings in ({"gateway": {"authentication": {"entra": {"userLimits": {"enabled": False}}}}},
                          {"certificate": {"renewBeforeDays": 10}},
                          {"monitoring": {"enableLogAlerts": True}}):
             with self.subTest(settings=settings), self.assertRaises(ConfigurationError):

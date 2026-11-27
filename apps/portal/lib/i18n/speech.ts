@@ -1,7 +1,7 @@
 import type { Locale } from "./config.ts";
 
 const ja = {
-  guideTitle: "音声APIをアプリに組み込む", guideSelect: "上の選択欄で操作とモデルを選び、利用するAPIの送信形式を確認します。", guideTts: "読み上げはテキストをSSMLへ変換して送信し、返ったWAVを再生または保存します。入力文はXMLとして安全にエスケープします。", guideStt: "文字起こしは対応するWAVを用意し、Azure Speechには音声バイナリ、OpenAIにはfileフィールドのmultipartを送ります。応答のJSONから認識文を読み取ります。", guideTry: "「試す」では利用できるAPIキーと入力を選び、右側で実際の応答を確認できます。読み上げ（TTS）では音声名も選べます。以下のコード例は入力設定に合わせて更新されます。",
+  guideTitle: "音声APIをアプリに組み込む", guideSelect: "上の選択欄で操作とモデルを選び、利用するAPIの送信形式を確認します。", guideTts: "読み上げはテキストをSSMLへ変換して送信し、返ったWAVを再生または保存します。入力文はXMLとして安全にエスケープします。", guideStt: "文字起こしは対応するWAVを用意し、Azure Speechには音声バイナリ、OpenAIにはfileフィールドのmultipartを送ります。応答のJSONから認識文を読み取ります。", guideTry: "「試す」では利用できるアクセストークンと入力を選び、右側で実際の応答を確認できます。読み上げ（TTS）では音声名も選べます。以下のコード例は入力設定に合わせて更新されます。",
   introduction: "選択した音声ファイルの文字起こし（STT）と、入力文の読み上げ（TTS）を試し、モデルや設定ごとの応答を確認します。",
   parameters: "音声APIの設定", operation: "操作・モデル", stt: "文字起こし（STT）", tts: "読み上げ（TTS）",
   voice: "読み上げる声", voiceHelp: "このPortalでは、日本語・英語などの代表的な標準Neural音声12種を選べます。Azure Speechの全音声は公式資料で確認してください。利用できる音声はリージョンによって異なります。声を変えても入力文は保持し、前の生成音声は消えます。", voiceListDocs: "音声の全一覧（Microsoft公式）", rate: "読み上げ速度", slower: "ゆっくり（−20%）", normal: "標準", faster: "速く（＋20%）",
@@ -11,9 +11,9 @@ const ja = {
   formatNotice: "出力形式はAPI定義側で固定されたWAV（16 kHz・16 bit・モノラル）です。速度はSSMLのprosodyで指定します。",
   runStt: "音声を文字起こしして確認", runTts: "音声を生成して確認", runningStt: "文字起こししています…", runningTts: "音声を生成しています…",
   wait: "処理の完了まで待機します。中止しても、送信済みの処理と課金が取り消されるとは限りません。自動再試行は行いません。",
-  responseEmpty: "設定とAPIキーを選んで実行すると、文字起こし結果や生成音声と、実際の応答形式を確認できます。",
+  responseEmpty: "設定を選んで実行すると、文字起こし結果や生成音声と、実際の応答形式を確認できます。",
   body: "送信内容", ssml: "SSML本文", binary: "音声バイナリ／フォーム", headers: "リクエストヘッダー", integrationLanguage: "組み込み例の言語",
-  backend: "各コード例はアプリケーションのバックエンドで実行します。GATEWAY_API_KEYを環境変数に設定し、ブラウザーへ渡さないでください。",
+  backend: "各コード例はアプリケーションのバックエンドで実行します。Gateway.InvokeのアクセストークンをGATEWAY_ACCESS_TOKENに設定し、ブラウザーへ渡さないでください。",
   binaryNotice: "送信内容の表示は、音声バイナリやmultipart/form-dataを説明するための記述です。このJSON自体をAPIへ送るものではありません。",
   multipartNotice: "OpenAIには音声ファイルをmultipart/form-dataで送ります。境界文字を含むContent-TypeはHTTPライブラリに生成させ、手書きしません。",
   schema: "パネルが利用する部分スキーマです。TTSの実際の応答は音声バイナリです。メタデータはPortalが検証済みWAVから読み取った値で、上流のJSON応答ではありません。",
@@ -27,7 +27,7 @@ const ja = {
 export type SpeechDictionary = { [K in keyof typeof ja]: string };
 
 const en: SpeechDictionary = {
-  guideTitle: "Integrate speech into your application", guideSelect: "Select an operation and model above, then review the request format for that API.", guideTts: "For synthesis, convert text to SSML, send it, and play or save the returned WAV. Escape user text safely as XML.", guideStt: "For transcription, prepare a supported WAV. Send audio binary to Azure Speech or a multipart file field to OpenAI, then read the transcript from the response JSON.", guideTry: "Open Try it to select an available API key and your input, then inspect the real response alongside the settings. Text to speech (TTS) also lets you choose a voice. The examples below update with your inputs.",
+  guideTitle: "Integrate speech into your application", guideSelect: "Select an operation and model above, then review the request format for that API.", guideTts: "For synthesis, convert text to SSML, send it, and play or save the returned WAV. Escape user text safely as XML.", guideStt: "For transcription, prepare a supported WAV. Send audio binary to Azure Speech or a multipart file field to OpenAI, then read the transcript from the response JSON.", guideTry: "Open Try it to select an available access token and your input, then inspect the real response alongside the settings. Text to speech (TTS) also lets you choose a voice. The examples below update with your inputs.",
   introduction: "Transcribe a selected audio file or synthesize your text, and compare responses across models and settings.",
   parameters: "Speech API parameters", operation: "Operation / model", stt: "Speech to text (STT)", tts: "Text to speech (TTS)",
   voice: "Voice", voiceHelp: "This Portal offers a representative subset of 12 standard Neural voices across Japanese, English and other languages. See the official list for all Azure Speech voices. Availability varies by region. Changing voices preserves your text and clears the previous audio.", voiceListDocs: "Full voice list (Microsoft)", rate: "Speaking rate", slower: "Slower (−20%)", normal: "Normal", faster: "Faster (+20%)",
@@ -37,9 +37,9 @@ const en: SpeechDictionary = {
   formatNotice: "The API definition fixes the output to a mono, 16 kHz, 16-bit WAV file. Speaking rate is sent through the SSML prosody element.",
   runStt: "Transcribe and inspect", runTts: "Generate and inspect speech", runningStt: "Transcribing…", runningTts: "Generating speech…",
   wait: "Requests wait for processing to complete. Cancelling does not guarantee cancellation of processing or charges. Requests are never retried automatically.",
-  responseEmpty: "Select parameters and an API key, then run to inspect the transcription or generated audio and its actual response format.",
+  responseEmpty: "Select parameters, then run to inspect the transcription or generated audio and its actual response format.",
   body: "Request body", ssml: "SSML body", binary: "Audio binary / form", headers: "Request headers", integrationLanguage: "Integration example language",
-  backend: "Run each example in your application backend. Set GATEWAY_API_KEY as an environment variable and never expose it to the browser.",
+  backend: "Run each example in your application backend. Set GATEWAY_ACCESS_TOKEN to a Gateway.Invoke access token and keep it out of the browser.",
   binaryNotice: "The body preview describes the binary or multipart/form-data request. Do not send this descriptive JSON itself to the API.",
   multipartNotice: "OpenAI receives the audio file as multipart/form-data. Let your HTTP library generate Content-Type and its boundary instead of writing them manually.",
   schema: "These are partial schemas used by this panel. TTS actually returns audio binary. Metadata is extracted from the validated WAV by the portal; it is not an upstream JSON response.",

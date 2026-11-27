@@ -5,7 +5,6 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { z } from "zod";
 import { getAuthEnvironment, type AuthEnvironment } from "../auth-environment.ts";
 import { getPublicModelGatewayOrigin } from "../model-public-config.ts";
-import type { ApiAuthPurpose } from "./purpose.ts";
 
 /** API用認証の失敗を、資格情報を含まない固定の応答へ変換します。 */
 export class ApiAuthenticationError extends Error {
@@ -36,34 +35,28 @@ export type ApiAuthenticationSettings = {
 const secretUrl = /^(https:\/\/[a-z0-9-]+\.vault\.azure\.net\/secrets\/[a-z0-9-]+)\/([a-f0-9]{32})$/;
 const version = /^[a-f0-9]{32}$/;
 
-/** 構築済みフラグの確認です。無効時は既存のキー経路だけを利用します。 */
+/** 構築済みフラグの確認です。無効時はAPI試用を提供しません。 */
 export function apiAuthenticationEnabled(): boolean {
   return process.env.PORTAL_API_AUTH_ENABLED === "true";
 }
 
-/** Azureの購読管理サービスを利用するPortalで追加認証を要求します。 */
-export function subscriptionManagementConfigured(): boolean {
-  return Boolean(process.env.PORTAL_SUBSCRIPTION_MANAGER_URL);
-}
-
 /** 証明書認証、Gatewayの公開オリジン、版固定の鍵をまとめて検証します。 */
-export function readApiAuthenticationSettings(purpose: ApiAuthPurpose = "gateway"): ApiAuthenticationSettings {
-  const management = purpose === "subscription-management";
-  if (!(management ? subscriptionManagementConfigured() : apiAuthenticationEnabled())) {
+export function readApiAuthenticationSettings(): ApiAuthenticationSettings {
+  if (!apiAuthenticationEnabled()) {
     throw new ApiAuthenticationError("ApiAuthenticationDisabled", 404);
   }
   try {
     const auth = getAuthEnvironment();
     const gatewayOrigin = getPublicModelGatewayOrigin();
     const key = secretUrl.exec(process.env.PORTAL_API_AUTH_KEY_URL ?? "");
-    const scope = (management ? process.env.PORTAL_SUBSCRIPTION_MANAGEMENT_SCOPE : process.env.PORTAL_API_AUTH_SCOPE) ?? "";
+    const scope = process.env.PORTAL_API_AUTH_SCOPE ?? "";
     const match = /^api:\/\/([a-f0-9-]{36})\/([A-Za-z.]+)$/.exec(scope);
     const audience = match?.[1];
     const keyIdentity = process.env.PORTAL_API_AUTH_KEY_CLIENT_ID;
     const previous = (process.env.PORTAL_API_AUTH_PREVIOUS_KEY_VERSIONS ?? "").split(",").filter(Boolean);
     if (!auth.certificate || !auth.baseURL.startsWith("https:") || !gatewayOrigin || !key ||
       !z.uuid().safeParse(audience).success || audience === auth.microsoftClientId ||
-      match?.[0] !== scope || match[2] !== (management ? "Subscription.Manage" : "Gateway.Invoke") ||
+      match?.[0] !== scope || match[2] !== "Gateway.Invoke" ||
       (auth.certificate.mode === "managed-identity" && !z.uuid().safeParse(keyIdentity).success) ||
       previous.length > 4 || previous.some((item) => !version.test(item))) {
       throw new Error();

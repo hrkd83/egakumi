@@ -34,7 +34,6 @@ from deployment.helpers.apim_authentication import (
     read_managed_entra_authentication, transition_common_authentication_policy, ENTRA_OPEN_PRODUCT_ID,
 )
 from deployment.helpers.apim_common_authentication import AUTHENTICATION_FRAGMENT_IDS, ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID
-from deployment.helpers.subscription_profiles import initialize_profile_settings
 from catalog_publication import finalize_descriptions
 from deployment.helpers import grpc_lifecycle
 from deployment.helpers import credential_login
@@ -212,10 +211,6 @@ def prepare_plan(config: dict, state: dict) -> dict:
         "apiDefinitions": resolved, "publishApis": True,
         "subscriptionKeyHeader": authentication["core-subscription-key-header"],
         "credentialLogin": credential_login.settings(config) or {},
-        "rateLimits": config["gateway"].get("rateLimits", {
-            "user": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60},
-            "subscriptionKey": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60, "overrides": []},
-            "application": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60, "overrides": []}}),
         "l7IngressSecretIdentifier": vault_base + grpc_lifecycle.SECRET_NAME,
         "realtimeTicketSecretIdentifier": vault_base + grpc_lifecycle.TICKET_NAME if ticket_on else ""}
     if entra["enabled"]:
@@ -777,9 +772,6 @@ def read_failed_stage_operations(prior, template, source, browser, plan, transpo
     add(apim + "/products/" + ENTRA_OPEN_PRODUCT_ID + "/policies/policy", "/products/policies")
     add(apim + "/loggers/azuremonitor", "/loggers")
     add(apim + "/diagnostics/azuremonitor", "/diagnostics")
-    for api in plan["parameters"]["apiDefinitions"]["value"]:
-        for subscription in api.get("keySubscriptions", []):
-            add(apim + "/subscriptions/" + entra_publication._identifier(subscription["subscriptionId"]), "/subscriptions")
     collection = deployment_id + "/operations"
     path, visited, snapshot, failed, operation_ids = collection + "?api-version=" + DEPLOYMENT_API, set(), {}, False, set()
     while path is not None:
@@ -1892,10 +1884,6 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
             observed = _wait_resource(stage_transport, fw["groupId"], NETWORK_API, sleep=sleep, deadline=deadline)
             if not _contains(observed.get("properties"), body["properties"]):
                 raise ValueError("Firewall readback did not preserve the approved rules; API publication was not attempted")
-        # 初回の接続だけ無効で準備します。Portalが設定したURL・KV参照は保持します。
-        if time.monotonic() >= deadline:
-            raise DeploymentError("API publication deadline expired before profile initialization")
-        initialize_profile_settings(plan["apimId"], stage_transport, deadline=deadline)
         deployment = {"tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME},
             "properties": {"mode": "Incremental", "template": publication_template,
                            "parameters": publication_parameters(template, plan["parameters"]) if generation_id is not None else plan["parameters"]}}

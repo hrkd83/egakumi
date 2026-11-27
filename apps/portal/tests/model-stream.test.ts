@@ -5,6 +5,9 @@ import { handleTextGeneration } from "../lib/model-gateway.ts";
 import type { ModelGenerationDependencies } from "../lib/model-gateway.ts";
 import { SAMPLE_TEXT_PROMPT } from "../lib/model-integration.ts";
 import { readModelResponse } from "../lib/model-response.ts";
+import { trialBearer } from "./helpers/trial-bearer.ts";
+
+const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
 
 const origin = "https://portal.example.invalid";
 const encoder = new TextEncoder();
@@ -24,11 +27,11 @@ function responseEvent(type: string, fields: Record<string, unknown> = {}): stri
 async function generate(body: ReadableStream<Uint8Array>, options: Partial<ModelGenerationDependencies> & { modelId?: string; operationId?: "chat-completions" | "responses-create"; requestSignal?: AbortSignal; contentType?: string } = {}): Promise<Response> {
   return handleTextGeneration(new Request(`${origin}/api/models/generate`, {
     method: "POST", headers: { origin, "content-type": "application/json" }, signal: options.requestSignal,
-    body: JSON.stringify({ message: SAMPLE_TEXT_PROMPT, modelId: options.modelId ?? chatModel.id, ...(options.operationId ? { operationId: options.operationId } : {}), maxOutputTokens: 128, stream: true, apiKeyId: "portal-11111111-1111-4111-8111-111111111111" }),
+    body: JSON.stringify({ message: SAMPLE_TEXT_PROMPT, modelId: options.modelId ?? chatModel.id, ...(options.operationId ? { operationId: options.operationId } : {}), maxOutputTokens: 128, stream: true, authentication: "bearer" }),
   }), {
-    readSession: async () => ({ tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" }), readPortalOrigin: () => origin,
+    readSession: async () => actor, readPortalOrigin: () => origin,
     readGatewayEnvironment: async () => ({ origin: "https://gateway.example.invalid" }),
-    resolveSubscriptionKey: async () => "only-test-key-value",
+    resolveBearer: async () => trialBearer("only-test-token-value", actor),
     readModels: () => textGenerationModels,
     fetch: async (_url, init) => {
       const request = JSON.parse(String(init?.body));
@@ -177,11 +180,11 @@ const reflectionKey = "synthetic-sse-reflection-secret";
 
 /** 実際のハンドラーへ独立した合成キーだけを渡し、外部通信は既存fixtureで置き換えます。 */
 async function reflectionGeneration(body: ReadableStream<Uint8Array>, model = chatModel, credential = reflectionKey): Promise<Response> {
-  return generate(body, { modelId: model.id, operationId: model.operationId, resolveSubscriptionKey: async () => credential });
+  return generate(body, { modelId: model.id, operationId: model.operationId, resolveBearer: async () => trialBearer(credential, actor) });
 }
 
-test("引用符付きキーもJSONの値・名前・Unicodeescape・delta連結から漏らさない", async () => {
-  const credential = 'synthetic-stream-"key"-\\-value';
+test("BearerをJSONの値・名前・Unicodeescape・delta連結から漏らさない", async () => {
+  const credential = "synthetic-stream-bearer-token";
   for (const model of [chatModel, responsesModel]) {
     const delta = (text: string) => model.operationId === "chat-completions" ? chat(text) : responseEvent("response.output_text.delta", { delta: text });
     const plain = delta("safe result");

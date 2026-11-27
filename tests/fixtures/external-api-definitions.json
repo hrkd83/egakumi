@@ -103,7 +103,6 @@
           "backendUrlTemplate": "/rest/files"
         }
       ],
-      "keySubscriptions": [],
       "authorization": {
         "mode": "subscriptionKey",
         "operationConstraints": {
@@ -175,7 +174,6 @@
           "templateParameters": []
         }
       ],
-      "keySubscriptions": [],
       "authorization": {
         "mode": "subscriptionKey",
         "operationConstraints": {
@@ -219,7 +217,6 @@
           "templateParameters": []
         }
       ],
-      "keySubscriptions": [],
       "authorization": {
         "mode": "subscriptionKey",
         "operationConstraints": {
@@ -320,7 +317,6 @@
           }
         }
       ],
-      "keySubscriptions": [],
       "authorization": {
         "mode": "subscriptionKey",
         "operationConstraints": {
@@ -366,7 +362,6 @@
           "backendUrlTemplate": "/responses?api-version=v1"
         }
       ],
-      "keySubscriptions": [],
       "authorization": {
         "mode": "subscriptionKey",
         "operationConstraints": {

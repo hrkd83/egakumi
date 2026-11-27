@@ -12,7 +12,7 @@ Gatewayの共通入口はAPIM購読キーで認可します。Microsoft認証が
 | --- | --- |
 | モデル・PII・一般のAPI | 利用するProduct/APIに対応するAPIM購読と、サーバー側のキー保管先 |
 | CMの本人接続 | Entraアプリ、下流の委任権限・同意、client secret、CMのWeb redirect |
-| Portalへのログイン | CoreのPortal用Entra設定。Gatewayの購読と本人接続の期限はそれぞれ管理 |
+| Portalへのログイン | Portal専用Entraアプリ。Gateway試用では同じ本人のGateway.Invokeを使用 |
 
 CMには既存のCore Entraアプリを再利用できます。Graphの場合は`User.Read`等の採用権限と必要な管理者同意、`offline_access`を準備し、Web redirectへ`https://authorization-manager.consent.azure-apim.net/redirect/apim/<APIM名>`を登録します。秘密値は保護ファイルへ保存し、paramsには参照先だけを記載します。
 
@@ -69,9 +69,7 @@ APIMの`core-gateway`は検証済み購読ID、要求ID、API／操作、結果c
 
 Bearer認証では、確認済みのテナントIDと本人IDの組み合わせごとに、configの`gateway.authentication.entra.userLimits.requestRate`を適用します。標準のテスト・本番は60秒に1,000回です。 [利用枠の設定](../setup/07-params.md)
 
-購読キー認証では、購読IDごとに計数します。主キー・副キーと更新後のキーは同じ購読枠を使います。Portalの購読利用枠を有効にした構成ではSQLの`requestRate`を適用し、明示的な`null`なら共通の回数制限を無効にします。利用枠を取得できない場合は503で停止します。手動追加用のREST／SSEひな型は、共通の購読回数制限が無効の場合にAPI専用の上限を適用します。 [手動追加のポリシー例](../../apps/api-gateway/policies/portal-examples/README.md)
-
-Portalの購読利用枠を使わない構成では、`gateway.rateLimits.subscriptionKey`を適用します。既定は無効です。有効にした場合は`overrides`で購読別の回数・期間を指定できます。この設定の`user`／`application`の有効化は設定検査で拒否します。利用できるAPIの範囲はProduct/APIの購読設定で管理します。
+標準資材は購読キーの共通リクエスト上限を設定しません。必要な場合は基盤管理者がAPIMで設定します。同じ購読の主キーと副キーは購読IDを共有します。[購読キーの運用](../operations/access-and-keys.md)
 
 認可・操作制約の後、CM/MI・下流転送の前に即時計数します。超過は本文なし429・数値`Retry-After`・要求IDを返し、下流を呼びません。通常操作・一括処理・並列実行で採用する上限を確認してください。APIMの近似的な要求回数制限であり、料金上限やWAFの代替ではありません。
 
@@ -200,9 +198,9 @@ SpeechとOpenAI Audioは認証・入力・イベントが異なります。Voice
 
 STTの公開`audio/wav`はAPIMがSpeech向けの固定codec・16kHzヘッダーへ変換します。WAFはSSML/WAVの登録済み完全パス、画像/PDFの登録済みJSON欄、従来MCPの正規messages経路にだけ必要な例外を適用し、他の検査・本文上限を維持します。企業管理WAFは自動変更せず、担当者が同じ範囲を確認します。
 
-## 管理ポータルの使い方
+## Portalの使い方
 
-[Core内の管理ポータル](../setup/12-deploy-portal.md)は`apps/portal`で管理します。画面ログインとGateway利用を分け、サーバー側で購読キーを付けて公開APIを呼びます。本人接続が必要なAPIでは、認証URLの表示・認証完了の確認・元操作の再実行を確認します。
+PortalはEntraサインインとGateway試用の認証を分けます。試用時はPortalサーバーが本人の `Gateway.Invoke` アクセストークンで公開APIを呼び出します。 [Portal配備手順](../setup/12-deploy-portal.md)
 
 ## 本人OAuth接続
 
@@ -210,18 +208,13 @@ CMはMicrosoftのaccess/refresh tokenを保管・更新し、BrokerとSQLが確�
 
 ### 構築で用意するもの
 
-共通基盤はSQLサーバー・非公開経路・ACA環境・ACRを準備します。Gateway工程はCM provider、credentials DB、Broker・初期化／定期照合ジョブ、本人接続の共通APIを配備します。Portal工程は認証DB・アプリ・購読管理と、利用者ごとの接続状態を扱う機能を配備します。
+共通基盤はSQLサーバー・非公開経路・ACA環境・ACRを準備します。Gateway工程はCM provider、credentials DB、Broker・初期化／定期照合ジョブ、本人接続の共通APIを配備します。Portal工程はログインとBearer試用のDB・アプリを配備します。
 
 本人のCM接続は実際のログイン時に作成または再利用します。任意のUPNや接続名を本人証明にしません。設定とOAuthの前提は [CM接続手順](credential-manager-login.md)、配備単位は [Gatewayの配備](../setup/11-deploy-gateway.md)を参照してください。
 
 ### 認証と業務再開
 
-1. Portalのサーバー処理が、有効な購読キーでGraphを呼びます。未接続なら409 `ConnectionRequired`と認証案内を受け取ります。
-2. 仮セッション・認証取引を本人に結び付けてサーバーへ保存し、`loginUrl`だけを利用者へ案内します。
-3. Microsoftの本人確認とCM接続のGraph本人照合後、仮セッションが有効になります。statusは状態・本人・期限だけを返し、セッション平文を再発行しません。
-4. Portalログイン本人との一致を確認し、保存済みセッションで元の読み取り要求を一度再開します。書込み要求の自動再送は、その操作の冪等性と利用者操作の契約に従います。
-
-ブラウザーへキー・pollSecret・接続セッション・CM tokenを渡しません。Portalの保存はSQLの用途別暗号化状態とし、複数サーバーの更新はリースと版数で排他します。[クライアント実装](connection-session-clients.md)
+PortalのGraph試用では、サインインした本人の `Gateway.Invoke` でGatewayを呼び、BrokerがOBOでGraphに接続します。外部クライアントが例外の購読キーでGraphを呼ぶ場合は、Credential Managerを使う[本人接続の契約](connection-session-clients.md)を適用します。
 
 ### 期限・更新・失効
 

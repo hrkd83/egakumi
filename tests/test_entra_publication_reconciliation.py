@@ -146,21 +146,6 @@ class ExistingSourceReconciliationTests(unittest.TestCase):
                     self.inventory(plan,base.template,transport,known)
                 self.assertTrue(all(call[0]=='GET' for call in transport.calls))
 
-    def test_declared_subscription_state_and_scope_cannot_overwrite_gui_changes(self):
-        for mismatch in ('state','scope'):
-            with self.subTest(mismatch=mismatch):
-                base,plan,_,transport,known,_,_=reconciliation_fixture()
-                api=plan['parameters']['apiDefinitions']['value'][0]
-                api['keySubscriptions']=[{'subscriptionId':'configured-key','enabled':True}]
-                rid=plan['apimId']+'/subscriptions/configured-key'
-                props={'state':'active','scope':plan['apimId']+'/products/'+api['productId']}
-                props[mismatch]='suspended' if mismatch=='state' else plan['apimId']+'/products/unreviewed'
-                transport.inventory[plan['apimId']+'/subscriptions']['body']['value'].append({'id':rid})
-                transport.refresh(rid,props)
-                with self.assertRaisesRegex(ValueError,'subscription scope/state'):
-                    self.inventory(plan,base.template,transport,known)
-                self.assertTrue(all(call[0]=='GET' for call in transport.calls))
-
     def test_failed_backup_does_not_close_or_change_any_existing_route(self):
         base,plan,_,transport,known,desired,_=reconciliation_fixture()
         inventory=self.inventory(plan,base.template,transport,known)
@@ -267,7 +252,7 @@ class ExistingSourceReconciliationTests(unittest.TestCase):
 class SharedInventoryCasingTests(unittest.TestCase):
     """ARM ID casing must not weaken dependency or scope checks (synthetic only)."""
 
-    kinds = ('policyFragments', 'backends', 'namedValues', 'subscriptions')
+    kinds = ('policyFragments', 'backends', 'namedValues')
 
     def add_shared(self, plan, transport, kind, *, name='fixture-shared', variant='mixed-all', properties=None):
         apim = plan['apimId']
@@ -281,7 +266,6 @@ class SharedInventoryCasingTests(unittest.TestCase):
                 'policyFragments': {'format': 'rawxml', 'value': '<fragment><set-variable name="fixture" value="ok" /></fragment>'},
                 'backends': {'protocol': 'http', 'url': 'https://backend.example.com/inference'},
                 'namedValues': {'displayName': name, 'secret': False, 'value': 'fixture-value'},
-                'subscriptions': {'state': 'active', 'scope': apim + '/products/tool-users'},
             }[kind]
         transport.inventory[apim + '/' + kind]['body']['value'].append({'id': raw_id})
         transport.inventory[requested_id] = response(raw_id, properties)
@@ -388,24 +372,13 @@ class SharedInventoryCasingTests(unittest.TestCase):
                     self.inventory(base, plan, transport, known)
                 self.assertTrue(all(call[0] == 'GET' for call in transport.calls))
 
-    def test_declared_subscription_uses_captured_case_variant_and_checks_scope_and_state(self):
-        for mismatch in (None, 'scope', 'state'):
-            with self.subTest(mismatch=mismatch):
-                base, plan, _, transport, known, _, _ = reconciliation_fixture()
-                api = plan['parameters']['apiDefinitions']['value'][0]
-                api['keySubscriptions'] = [{'subscriptionId': 'fixture-shared', 'enabled': True}]
-                properties = {'state': 'active', 'scope': (plan['apimId'] + '/products/' + api['productId']).upper()}
-                if mismatch:
-                    properties[mismatch] = 'suspended' if mismatch == 'state' else plan['apimId'] + '/products/unreviewed'
-                raw_id, requested_id = self.add_shared(plan, transport, 'subscriptions', properties=properties)
-                if mismatch:
-                    with self.assertRaisesRegex(ValueError, 'subscription scope/state'):
-                        self.inventory(base, plan, transport, known)
-                else:
-                    inventory = self.inventory(base, plan, transport, known)
-                    self.assertEqual(inventory.snapshot[requested_id][2]['body']['id'], raw_id)
-                    self.assertEqual(sum(key.casefold() == requested_id.casefold() for key in inventory.snapshot), 1)
-                self.assertTrue(all(call[0] == 'GET' for call in transport.calls))
+    def test_policy_reconciliation_does_not_require_subscription_access(self):
+        base, plan, _, transport, known, _, _ = reconciliation_fixture()
+        subscriptions = plan['apimId'] + '/subscriptions'
+        transport.inventory[subscriptions] = {'statusCode': 403, 'body': {}}
+        inventory = self.inventory(base, plan, transport, known)
+        self.assertNotIn(subscriptions, inventory.snapshot)
+        self.assertFalse(any(call[1] == subscriptions for call in transport.calls))
 
 
 class ReconciliationControllerTests(unittest.TestCase):
@@ -434,7 +407,7 @@ class ReconciliationControllerTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(publish, 'verify_common_authentication', return_value=authentication))
             stack.enter_context(mock.patch.object(publish, 'source_checkpoint', side_effect=bootstrap.transaction_checkpoint))
             stack.enter_context(mock.patch.object(publish, 'merge_firewall', return_value=({'properties':{}}, firewall_changed, '"unchanged"')))
-            for name in ('verify_subscription_products','verify_credential_login','verify_websocket_diagnostics','initialize_profile_settings'):
+            for name in ('verify_subscription_products','verify_credential_login','verify_websocket_diagnostics'):
                 stack.enter_context(mock.patch.object(publish,name))
             for name in ('reconcile_unreleased_apis','enable_websocket_diagnostics','finalize_descriptions','cleanup_default_samples'):
                 stack.enter_context(mock.patch.object(publish,name,return_value={}))

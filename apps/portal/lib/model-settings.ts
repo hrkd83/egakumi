@@ -4,7 +4,7 @@ import type { SpeechInput } from "./speech-request.ts";
 import type { RealtimeInput } from "./realtime-request.ts";
 import type { RerankInput } from "./rerank-request.ts";
 
-/** 画面の再作成後も保持する設定だけです。本文・ファイル・購読・実行状態は含めません。 */
+/** 画面の再作成後も保持する設定だけです。本文・ファイル・認可状態・実行状態は含めません。 */
 export type ModelSettings = {
   embeddings: Pick<EmbeddingInput, "modelId" | "dimensions" | "inputType">;
   image: Pick<ImageGenerationInput, "modelId" | "size" | "quality" | "outputFormat" | "width" | "height" | "count">;

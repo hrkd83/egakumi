@@ -14,18 +14,15 @@ param tenantId string
 param publicOrigin string
 @description('構築設定の公開ドメインから作る、Model Gatewayの固定HTTPSオリジンです。')
 param gatewayOrigin string
-param clientSecretUri string
-param authentication object = {}
-param authIdentity object = {}
+param authentication object
+param authIdentity object
 param apiAuthentication object = {}
 param signingSecretUri string
 param expectedEgressIp string
-param subscriptionManagerFqdn string
-param subscriptionServiceAudience string
 
 resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = { name: environmentName }
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: registryName }
-var certificateVariables = empty(authentication) ? {} : {
+var certificateVariables = {
   PORTAL_AUTH_KEY_ID: authentication.keyId
   PORTAL_AUTH_CERTIFICATE_THUMBPRINT: authentication.certificateThumbprint
   PORTAL_AUTH_SIGNING_MODE: 'managed-identity'
@@ -53,8 +50,6 @@ var variables = union(certificateVariables, apiAuthenticationVariables, {
   PORTAL_CANONICAL_SQL_DATABASE: database
   AZURE_TENANT_ID: tenant().tenantId
   AZURE_CLIENT_ID: runtimeIdentity.clientId
-  PORTAL_SUBSCRIPTION_MANAGER_URL: 'https://${subscriptionManagerFqdn}'
-  PORTAL_SUBSCRIPTION_MANAGEMENT_SCOPE: 'api://${subscriptionServiceAudience}/Subscription.Manage'
   PORTAL_GATEWAY_URL: gatewayOrigin
   EXPECTED_EGRESS_IP: expectedEgressIp
 })
@@ -65,8 +60,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: union(
-      { '${runtimeIdentity.id}': {} },
-      empty(authIdentity) ? {} : { '${authIdentity.id}': {} },
+      { '${runtimeIdentity.id}': {}, '${authIdentity.id}': {} },
       empty(apiAuthentication) ? {} : { '${apiAuthentication.identity.id}': {} }
     )
   }
@@ -78,9 +72,9 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
       // Firewallから内部LBのHTTPS443で受け付けます。
       ingress: { external: true, targetPort: 3000, transport: 'http', allowInsecure: false }
       registries: [{ server: registry.properties.loginServer, identity: runtimeIdentity.id }]
-      secrets: concat([
+      secrets: [
         { name: 'auth-signing-secret', keyVaultUrl: signingSecretUri, identity: runtimeIdentity.id }
-      ], empty(authentication) ? [{ name: 'microsoft-client-secret', keyVaultUrl: clientSecretUri, identity: runtimeIdentity.id }] : [])
+      ]
     }
     template: {
       containers: [{
@@ -88,7 +82,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
         image: '${registry.properties.loginServer}/portal@${imageDigest}'
         env: concat(map(items(variables), item => { name: item.key, value: item.value }), [
           { name: 'BETTER_AUTH_SECRET', secretRef: 'auth-signing-secret' }
-        ], empty(authentication) ? [{ name: 'MICROSOFT_CLIENT_SECRET', secretRef: 'microsoft-client-secret' }] : [])
+        ])
         resources: { cpu: json('0.5'), memory: '1Gi' }
         probes: [for type in ['Startup', 'Readiness', 'Liveness']: {
           type: type

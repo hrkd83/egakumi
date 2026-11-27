@@ -114,7 +114,7 @@ class WebSocketPublicationTests(unittest.TestCase):
         unsupported = {"mock-response", "cache-lookup", "cache-store", "cross-domain", "cors", "jsonp",
                        "set-method", "set-body", "xml-to-json", "json-to-xml", "xsl-transform",
                        "validate-content", "validate-parameters", "validate-headers", "validate-status-code"}
-        for filename in ("stream.xml", "service.xml", "core-api-settings.xml", "core-api-request-preparation.xml", "core-gateway-telemetry.xml", "realtime-observer.xml", "rate-limit.xml", "rate-limit-error.xml"):
+        for filename in ("stream.xml", "service.xml", "core-api-settings.xml", "core-api-request-preparation.xml", "core-gateway-telemetry.xml", "realtime-observer.xml", "entra-user-profile.xml", "rate-limit.xml", "rate-limit-error.xml"):
             from deployment.helpers.apim_audit import render_audit_policy
             path = SERVICE_POLICY if filename == "service.xml" else policy_fixture_path(POLICIES, filename)
             root = ET.fromstring(render_audit_policy(path.read_text(encoding="utf-8")))
@@ -129,7 +129,16 @@ class WebSocketPublicationTests(unittest.TestCase):
         self.assertIsNotNone(protocol.find('./inbound/set-variable[@name="gatewayDecision"]'))
         self.assertIsNotNone(protocol.find('./inbound/set-variable[@name="gatewayProtocolQueryAllowed"]'))
         fragments = {node.get("fragment-id") for node in protocol.iter("include-fragment")}
-        self.assertEqual(fragments, {"core-api-settings", "core-api-request-preparation", "core-gateway-telemetry", "core-rate-limit", "core-audit-context", "core-backend-audit"})
+        self.assertEqual(fragments, {"core-api-settings", "core-api-request-preparation", "core-gateway-telemetry",
+                                     "core-entra-user-profile", "core-rate-limit", "core-audit-context", "core-backend-audit"})
+        inbound = protocol.find("./inbound")
+        user_limits = next(node for node in inbound.findall("choose")
+                           if node.find("when/include-fragment[@fragment-id='core-entra-user-profile']") is not None)
+        self.assertIn('["method"] == "user"', user_limits.find("when").get("condition"))
+        decision = inbound.find('set-variable[@name="gatewayDecision"]')
+        rate = inbound.find('include-fragment[@fragment-id="core-rate-limit"]')
+        self.assertLess(list(inbound).index(decision), list(inbound).index(user_limits))
+        self.assertLess(list(inbound).index(user_limits), list(inbound).index(rate))
         observer = ET.parse(policy_fixture_path(POLICIES, "realtime-observer.xml"))
         self.assertIsNotNone(observer.find('./set-variable[@name="realtimeObserverOwnerValid"]'))
         self.assertEqual(observer.find('./choose/when/return-response/set-status').get("code"), "403")

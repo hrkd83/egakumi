@@ -1,12 +1,11 @@
 "use client";
 
-import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+import { TryAuthenticationControl, useTryAuthentication } from "@/components/try-authentication";
 
-import { waitForDocumentAnalysis, documentAnalysisPendingSchema, type DocumentAnalysisPending } from "@/lib/document-analysis-client";
+import { waitForDocumentAnalysis, type DocumentAnalysisPending } from "@/lib/document-analysis-client";
 import { useFieldIds } from "@/lib/use-field-ids";
 import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
 
-import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
@@ -15,16 +14,15 @@ import { ApiDocumentationLayout, ApiSchemaReference } from "@/components/api-doc
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DOCUMENT_ANALYSIS_API_ID, DOCUMENT_MEDIA_TYPES, DOCUMENT_MODELS, MAX_DOCUMENT_BYTES, DocumentAnalysisResponseError, getDocumentAnalysisEndpoint, type DocumentAnalysisFailure, type DocumentAnalysisModel, type DocumentAnalysisResult } from "@/lib/document-analysis-contracts";
+import { DOCUMENT_MEDIA_TYPES, DOCUMENT_MODELS, MAX_DOCUMENT_BYTES, DocumentAnalysisResponseError, getDocumentAnalysisEndpoint, type DocumentAnalysisFailure, type DocumentAnalysisModel, type DocumentAnalysisResult } from "@/lib/document-analysis-contracts";
 import { getDocumentAnalysisExample, getDocumentAnalysisRequestSchema, getDocumentAnalysisResponseSchema } from "@/lib/document-analysis-integration";
 import { getDocumentAnalysisDictionary } from "@/lib/i18n/document-analysis";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { Locale } from "@/lib/i18n/config";
 import { INTEGRATION_LANGUAGES, type IntegrationLanguage } from "@/lib/model-integration";
-import { loadModelKeyChoices, type ModelKeyChoice } from "@/lib/model-key-choices";
 
 /** ページを開いている間だけ保持する選択値と実行状態です。ファイルや秘密を永続化しません。 */
-type DocumentState = { model: DocumentAnalysisModel; apiKeyId: string; file: File | null; language: IntegrationLanguage; tab: "request" | "schema" | "response"; loading: boolean; cancelled: boolean; pending: DocumentAnalysisPending | null; result: DocumentAnalysisResult | null; failure: DocumentAnalysisFailure | null };
+type DocumentState = { model: DocumentAnalysisModel; file: File | null; language: IntegrationLanguage; tab: "request" | "schema" | "response"; loading: boolean; cancelled: boolean; pending: DocumentAnalysisPending | null; result: DocumentAnalysisResult | null; failure: DocumentAnalysisFailure | null };
 const languageLabels: Record<IntegrationLanguage, string> = { typescript: "TypeScript", python: "Python", php: "PHP", csharp: "C#", curl: "cURL" };
 
 /** 文字列としてコードを表示し、HTMLやMarkdownとして実行しません。 */
@@ -40,44 +38,17 @@ function Code({ title, code, dictionary }: { title: string; code: string; dictio
 /** ガイド・仕様・実ファイルでの解析を同じ契約で確認する文書解析ページです。 */
 export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { locale: Locale; dictionary: Dictionary; gatewayOrigin: string | null }) {
   const formId = useFieldIds();
-  const [store] = useState(() => createStore<DocumentState>(() => ({ model: "prebuilt-read", apiKeyId: "", file: null, language: "curl", tab: "request", loading: false, cancelled: false, pending: null, result: null, failure: null })));
-  const storageReady = useRef(false);
+  const [store] = useState(() => createStore<DocumentState>(() => ({ model: "prebuilt-read", file: null, language: "curl", tab: "request", loading: false, cancelled: false, pending: null, result: null, failure: null })));
   const state = useStore(store); const text = getDocumentAnalysisDictionary(locale); const common = dictionary.modelGateway; const guide = common.integration;
-  const [choices, setChoices] = useState<{ status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] }>({ status: "loading", keys: [] });
-  const [refresh, setRefresh] = useState(0); const request = useRef<AbortController | null>(null);
-  const selectedKey = choices.status === "ready" ? choices.keys.find((key) => key.id === state.apiKeyId) : undefined;
-  const authentication = useTryAuthentication(selectedKey?.id);
+  const request = useRef<AbortController | null>(null);
+  const authentication = useTryAuthentication();
   const origin = gatewayOrigin ?? "https://gateway.example.com";
-  useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem("document-analysis-operation");
-      if (raw) {
-        const saved = JSON.parse(raw) as { apiKeyId?: unknown; operation?: unknown };
-        const operation = documentAnalysisPendingSchema.parse(saved.operation);
-        if (typeof saved.apiKeyId === "string" && /^portal-[0-9a-f-]{36}$/i.test(saved.apiKeyId) && Date.parse(operation.expiresAt) > Date.now()) store.setState({ model: operation.model, apiKeyId: saved.apiKeyId, pending: operation });
-      }
-    } catch { /* 保存を禁止したブラウザーでも、現在の画面では解析を利用できます。 */ }
-    storageReady.current = true;
-  }, [store]);
-  useEffect(() => {
-    if (!storageReady.current) return;
-    const current = store.getState();
-    try {
-      if (current.pending && authentication.selection.mode === "api-key") sessionStorage.setItem("document-analysis-operation", JSON.stringify({ apiKeyId: current.apiKeyId, operation: current.pending }));
-      else sessionStorage.removeItem("document-analysis-operation");
-    } catch { /* ファイル・本文・結果・購読キーは保存しません。 */ }
-  }, [store, state.pending, state.apiKeyId, authentication.selection.mode]);
   useEffect(() => () => deactivatePanelRequest(request, (pending) => store.setState({ loading: false, ...(pending ? { cancelled: true } : {}) })), [store]);
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadModelKeyChoices(DOCUMENT_ANALYSIS_API_ID, controller.signal).then((keys) => { if (!controller.signal.aborted) setChoices({ status: "ready", keys }); }).catch(() => { if (!controller.signal.aborted) setChoices({ status: "error", keys: [] }); });
-    return () => controller.abort();
-  }, [refresh]);
 
   /** 条件を変えたときに以前の解析を消し、別文書の結果との混同を防ぎます。 */
   function update(patch: Partial<DocumentState>) { store.setState({ result: null, failure: null, cancelled: false, pending: null, ...patch }); }
 
-  /** ファイルを送る直前に形式を確認し、選択キーの台帳IDだけをBFFへ渡します。 */
+  /** ファイルを送る直前に形式を確認し、秘密値を含めずBFFへ渡します。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (request.current || !state.file && !state.pending || !authentication.credential || !gatewayOrigin) return;
@@ -89,9 +60,7 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
       if (state.pending) response = Response.json(state.pending, { status: 202 });
       else {
         signal.throwIfAborted();
-        const query = new URLSearchParams(authentication.credential.authentication === "bearer"
-          ? { model: state.model, authentication: "bearer" }
-          : { model: state.model, apiKeyId: authentication.credential.apiKeyId });
+        const query = new URLSearchParams({ model: state.model, ...authentication.credential });
         response = await fetch(`/api/tools/documents?${query}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": state.file!.type }, body: state.file!, signal });
       }
       const result = await waitForDocumentAnalysis(response, state.model, authentication.credential, signal, { onPending: (pending) => { if (!signal.aborted) store.setState({ pending }); } });
@@ -106,14 +75,7 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
   }
 
   const settings = <form onSubmit={execute} className="space-y-5">
-    <TryAuthenticationPicker model={authentication} locale={locale} disabled={state.loading} onModeChange={() => update({})} />
-    <div className="space-y-2" hidden={authentication.selection.mode === "bearer"}><div className="flex items-center justify-between gap-3"><label htmlFor={formId("document-api-key")} className="text-sm font-medium">{text.apiKey}</label><Button type="button" size="sm" variant="ghost" disabled={state.loading || choices.status === "loading"} onClick={() => { setChoices({ status: "loading", keys: [] }); setRefresh((value) => value + 1); }}>{guide.refreshKeys}</Button></div>
-      <Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => update({ apiKeyId })}><SelectTrigger id={formId("document-api-key")} className="w-full min-w-0"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block truncate">{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
-      <p className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
-      {choices.status === "loading" && <p role="status" className="text-sm text-muted-foreground">{guide.loadingKeys}</p>}
-      {choices.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
-      {choices.status === "ready" && !choices.keys.length && <p className="text-sm leading-6">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="text-primary underline underline-offset-4">{guide.manageKeys}</Link></p>}
-    </div>
+    <TryAuthenticationControl model={authentication} locale={locale} disabled={state.loading} onDisconnect={() => update({})} />
     <div className="space-y-3"><label htmlFor={formId("document-file")} className="block text-sm font-medium">{text.file}</label><Input id={formId("document-file")} type="file" accept={DOCUMENT_MEDIA_TYPES.join(",")} disabled={state.loading} aria-describedby={formId("document-file-help")} onChange={(event) => {
       const file = event.target.files?.[0] ?? null;
       if (file && (file.size === 0 || file.size > MAX_DOCUMENT_BYTES || !DOCUMENT_MEDIA_TYPES.some((type) => type === file.type))) update({ file: null, failure: { error: { code: file.size > MAX_DOCUMENT_BYTES ? "DocumentTooLarge" : "UnsupportedDocument" } } });

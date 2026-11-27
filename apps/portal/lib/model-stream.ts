@@ -122,7 +122,7 @@ class StreamValidation {
 }
 
 /**
- * 購読キーの反射を、イベント単体と本文の連結後の両方で中継前に遮断します。
+ * Bearerの反射を、イベント単体と本文の連結後の両方で中継前に遮断します。
  * @remarks キーの接頭辞に一致する末尾の長さだけを保持し、原イベントの保留も既存の単一イベント上限内に制限します。
  */
 class StreamCredentialGuard {
@@ -204,7 +204,7 @@ function failureFrame(code: ModelGatewayErrorCode, identifier?: string): Uint8Ar
 
 /**
  * APIMのSSEをイベントごとに検証して逐次中継します。応答全体のバッファリングはしません。
- * @remarks 正常な終端がない切断、時間超過、サイズ超過は成功として扱いません。購読解除時は上流も中止します。
+ * @remarks 正常な終端がない切断、時間超過、サイズ超過は成功として扱いません。接続の失効時は上流も中止します。
  */
 export function relayModelStream(options: {
   body: ReadableStream<Uint8Array>;

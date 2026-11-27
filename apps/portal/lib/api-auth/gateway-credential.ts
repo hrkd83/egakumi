@@ -1,17 +1,17 @@
 import "server-only";
 
-import type { ApiKeyActor } from "../api-keys/contracts.ts";
-import { getPortalApiKeyService } from "../subscription-service/client.ts";
 import { ApiAuthenticationError } from "./settings.ts";
 import { getPortalApiAuthentication, type PortalBearer } from "./service.ts";
-import type { TryCredential } from "./try-credential.ts";
 
 export { ApiAuthenticationError };
 
-/** サーバー内の資格情報です。ヘッダーを組み立てた後も反射検知用の値を保持します。 */
-export type GatewayCredential =
-  | { scheme: "api-key"; value: string; headers: { "api-key": string }; bearer?: undefined }
-  | { scheme: "bearer"; value: string; headers: { Authorization: string }; bearer: PortalBearer };
+/** Microsoftが検証したPortalの本人です。 */
+export type GatewayActor = { tenantId: string; objectId: string };
+
+/** サーバー内のBearerです。上流の応答に資格情報が反射していないか照合できます。 */
+export type GatewayCredential = {
+  value: string; headers: { Authorization: string }; bearer: PortalBearer;
+};
 
 /** 公開サンプルのヘッダーから資格情報を除き、今回選択した方式を一つだけ設定します。 */
 export function gatewayExecutionHeaders(example: HeadersInit, credential: GatewayCredential): Headers {
@@ -22,16 +22,9 @@ export function gatewayExecutionHeaders(example: HeadersInit, credential: Gatewa
   return headers;
 }
 
-/** 特定Gatewayへ送る資格情報を、同じ本人のSQLセッションまたはキー台帳から取得します。 */
-export async function resolveGatewayCredential(request: Request, actor: ApiKeyActor, selection: TryCredential,
-  apiId: string, origin: string,
-  resolveSubscriptionKey = (owner: ApiKeyActor, id: string, api: string) => getPortalApiKeyService(request).executionKey(owner, id, api),
+/** 固定のGatewayへ送るBearerを本人の認可セッションから取得します。 */
+export async function resolveGatewayCredential(request: Request, actor: GatewayActor, origin: string,
   resolveBearer?: () => Promise<PortalBearer>): Promise<GatewayCredential> {
-  if (selection.authentication !== "bearer") {
-    const value = await resolveSubscriptionKey(actor, selection.apiKeyId, apiId);
-    if (!/^[\x21-\x7e]{16,512}$/.test(value)) throw new Error("Invalid subscription key");
-    return { scheme: "api-key", value, headers: { "api-key": value } };
-  }
   let bearer: PortalBearer;
   try { bearer = resolveBearer ? await resolveBearer() : await readGatewayBearer(request, actor, origin); }
   catch (error) {
@@ -42,11 +35,11 @@ export async function resolveGatewayCredential(request: Request, actor: ApiKeyAc
       bearer.binding.objectId !== actor.objectId || bearer.binding.tenantId !== actor.tenantId) {
     throw new ApiAuthenticationError("ApiAuthenticationRequired", 401);
   }
-  return { scheme: "bearer", value: bearer.value, headers: { Authorization: `Bearer ${bearer.value}` }, bearer };
+  return { value: bearer.value, headers: { Authorization: `Bearer ${bearer.value}` }, bearer };
 }
 
 /** Bearerを送る直前に、既存のHTTP認可と同じPortal sessionと固定宛先を確認します。 */
-export async function readGatewayBearer(request: Request, actor: ApiKeyActor, origin: string): Promise<PortalBearer> {
+export async function readGatewayBearer(request: Request, actor: GatewayActor, origin: string): Promise<PortalBearer> {
   const service = getPortalApiAuthentication();
   if (origin !== service.settings.gatewayOrigin) throw new ApiAuthenticationError("ApiAuthenticationUnavailable", 503);
   const { requireApiAuthSession } = await import("./session.ts");
@@ -59,7 +52,6 @@ export async function readGatewayBearer(request: Request, actor: ApiKeyActor, or
 
 /** 長時間の操作では資格情報の期限と共有SQLの失効を監視します。 */
 export function watchGatewayCredential(credential: GatewayCredential, lifetime: AbortSignal): AbortSignal {
-  if (!credential.bearer) return lifetime;
   const bearer = credential.bearer;
   const ended = new AbortController();
   const signal = AbortSignal.any([lifetime, ended.signal, AbortSignal.timeout(Math.max(0, bearer.expiresAt - Date.now()))]);
@@ -84,7 +76,7 @@ export function watchGatewayCredential(credential: GatewayCredential, lifetime: 
 
 /** 複数要求を含む操作では、後続要求の前にも本人と失効を確認します。 */
 export async function assertGatewayCredential(credential: GatewayCredential): Promise<void> {
-  if (credential.bearer && !await getPortalApiAuthentication().stillAuthorized(credential.bearer)) {
+  if (!await getPortalApiAuthentication().stillAuthorized(credential.bearer)) {
     throw new ApiAuthenticationError("ApiAuthenticationRequired", 401);
   }
 }

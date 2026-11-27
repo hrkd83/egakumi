@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
+import { tryBearerFields } from "./api-auth/try-credential.ts";
 import type { DecisionAnswer, DecisionInput, DecisionJson, DecisionModel, DecisionResult } from "./decision-types.ts";
 
 /**
@@ -56,8 +56,8 @@ export const decisionInputSchema = z.object({
   questions: ownDataRecord(question, names).refine((value) => Object.keys(value).length > 0),
 }).strict();
 
-/** 実行要求にだけ台帳IDを付け、コード例に購読情報が混ざることを防ぎます。 */
-export const decisionExecutionSchema = z.union([decisionInputSchema.safeExtend(tryApiKeyFields), decisionInputSchema.safeExtend(tryBearerFields)]);
+/** 実行要求にだけPortalのBearer認可を示すフィールドを付けます。 */
+export const decisionExecutionSchema = decisionInputSchema.safeExtend(tryBearerFields);
 
 const probability = z.number().finite().min(0).max(1);
 const summarySchema = z.object({

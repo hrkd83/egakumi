@@ -29,19 +29,16 @@ class SqlSchemaIdentityInfrastructureTests(unittest.TestCase):
         self.assertIn("'SQL_RUNTIME_CLIENT_ID', parameters('runtimeIdentity').clientId", schema_environment)
         self.assertEqual(job['properties']['template']['containers'][0]['args'], ["[parameters('schemaAction')]"])
 
-    def test_portal_schema_job_uses_schema_for_sql_and_management_for_apim(self):
+    def test_portal_schema_job_uses_only_the_schema_identity_to_grant_runtime_sql_access(self):
         job = next(resource for resource in self.portal_schema['resources']
                    if resource['type'] == 'Microsoft.App/jobs')
         self.assertEqual(job['identity']['userAssignedIdentities'], {
             "[format('{0}', parameters('schemaIdentity').id)]": {},
-            "[format('{0}', parameters('managementIdentity').id)]": {},
         })
         variables = self.portal_schema['variables']['variables']
         self.assertEqual(variables['PORTAL_SQL_AUTH'], 'managed-identity')
         self.assertEqual(variables['AZURE_CLIENT_ID'], "[parameters('schemaIdentity').clientId]")
         self.assertEqual(variables['PORTAL_SQL_RUNTIME_CLIENT_ID'], "[parameters('runtimeIdentity').clientId]")
-        self.assertEqual(variables['PORTAL_SQL_MANAGEMENT_CLIENT_ID'], "[parameters('managementIdentity').clientId]")
-        self.assertEqual(variables['PORTAL_API_KEY_APIM_CLIENT_ID'], "[parameters('managementIdentity').clientId]")
         self.assertEqual(variables['PORTAL_SQL_DATABASE'], "[parameters('database')]")
 
     def test_app_entrypoints_pass_the_constructed_database_and_schema_identity(self):

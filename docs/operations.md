@@ -76,7 +76,7 @@ Azure Portal等で個別に追加するAPIは、API／operation・Product所属�
 
 Gatewayの公開処理は、未使用と判定できるAPIM初期サンプル（Echo API、Starter／Unlimitedとその購読）を整理します。業務へ転用したもの、範囲を確認できない購読、masterは保持し、`defaultSampleCleanup`へ結果を記録します。WebSocket採用時は既存の診断宛先・他カテゴリを保持して接続ログを有効にし、`webSocketDiagnostics`へ結果を記録します。
 
-標準APIの展開処理は試験用キーを自動発行しません。Portalは`platformGroupId`の管理グループへ標準API正本の全製品を承認し、configの`portalApiKeys.verificationMaxSubscriptions`（初期5）を適用します。製品ごとの`platform-<productId>`検証購読と内部groupsを生成し、同一ID・同一製品の既存キーを保持します。公開`groups`・`verificationSubscriptions`入力やparams書き戻しは行いません。旧任意購読ID・製品subset等は個別移行を先に確認します。通常のAPIキーは利用者がPortalから所有グループを選んで発行し、発行先は`released-apis`です。認可の分担は [Gatewayの購読キー認証](reference/gateway-key-auth-plan.md)を参照してください。
+GatewayはAPI、ポリシー、製品を配備します。検証用を含めて購読キーが必要な場合は、基盤管理者がAzureポータルで対象を限定して発行します。 [購読キーの運用](operations/access-and-keys.md)
 
 ## アプリ配備の途中で失敗した場合
 
@@ -93,7 +93,6 @@ Gatewayの公開処理は、未使用と判定できるAPIM初期サンプル（
 python3 scripts/deploy_applications.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
-無人実行では保護入力に加え、Portalの`portalApiKeys.platformGroupId`と`groupNamePattern`を事前設定します。初回の対話入力もこの2項目だけを同じparamsへ保存します。表示名はGraph、製品は標準API正本、検証購読数上限はconfigから求めます。
 
 ## 構築後にClaudeをGUIで追加する
 
@@ -119,7 +118,7 @@ IDや権限の変更前に[DNS事前準備](setup/05-public-dns.md)を確認し�
 
 Coreの診断ログ・LAW export・監査Storageと、企業共通監査は所有者と信頼境界を分けて扱います。query非保持の既存環境更新は [ログ保存手順](testing/log-privacy.md)のprepare→export→routeの順で実施し、変換後ログのStorage到達を確認してから直接保存経路を切り替えます。設定のreadback成功だけで実到達を合格にしません。
 
-APIキー管理・購読同期はPortalの管理画面を使います。内部の購読管理サービスが認可とAPIMの書込みを担当し、APIMは別のプロファイル照会サービスから制限設定を取得します。 [受入条件](reference/network-security-validation.md#購読管理とプロファイル照会の分離)[購読別の制限・観測](testing/subscription-limits.md)ではSQLの制限設定、APIMへの反映、欠測を分けて確認します。
+利用クライアントは原則として `Gateway.Invoke` のBearerを使います。例外発行した購読のキー更新、停止、必要時の上限設定はAzureポータル上のAPIMで行います。 [購読キーの運用](operations/access-and-keys.md) · [購読別の利用量](testing/subscription-limits.md)
 
 ## 管理VMから保守データを取得する
 

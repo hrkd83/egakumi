@@ -1,5 +1,7 @@
 # Portal 工程3 工程4 実施計画
 
+この文書は工程3・4の設計当時の記録です。現行のPortalは本人のBearer試用を提供し、購読キーは基盤管理者がAPIMで管理します。最新の作業は[Entra登録](../setup/09-egakumi-portal.md)と[Portal配備](../setup/12-deploy-portal.md)を参照してください。
+
 状態はWIPです。工程3の証明書認証と工程4のAPI試用を、新規構築の資材・手順に組み込んでいます。ローカル検証を揃えてから、空のAzure環境でAPIM、Portalログイン、API試用の順に受け入れます。Azure／Entraの実反映と実受入は別に記録します。
 
 [統合・Azure適用計画](portal-stage3-azure-acceptance-plan.md)に、共有差分の照合結果、最初のAzure適用の変更範囲と、適用前の判断・受入順序を記載する。ローカル実装の完了を、稼働中Portalの認証切替完了として扱わない。

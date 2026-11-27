@@ -10,8 +10,8 @@ const input = { modelId: "tts", voice: "ja-JP-NanamiNeural" as const, rate: "0%"
 test("TTSは代表12種の選択した声と同じ編集文をJSONで送り、前のSTTファイルは添付しない", () => {
   for (const voice of AZURE_SPEECH_TTS_VOICE_IDS) {
     const selected = { ...input, voice };
-    const request = buildSpeechExecutionRequest(tts, selected, "fixture-key", new File(["unused"], "previous.wav"));
-    assert.deepEqual(JSON.parse(String(request.body)), { ...selected, apiKeyId: "fixture-key" });
+    const request = buildSpeechExecutionRequest(tts, selected, { authentication: "bearer" }, new File(["unused"], "previous.wav"));
+    assert.deepEqual(JSON.parse(String(request.body)), { ...selected, authentication: "bearer" });
     assert.equal(new Headers(request.headers).get("Content-Type"), "application/json");
   }
 });
@@ -19,11 +19,11 @@ test("TTSは代表12種の選択した声と同じ編集文をJSONで送り、�
 test("STTは選択ファイルの内容と入力設定を送り、multipart境界はブラウザーへ任せる", async () => {
   const stt: SpeechModel = { ...tts, id: "stt", kind: "stt", operationId: "stt", path: "/models/azure-speech/v1/recognize" };
   const file = new File([new Uint8Array([0, 1, 2, 3])], "会議.wav", { type: "audio/wav" });
-  const request = buildSpeechExecutionRequest(stt, { ...input, modelId: "stt" }, "fixture-key", file);
+  const request = buildSpeechExecutionRequest(stt, { ...input, modelId: "stt" }, { authentication: "bearer" }, file);
   assert.ok(request.body instanceof FormData); assert.deepEqual([...request.body.keys()], ["input", "file"]);
-  assert.deepEqual(JSON.parse(String(request.body.get("input"))), { ...input, modelId: "stt", apiKeyId: "fixture-key" });
+  assert.deepEqual(JSON.parse(String(request.body.get("input"))), { ...input, modelId: "stt", authentication: "bearer" });
   const uploaded = request.body.get("file"); assert.ok(uploaded instanceof File); assert.equal(uploaded.name, "会議.wav");
   assert.deepEqual(new Uint8Array(await uploaded.arrayBuffer()), new Uint8Array([0, 1, 2, 3]));
   assert.equal(new Headers(request.headers).has("Content-Type"), false);
-  assert.throws(() => buildSpeechExecutionRequest(stt, input, "fixture-key", null));
+  assert.throws(() => buildSpeechExecutionRequest(stt, input, { authentication: "bearer" }, null));
 });

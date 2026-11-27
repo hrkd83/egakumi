@@ -66,7 +66,7 @@ test("公開APIのモデル上限を超える設定や不正なstream値から�
 test("URLやヘッダーの例には公開パスと環境変数だけを載せる", () => {
   assert.equal(getTextGenerationEndpoint(chat, origin), `${origin}${chat.path}`);
   assert.equal(getTextGenerationEndpoint(chat, `${origin}/`), `${origin}${chat.path}`);
-  assert.equal(getTextGenerationHeaders(false)["api-key"], "${GATEWAY_API_KEY}");
+  assert.equal(getTextGenerationHeaders(false)["Authorization"], "Bearer ${GATEWAY_ACCESS_TOKEN}");
   assert.equal(getTextGenerationHeaders(true).Accept, "text/event-stream");
   assert.equal(getTextGenerationHeaders(false)["X-Egakumi-Profile"], undefined);
   for (const unsafeOrigin of ["http://gateway.example.invalid", "https://user:secret@gateway.example.invalid", `${origin}/path`, `${origin}?key=secret`, `${origin}#secret`]) {
@@ -84,7 +84,7 @@ test("全言語の例が選択モデル・パラメーターとストリーム�
       const streaming = getIntegrationExample(language, model, { message: SAMPLE_TEXT_PROMPT, maxOutputTokens: 321, stream: true }, origin);
       for (const sample of [normal, streaming]) {
         assert.ok(sample.includes(`${origin}${model.path}`), language);
-        assert.ok(sample.includes("GATEWAY_API_KEY"), language);
+        assert.ok(sample.includes("GATEWAY_ACCESS_TOKEN"), language);
         assert.ok(!sample.includes("X-Egakumi-Profile"), language);
         assert.ok(sample.includes(model.id), language);
         assert.ok(sample.includes(SAMPLE_TEXT_PROMPT), language);
@@ -164,7 +164,7 @@ test("TypeScript例はJSON応答を読み、ストリーム時には分割され
     const log: unknown[] = [];
     const fakeFetch = async (url: string, init: RequestInit) => {
       assert.equal(url, `${origin}${chat.path}`);
-      assert.equal(new Headers(init.headers).get("api-key"), "test-only-value");
+      assert.equal(new Headers(init.headers).get("Authorization"), "Bearer test-only-value");
       assert.equal(new Headers(init.headers).get("X-Egakumi-Profile"), null);
       assert.equal(init.redirect, "error");
       assert.deepEqual(JSON.parse(String(init.body)), buildTextGenerationRequest(chat, options));
@@ -177,7 +177,7 @@ test("TypeScript例はJSON応答を読み、ストリーム時には分割され
     };
     const source = getIntegrationExample("typescript", chat, options, origin).replace('import process from "node:process";\n', "");
     const run = new AsyncFunction("process", "fetch", "console", source);
-    await run({ env: { GATEWAY_API_KEY: "test-only-value" }, stdout: { write: (value: string) => text.push(value) } }, fakeFetch, { log: (value: unknown) => log.push(value) });
+    await run({ env: { GATEWAY_ACCESS_TOKEN: "test-only-value" }, stdout: { write: (value: string) => text.push(value) } }, fakeFetch, { log: (value: unknown) => log.push(value) });
     if (stream) assert.equal(text.join(""), 'data: {"text":"確認"}\n\ndata: [DONE]\n\n');
     else assert.match(String(log[0]), /確認/);
   }

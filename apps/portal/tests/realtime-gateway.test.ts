@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { trialCredential } from "./helpers/trial-bearer.ts";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
 import type WebSocket from "ws";
@@ -33,10 +34,10 @@ function conversation(model = realtime, dependencies: RealtimeConversationDepend
   const controller = new AbortController(); const events: RealtimeStreamEvent[] = []; const diagnostics: RealtimeConversationDiagnostic[] = [];
   let receive: (command: RealtimeConversationCommand) => void = () => undefined; let removed = 0; let socket: FakeSocket;
   let connected: () => void = () => undefined; const ready = new Promise<void>((resolve) => { connected = resolve; });
-  const promise = runRealtimeConversation(model, input, getRealtimeEndpoint(model, gateway), key, controller.signal,
+  const promise = runRealtimeConversation(model, input, getRealtimeEndpoint(model, gateway), trialCredential(key), controller.signal,
     (event) => { events.push(event); if (event.type === "status" && event.stage === "connected") connected(); },
     (handler) => { receive = handler; return () => { removed++; }; }, { timeoutMs: 500, stopTimeoutMs: 5, diagnose: (value) => diagnostics.push(value), connect: (url, options) => {
-      assert.equal(url, getRealtimeEndpoint(model, gateway)); assert.equal(options.followRedirects, false); assert.equal(options.maxPayload, 262144); assert.deepEqual(options.headers, { "api-key": key, "User-Agent": "egakumi-portal-realtime/1.0" });
+      assert.equal(url, getRealtimeEndpoint(model, gateway)); assert.equal(options.followRedirects, false); assert.equal(options.maxPayload, 262144); assert.deepEqual(options.headers, { Authorization: `Bearer ${key}`, "User-Agent": "egakumi-portal-realtime/1.0" });
       socket = new FakeSocket(); socket.onSend = (value) => {
         if (value.type === "session.update" || value.type === "session.start") queueMicrotask(() => socket.event({ type: model.family === "live" ? "session.started" : "session.updated", session: { model: model.modelId, id: "never-public" } }));
         if (value.type === "session.close") queueMicrotask(() => socket.event({ type: "session.closed", usage: { total_tokens: 9 } }));
@@ -78,7 +79,7 @@ test("選択音声をWSS開始設定とRealtimeのDataChannel設定へ反映す�
 test("未知・別系列・文字起こしへの音声指定は上流WSSを開く前に拒否する", async () => {
   let connected = 0;
   for (const [model, selectedVoice] of [[realtime, "unregistered"], [realtime, "ja-JP-NanamiNeural"], [voice, "cedar"], [transcription, "marin"], [realtime, " cedar"], [realtime, "a".repeat(151)]] as const) {
-    await assert.rejects(runRealtimeConversation(model, { ...defaultRealtimeInput(model), voice: selectedVoice }, getRealtimeEndpoint(model, gateway), key,
+    await assert.rejects(runRealtimeConversation(model, { ...defaultRealtimeInput(model), voice: selectedVoice }, getRealtimeEndpoint(model, gateway), trialCredential(key),
       new AbortController().signal, () => undefined, () => () => undefined, { connect: () => { connected++; throw new Error("Unexpected connection"); } }));
   }
   assert.equal(connected, 0);
@@ -88,8 +89,8 @@ test("接続先・モデル・秘密のURL埋め込み・任意イベントを�
   assert.equal(getRealtimeEndpoint(realtime, gateway), `${gateway.replace("https:", "wss:")}${realtime.path}?model=gpt-realtime-2.1`);
   for (const invalid of [{ ...realtime, path: "/models/other" }, { ...realtime, modelId: "unregistered" }, { ...live, apiId: realtime.apiId }]) assert.throws(() => getRealtimeEndpoint(invalid, gateway));
   assert.throws(() => getRealtimeEndpoint(realtime, "https://user:secret@example.invalid"));
-  for (const extra of [{ audio: chunk }, { event: { type: "response.create" } }, { url: gateway }, { key }]) assert.equal(realtimeExecutionSchema.safeParse({ ...defaultRealtimeInput(realtime), apiKeyId: "portal-11111111-1111-4111-8111-111111111111", ...extra }).success, false);
-  await assert.rejects(runRealtimeConversation(realtime, defaultRealtimeInput(realtime), "wss://other.invalid" + realtime.path, key, new AbortController().signal, () => undefined, () => () => undefined));
+  for (const extra of [{ audio: chunk }, { event: { type: "response.create" } }, { url: gateway }, { key }]) assert.equal(realtimeExecutionSchema.safeParse({ ...defaultRealtimeInput(realtime), authentication: "bearer", ...extra }).success, false);
+  await assert.rejects(runRealtimeConversation(realtime, defaultRealtimeInput(realtime), "wss://other.invalid" + realtime.path, trialCredential(key), new AbortController().signal, () => undefined, () => () => undefined));
 });
 
 test("PCMフレームは線形にBase64と偶数バイト境界を検査する", () => {
@@ -231,7 +232,7 @@ test("取消と接続時間上限は確実に後始末し、自動再接続し�
   const abort = conversation(); await abort.ready; abort.controller.abort(); await assert.rejects(abort.promise, (error: unknown) => error instanceof Error && error.message === "RequestCancelled"); assert.equal(abort.removed(), 1);
   const deadline = conversation(realtime, { timeoutMs: 10 }); await deadline.promise; assert.ok(deadline.events.some((event) => event.type === "error" && event.error.code === "GatewayTimeout")); assert.equal(deadline.socket().closes, 1);
   const preAborted = new AbortController(); preAborted.abort(); let calls = 0;
-  await assert.rejects(runRealtimeConversation(realtime, defaultRealtimeInput(realtime), getRealtimeEndpoint(realtime, gateway), key, preAborted.signal, () => undefined, () => { calls++; return () => undefined; })); assert.equal(calls, 0);
+  await assert.rejects(runRealtimeConversation(realtime, defaultRealtimeInput(realtime), getRealtimeEndpoint(realtime, gateway), trialCredential(key), preAborted.signal, () => undefined, () => { calls++; return () => undefined; })); assert.equal(calls, 0);
 });
 
 test("未知イベントを公開せず、旧累積件数上限を超えても正常に継続する", () => {
@@ -250,6 +251,6 @@ test("WebRTCのスキーマはSDP・track・製品別停止を示し、WSS会話
   const rtcBody = JSON.parse(getRealtimeRequestExample(rtc, defaultRealtimeInput(rtc))); assert.equal(typeof rtcBody.body.sdp, "string");
   for (const model of models) {
     const guide = getRealtimeProtocolGuide(model); assert.ok(!guide.includes("固定サンプル")); assert.ok(guide.includes("停止"));
-    for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) { const code = getRealtimeIntegrationCode(model, defaultRealtimeInput(model), gateway, language); assert.ok(code.includes("GATEWAY_API_KEY")); assert.ok(!code.includes("speech-ja-jp")); assert.ok(!code.includes(key)); }
+    for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) { const code = getRealtimeIntegrationCode(model, defaultRealtimeInput(model), gateway, language); assert.ok(code.includes("GATEWAY_ACCESS_TOKEN")); assert.ok(!code.includes("speech-ja-jp")); assert.ok(!code.includes(key)); }
   }
 });

@@ -3,7 +3,7 @@ import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 
 import { z } from "zod";
-import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
+import type { GatewayActor } from "./api-auth/gateway-credential.ts";
 import { apiAuthenticationFailure, gatewayExecutionHeaders, resolveGatewayCredential, type GatewayCredential, watchGatewayCredential } from "./api-auth/gateway-credential.ts";
 import type { PortalBearer } from "./api-auth/service.ts";
 import { getTextGenerationModels } from "./model-catalog.ts";
@@ -33,10 +33,9 @@ export type ModelGatewayEnvironment = { origin: string };
 
 /** HTTPハンドラーの外部依存です。検証では認証と通信だけを置き換え、実際の制約を通します。 */
 export type ModelGenerationDependencies = {
-  readSession: () => Promise<ApiKeyActor | null>;
+  readSession: () => Promise<GatewayActor | null>;
   readPortalOrigin: () => string;
   readGatewayEnvironment?: () => Promise<ModelGatewayEnvironment>;
-  resolveSubscriptionKey?: (actor: ApiKeyActor, apiKeyId: string, apiId: string) => Promise<string>;
   resolveBearer?: () => Promise<PortalBearer>;
   readModels?: () => readonly TextGenerationModel[] | Promise<readonly TextGenerationModel[]>;
   fetch?: typeof globalThis.fetch;
@@ -45,7 +44,7 @@ export type ModelGenerationDependencies = {
 
 /**
  * ビルド時には要求せず、生成リクエスト時に固定のAPIM接続先だけを読みます。
- * @remarks 購読キーは利用者の選択から別途解決し、共通キーや開発用ファイルへ代替しません。
+ * @remarks 本人のBearerはPortalの認可セッションから取得します。
  */
 export async function getModelGatewayEnvironment(environment: Readonly<Record<string, string | undefined>> = process.env): Promise<ModelGatewayEnvironment> {
   const origin = getPublicModelGatewayOrigin(environment);
@@ -168,7 +167,7 @@ function generationResult(value: unknown, model: TextGenerationModel, durationMs
 
 /**
  * ログイン済みの同一オリジン要求だけを、登録済みモデルのAPIM操作へ転送します。
- * @remarks APIキーと入力本文はログやエラーに出しません。自動再試行は二重課金を避けるため行いません。
+ * @remarks Bearerと入力本文はログやエラーに出しません。自動再試行は二重課金を避けるため行いません。
  */
 export async function handleTextGeneration(request: Request, dependencies: ModelGenerationDependencies): Promise<Response> {
   let portalOrigin: string;
@@ -178,7 +177,7 @@ export async function handleTextGeneration(request: Request, dependencies: Model
   if (request.method !== "POST" || request.headers.get("origin") !== portalOrigin || (fetchSite && fetchSite !== "same-origin")) {
     return failure("RequestNotAllowed", 403);
   }
-  let actor: ApiKeyActor | null;
+  let actor: GatewayActor | null;
   try {
     actor = await dependencies.readSession();
     if (!actor) return failure("AuthenticationRequired", 401);
@@ -204,13 +203,11 @@ export async function handleTextGeneration(request: Request, dependencies: Model
   catch { return failure("GatewayNotConfigured", 503); }
   let credential: GatewayCredential;
   try {
-    credential = await resolveGatewayCredential(request, actor, input, model.apiId, gateway.origin,
-      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+    credential = await resolveGatewayCredential(request, actor, gateway.origin, dependencies.resolveBearer);
   } catch (error) {
     const apiAuth = apiAuthenticationFailure(error);
     if (apiAuth) return failure(apiAuth.code, apiAuth.status);
-    return error instanceof ApiKeyError && error.status < 500
-      ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503);
+    return failure("ApiAuthenticationUnavailable", 503);
   }
   const timeout = modelDeadline(dependencies.timeoutMs);
   const upstreamAbort = new AbortController();

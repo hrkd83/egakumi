@@ -42,9 +42,6 @@ def apply_initial_configuration(configuration: dict, *, fail) -> dict:
     identity = login.get("identity")
     if isinstance(identity, dict) and not entra_app_separation_enabled(result):
         identity["tenantId"] = result.get("entraTenantId")
-    for kind in ("subscriptionKey", "application"):
-        limits = section(gateway, "rateLimits", "gateway.rateLimits")
-        section(limits, kind, "gateway.rateLimits." + kind)["overrides"] = []
     monitoring = section(result, "monitoring", "monitoring")
     monitoring["auditAllowedIpAddresses"] = []
     monitoring["auditReaders"] = []
@@ -52,14 +49,4 @@ def apply_initial_configuration(configuration: dict, *, fail) -> dict:
     certificate["plugin"] = "Azure"
     portal = section(result, "portal", "portal")
     certificate["domainNames"] = [gateway.get("publicHostName"), portal.get("publicHostName")]
-    settings = section(result, "portalApiKeys", "portalApiKeys")
-    owner = settings.get("platformGroupId")
-    from .portal_api_keys import available_products
-    products = available_products(result) if owner else []
-    maximum = settings.setdefault("verificationMaxSubscriptions", 5)
-    settings["groups"] = ([{"groupId": owner, "products": [
-        {"productId": product, "maxSubscriptions": maximum} for product in products
-    ]}] if owner else [])
-    from .portal_api_keys import verification_subscriptions
-    settings["verificationSubscriptions"] = verification_subscriptions(settings)
     return result

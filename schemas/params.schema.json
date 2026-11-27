@@ -489,9 +489,6 @@
       "required": [
         "publicHostName"
       ]
-    },
-    "portalApiKeys": {
-      "$ref": "#/$defs/portalApiKeys"
     }
   },
   "$defs": {
@@ -1097,28 +1094,6 @@
         },
         "oauthTenantId": {
           "$ref": "#/$defs/guid"
-        }
-      }
-    },
-    "portalApiKeys": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "初回Portal配備で明示する管理グループObject IDと、対象セキュリティグループ表示名の正規表現です。未設定項目は対話入力して同じparamsへ保存します。承認製品は標準API正本、購読数上限はconfigから決まります。",
-      "properties": {
-        "platformGroupId": {
-          "$ref": "#/$defs/guid",
-          "description": "管理ダッシュボードと検証用購読を所有する管理グループのObject IDです。初回対話入力のため省略できます。"
-        },
-        "groupNamePattern": {
-          "type": "string",
-          "maxLength": 512,
-          "default": "",
-          "examples": [
-            "^ORG_",
-            "^(ORG_|DEPT_)",
-            "^組織_.+$"
-          ],
-          "description": "対象セキュリティグループの表示名を選ぶRE2互換の正規表現。通常は大文字小文字を区別します。空欄は初回未設定で、azd up後段または個別のPortal配備で対話入力します。非対話では事前設定が必要です。空欄を全許可にはしません。"
         }
       }
     },

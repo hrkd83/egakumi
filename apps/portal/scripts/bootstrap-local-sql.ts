@@ -4,14 +4,10 @@ import { createAuthDatabase } from "../lib/auth-database.ts";
 import { getSqlEnvironment } from "../lib/auth-environment.ts";
 import { migrateAuth, sqlFailure } from "./auth-migrations.ts";
 import { grantLocalDevelopmentAccess } from "./auth-runtime-grants.ts";
-import { configureApiKeyGroups, readApiKeyGroupConfiguration } from "./api-key-group-config.ts";
-import { configureApiKeyAdministration, readApiKeyAdministrationConfiguration } from "./api-key-administration-config.ts";
 
 /** ローカルSQLだけに、空DB・テーブル・DML専用アプリ利用者を準備します。 */
 async function main() {
   const settings = getSqlEnvironment();
-  const keyGroups = readApiKeyGroupConfiguration(process.env);
-  const administration = readApiKeyAdministrationConfiguration(process.env);
   if (settings.mode !== "local-sql") throw new Error("Local SQL mode required");
   const runtime = z.object({ user: z.literal("portal_app"), password: z.string().min(32) }).parse({
     user: process.env.PORTAL_SQL_RUNTIME_USER, password: process.env.PORTAL_SQL_RUNTIME_PASSWORD,
@@ -34,8 +30,6 @@ async function main() {
   const database = new Kysely<Record<string, unknown>>(createAuthDatabase(settings));
   try {
     await migrateAuth(database);
-    if (keyGroups) await configureApiKeyGroups(database, keyGroups.tenantId, keyGroups.groups);
-    if (administration) await configureApiKeyAdministration(database, administration);
     await sql`IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name=N'portal_app')
       CREATE USER [portal_app] FOR LOGIN [portal_app];`.execute(database);
     await grantLocalDevelopmentAccess(database, runtime.user);

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { trialBearer } from "./helpers/trial-bearer.ts";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { test } from "node:test";
@@ -7,12 +8,11 @@ import { createRealtimeRelay, isRealtimeInternalPath, verifyRealtimeInternalProo
 import type { RealtimeModel } from "../lib/model-types.ts";
 import type { RealtimeStreamEvent } from "../lib/realtime-request.ts";
 
-const origin = "https://portal.example.invalid"; const key = "fixture-private-subscription-key-never-printed";
+const origin = "https://portal.example.invalid"; const key = "fixture-private-bearer-never-printed";
 const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
-const apiKeyId = "portal-11111111-1111-4111-8111-111111111111";
 const model: RealtimeModel = { id: "fixture-realtime", label: "Realtime", providerId: "openai", provider: "OpenAI", family: "realtime", transport: "websocket", apiId: "openai-realtime-ws-v1", operationId: "invoke", path: "/models/openai-realtime/v1/ws/", modelId: "gpt-realtime-2.1", voice: "marin", maxRequestBytes: 65536, maxOutputTokens: 512 };
-const context: RealtimeRelayContext = { actor, model, key, apiKeyId, gatewayOrigin: "https://gateway.example.invalid", portalOrigin: origin };
-const start = { type: "start", modelId: model.id, apiKeyId, maxOutputTokens: 256 };
+const context: RealtimeRelayContext = { actor, model, bearer: trialBearer(key, actor), gatewayOrigin: "https://gateway.example.invalid", portalOrigin: origin };
+const start = { type: "start", modelId: model.id, authentication: "bearer", maxOutputTokens: 256 };
 
 /** loopback内だけでブラウザーWSを再現し、実際のAPI・認証・課金先には接続しません。 */
 async function fixture(overrides: Partial<RealtimeRelayDependencies> = {}) {
@@ -63,17 +63,17 @@ test("開始フレームの期限切れ・任意URL・二重開始で上流を�
   } finally { await app.close(); }
 });
 
-test("所属・購読の認可失敗を固定コードで返し、秘密や上流の例外を公開しない", async () => {
-  let upstream = 0; const app = await fixture({ authorize: async () => { throw new Error("ApiKeyUnavailable"); }, runConversation: async () => { upstream++; } });
+test("Bearer認可の失敗を固定コードで返し、秘密や上流の例外を公開しない", async () => {
+  let upstream = 0; const app = await fixture({ authorize: async () => { throw new Error("ApiAuthenticationRequired"); }, runConversation: async () => { upstream++; } });
   try { const ws = client(app.url); const values = collect(ws); await once(ws, "open"); ws.send(JSON.stringify(start)); await once(ws, "close");
-    assert.ok(values.some((event) => event.type === "error" && event.error.code === "ApiKeyUnavailable")); assert.equal(upstream, 0); assert.ok(!JSON.stringify(values).includes(key));
+    assert.ok(values.some((event) => event.type === "error" && event.error.code === "ApiAuthenticationRequired")); assert.equal(upstream, 0); assert.ok(!JSON.stringify(values).includes(key));
   } finally { await app.close(); }
 });
 
-test("認可済みの購読だけで音声を中継し、ユーザーの停止後に回収が終わってから接続を閉じる", async () => {
+test("認可済み本人のBearerだけで音声を中継し、ユーザーの停止後に回収が終わってから接続を閉じる", async () => {
   const commands: string[] = []; let cleaned = false;
   const app = await fixture({ authorize: async (input) => { assert.equal(input.voice, "cedar"); return context; }, runConversation: async (selected, input, endpoint, credential, signal, emit, register) => {
-    assert.equal(selected.id, model.id); assert.deepEqual(input, { modelId: model.id, maxOutputTokens: 256, voice: "cedar" }); assert.equal(credential, key); assert.equal(new URL(endpoint).protocol, "wss:");
+    assert.equal(selected.id, model.id); assert.deepEqual(input, { modelId: model.id, maxOutputTokens: 256, voice: "cedar" }); assert.equal(credential.value, key); assert.equal(new URL(endpoint).protocol, "wss:");
     const unregister = register((command) => commands.push(command.type)); emit({ type: "status", stage: "connected", elapsedMs: 0 });
     await new Promise<void>((finish) => signal.addEventListener("abort", () => finish(), { once: true }));
     await new Promise((finish) => setTimeout(finish, 15)); cleaned = true; unregister();
@@ -92,8 +92,7 @@ test("120KB超のSDPを中継し、answerを即送信して取消時も所有通
   let cleaned = false;
   const app = await fixture({ authorize: async (input) => { assert.equal(input.voice, "cedar"); return { ...context, model: rtc }; }, runWebRtc: async (request, dependencies) => {
     const body = await request.json(); assert.equal(body.voice, "cedar"); assert.equal(body.sdp, offer);
-    assert.deepEqual(await dependencies.readSession(), actor); assert.equal(await dependencies.resolveSubscriptionKey!(actor, apiKeyId, rtc.observer!.apiId), key);
-    await assert.rejects(() => dependencies.resolveSubscriptionKey!(actor, apiKeyId, "unapproved-api"));
+    assert.deepEqual(await dependencies.readSession(), actor); assert.equal((await dependencies.resolveBearer!()).value, key);
     return new Response(new ReadableStream({ start(controller) {
       controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "answer", sdp: answer })}\n\n`));
       request.signal.addEventListener("abort", () => { cleaned = true; controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "complete", durationMs: 1, inputAudioBytes: 0, outputAudioBytes: 0, stopStatus: "confirmed" })}\n\n`)); controller.close(); }, { once: true });
