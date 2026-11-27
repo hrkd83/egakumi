@@ -129,8 +129,8 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
 
     def test_real_preprovision_keeps_published_destinations_and_empty_api_definitions_only_in_generated_file(self):
         policy, group = self.snapshots()
-        # 前段の監視、NSG、UDR、APIM、Portal確認を初回状態にし、最後のFWだけを既存にする。
-        absent_reads = 1 + 5 + 4 + 1 + 1  # 監視・5 NSG・4 UDR・APIM・Portal。
+        # 前段のACR・入口資格情報2件・監視・6 NSG・5 UDR・APIM・Portalを初回状態にする。
+        absent_reads = 1 + 2 + 1 + 6 + 5 + 1 + 1
         transport = ScriptedTransport([{"statusCode": 404}] * absent_reads + [policy, group])
         self.config["apiDefinitions"] = []
         original = copy.deepcopy(self.config)

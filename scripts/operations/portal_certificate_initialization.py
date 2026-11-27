@@ -428,6 +428,15 @@ def _collect(ctx, vm):
 
 def initialize(ctx, *, execute=False, compiler=_compiler):
     """計画→固定要求→3部品→共通収集を、初回認証切替なしで進めます。"""
+    if ctx.state['outputs'].get('certificateBootstrap'):
+        current = ctx.workspace.state / 'portal-auth-certificate.json'
+        if not current.is_file():
+            raise OperationError('Resume azd provision to complete the initial Portal certificate job')
+        state = read_certificate_state(ctx.config, ctx.workspace)
+        if state.get('phase') != 'initial':
+            raise OperationError('Finish the certificate rotation before initialization')
+        return {'action': 'initialize', 'phase': 'initial', 'execute': execute, 'resourcesPlanned': 0,
+                'privateKeyExport': False, 'entraChangesAutomatic': False}
     groups, vm, vault, principal = prerequisites(ctx)
     path = ctx.workspace.state / 'portal-auth-initialization.json'
     receipt = _read(ctx, path)

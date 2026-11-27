@@ -17,7 +17,7 @@ from deployment.helpers.paths import local_paths
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers import credential_broker_lifecycle
 from test_credential_broker_initial_deployment import fixture as broker_fixture, DIGEST, ok
-from management_fixtures import maintenance_metadata, client_core_outputs
+from management_fixtures import client_core_outputs
 
 
 def fixture():
@@ -26,7 +26,6 @@ def fixture():
     state['apimInstanceId'] = apim_instance_id(config)
     stem, groups = config['resourceStem'], config['resourceGroupNames']
     state['outputs']['gatewayFoundation'] = {
-        'managementMaintenance': maintenance_metadata(config['subscriptionId']),
         'resourceGroup': groups['svc'], 'identityResourceGroup': groups['id'],
         'apimName': apim_name(config), 'vaultName': 'kv-' + stem,
         'schemaIdentity': copy.deepcopy(state['outputs']['credentialBroker']['schemaIdentity']),
@@ -56,12 +55,6 @@ def speech_fixture():
 
 class GatewayDeploymentTests(unittest.TestCase):
     def setUp(self):
-        # IMDS/RunCommand discovery has its own offline suite. CLI order tests
-        # inject a constructed synthetic client ID without contacting Azure.
-        discovery = mock.patch.object(gateway, 'discover_management_sql_identity',
-                                      return_value='77777777-7777-4777-8777-777777777777')
-        self.sql_discovery = discovery.start()
-        self.addCleanup(discovery.stop)
         # These tests mock CLI subprocesses and clear the process environment.
         # Real Windows DACLs are exercised by the dedicated Serial suite;
         # POSIX runs retain actual private-file mode checks here.
@@ -112,20 +105,7 @@ class GatewayDeploymentTests(unittest.TestCase):
         foundation = gateway.foundation_inputs(config, state)
         self.assertEqual(foundation['sqlServer'], 'sql-' + config['resourceStem'] + '.database.windows.net')
         self.assertEqual(foundation['schemaIdentity'], state['outputs']['credentialBroker']['schemaIdentity'])
-        self.assertEqual(foundation['managementMaintenance'], state['outputs']['gatewayFoundation']['managementMaintenance'])
         self.assertEqual(state, original)
-
-    def test_missing_maintenance_output_stops_before_building_or_azure_without_fallback(self):
-        config, state = fixture()
-        config['publishApis'] = True
-        metadata = state['outputs']['gatewayFoundation'].pop('managementMaintenance')
-        state['outputs']['managementMaintenance'] = metadata
-        config['managementMaintenance'] = metadata
-        with self.isolated_cli(config, state) as (arguments, observed):
-            with self.assertRaisesRegex(ValueError, 'Current Core management maintenance output'):
-                gateway.main(arguments)
-            for boundary in ('source_bundle', 'run_json', 'transport', 'build_image', 'deploy_release', 'publication_plan'):
-                observed[boundary].assert_not_called()
 
     def test_old_core_without_client_inventory_stops_before_build_or_azure(self):
         config, state = fixture()
@@ -339,20 +319,6 @@ class GatewayDeploymentTests(unittest.TestCase):
             observed['build_image'].assert_not_called()
             observed['deploy_release'].assert_called_once()
             self.assertEqual(observed['deploy_release'].call_args.args[2]['imageDigest'], DIGEST)
-            self.sql_discovery.assert_called_once()
-            self.assertEqual(observed['deploy_release'].call_args.args[2]['foundation']['managementMaintenance']['sqlClientId'],
-                             self.sql_discovery.return_value)
-
-    def test_verified_sql_client_identity_is_required_before_image_or_app_changes(self):
-        config, state = fixture()
-        config['publishApis'] = True
-        with self.isolated_cli(config, state) as (arguments, observed):
-            self.sql_discovery.side_effect = ValueError('synthetic-SAMI-discovery-failed')
-            with self.assertRaisesRegex(ValueError, 'synthetic-SAMI-discovery-failed'):
-                gateway.main(arguments)
-            observed['build_image'].assert_not_called()
-            observed['broker_secret'].assert_not_called()
-            observed['deploy_release'].assert_not_called()
 
     def test_generated_source_is_saved_protected_and_excluded_from_cli_summary(self):
         config, state = fixture()
@@ -427,7 +393,6 @@ class GatewayDeploymentTests(unittest.TestCase):
             secrets.assert_not_called()
             runner.assert_not_called()
             transport.assert_not_called()
-            self.sql_discovery.assert_not_called()
             self.assertEqual(params.read_text(), 'original-user-input')
             plan = json.loads(output.read_text(encoding='utf-8'))
             self.assertEqual(plan['azureWrites'], 0)

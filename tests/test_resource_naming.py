@@ -49,9 +49,11 @@ class ResourceNamingTests(unittest.TestCase):
 
     def test_module_defaults_keep_the_same_environment_product_order(self):
         expected = "[format('{0}-{1}', parameters('environmentName'), parameters('productName'))]"
-        for name in ("monitoring", "management", "gateway"):
+        for name in ("monitoring", "management"):
             with self.subTest(module=name):
                 self.assertEqual(self.module(name)["parameters"]["resourceStem"]["defaultValue"], expected)
+        gateway = compile_bicep('infra/modules/application-gateway.bicep')
+        self.assertEqual(gateway["parameters"]["resourceStem"]["defaultValue"], expected)
 
     def test_storage_names_remove_only_hyphens_and_retain_collector_purpose(self):
         monitoring = self.module("monitoring")

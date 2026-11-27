@@ -96,7 +96,7 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 
 これはSerial Console用のローカル認証準備です。PAM認証には認証ログやロックアウトへの影響があり、完了記録は実Serial接続の成功を示しません。Managed Run Commandの保護設定やrootプロセスのメモリー等に値が残り得るため、保持がゼロとは扱いません。実ログインの成功は[管理VMの保守手順](../operations.md#serial-consoleのローカル認証を準備する)で別に確認します。
 
-基盤とGatewayの構築が終わると、最後のPortal工程で未設定の`portalApiKeys.platformGroupId`と`groupNamePattern`だけを対話入力し、同じ保護paramsへ保存します。表示名はGraphから取得します。管理グループ1件と全標準API製品から内部承認・検証購読を生成し、configの`portalApiKeys.verificationMaxSubscriptions`（初期5）を適用します。製品・件数は対話入力せず、内部`groups`・`verificationSubscriptions`をparamsへ書き戻しません。非対話では上記2項目を事前に設定します。不足したままPortal工程を完了できません。
+基盤とGatewayの構築が終わり、Entra担当者が専用Portalアプリを手動登録した後、Portalの個別配備で未設定の`portalApiKeys.platformGroupId`と`groupNamePattern`だけを対話入力し、同じ保護paramsへ保存します。表示名はGraphから取得します。管理グループ1件と全標準API製品から内部承認・検証購読を生成し、configの`portalApiKeys.verificationMaxSubscriptions`（初期5）を適用します。製品・件数は対話入力せず、内部`groups`・`verificationSubscriptions`をparamsへ書き戻しません。非対話では上記2項目を事前に設定します。不足したままPortal工程を完了できません。
 
 事前チェックは、配備先の一致、必要な秘密情報、追加配備の容量、監査データの保持保護、既存の通信・証明書・稼働アプリの維持を確認します。Azureの応答にある読取メタデータや空の既定値は、実際の設定に影響する項目と分けて扱います。
 
@@ -106,7 +106,7 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 
 | 入力 | 対話直後 | 構築後・運用中 |
 | --- | --- | --- |
-| DNS用公開ID（Azure） | paramsの`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId` | 管理VMにUAMIを関連付け、そのIDで認証しDNS側のRBAC権限で更新 |
+| DNS用公開ID（Azure） | paramsの`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId` | 証明書用ACA JobからDNS用UAMIを使い、DNS側のRBAC権限で更新 |
 | CM用Core client secret | paramsの`credentialProviders.graphDelegated.clientSecretFile`が指す保護ファイル | 既存のGraph用アプリID・secretを保持し、APIMのOAuth providerへsecure入力 |
 | 管理VMのSSH秘密鍵 | 端末のsecrets内 | 端末だけで保持。公開鍵だけをVMへ設定 |
 | 初期管理VMのローカル認証パスワード | `.local/<environment>/secrets/management-serial-credential.json`へ自動生成・保護保存 | 初回のsecure入力だけで設定。配備成功後にVM個体へ結び付け、既存VMの更新では上書きしない |
@@ -128,12 +128,14 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 | 1 | Tenant／Subscription・予定APIM名・容量・購入制限を確認し、必要RPを登録 |
 | 2 | 5RG、用途別ID、監視・監査先を作成。実IDをローカルのstateへ記録 |
 | 3 | VNet・subnet・NSG・UDR・Firewall・Private DNS、サービス・PE・RBACを作成 |
-| 4 | 管理VMでDNS-01の証明書を取得し、Key Vaultへ登録。AppGW・APIMの公開設定を仕上げる |
+| 4 | 既存管理VMで証明書用イメージをビルドし非公開ACRへ登録。専用ACA JobがDNS-01で初回発行し、Key Vaultへ登録。実行成功を確認してAppGW・APIMの公開設定を仕上げる |
 | 5 | API Center同期と常設L7入口保護を設定し、`postprovision`で対象配備のCore出力と公開DNSの結果を保存 |
-| 6 | 対話可能な`postup`から`deploy_applications.py --execute`を呼び、Gatewayのイメージ、credentials DB・CM・SQL初期化、認証窓口、API・ポリシー・Productを配備 |
-| 7 | Gatewayの成功後、Portalの初回グループ設定、イメージ、認証DB・検証用購読・SQL権限を準備し、本体・照合ジョブを配備。公開ヘルスを確認して全体を完了 |
+| 6 | 対話可能な`postup`から`deploy_applications.py --gateway-only --execute`を呼び、Gatewayのイメージ、credentials DB・CM・SQL初期化、認証窓口、API・ポリシー・Productを配備 |
+| 7 | `azd up`完了後、[PortalアプリをEntraへ登録](entra-portal.md)し、[Portal本体を個別配備](portal.md)。初回グループ、イメージ、認証DB・検証用購読・SQL権限、本体・照合ジョブと公開ヘルスを確認 |
 
-管理VMの保守clientと権限はCoreの資材で準備し、Gateway／Portalが後段で作成したApp・JobのIDを保護inventoryへ追加します。対象は構築出力から取得し、公開params/configによる作成フラグはありません。[管理VMからの保守操作](../operations.md#管理vmから保守データを取得する)で、監査Blob・保存ログ・ACAログ・App execの認可と実取得を確認してください。資材のローカル試験通過と、初期Azure配備・保守操作の実環境確認は別の結果です。
+空環境での証明書発行、非公開ACRの通信、途中再開の条件は [証明書用Job](../operations/certificate-jobs.md) を参照します。
+
+管理VMの保守クライアントと担当者本人用のロール定義はCoreの資材で準備し、Gateway／Portalが後段で作成したApp・JobのIDを保護inventoryへ追加します。対象は構築出力から取得し、公開params/configによる作成フラグはありません。[管理VMからの保守操作](../operations.md#管理vmから保守データを取得する)で、監査Blob・保存ログ・ACAログ・App execの認可と実取得を確認してください。資材のローカル試験通過と、初期Azure配備・保守操作の実環境確認は別の結果です。
 
 標準API正本を常用で読み込み、接続先は作成済み基盤の出力からメモリー内で解決します。公開paramsにAPI一覧の選択欄は設けず、内部配列も書き戻しません。標準APIに必要なWAFの経路・本文形式と監査ログ等の情報は基盤工程へ先に反映します。
 
@@ -200,7 +202,7 @@ Gatewayに失敗するとPortalへ進まず、Portalに失敗した場合もup�
 - up全体の正常終了、実行したGateway配備・証明書準備と、後続のPortal個別配備の成功記録、Azure側の作成状態、公開DNS／TLSを確認した。
 - 選んだAPIの実応答とPortalのMicrosoftサインインを、配備成功とは別に確認した。
 - 通知先を使う場合は初回確認と実受信を確認した。
-- 管理VMの証明書更新設定と、DNS用UAMIの関連付け・DNS側RBAC権限を確認した。
+- 証明書専用ACA Jobの初回発行・定期更新設定と、DNS用UAMIの関連付け・DNS側RBAC権限を確認した。
 - params／config・`.azure/`・`.local/<environment>/state/`・端末のsecretとSSH鍵を、安全に保持した。
 
 企業接続が必要なら[7. ハブ＆スポーク対応（任意）](07-hub-spoke.md)へ進みます。構築済みGateway・Portalの変更は[個別配備](../../README.md#8-gatewayを配備する)を使い、運用時は[プラットフォームの仕様](../reference/platform.md)も確認します。構築テストが終わったら[撤去手順](../operations.md#撤去する)へ進み、5RG・モデル・利用枠と削除履歴を確認します。

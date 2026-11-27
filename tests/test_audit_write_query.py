@@ -94,7 +94,7 @@ class AuditWriteQueryTests(unittest.TestCase):
         self.assertIn('AuditWriteFailures(StorageBlobLogs, now(), dynamic(["{1}", "{2}"]))', query)
         self.assertIn("parameters('storage').collectJapan.name", query)
         self.assertIn("parameters('storage').collectFoundry.name", query)
-        definition = next(row for row in variables['queryDefinitions'] if row['key'] == 'audit-write-failed')
+        definition = next(row for row in variables['baseQueryDefinitions'] if row['key'] == 'audit-write-failed')
         self.assertEqual(definition, {'key': 'audit-write-failed', 'query': "[variables('auditWriteQuery')]",
             'range': 'PT30M', 'aggregation': 'Count', 'measure': '', 'threshold': 0, 'severity': 2})
         alerts = next(row for row in self.compiled['resources']
@@ -109,7 +109,7 @@ class AuditWriteQueryTests(unittest.TestCase):
         supported_minutes = (5, 10, 15, 30, 45, 60, 120, 180, 240, 300, 360, 720, 1440, 2880)
         required = timedelta(minutes=15, seconds=5)
         minimum = min(value for value in supported_minutes if timedelta(minutes=value) >= required)
-        definition = next(row for row in self.compiled['variables']['queryDefinitions']
+        definition = next(row for row in self.compiled['variables']['baseQueryDefinitions']
                           if row['key'] == 'audit-write-failed')
         selected = definition['range']
         self.assertTrue(selected.startswith('PT') and selected.endswith('M'))

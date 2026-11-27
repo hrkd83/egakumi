@@ -94,7 +94,6 @@ module broker '../../credential-broker/deploy/broker.bicep' = {
     imageDigest: imageDigest
     runtimeIdentity: runtime.outputs.identity
     schemaIdentity: foundation.schemaIdentity
-    managementSqlClientId: foundation.managementMaintenance.sqlClientId
     sqlServer: foundation.sqlServer
     database: database.outputs.database
     profiles: profiles
@@ -116,17 +115,6 @@ module broker '../../credential-broker/deploy/broker.bicep' = {
     deployApplication: deployApplication
   }
   dependsOn: [brokerAccess]
-}
-// Brokerの各配備段階で実際に作成したApp/Jobと、その環境だけに保守権限を付けます。
-module managementAccess '../../../infra/modules/management-aca-bindings.bicep' = {
-  name: '${stem}-gateway-management-access'
-  params: {
-    principalId: foundation.managementMaintenance.principalId
-    roleDefinitionIds: foundation.managementMaintenance.roleDefinitionIds
-    applicationNames: map(broker.outputs.applicationIds, id => last(split(id, '/')))
-    jobNames: map(broker.outputs.jobIds, id => last(split(id, '/')))
-    environmentNames: [last(split(broker.outputs.environmentId, '/'))]
-  }
 }
 module settings 'apim-settings.bicep' = if (deployApplication) {
   name: '${stem}-gateway-apim-settings'

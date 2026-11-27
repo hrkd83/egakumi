@@ -337,7 +337,8 @@ class LifecycleDnsNsgTests(LifecycleFixture, unittest.TestCase):
         self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("fixed-stage") or {"azureWrites": 0}
         outputs = self.outputs()
         for phase in ("core", "monitoring"):
-            transport = ScriptedTransport([{"statusCode": 201}, {"statusCode": 200,
+            registry_absent = [{"statusCode": 404, "body": None}] if phase == "core" else []
+            transport = ScriptedTransport(registry_absent + [{"statusCode": 201}, {"statusCode": 200,
                 "body": {"properties": {"provisioningState": "Succeeded",
                     "outputs": {key: {"value": value} for key, value in outputs.items()}}}}])
             with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
@@ -350,23 +351,26 @@ class LifecycleDnsNsgTests(LifecycleFixture, unittest.TestCase):
                     mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
                     mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True}), \
                     mock.patch.object(lifecycle, "cleanup_dns_nsg_rules") as legacy_cleanup:
-                lifecycle.deploy_phase(self.config, phase, secrets={"l7IngressSecret": "PRIVATE_INGRESS_FIXTURE"})
+                lifecycle.deploy_phase(self.config, phase, secrets={})
             legacy_cleanup.assert_not_called()
         self.assertEqual(events, ["fixed-stage", "discover"])
         self.prepare_nsg.assert_called_once()
 
     def test_core_stops_before_deployment_when_custom_dns_rule_is_unverified(self):
         self.prepare_nsg.side_effect = lifecycle.FixedNsgError("DNS rule verification stopped")
+        transport = ScriptedTransport([{"statusCode": 404, "body": None}])
         with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
-                mock.patch.object(lifecycle, "ArmTransport") as factory, \
-                self.assertRaises(lifecycle.DeploymentError):
-            lifecycle.deploy_phase(self.config, "core")
+                mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
+                self.assertRaisesRegex(lifecycle.DeploymentError, "DNS rule verification stopped"):
+            lifecycle.deploy_phase(self.config, "core", secrets={})
         self.complete_nsg.assert_not_called()
-        factory.return_value.request.assert_not_called()
+        self.assertFalse(transport.mutations())
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"])
+        self.assertIn("/registries/", transport.calls[0]["path"])
 
     def test_native_preprovision_stops_before_core_inputs_when_dns_is_unverified(self):
         self.prepare_nsg.side_effect = lifecycle.FixedNsgError("DNS rule verification stopped")
-        transport = ScriptedTransport([{"statusCode": 404, "body": None}])
+        transport = ScriptedTransport([{"statusCode": 404, "body": None}] * 4)
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
                 mock.patch.object(lifecycle, "register_providers"), \
                 mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -375,7 +379,8 @@ class LifecycleDnsNsgTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
                 mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
                 mock.patch.object(lifecycle, "configure_app_insights_cap"), \
-                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(lifecycle.DeploymentError):
+                contextlib.redirect_stdout(io.StringIO()), \
+                self.assertRaisesRegex(lifecycle.DeploymentError, "DNS rule verification stopped"):
             lifecycle.preprovision(self.config)
         self.assertEqual(self.prepare_nsg.call_args.args, (self.config, transport))
         self.complete_nsg.assert_not_called()

@@ -179,13 +179,6 @@
           "maxLength": 32,
           "description": "Linux管理VMのローカル管理者名。root/admin等の予約名は不可。"
         },
-        "loginAssignments": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/loginPrincipal"
-          },
-          "default": []
-        },
         "sshPublicKeyFile": {
           "type": "string",
           "minLength": 1,
@@ -270,7 +263,7 @@
               "10.40.3.0/24"
             ]
           ],
-          "description": "VNet全体に登録する重複しないIPv4 CIDRです。今回の例は/24を4つとし、10.40.3.0/24はサブネット未作成の予備です。サブネットの割当はsubnetPrefixesで別に指定します。"
+          "description": "VNet全体に登録する重複しないIPv4 CIDRです。公開例の4つ目の/24から証明書用サブネットに/27を割り当てます。サブネットの割当はsubnetPrefixesで別に指定します。"
         },
         "subnetPrefixes": {
           "type": "object",
@@ -283,7 +276,7 @@
             "management",
             "aca"
           ],
-          "description": "ACAを含む6サブネットのCIDRです。VNetのaddressSpaces内へ重複なく割り当てます。予備/24のサブネットは作りません。",
+          "description": "VNetの各サブネットをaddressSpaces内へ重複なく割り当てます。certificateを省略すると未割当範囲から安定した/27を選びます。",
           "properties": {
             "agw": {
               "type": "string",
@@ -325,6 +318,13 @@
               "description": "Core管理ポータルのACA専用サブネット。基本/26、最小/27。Microsoft.App/environmentsへ委任します。",
               "examples": [
                 "10.40.2.192/26"
+              ]
+            },
+            "certificate": {
+              "type": "string",
+              "description": "証明書専用ACAの委任サブネット。アドレス範囲は/27以上。",
+              "examples": [
+                "10.40.3.0/27"
               ]
             }
           }
@@ -509,33 +509,6 @@
             "User",
             "Group",
             "ServicePrincipal"
-          ]
-        }
-      }
-    },
-    "loginPrincipal": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "principalId",
-        "principalType",
-        "role"
-      ],
-      "properties": {
-        "principalId": {
-          "$ref": "#/$defs/guid"
-        },
-        "principalType": {
-          "enum": [
-            "User",
-            "Group",
-            "ServicePrincipal"
-          ]
-        },
-        "role": {
-          "enum": [
-            "User",
-            "Administrator"
           ]
         }
       }

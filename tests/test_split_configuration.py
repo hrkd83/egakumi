@@ -81,12 +81,17 @@ class SplitConfigurationTests(unittest.TestCase):
             with self.subTest(owner=owner), self.assertRaisesRegex(ConfigurationError, "retired initial input"):
                 self.sources(**{owner: {"gateway": {"authentication": {"subscriptionKeyHeader": "api-key"}}}})
 
-    def test_empty_environment_array_is_preserved_and_api_selection_is_fixed(self):
-        result = self.sources({"network": {"dnsTtl": 300}}, {"management": {"loginAssignments": []}})
-        self.assertEqual(result["management"]["loginAssignments"], [])
-        self.assertEqual(result["apiDefinitions"], [])
+    def test_initial_api_selection_is_fixed(self):
+        self.assertEqual(self.sources()["apiDefinitions"], [])
         with self.assertRaisesRegex(ConfigurationError, "retired initial input"):
             self.sources(parameters={"apiDefinitions": []})
+
+    def test_operator_login_grants_cannot_be_supplied_during_deployment(self):
+        for owner in ("options", "parameters"):
+            with self.subTest(owner=owner), self.assertRaisesRegex(
+                ConfigurationError, r"management\.loginAssignments: retired initial input"
+            ):
+                self.sources(**{owner: {"management": {"loginAssignments": []}}})
 
     def test_references_resolve_from_the_enterprise_parameters_directory(self):
         # 鍵や資格情報の保存先も企業入力です。標準configへコピーしません。
@@ -305,7 +310,8 @@ class SplitConfigurationTests(unittest.TestCase):
     def test_public_environment_cidrs_stay_in_params_and_fixed_ranges_are_absent(self):
         expected = {"addressSpaces": ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24", "10.40.3.0/24"],
                     "subnetPrefixes": {"agw": "10.40.0.0/24", "pep": "10.40.1.0/24", "firewall": "10.40.2.0/26",
-                                       "apim": "10.40.2.64/26", "management": "10.40.2.128/26", "aca": "10.40.2.192/26"},
+                                       "apim": "10.40.2.64/26", "management": "10.40.2.128/26", "aca": "10.40.2.192/26",
+                                       "certificate": "10.40.3.0/27"},
                     }
         for name in ("test", "production"):
             parameters = json.loads((CORE / "params" / (name + ".example.json")).read_text())

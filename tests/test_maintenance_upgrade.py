@@ -199,14 +199,15 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         writes = self.transport.mutations()
         stages = [call['path'].split('?', 1)[0].rsplit('-operations-', 1)[1]
                   if '/deployments/' in call['path'] else 'nsg' for call in writes]
-        self.assertEqual(stages, ['endpoints', 'nsg', 'nsg', 'nsg', 'nsg', 'dns', 'link', 'roles', 'aca', 'monitoring', 'readers', 'readers', 'client'])
+        self.assertEqual(stages, ['endpoints', 'nsg', 'nsg', 'nsg', 'nsg', 'dns', 'link', 'roles', 'client'])
         self.assertTrue(all('/deployments/' in call['path'] or '/securityRules/' in call['path'] for call in writes))
         for identity, value in original.items():
             if any(marker in identity for marker in ('/storageAccounts/', '/virtualMachines/', '/Microsoft.ApiManagement/service/')):
                 self.assertEqual(self.transport.resources[identity], value)
         saved = json.loads(self.context.state_path.read_text(encoding='utf-8'))
-        self.assertEqual(saved['outputs']['managementMaintenance']['principalId'], PRINCIPAL)
-        self.assertEqual(saved['outputs']['portal']['managementMaintenance'], saved['outputs']['gatewayFoundation']['managementMaintenance'])
+        self.assertEqual(set(saved['outputs']['managementMaintenance']['roleDefinitionIds']),
+                         {'appLogs', 'appExec', 'environmentLogs', 'jobLogs'})
+        self.assertEqual(saved['outputs']['managementClientInventory']['managementPrincipalId'], PRINCIPAL)
 
     def test_apply_keeps_exact_previous_platform_rules_and_creates_missing_foundry_rules(self):
         self.transport.deploy_fixed()
@@ -301,94 +302,6 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         with self.assertRaises(OperationError): self.operation.apply()
         self.assertEqual(len(self.transport.mutations()), 2)
         self.assertEqual(self.transport.completed_stages, ['endpoints'])
-
-    def test_existing_audit_reader_principal_spelling_is_kept_without_adding_other_principals(self):
-        principal = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-        self.transport.resources[self.transport.vm_id]['identity']['principalId'] = principal
-        self.context.state['outputs']['managementVm']['principalId'] = principal
-        existing = {'collector': 'collectJapan', 'containerName': 'insights-logs-audit',
-                    'principalId': principal.upper(), 'principalType': 'ServicePrincipal'}
-        self.context.config['monitoring']['auditReaders'] = [existing,
-            {**existing, 'principalId': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'principalType': 'Group'}]
-        plan = self.operation.preflight()
-        self.assertEqual(plan['readers']['collectJapan'], [existing])
-        self.assertEqual(plan['readers']['collectFoundry'][0]['principalId'], principal)
-
-    def reader_assignment(self, scope, role, *, principal=PRINCIPAL, suffix='11111111-1111-4111-8111-111111111111'):
-        identity = scope + '/providers/Microsoft.Authorization/roleAssignments/' + suffix
-        return {'id': identity, 'name': suffix, 'type': 'Microsoft.Authorization/roleAssignments',
-                'properties': {'scope': scope, 'principalId': principal,
-                               'roleDefinitionId': '/subscriptions/' + self.context.config['subscriptionId']
-                                                   + '/providers/Microsoft.Authorization/roleDefinitions/' + role}}
-
-    def set_reader_assignments(self, scope, values, **fields):
-        identity = scope + '/providers/Microsoft.Authorization/roleAssignments'
-        self.transport.role_assignment_collections[identity] = {'value': values, **fields}
-
-    def test_exact_existing_blob_and_workspace_readers_are_kept_without_duplicate_creation(self):
-        storage = self.context.state['outputs']['auditStorage']
-        container = storage['containerIds'][0]
-        workspace = self.context.state['outputs']['monitoring']['workspaceId']
-        # ARM casing is not an identity distinction.
-        blob = self.reader_assignment(container.upper(), '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1', principal=PRINCIPAL.upper())
-        law = self.reader_assignment(workspace, '3b03c2da-16b3-4a49-8834-0f8130efdd3b')
-        self.set_reader_assignments(container, [blob])
-        self.set_reader_assignments(workspace, [law])
-        plan = self.operation.preflight()
-        self.assertEqual(plan['retainedAuditReaders'], [container])
-        self.assertTrue(plan['existingWorkspaceReader'])
-        self.assertEqual(plan['readers']['collectJapan'], [])
-        self.assertEqual(len(plan['readers']['collectFoundry']), 1)
-        inventory = self.operation.client_inventory(plan)
-        self.assertEqual(inventory['auditStorage'], [
-            {'id': storage[key]['id'], 'containers': ['insights-logs-audit']}
-            for key in maintenance.COLLECTORS])
-        self.operation.apply()
-        self.assertNotIn('monitoring', self.transport.completed_stages)
-        reader_writes = [call for call in self.transport.mutations() if '-operations-readers' in call['path']]
-        self.assertEqual(len(reader_writes), 2)
-        self.assertEqual([call['body']['properties']['parameters']['readers']['value'] for call in reader_writes],
-                         [[], plan['readers']['collectFoundry']])
-        client_write = next(call for call in self.transport.mutations() if '-operations-client' in call['path'])
-        self.assertEqual(client_write['body']['properties']['parameters']['inventory']['value']['auditStorage'],
-                         inventory['auditStorage'])
-
-    def test_other_principal_scope_or_role_does_not_add_foreign_reader_or_suppress_the_vm_reader(self):
-        container = self.context.state['outputs']['auditStorage']['containerIds'][0]
-        role = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
-        for change in ('principal', 'scope', 'role'):
-            row = self.reader_assignment(container, role)
-            if change == 'principal': row['properties']['principalId'] = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-            elif change == 'scope': row['properties']['scope'] = container.rsplit('/containers/', 1)[0]
-            else: row['properties']['roleDefinitionId'] = row['properties']['roleDefinitionId'].rsplit('/', 1)[0] + '/3b03c2da-16b3-4a49-8834-0f8130efdd3b'
-            self.set_reader_assignments(container, [row])
-            plan = self.operation.preflight()
-            with self.subTest(change=change):
-                self.assertEqual(plan['retainedAuditReaders'], [])
-                self.assertFalse(plan['existingWorkspaceReader'])
-                self.assertEqual(plan['readers']['collectJapan'], [
-                    {'containerName': 'insights-logs-audit', 'principalId': PRINCIPAL, 'principalType': 'ServicePrincipal'}])
-                self.assertFalse(self.transport.mutations())
-
-    def test_unread_reader_collection_page_stops_before_any_mutation(self):
-        container = self.context.state['outputs']['auditStorage']['containerIds'][0]
-        workspace = self.context.state['outputs']['monitoring']['workspaceId']
-        for scope in (container, workspace):
-            self.transport.role_assignment_collections.clear()
-            self.transport.calls.clear()
-            self.set_reader_assignments(scope, [], nextLink='https://management.azure.com/synthetic/next-page')
-            with self.subTest(scope=scope), self.assertRaisesRegex(OperationError, 'fully inspected'):
-                self.operation.apply()
-            self.assertFalse(self.transport.mutations())
-
-    def test_duplicate_exact_reader_assignments_stop_before_any_mutation(self):
-        container = self.context.state['outputs']['auditStorage']['containerIds'][0]
-        row = self.reader_assignment(container, '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')
-        duplicate = self.reader_assignment(container, '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1',
-                                           suffix='11111111-1111-4111-8111-111111111112')
-        self.set_reader_assignments(container, [row, duplicate])
-        with self.assertRaisesRegex(OperationError, 'ambiguous'): self.operation.apply()
-        self.assertFalse(self.transport.mutations())
 
     def test_broker_resources_are_always_selected_independently_of_business_profiles(self):
         initial = self.operation.preflight()

@@ -116,7 +116,7 @@ class RotationTests(unittest.TestCase):
         self.candidate = record(self.config, 'b')
         self.state = {key: self.config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
         self.state.update(current=self.current, phase='initial')
-        self.ctx = SimpleNamespace(config=self.config, workspace=SimpleNamespace(state=Path('unused')), save_private=mock.Mock())
+        self.ctx = SimpleNamespace(state={'outputs': {}}, config=self.config, workspace=SimpleNamespace(state=Path('unused')), save_private=mock.Mock())
         self.args = SimpleNamespace(entra_registration_confirmed=False, entra_old_certificate_removed=False, login_verified=False, graph_verified=False, job_verified=False)
 
     def test_preparation_does_not_switch_current_and_reuses_completed_candidate(self):

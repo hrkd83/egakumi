@@ -27,9 +27,6 @@ param gatewayPublicHostName string
 @minLength(1)
 @description('Portal構築と共用する公開ホスト名。独立したFW宛先選択ではありません。')
 param portalPublicHostName string
-@allowed(['production', 'staging'])
-@description('証明書業務設定と共用するACME directory。固定の公式CA宛先を選択します。')
-param certificateDirectory string = 'production'
 @description('azd の構築前処理が実在を確認した、この基盤の NSG 名。公開 config では指定しません。')
 param existingNetworkSecurityGroupNames array = []
 @description('azd の読取結果から渡す実ルート表名と既存経路の対応。初回は空、再 up は後続段階で作った経路も保持します。')
@@ -50,6 +47,8 @@ var subnetPrefixes = config.?subnetPrefixes ?? {
   management: '10.40.2.128/26'
   aca: '10.40.2.192/26'
 }
+// The separated certificate subnet is supplied by the validated Core input.
+var certificateEnabled = contains(subnetPrefixes, 'certificate')
 // Initial VNet and Firewall upstream DNS use Azure-provided resolution.
 var dnsServers = []
 var firewallSettings = config.?firewall ?? {}
@@ -86,7 +85,7 @@ func allowRule(ruleName string, priority int, direction string, protocol string,
 
 // AppGWはAzure既定送信を保持。ACAの末尾Denyは動的な許可を登録した後で配置します。
 // AzureFirewallSubnetに顧客NSGを作成・関連付けしません。
-var nsgDefinitions = [
+var nsgDefinitions = concat([
   {
     key: 'agw'
     suffix: 'agw'
@@ -155,7 +154,7 @@ var nsgDefinitions = [
       allowRule('allow-firewall-routed-public-https-egress', nsgPriorities.groups.aca.rules['allow-firewall-routed-public-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['Internet'], ['443'])
     ]
   }
-]
+], certificateEnabled ? [{ key: 'certificate', suffix: 'certificate', rules: [] }] : [])
 
 // 同じNSGを「作成」と「既存参照」の両方へ宣言しないよう、先に名前を分けます。
 // 各ループの宣言名を重複させず、初回・再up・途中再開を同じ仕組みで扱います。
@@ -245,7 +244,22 @@ resource portalRoutes 'Microsoft.Network/routeTables/routes@2025-01-01' = [for r
   properties: { addressPrefix: route.prefix, nextHopType: 'VirtualAppliance', nextHopIpAddress: firewall.properties.ipConfigurations[0].properties.privateIPAddress }
 }]
 
-// ACAを含む６サブネットの VNet。予備 /24 は割り当てず、将来の拡張用に残します。
+resource certificateRouteTable 'Microsoft.Network/routeTables@2025-01-01' = if (certificateEnabled) {
+  name: 'rt-${resourcePrefix}-certificate'
+  location: location
+  tags: tags
+  properties: {
+    disableBgpRoutePropagation: true
+    routes: existingRouteTableRoutes[?'rt-${resourcePrefix}-certificate'] ?? []
+  }
+}
+resource certificateRoute 'Microsoft.Network/routeTables/routes@2025-01-01' = if (certificateEnabled) {
+  parent: certificateRouteTable
+  name: 'default-egress'
+  properties: { addressPrefix: '0.0.0.0/0', nextHopType: 'VirtualAppliance', nextHopIpAddress: firewall.properties.ipConfigurations[0].properties.privateIPAddress }
+}
+
+// 証明書処理には共用ACAとは別の委任サブネットを用意します。
 resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
   name: 'vnet-${resourcePrefix}'
   location: location
@@ -308,7 +322,16 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
         delegations: [{ name: 'containerapps', properties: { serviceName: 'Microsoft.App/environments' } }]
         defaultOutboundAccess: false
       }
-    }])
+    }], certificateEnabled ? [{
+      name: 'snet-${resourcePrefix}-certificate'
+      properties: {
+        addressPrefix: subnetPrefixes.certificate
+        networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-${resourcePrefix}-certificate') }
+        routeTable: { id: certificateRouteTable!.id }
+        delegations: [{ name: 'containerapps', properties: { serviceName: 'Microsoft.App/environments' } }]
+        defaultOutboundAccess: false
+      }
+    }] : [])
   }
 }
 
@@ -486,7 +509,6 @@ var certificateFqdns = [
 ]
 // 共通配布先は固定。CAの業務選択と、この基盤で構築する2公開Hostだけを差し込みます。
 var managementServiceFqdns = union([
-  certificateDirectory == 'production' ? 'acme-v02.api.letsencrypt.org' : 'acme-staging-v02.api.letsencrypt.org'
   'management.azure.com'
   'cdn.oneget.org'
   'cdn.powershellgallery.com'
@@ -698,17 +720,19 @@ resource routes 'Microsoft.Network/routeTables/routes@2025-01-01' = [for route i
 }]
 
 output vnetId string = vnet.id
-output subnetIds object = {
+output subnetIds object = union({
   agw: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-agw')
   firewall: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'AzureFirewallSubnet')
   apim: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-apim')
   pep: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-pep')
   management: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-vm')
   aca: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-aca')
-}
+}, certificateEnabled ? { certificate: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-certificate') } : {})
 output subnetPrefixes object = subnetPrefixes
-output nsgNames object = { agw: nsgResourceNames[0], apim: nsgResourceNames[1], pep: nsgResourceNames[2], management: nsgResourceNames[3], aca: nsgResourceNames[4] }
-output routeTableNames object = { agw: routeTables[0].name, apim: routeTables[1].name, management: routeTables[2].name }
+output nsgNames object = union({ agw: nsgResourceNames[0], apim: nsgResourceNames[1], pep: nsgResourceNames[2], management: nsgResourceNames[3], aca: nsgResourceNames[4] },
+  certificateEnabled ? { certificate: 'nsg-${resourcePrefix}-certificate' } : {})
+output routeTableNames object = union({ agw: routeTables[0].name, apim: routeTables[1].name, management: routeTables[2].name },
+  certificateEnabled ? { certificate: certificateRouteTable!.name } : {})
 output privateDnsZoneIds object = {
   foundryCognitive: privateDnsZones[0].id
   foundryOpenAi: privateDnsZones[1].id

@@ -1,6 +1,4 @@
-"""SQL保守の固定DB・SAMI・暗号化・秘密非出力を独立した合成値で検証する。"""
-import base64
-import copy
+"""SQL保守の固定DB、暗号化、秘密非出力を独立した合成値で検証する。"""
 from datetime import datetime
 from decimal import Decimal
 import io
@@ -8,7 +6,6 @@ import json
 from pathlib import Path
 import struct
 import sys
-import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -16,11 +13,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import management_client as client
-from deployment.helpers import management_sql_identity as discovery
-from test_management_client import fixture
-
-SQL_CLIENT = '55555555-5555-4555-8555-555555555555'
-VM_GENERATION = '66666666-6666-4666-8666-666666666666'
+from test_management_client import OPERATOR_ID, fixture
 
 
 def inventory():
@@ -29,17 +22,6 @@ def inventory():
     value['sqlDatabases'] = [{'alias': alias, 'id': base + '/providers/Microsoft.Sql/servers/sql-fixture/databases/sqldb-fixture-' + alias}
                              for alias in ('credentials', 'portal')]
     return value
-
-
-def token_response(value, *, changes=None):
-    expiry = int(time.time()) + 3600
-    claims = {'oid': value['managementPrincipalId'], 'tid': value['azureTenantId'],
-              'aud': client.SQL_AUDIENCE.rstrip('/'), 'appid': SQL_CLIENT,
-              'xms_mirid': value['managementVmId'], 'exp': expiry}
-    claims.update(changes or {})
-    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip('=')
-    token = 'synthetic-header.' + payload + '.synthetic-signature'
-    return {'access_token': token, 'expires_on': str(expiry), 'resource': client.SQL_AUDIENCE, 'token_type': 'Bearer'}
 
 
 class Cursor:
@@ -185,65 +167,12 @@ class ManagementSqlClientTests(unittest.TestCase):
             self.query()
         self.assertEqual(self.output.getvalue(), b'')
 
-    def test_sql_sami_claims_validate_client_id_generation_and_audience(self):
-        transport = mock.Mock()
-        response = token_response(self.inventory)
-        transport.json.side_effect = [{'resourceId': self.inventory['managementVmId'], 'vmId': VM_GENERATION}, response]
-        identity = client.VmIdentity(self.inventory, transport)
-        expected = {'sqlClientId': SQL_CLIENT, 'principalId': self.inventory['managementPrincipalId'],
-                    'tenantId': self.inventory['azureTenantId'], 'managementVmId': self.inventory['managementVmId'], 'vmId': VM_GENERATION}
-        self.assertEqual(identity.sql_identity(), expected)
-        self.assertEqual(identity.sql_identity(), expected)
-        self.assertEqual(transport.json.call_count, 2)
-
-    def test_sql_sami_rejects_foreign_missing_and_inconsistent_claims(self):
-        changes = ({'aud': client.ARM_AUDIENCE}, {'xms_mirid': '/another/vm'}, {'appid': None},
-                   {'azp': '99999999-9999-4999-8999-999999999999'}, {'exp': 0},
-                   {'oid': '99999999-9999-4999-8999-999999999999'}, {'tid': '99999999-9999-4999-8999-999999999999'})
-        for change in changes:
-            transport = mock.Mock()
-            transport.json.side_effect = [{'resourceId': self.inventory['managementVmId'], 'vmId': VM_GENERATION},
-                                          token_response(self.inventory, changes=change)]
-            with self.subTest(change=change), self.assertRaises(client.MaintenanceError):
-                client.VmIdentity(self.inventory, transport).sql_identity()
-
-    def test_sql_sami_requires_a_valid_compute_generation(self):
-        transport = mock.Mock()
-        transport.json.side_effect = [{'resourceId': self.inventory['managementVmId']}, token_response(self.inventory)]
-        with self.assertRaises(client.MaintenanceError): client.VmIdentity(self.inventory, transport).sql_identity()
-
-    def test_discovery_checks_guest_against_current_arm_generation_and_system_identity(self):
-        record = {'sqlClientId': SQL_CLIENT, 'principalId': self.inventory['managementPrincipalId'],
-                  'tenantId': self.inventory['azureTenantId'], 'managementVmId': self.inventory['managementVmId'], 'vmId': VM_GENERATION}
-        output = discovery.MARKER + json.dumps({'schemaVersion': 1, 'status': 'verified', 'identity': record})
-        compute = {'id': self.inventory['managementVmId'], 'type': 'Microsoft.Compute/virtualMachines',
-                   'identity': {'type': 'SystemAssigned', 'principalId': record['principalId'], 'tenantId': record['tenantId']},
-                   'properties': {'vmId': VM_GENERATION, 'provisioningState': 'Succeeded'}}
-        self.assertEqual(discovery.read_sql_identity_probe(output, self.inventory, compute), SQL_CLIENT)
-        for mutation in ('vm-generation', 'principal', 'identity-type', 'duplicate', 'token-leak'):
-            body, text = copy.deepcopy(compute), output
-            if mutation == 'vm-generation': body['properties']['vmId'] = '99999999-9999-4999-8999-999999999999'
-            elif mutation == 'principal': body['identity']['principalId'] = '99999999-9999-4999-8999-999999999999'
-            elif mutation == 'identity-type': body['identity']['type'] = 'UserAssigned'
-            elif mutation == 'duplicate': text += '\n' + output
-            else: text = discovery.MARKER + json.dumps({'schemaVersion': 1, 'status': 'verified', 'identity': {**record, 'access_token': '<SYNTHETIC_SQL_TOKEN>'}})
-            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
-                discovery.read_sql_identity_probe(text, self.inventory, body)
-
-    def test_discovery_embeds_new_public_source_without_using_old_guest_files(self):
-        script = discovery.render_sql_identity_probe(self.inventory)
-        self.assertIn('PYTHONDONTWRITEBYTECODE=1', script)
-        self.assertIn('python3 -I -B', script)
-        self.assertNotIn('/opt/core/maintenance/management_client.py', script)
-        block = script.split("<<'PY_SQL_IDENTITY'\n", 1)[1].split('\nPY_SQL_IDENTITY', 1)[0]
-        compile(block, 'synthetic-sql-discovery', 'exec')
-
     def test_sql_cli_does_not_offer_server_database_id_or_password_overrides(self):
         parser = client.parser()
-        arguments = parser.parse_args(['--inventory', 'synthetic-input', '--output', 'synthetic-output',
+        arguments = parser.parse_args(['--operator-object-id', OPERATOR_ID, '--output', 'synthetic-output',
                                        'sql-query', '--database', 'portal', '--query-file', 'synthetic-query'])
         self.assertEqual(arguments.database, 'portal')
-        self.assertFalse(any(hasattr(arguments, name) for name in ('password', 'server', 'resource_id')))
+        self.assertFalse(any(hasattr(arguments, name) for name in ('password', 'server', 'resource_id', 'inventory')))
 
 
 if __name__ == '__main__': unittest.main()

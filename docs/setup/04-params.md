@@ -1,6 +1,6 @@
 # 4. paramsの準備・リファレンス
 
-Portal初期構築では`portal.authentication`を省略できます。管理VMでKV自己署名証明書を準備した後、Entra担当が専用アプリを作成・公開証明書を登録し、`portal.authentication.tenantId/clientId`を保護paramsへ設定します。鍵版とthumbprintは同じ環境の保護stateから読みます。[Portal Entra登録](entra-portal.md)を参照してください。
+Portal初期構築では`portal.authentication`を省略できます。専用ACA JobでKV自己署名証明書を準備した後、Entra担当が専用アプリを作成・公開証明書を登録し、`portal.authentication.tenantId/clientId`を保護paramsへ設定します。鍵版とthumbprintは同じ環境の保護stateから読みます。[Portal Entra登録](entra-portal.md)を参照してください。
 
 前：[3. 公開DNSの準備](03-public-dns.md) · [README](../../README.md) · 次：[5. configの調整](05-config.md)
 
@@ -54,7 +54,7 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 
 `azureTenantId`はAzure構築・RBAC先、`entraTenantId`は社員API認証、標準Graph OAuth、任意の接続窓口アプリの認証先です。同一なら同じID、別ならそれぞれのIDを設定します。`entraTenantId`を省略した場合だけ`azureTenantId`を使います。標準Graphの`oauthTenantId`と接続窓口identityの`tenantId`は公開入力から導出し、独立した上書き欄を設けません。
 
-追加providerが別の認証テナントを使う場合は、`params.credentialProviders.additional[].oauthTenantId`を設定できます。Azure側のVMログイン権限は`management.loginAssignments`へAzure側Object IDを設定します。認証先の変更と、Azure配置先の変更は別の操作です。
+追加providerが別の認証テナントを使う場合は、`params.credentialProviders.additional[].oauthTenantId`を設定できます。管理VMに接続する担当者へは、保守時に [本人のAzure RBAC](../operations/management-vm-access.md) を付与して回収します。認証先の変更と、Azure配置先の変更は別の操作です。
 
 ### Gateway全体の認証とAPIごとの認可
 
@@ -161,7 +161,6 @@ python3 -B scripts/deployment/helpers/configuration.py validate --config "$DEPLO
 | `gateway.publicHostName` | `gateway.example.com`の架空例 | Gateway公開DNS名 |
 | `management.adminUsername` | 独立したLinuxアカウント名例 | 初期管理者 |
 | `management.sshPublicKeyFile` | `./secrets/management-ssh.pub` | 既存保護公開鍵参照または同環境内の鍵対生成先 |
-| `management.loginAssignments` | `[]` | Azure側VMログイン権限。principalId／principalType／role |
 | `monitoring.operatorEmailAddresses` | 架空メール配列、1件以上 | Azure Monitor通知先 |
 | `certificate.contactEmail` | 架空メール | ACME連絡先 |
 | `certificate.azureDnsSubscriptionId` | 非ゼロGUID | 事前作成した公開DNSゾーンのSubscription |
@@ -265,10 +264,10 @@ Graph表示名・scope・poolの4末端値とPortal共通購読数上限は、�
 | 47 | `gateway.rateLimits.application.overrides` | 資材固定 | 追加アプリ区分の静的上書きを廃止 |
 | 48 | `management.adminUsername` | params | 初期Linux管理者名 |
 | 49 | `management.sshPublicKeyFile` | params | 既存保護鍵参照と同環境内生成 |
-| 50 | `management.loginAssignments` | params | VMログイン主体と権限 |
+| 50 | 管理VMの本人ログイン | 保守時に手動 | 対象VMだけに本人のログインロールを付与・回収 |
 | 51 | `monitoring.operatorEmailAddresses` | params | 監視通知先メール |
 | 52 | `monitoring.auditAllowedIpAddresses` | 資材固定 | 初期Storage公開ipRulesを空に固定 |
-| 53 | `monitoring.auditReaders` | 資材固定 | 追加監査readerを空に固定。管理VM MIは保持 |
+| 53 | `monitoring.auditReaders` | 資材固定 | 構築時に監査readerを追加しない。担当者の読取権限は保守時に付与 |
 | 54 | `certificate.contactEmail` | params | ACME連絡先 |
 | 55 | `certificate.domainNames` | 資材固定 | Gateway／Portal公開名2件から正確なDNS名を生成 |
 | 56 | `certificate.plugin` | 資材固定 | Azure Public DNS DNS-01へ固定 |

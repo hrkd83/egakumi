@@ -34,20 +34,8 @@ param apimSkuName string = 'Premium'
 param appInsightsIngestionWarningGb int = 80
 @description('Application Insights へ記録を書き込む実行 ID。管理操作の権限は付けません。')
 param telemetryPublisherPrincipalIds array = []
-@description('リージョン別の監査コンテナーを読む担当者の一覧。')
-param auditReaders array = []
-
-// 日本側の監査コンテナーに閲覧権限を限定して割り当てます。
-module japanAuditReaders 'audit-reader-bindings.bicep' = {
-  name: '${resourceStem}-japan-audit-readers'
-  params: { storageAccountName: storage.collectJapan.name, readers: filter(auditReaders, reader => reader.collector == 'collectJapan') }
-}
-// Foundry 側の監査コンテナーに閲覧権限を限定して割り当てます。
-module foundryAuditReaders 'audit-reader-bindings.bicep' = {
-  name: '${resourceStem}-foundry-audit-readers'
-  params: { storageAccountName: storage.collectFoundry.name, readers: filter(auditReaders, reader => reader.collector == 'collectFoundry') }
-}
-
+@description('Optional verified certificate worker monitoring scope.')
+param certificateMonitoring object = {}
 // 検索先 Workspace を既存資源として参照します。
 resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
   name: monitoring.workspaceName
@@ -217,12 +205,46 @@ resource metricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for defini
 var auditWriteQuery = '${loadTextContent('./audit-write-failures.kql')}\nAuditWriteFailures(StorageBlobLogs, now(), dynamic(["${storage.collectJapan.name}", "${storage.collectFoundry.name}"]))'
 var ingestionQuery = 'union isfuzzy=true AppRequests, AppDependencies, AppExceptions, AppTraces, AppEvents, AppMetrics, AppPageViews, AppBrowserTimings, AppAvailabilityResults\n| where TimeGenerated > ago(24h)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| where _IsBillable == "true"\n| summarize IngestedGB = sum(_BilledSize) / 1000000000.0'
 var failureRateQuery = 'AppRequests\n| where TimeGenerated > ago(15m)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| summarize Requests=count(), Failures=countif(Success == false)\n| where Requests >= 100\n| extend FailureRate=100.0 * Failures / Requests'
-var queryDefinitions = [
+var certificateMonitoringEnabled = !empty(certificateMonitoring)
+// During a first deployment, the log table may not have materialized. An empty
+// typed input keeps the startup and missing-worker queries evaluable.
+var certificateLogs = certificateMonitoringEnabled ? 'union isfuzzy=true ContainerAppConsoleLogs, datatable(TimeGenerated:datetime, JobName:string, Log:string, EnvironmentName:string)[]\n| where EnvironmentName =~ "${certificateMonitoring.environmentName}" and (JobName =~ "${certificateMonitoring.jobName}" or JobName startswith "${certificateMonitoring.jobName}-")' : ''
+var certificateStaleHours = certificateMonitoringEnabled ? min(48, 2 * certificateMonitoring.checkEveryHours + 2) : 48
+var baseQueryDefinitions = [
   // The service accepts discrete query ranges; PT30M is the first covering 15m + 5s.
   { key: 'audit-write-failed', query: auditWriteQuery, range: 'PT30M', aggregation: 'Count', measure: '', threshold: 0, severity: 2 }
   { key: 'appi-ingestion-high', query: ingestionQuery, range: 'P1D', aggregation: 'Maximum', measure: 'IngestedGB', threshold: appInsightsIngestionWarningGb, severity: 3 }
   { key: 'api-failure-rate', query: failureRateQuery, range: 'PT15M', aggregation: 'Maximum', measure: 'FailureRate', threshold: 5, severity: 2 }
 ]
+var queryDefinitions = concat(baseQueryDefinitions, certificateMonitoringEnabled ? [
+  {
+    key: 'certificate-worker-failed'
+    query: '${certificateLogs}\n| where Log startswith "certificate-job-failed" or Log startswith "certificate-job-service-error:"'
+    range: 'PT30M'
+    aggregation: 'Count'
+    measure: ''
+    threshold: 0
+    severity: 2
+  }
+  {
+    key: 'certificate-worker-stale'
+    query: '${certificateLogs}\n| where TimeGenerated > ago(${certificateStaleHours}h) and Log == "certificate-job:succeeded"\n| summarize Successes=count()\n| where Successes == 0'
+    range: 'P2D'
+    aggregation: 'Count'
+    measure: ''
+    threshold: 0
+    severity: 2
+  }
+  {
+    key: 'certificate-expiry-near'
+    query: '${certificateLogs}\n| where Log startswith "certificate-job-expiry-unix:"\n| extend Expires = unixtime_seconds_todatetime(tolong(substring(Log, strlen("certificate-job-expiry-unix:"))))\n| where isnotnull(Expires)\n| top 1 by TimeGenerated desc\n| where Expires < now() + 14d'
+    range: 'P2D'
+    aggregation: 'Count'
+    measure: ''
+    threshold: 0
+    severity: 2
+  }
+] : [])
 
 // ログの条件に合う事象を定期評価。実行 ID を使ってクエリを認証します。
 resource logAlerts 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for definition in queryDefinitions: {

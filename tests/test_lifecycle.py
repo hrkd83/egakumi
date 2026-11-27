@@ -98,7 +98,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         for path in (lifecycle.ROOT, self.paths.parameters, self.paths.state / "latest.json",
                      self.paths.state / "capacity.json"):
             self.assertTrue(path.resolve().is_relative_to(self.root.resolve()))
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 14)
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 19)
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
@@ -116,7 +116,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                             for call in lifecycle.protected_json.call_args_list))
 
     def test_preprovision_hands_only_initial_generation_to_native_azd_after_recording_provenance(self):
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 14)
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 19)
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
@@ -140,7 +140,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
     def test_api_center_recovery_runs_after_monitoring_and_before_core_inputs(self):
         """5RGを作る監視段階の出力を使い、復元成功後だけ本体入力を用意する。"""
         events = []
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 14)
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 19)
         outputs = self.outputs()
 
         def recovery(config, actual_outputs, actual_transport):
@@ -176,6 +176,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
              mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
+             mock.patch.object(lifecycle, "require_certificate_registry_ready"), \
              mock.patch.object(lifecycle, "register_providers"), \
              mock.patch.object(lifecycle, "ArmTransport", return_value=object()), \
              mock.patch.object(lifecycle, "deploy_phase") as deploy:
@@ -190,7 +191,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         lifecycle.protected_json(self.paths.parameters, {"fixture": "PRIVATE_FIXTURE"})
         receipt = self.root / ".local/test/state/api-center-preparation.json"
         lifecycle.protected_json(receipt, {"status": "restored", "observedAtUtc": "old-fixture"})
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}])
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 4)
         self.api_center.side_effect = lifecycle.DeploymentError("API Center restore failed")
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -203,7 +204,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertFalse(self.paths.parameters.exists())
         self.assertFalse(receipt.exists())
         self.assertTrue((self.paths.state / "latest.json").exists())
-        self.assertEqual(len(transport.calls), 1)
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 4)
+        self.assertIn("/deployments/", transport.calls[-1]["path"])
         self.assertFalse(transport.mutations())
 
     def test_arm_token_selects_subscription_only_and_verifies_returned_directory(self):
@@ -273,7 +275,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
     def test_failed_monitoring_preparation_removes_secret_parameters_but_keeps_cleanup_state(self):
         parameter_path, state_path = self.paths.parameters, self.paths.state / "latest.json"
         lifecycle.protected_json(parameter_path, {"fixture": "PREVIOUS_SECRET_FIXTURE"})
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}])
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 4)
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), \
@@ -290,7 +292,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
 
     def test_first_up_prepares_monitoring_without_a_prior_state_or_seed_deployment(self):
         parameter_path, state_path = self.paths.parameters, self.paths.state / "latest.json"
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 14)
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 19)
         self.assertFalse(state_path.exists())
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -310,7 +312,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(parameters["sshPublicKey"]["value"], "LOCAL_ONLY_FIXTURE")
         self.assertEqual(parameters["existingNetworkSecurityGroupNames"]["value"], [])
         self.assertEqual(parameters["existingRouteTableRoutes"]["value"],
-                         {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "aca")})
+                         {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "aca", "certificate")})
 
     def test_retry_with_disabled_deleted_zero_policies_reaches_core_parameters(self):
         self.config['monitoring']['auditImmutabilityMode'] = 'Disabled'
@@ -321,8 +323,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                     'body': {'properties': {'outputs': {'auditStorage': {'value': previous}}}}}
         absent_policy = {'statusCode': 200, 'headers': {}, 'body': {'properties': {
             'state': 'Deleted', 'immutabilityPeriodSinceCreationInDays': 0}}}
-        transport = ScriptedTransport([response, absent_policy] +
-                                      [{'statusCode': 404, 'headers': {}, 'body': None}] * 13)
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 3 + [response, absent_policy] +
+                                      [{'statusCode': 404, 'headers': {}, 'body': None}] * 18)
         with mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
              mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
              mock.patch.object(lifecycle, 'capacity_preflight'), \
@@ -347,8 +349,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                     'immutabilityPolicyIds': [policy]}
         response = {'statusCode': 200, 'headers': {},
                     'body': {'properties': {'outputs': {'auditStorage': {'value': previous}}}}}
-        transport = ScriptedTransport([response, response_policy('Locked')] +
-                                      [{'statusCode': 404, 'headers': {}, 'body': None}] * 13)
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 3 + [response, response_policy('Locked')] +
+                                      [{'statusCode': 404, 'headers': {}, 'body': None}] * 18)
         with mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
              mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
              mock.patch.object(lifecycle, 'capacity_preflight'), \
@@ -372,7 +374,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                     'immutabilityPolicyIds': [policy, policy.replace('/audit/', '/new-category/')]}
         response = {'statusCode': 200, 'headers': {},
                     'body': {'properties': {'outputs': {'auditStorage': {'value': previous}}}}}
-        transport = ScriptedTransport([response, response_policy('Locked'),
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 3 + [response, response_policy('Locked'),
                                       {'statusCode': 404, 'headers': {}, 'body': None}])
         with mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
              mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
@@ -386,7 +388,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
 
 
     def test_failed_capacity_prevents_billable_preparation_after_free_provider_registration(self):
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": {"error": {"code": "NotFound"}}}])
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": {"error": {"code": "NotFound"}}}] * 4)
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
              mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -506,7 +508,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                 lifecycle._save_deployment_state(self.config, self.outputs())
             else:
                 (self.paths.state / 'latest.json').unlink(missing_ok=True)
-            transport = ScriptedTransport([{'statusCode': 404, 'body': None}] * 13)
+            transport = ScriptedTransport([{'statusCode': 404, 'body': None}] * 18)
             self.backend_tls_gate.side_effect = lambda *a, **kw: events.append('portal-gate') or {
                 'newGateway': not existing, 'httpBackendVerified': existing}
             self.prepare_nsg.side_effect = lambda *a, **k: events.append('nsg-stage') or {'azureWrites': 0}
@@ -670,6 +672,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'discover_existing_portal_app', return_value=True), \
              mock.patch.object(lifecycle, 'load_secret_inputs', return_value={'sshPublicKey': 'PRIVATE_SSH_FIXTURE'}) as secrets, \
              mock.patch.object(lifecycle, 'prepare_grpc_secret', return_value={'l7IngressSecret': 'PRIVATE_L7_FIXTURE'}) as ingress_secrets, \
+             mock.patch.object(lifecycle, 'require_certificate_registry_ready'), \
+             mock.patch.object(lifecycle, 'plan_secret_registration', return_value={}) as registration, \
              mock.patch.object(lifecycle, '_save_deployment_state', side_effect=save), \
              mock.patch.object(lifecycle, 'configure_grpc_endpoint', side_effect=bootstrap) as ingress:
             if completion_failure:
@@ -683,6 +687,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         else:
             secrets.assert_not_called()
             ingress_secrets.assert_not_called()
+        registration.assert_called_once_with(self.config, self.root, transport, provided_secrets or {
+            'sshPublicKey': 'PRIVATE_SSH_FIXTURE', 'l7IngressSecret': 'PRIVATE_L7_FIXTURE'})
         if completion_failure:
             ingress.assert_not_called()
         self.assertEqual([call['method'] for call in transport.calls], ['PUT', 'GET'])
@@ -785,7 +791,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(receipt["result"], result)
         self.assertIn("observedAtUtc", receipt)
         generated = json.loads(self.paths.parameters.read_text(encoding="utf-8"))["parameters"]
-        self.assertEqual(generated["dnsPluginArgumentsJson"]["value"], "")
+        self.assertNotIn("dnsPluginArgumentsJson", generated)
         self.assertEqual(generated["credentialProviderSecrets"]["value"], {})
         self.assertEqual(generated["l7IngressSecret"]["value"], "")
         self.arm_environment.assert_called_once_with([

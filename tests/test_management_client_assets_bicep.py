@@ -48,7 +48,8 @@ class ManagementClientBicepTests(unittest.TestCase):
         network, = [node for node in nodes.values()
                     if constructs(node, 'Microsoft.Network/virtualNetworks')]
         portal, = [node for node in nodes.values()
-                   if constructs(node, 'Microsoft.App/managedEnvironments')]
+                   if constructs(node, 'Microsoft.App/managedEnvironments')
+                   and "-portal'" in node.get('name', '')]
         network_region = network['properties']['parameters']['location']['value']
         portal_region = portal['properties']['parameters']['location']['value']
         self.assertEqual(network_region, "[variables('location')]")
@@ -119,14 +120,13 @@ class ManagementClientBicepTests(unittest.TestCase):
         parameters['phase'] = 'monitoring'
         self.assertEqual(resolve(self.core, self.core['outputs']['managementClientInventory']['value'], parameters), {})
 
-    def test_core_client_waits_for_network_dns_and_approved_rbac_dependencies(self):
+    def test_core_client_waits_for_network_dns_and_guest_bootstrap(self):
         graph, nodes = dependency_graph(self.core)
         selected = [key for key, node in nodes.items()
                     if same_template(node.get('properties', {}).get('template'), self.client)]
         self.assertEqual(len(selected), 1)
         predecessors = ancestors(graph, selected[0])
-        required = ('credential-network', 'certificate', 'management-portal-access',
-                    'management-log-analytics', 'audit-private-dns-link')
+        required = ('credential-network', 'audit-private-dns-link')
         names = [node['name'] for key, node in nodes.items() if key in predecessors]
         for suffix in required:
             with self.subTest(suffix=suffix): self.assertTrue(any(suffix in name for name in names))

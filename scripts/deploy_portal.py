@@ -27,9 +27,7 @@ from deployment.helpers.portal_image import source_bundle, build_image, reusable
 from deployment.helpers.portal_gateway import configure_portal_callback_waf, require_appgw_backend_tls_ready
 from deployment.helpers.public_health_http import read_public_json
 from deployment.helpers.portal_api_keys import prepare_api_key_groups, available_products, approved_product_catalog, verification_subscriptions
-from deployment.helpers.management_maintenance import management_maintenance_inputs
 from deployment.helpers.management_client_assets import management_client_inventory, update_management_client_assets
-from deployment.helpers.management_sql_discovery import discover_management_sql_identity
 from deployment.helpers.grpc_lifecycle import _prepare_credential
 from deployment.helpers.subscription_profiles import SECRET_NAME, activate_profile_settings
 from deployment.helpers.credential_image import checked
@@ -97,7 +95,6 @@ def deployment_inputs(config, state, image_digest=None):
     sql_server = portal.get('sharedSqlServer')
     if sql_server != f'sql-{stem}.database.windows.net':
         raise ValueError('Shared SQL server is missing from the completed foundation')
-    maintenance = management_maintenance_inputs(config, portal.get('managementMaintenance'))
     management_client_inventory(config, state)
     authentication = config['portal'].get('authentication', {})
     if not authentication or not all(authentication.get(key) for key in ('tenantId', 'clientId', 'keyId', 'certificateThumbprint')):
@@ -119,9 +116,6 @@ def deployment_inputs(config, state, image_digest=None):
         'apiKeyVerificationSubscriptions': verification_subscriptions(config.get('portalApiKeys', {})),
         'apiKeyCatalogProducts': approved_product_catalog(config),
         'runtimeIdentity': runtime, 'schemaIdentity': schema, 'sqlServer': sql_server,
-        'managementPrincipalId': maintenance['principalId'],
-        'managementSqlClientId': maintenance.get('sqlClientId', ''),
-        'managementRoleDefinitionIds': maintenance['roleDefinitionIds'],
         'databaseSettings': config['portalAuthentication'], 'vaultName': f'kv-{stem}',
         'credentialProviderName': profile_name, 'clientId': authentication['clientId'], 'tenantId': authentication['tenantId'],
         'authentication': authentication, 'authIdentity': auth_identity,
@@ -373,21 +367,13 @@ def main(argv=None):
         'imageReuseVerificationPending': not args.execute and not args.image_digest,
         'apiKeyGroupCount': len(values['apiKeyGroups']),
         'verificationSubscriptionCount': len(values['apiKeyVerificationSubscriptions']),
-        'steps': ['verify-gateway-backend-tls', 'discover-management-sql-identity', 'build-and-push-image', 'prepare-database-and-permissions', 'prepare-apim-key-management-permission', 'initialize-sql', 'bootstrap-verification-subscriptions', 'configure-portal-auth-callback-waf', 'update-application', 'verify-expected-image-and-https-ingress', 'schedule-group-observation', 'verify-public-health', 'enable-subscription-profiles']}
+        'steps': ['verify-gateway-backend-tls', 'build-and-push-image', 'prepare-database-and-permissions', 'prepare-apim-key-management-permission', 'initialize-sql', 'bootstrap-verification-subscriptions', 'configure-portal-auth-callback-waf', 'update-application', 'verify-expected-image-and-https-ingress', 'schedule-group-observation', 'verify-public-health', 'enable-subscription-profiles']}
     protected_json(workspace.state / 'portal-plan.json', {**plan, 'parameters': values, 'sourceSha256': source_hash})
     if not args.execute:
         print(json.dumps(plan, ensure_ascii=False))
         return 0
     template = run_json(['az', 'bicep', 'build', '--file', str(REPOSITORY / 'apps/portal/deploy/main.bicep'), '--stdout'])
     verify_foundation(config, values, transport)
-    identity_record = workspace.state / 'portal-management-sql-identity.json'
-    if identity_record.exists():
-        from deployment.helpers.private_permissions import check_private_permissions
-        check_private_permissions(identity_record)
-    values['managementSqlClientId'] = discover_management_sql_identity(
-        config, management_client_inventory(config, state), transport,
-        record=lambda value: protected_json(identity_record, value),
-        prior_receipt=json.loads(identity_record.read_text(encoding='utf-8')) if identity_record.exists() else None)
     if values['imageDigest'] is None:
         values['imageDigest'] = build_image(config, state, transport, data=data, source_hash=source_hash,
             record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))

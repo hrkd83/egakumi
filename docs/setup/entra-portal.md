@@ -25,16 +25,16 @@
 
 ## 初期構築で用意するもの
 
-`azd up`は共有資源、Gateway、Portal ACAの初期サンプルまでを用意します。管理VMへ`portal-auth-certificate.ps1`を配置・実行し、KVが認証専用の3072bit RSA鍵と自己署名証明書を生成します。秘密鍵は非exportableです。HTTPS用のACME証明書とは別です。
+`azd up`は共有資源、Gateway、Portal ACAの初期サンプルまでを用意します。証明書専用ACAのPortal署名Jobから要求し、KVが認証専用の3072bit RSA鍵と自己署名証明書を生成します。秘密鍵は非exportableです。HTTPS用のACME証明書とは別です。
 
-`postprovision`はVM Run Commandの正常終了と出力を照合し、公開証明書を`.local/<environment>/generated/portal-auth-public.cer`へ、固定参照を同じ環境の`state/portal-auth-certificate.json`へ保存します。単にファイルが存在するだけで初期構築の成功とは判断せず、今回のコマンドの終了結果を確認してください。
+`postprovision`は開始したACA Job実行の正常終了と保護された結果を照合し、公開証明書を`.local/<environment>/generated/portal-auth-public.cer`へ、固定参照を同じ環境の`state/portal-auth-certificate.json`へ保存します。単にファイルが存在するだけで初期構築の成功とは判断せず、今回のJob実行の終了結果を確認してください。
 
 この初期発行は全体構築のCoreとhookに組み込まれており、構築後に別の発行コマンドを追加で実行する手順にはしません。すでに構築済みの環境へ証明書準備だけを追加する場合は、[初期発行の限定追加手順](../operations/portal-authentication.md#初期構築と既存環境への限定追加)を使います。どちらも公開`.cer`を取得してから、以下の一度のEntra登録依頼へ進みます。
 
 ```mermaid
 flowchart LR
-  Build[初期構築資材] --> VM[管理VMの発行スクリプト]
-  VM -->|生成要求| KV[KV内で秘密鍵・自己署名証明書を生成]
+  Build[初期構築資材] --> Job[証明書専用ACAのPortal署名Job]
+  Job -->|生成要求| KV[KV内で秘密鍵・自己署名証明書を生成]
   KV -->|公開証明書だけ| CER[公開 .cer]
   CER -->|手動アップロード| Entra[専用Portalアプリ]
   Entra -->|Tenant ID / Client ID| Deploy[Portal本体をビルド・配備]

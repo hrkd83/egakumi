@@ -1,6 +1,6 @@
 # 02. 共用Entraアプリを準備する
 
-新Portalの登録は本章の事前準備から分離します。初期構築の管理VMがKVで非exportable自己署名証明書を生成し、公開証明書を取り出した後に[専用Portal Entraアプリを手動作成・登録](entra-portal.md)します。アプリ作成・証明書追加・必要権限の同意を一度の依頼にまとめます。以下のPortal共用secretの説明は切替前の旧構成用です。CM/APIの事前準備は引き続き必要です。
+新Portalの登録は本章の事前準備から分離します。初期構築の専用ACA JobがKVで非exportable自己署名証明書を生成し、公開証明書を取り出した後に[専用Portal Entraアプリを手動作成・登録](entra-portal.md)します。アプリ作成・証明書追加・必要権限の同意を一度の依頼にまとめます。以下のPortal共用secretの説明は切替前の旧構成用です。CM/APIの事前準備は引き続き必要です。
 
 [← 01. 前提を確認する](01-prerequisites.md) · [次へ：03. 公開DNSを準備する →](03-public-dns.md)
 

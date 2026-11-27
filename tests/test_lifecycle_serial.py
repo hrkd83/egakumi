@@ -87,6 +87,7 @@ class SerialLifecycleTests(unittest.TestCase):
     def core(self, transport, *, secrets=None):
         with contextlib.ExitStack() as stack:
             for name, value in (("run", {"resources": []}), ("ArmTransport", transport),
+                                ("require_certificate_registry_ready", None), ("plan_secret_registration", {}),
                                 ("prepare_core_network_upgrade", None), ("complete_core_network_upgrade", None),
                                 ("discover_existing_network_security_groups", []), ("discover_existing_route_table_routes", {}),
                                 ("discover_existing_apim_hostnames", {}), ("discover_existing_apim_egress_fqdns", []),

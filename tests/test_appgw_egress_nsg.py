@@ -337,7 +337,8 @@ class LifecycleAppgwEgressTests(LifecycleFixture, unittest.TestCase):
         self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("fixed-stage") or {"azureWrites": 0}
         outputs = self.outputs()
         for phase in ("core", "monitoring"):
-            transport = ScriptedTransport([
+            checks = [{"statusCode": 404}] if phase == "core" else []
+            transport = ScriptedTransport(checks + [
                 {"statusCode": 201}, {"statusCode": 200, "body": {
                     "properties": {"provisioningState": "Succeeded",
                         "outputs": {key: {"value": value} for key, value in outputs.items()}}}}])
@@ -350,23 +351,25 @@ class LifecycleAppgwEgressTests(LifecycleFixture, unittest.TestCase):
                     mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
                     mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True}), \
                     mock.patch.object(lifecycle, "cleanup_appgw_egress_nsg_rules") as legacy_cleanup:
-                lifecycle.deploy_phase(self.config, phase, secrets={"l7IngressSecret": "PRIVATE_INGRESS_FIXTURE"})
+                lifecycle.deploy_phase(self.config, phase, secrets={})
             legacy_cleanup.assert_not_called()
         self.assertEqual(events, ["fixed-stage", "discover"])
         self.prepare_nsg.assert_called_once()
 
     def test_failed_cleanup_stops_core_before_operator_or_any_deploy(self):
         self.prepare_nsg.side_effect = lifecycle.FixedNsgError("AppGW egress rule is unverified")
+        transport = ScriptedTransport([{"statusCode": 404}])
         with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
-                mock.patch.object(lifecycle, "ArmTransport") as factory, \
-                self.assertRaises(lifecycle.DeploymentError):
-            lifecycle.deploy_phase(self.config, "core")
+                mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
+                self.assertRaisesRegex(lifecycle.DeploymentError, "AppGW egress rule is unverified"):
+            lifecycle.deploy_phase(self.config, "core", secrets={})
         self.complete_nsg.assert_not_called()
-        factory.return_value.request.assert_not_called()
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"])
+        self.assertIn("/providers/Microsoft.ContainerRegistry/registries/", transport.calls[0]["path"])
 
     def test_preprovision_failure_prevents_parameters_and_later_mutations(self):
         self.prepare_nsg.side_effect = lifecycle.FixedNsgError("AppGW egress rule is unverified")
-        transport = ScriptedTransport([{"statusCode": 404, "body": None}])
+        transport = ScriptedTransport([{"statusCode": 404, "body": None}] * 2)
         with mock.patch.object(lifecycle, "local_preflight"), \
                 mock.patch.object(lifecycle, "azure_preflight"), \
                 mock.patch.object(lifecycle, "register_providers"), \

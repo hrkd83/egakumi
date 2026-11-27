@@ -55,6 +55,7 @@ API = {
     "storage": "2023-05-01",
     "diagnostics": "2021-05-01-preview",
     "keyVault": "2023-07-01",
+    "certificateVault": "2023-07-01",
     "foundry": "2025-06-01",
     "apim": "2024-05-01",
     "apiCenter": "2024-06-01-preview",
@@ -66,6 +67,7 @@ API = {
 }
 SERVICE_TYPES = {
     "keyVault": ("Microsoft.KeyVault", "vaults"),
+    "certificateVault": ("Microsoft.KeyVault", "vaults"),
     "foundry": ("Microsoft.CognitiveServices", "accounts"),
     "apim": ("Microsoft.ApiManagement", "service"),
 }
@@ -170,13 +172,15 @@ def _validate_state(configuration: dict, state: Mapping[str, Any]) -> dict:
 
     service_ids = state.get("serviceResourceIds") or {}
     if not isinstance(service_ids, Mapping) or set(service_ids) - SERVICE_TYPES.keys():
-        _error("invalid-state", "完全削除の対象は現在のKV・Foundry・APIMだけに限定してください。")
+        _error("invalid-state", "完全削除の対象が今回の管理対象サービスに一致しません。")
     for key, resource_id in service_ids.items():
         parts = _parts(resource_id)
         provider, resource_type = SERVICE_TYPES[key]
         expected_prefix = _rg_id(configuration, "svc") + f"/providers/{provider}/{resource_type}/"
         if len(parts) != 8 or not resource_id.lower().startswith(expected_prefix.lower()) or not re.fullmatch(r"[A-Za-z0-9-]+", parts[-1]):
             _error("invalid-state", "完全削除の対象が現在のsvc RGの資源と一致しません。")
+        if key == "certificateVault" and parts[-1] != "kvtls-" + configuration["resourceStem"]:
+            _error("invalid-state", "公開TLS証明書用Vaultの名前が今回の配備先と一致しません。", resource_id)
         if key == "apim" and not apim_name_matches(configuration, parts[-1]):
             _error("apim-owner-mismatch", "APIMの削除先が今回の命名・配置先と一致しません。", resource_id)
 
@@ -1023,8 +1027,9 @@ def _application_infrastructure(configuration: dict, inventory: Any) -> list[dic
     code = 'application-infrastructure-state-mismatch'
     if not isinstance(inventory, list):
         _error(code, 'Container Appsの管理ネットワーク記録が配列ではありません。')
-    environment_id = (_rg_id(configuration, 'svc')
-                      + '/providers/Microsoft.App/managedEnvironments/cae-' + configuration['resourceStem'])
+    environment_prefix = (_rg_id(configuration, 'svc')
+                          + '/providers/Microsoft.App/managedEnvironments/cae-' + configuration['resourceStem'])
+    environments = {value.casefold(): value for value in (environment_prefix, environment_prefix + '-certificate')}
     own_groups = {_rg_id(configuration, kind).casefold() for kind in ('id', 'nw', 'monitor', 'svc', 'maint')}
     result, seen = [], set()
     for item in inventory:
@@ -1035,14 +1040,14 @@ def _application_infrastructure(configuration: dict, inventory: Any) -> list[dic
             parts = _parts(group_id)
         except CleanupError:
             _error(code, 'Container Appsの管理RGのResource IDが不正です。')
-        if (not isinstance(item['environmentId'], str) or item['environmentId'].casefold() != environment_id.casefold()
+        if (not isinstance(item['environmentId'], str) or item['environmentId'].casefold() not in environments
                 or len(parts) != 4 or parts[0].casefold() != 'subscriptions'
                 or not _same(parts[1], configuration['subscriptionId']) or parts[2].casefold() != 'resourcegroups'
                 or not re.fullmatch(r'[\w().-]{1,90}', parts[3]) or parts[3].endswith('.')
                 or group_id.casefold() != f"/subscriptions/{configuration['subscriptionId']}/resourceGroups/{parts[3]}".casefold()
                 or group_id.casefold() in own_groups):
             _error(code, 'Container Appsの管理RGが今回のCAE・サブスクの外部管理RGに一致しません。')
-        canonical = {'environmentId': environment_id,
+        canonical = {'environmentId': environments[item['environmentId'].casefold()],
                      'resourceGroupId': f"/subscriptions/{configuration['subscriptionId']}/resourceGroups/{parts[3]}"}
         if canonical['resourceGroupId'].casefold() not in seen:
             result.append(canonical)
@@ -1409,6 +1414,76 @@ def _delete_app_children(configuration, targets, state, transport, *, max_checks
     return result
 
 
+def _certificate_job_resources(configuration, targets, transport):
+    jobs = _rg_id(configuration, 'svc') + '/providers/Microsoft.App/jobs/caj-' + configuration['resourceStem']
+    result = []
+    for resource_id in (jobs + '-tls', jobs + '-auth-cert'):
+        resource = _expect_read(_request(transport, 'GET', resource_id, API['containerApps']), resource_id)
+        if resource is not None:
+            _app_resource_owner(configuration, resource_id, targets['environmentId'], resource,
+                                code='certificate-job-owner-mismatch')
+            result.append((resource_id, resource))
+    return result
+
+
+def _certificate_environment_preflight(configuration, state, transport):
+    """部分構築時も固定IDと実ネットワークを確認してから専用CAEを扱う。"""
+    stem = configuration['resourceStem']
+    if ('certificate' not in configuration['network']['subnetPrefixes']
+            and not state.get('outputs', {}).get('certificateBootstrap')):
+        return None
+    targets = {
+        'environmentId': _rg_id(configuration, 'svc') + '/providers/Microsoft.App/managedEnvironments/cae-' + stem + '-certificate',
+        'subnetId': _rg_id(configuration, 'nw') + '/providers/Microsoft.Network/virtualNetworks/vnet-' + stem
+                    + '/subnets/snet-' + stem + '-certificate',
+        'applicationInfrastructure': _application_infrastructure(configuration, state.get('applicationInfrastructure', [])),
+    }
+    recorded = state.get('outputs', {}).get('certificateBootstrap')
+    if recorded and not _same(recorded.get('environmentId'), targets['environmentId']):
+        _error('certificate-environment-mismatch', '証明書用CAEの配備記録が今回の環境と一致しません。')
+    identifier = targets['environmentId']
+    resource = _expect_read(_request(transport, 'GET', identifier, API['containerApps']), identifier)
+    if resource is not None:
+        _portal_resource_owner(configuration, targets, 'environment', resource)
+    _capture_application_infrastructure(configuration, targets, resource)
+    _certificate_job_resources(configuration, targets, transport)
+    return targets
+
+
+def _delete_certificate_environment(configuration, targets, transport, *, max_checks, wait_seconds, sleep):
+    """証明書Jobを回収し、専用CAEとサブネットの関連付けの解放を順に待つ。"""
+    if targets is None:
+        return None
+    jobs = []
+    for resource_id, resource in _certificate_job_resources(configuration, targets, transport):
+        if str(resource['properties'].get('provisioningState', '')).casefold() != 'deleting':
+            _request(transport, 'DELETE', resource_id, API['containerApps'])
+        for attempt in range(max_checks):
+            current = _expect_read(_request(transport, 'GET', resource_id, API['containerApps']), resource_id)
+            if current is None:
+                break
+            _app_resource_owner(configuration, resource_id, targets['environmentId'], current,
+                                code='certificate-job-owner-mismatch')
+            if attempt + 1 < max_checks:
+                sleep(wait_seconds)
+        else:
+            _error('cleanup-pending', '証明書Jobの削除を確認できません。', resource_id)
+        jobs.append(resource_id)
+    if _certificate_job_resources(configuration, targets, transport):
+        _error('cleanup-pending', '証明書専用CAEのJobが再出現しています。')
+    identifier = targets['environmentId']
+    resource = _expect_read(_request(transport, 'GET', identifier, API['containerApps']), identifier)
+    if resource is not None:
+        _portal_resource_owner(configuration, targets, 'environment', resource)
+        if str(resource['properties'].get('provisioningState', '')).casefold() != 'deleting':
+            _request(transport, 'DELETE', identifier, API['containerApps'])
+        _wait_portal_absent(configuration, targets, 'environment', transport, max_checks=max_checks,
+                           wait_seconds=wait_seconds, sleep=sleep)
+    subnet = _wait_portal_subnet_released(targets, transport, max_checks=max_checks,
+                                         wait_seconds=wait_seconds, sleep=sleep)
+    return {'environmentId': identifier, 'status': 'absent', 'jobs': jobs, 'subnet': subnet}
+
+
 def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Transport, *,
              max_checks: int = 30, wait_seconds: float = 2,
              apim_max_checks: int = 180, apim_wait_seconds: float = 10,
@@ -1427,6 +1502,7 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
     current = _validate_state(configuration, state)
     management_targets = _management_preflight(configuration, state, transport)
     portal_targets = _portal_preflight(configuration, state, transport)
+    certificate_targets = _certificate_environment_preflight(configuration, state, transport)
     portal_jobs = _portal_jobs_preflight(configuration, portal_targets, transport)
     credential_apps = _credential_apps_preflight(configuration, state, transport)
     policies: list[tuple[str, dict]] = []
@@ -1461,8 +1537,14 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
         policies.append((policy_id, {"etag": etag}))
 
     if checkpoint is not None:
-        checkpoint([dict(item) for item in portal_targets['applicationInfrastructure']])
+        inventory = portal_targets['applicationInfrastructure']
+        if certificate_targets is not None:
+            inventory = _application_infrastructure(
+                configuration, [*inventory, *certificate_targets['applicationInfrastructure']])
+        checkpoint([dict(item) for item in inventory])
     portal_targets['infrastructureFrozen'] = True
+    if certificate_targets is not None:
+        certificate_targets['infrastructureFrozen'] = True
     models = _delete_models_first(configuration, current, transport,
                                  max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
     apim = _delete_apim_before_network(configuration, current, transport,
@@ -1470,6 +1552,8 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
                                       wait_seconds=apim_wait_seconds, sleep=sleep)
     portal = _delete_portal_before_network(configuration, portal_targets, transport,
         max_checks=apim_max_checks, wait_seconds=apim_wait_seconds, sleep=sleep, state=state)
+    certificate = _delete_certificate_environment(configuration, certificate_targets, transport,
+        max_checks=apim_max_checks, wait_seconds=apim_wait_seconds, sleep=sleep)
     management = _delete_management_before_network(configuration, management_targets, transport,
         max_checks=apim_max_checks, wait_seconds=apim_wait_seconds, sleep=sleep)
     for policy_id, policy in policies:
@@ -1508,6 +1592,8 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
               "portal": portal,
               "management": management,
               "activityDiagnostic": {"resourceId": diagnostic_id, "status": "absent", "httpStatus": 404}}
+    if certificate is not None:
+        result["certificateEnvironment"] = certificate
     credential_manager = _credential_manager_release(configuration)
     if credential_manager is not None:
         credential_manager["apimServiceDeletionVerified"] = apim.get("apimDeletionVerified") is True
@@ -1520,7 +1606,7 @@ def _tombstone(configuration: dict, current: dict, key: str) -> str:
     name = _parts(current["serviceIds"][key])[-1]
     prefix = f"/subscriptions/{configuration['subscriptionId']}/providers/"
     location = current["locations"][key]
-    if key == "keyVault":
+    if key in ("keyVault", "certificateVault"):
         return prefix + f"Microsoft.KeyVault/locations/{location}/deletedVaults/{name}"
     if key == "foundry":
         group = configuration["resourceGroupNames"]["svc"]
@@ -1670,16 +1756,17 @@ def post_down(config_path: str | Path, state: Mapping[str, Any], transport: Tran
         if not _same(deleted.get("id"), tombstone_id):
             _error("tombstone-mismatch", "削除済み資源のIDが今回の配備記録と一致しません。", tombstone_id)
         properties = deleted.get("properties", {})
-        source_key = "vaultId" if key == "keyVault" else "serviceId" if key == "apim" else None
+        vault = key in ("keyVault", "certificateVault")
+        source_key = "vaultId" if vault else "serviceId" if key == "apim" else None
         if source_key and not _same(properties.get(source_key), original_id):
             _error("tombstone-mismatch", "同名の削除済み資源の元Resource IDが異なるため完全削除しません。", tombstone_id)
-        if (key == "keyVault" and configuration["services"]["vaultPurgeProtection"]
+        if (vault and configuration["services"]["vaultPurgeProtection"]
             or properties.get("purgeProtectionEnabled") is True or properties.get("enablePurgeProtection") is True):
             service_results.append({"kind": key, "resourceId": tombstone_id, "status": "retained-protection", "scheduledPurgeDate": properties.get("scheduledPurgeDate")})
             continue
-        purge_id = tombstone_id + "/purge" if key == "keyVault" else tombstone_id
-        response = _request(transport, "POST" if key == "keyVault" else "DELETE", purge_id, API[key])
-        if key == "keyVault":
+        purge_id = tombstone_id + "/purge" if vault else tombstone_id
+        response = _request(transport, "POST" if vault else "DELETE", purge_id, API[key])
+        if vault:
             _wait_purge(transport, tombstone_id, response, timeout_seconds=purge_timeout_seconds,
                         sleep=sleep, monotonic=monotonic)
         else:

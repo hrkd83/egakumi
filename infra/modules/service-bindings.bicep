@@ -8,12 +8,6 @@ targetScope = 'resourceGroup'
 param names object
 @description('サービスのマネージド ID の Object ID 一覧。Azure RBAC の割当先に使います。')
 param principalIds object
-@description('証明書参照用マネージド ID の Object ID。対象 Key Vault に閲覧権限を付けます。')
-param certificateIdentityPrincipalId string
-@description('管理 VM のシステム割り当て ID の Object ID。証明書取得・更新時の Key Vault 操作に使います。')
-param managementPrincipalId string = ''
-@description('管理 VM に証明書と更新情報の登録権限を対象 Key Vault 内で付与するか。')
-param grantManagementCertificateAccess bool = true
 @description('APIM のシステム割り当て ID に対象 Key Vault の secret 読取権限を付けるか。')
 param grantApimSecretAccess bool = false
 @description('APIM に Speech 呼出し用の組み込みロールを付けるか。')
@@ -41,8 +35,6 @@ resource workspace 'Microsoft.ApiCenter/services/workspaces@2024-03-01' existing
 
 // 以下の GUID は Azure 組み込みロールの定義 ID です。独自ロールを新設せず、割当の scope で範囲を絞ります。
 var secretsUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
-var certificatesOfficerRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a4417e6f-fecd-4de8-b567-7b0420556985')
-var secretsOfficerRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7')
 var openAiUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd')
 var foundryUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d')
 var apiManagementReaderRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '71522526-b88f-4d52-b57f-d31fc3546d0d')
@@ -52,26 +44,6 @@ var languageReaderRoleId = subscriptionResourceId('Microsoft.Authorization/roleD
 var speechUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'f2dc8367-1007-4938-bd23-fe263f013447')
 var cognitiveServicesUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908')
 
-// 証明書参照用 MI に対象 Key Vault の secret 読取を許可。AppGW はこの ID を使います。
-resource certificateReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(vault.id, certificateIdentityPrincipalId, secretsUserRoleId)
-  scope: vault
-  properties: { principalId: certificateIdentityPrincipalId, principalType: 'ServicePrincipal', roleDefinitionId: secretsUserRoleId }
-}
-// 管理 VM が対象 Key Vault 内で証明書を登録・更新できる権限です。
-resource managementCertificateOperator 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (grantManagementCertificateAccess && !empty(managementPrincipalId)) {
-  name: guid(vault.id, managementPrincipalId, certificatesOfficerRoleId)
-  scope: vault
-  properties: { principalId: managementPrincipalId, principalType: 'ServicePrincipal', roleDefinitionId: certificatesOfficerRoleId }
-}
-// The certificate service stores its DNS credential and ACME account state in
-// this Vault. No secret value is passed to or returned by this ARM template.
-// 管理 VM が DNS 資格情報・更新状態等を対象 Key Vault に保存できる権限です。
-resource managementSecretOperator 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (grantManagementCertificateAccess && !empty(managementPrincipalId)) {
-  name: guid(vault.id, managementPrincipalId, secretsOfficerRoleId)
-  scope: vault
-  properties: { principalId: managementPrincipalId, principalType: 'ServicePrincipal', roleDefinitionId: secretsOfficerRoleId }
-}
 // 必要な場合だけ APIM のシステム ID に対象 Key Vault の secret 読取を許可します。
 resource apimSecretReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (grantApimSecretAccess) {
   name: guid(vault.id, principalIds.apim, secretsUserRoleId)
@@ -160,4 +132,4 @@ resource apiManagementSource 'Microsoft.ApiCenter/services/workspaces/apiSources
 
 output apiCenterIntegrationResourceId string = enableApiCenterIntegration ? apiManagementSource.id : ''
 output apiCenterEnvironmentResourceId string = enableApiCenterIntegration ? catalogEnvironment.id : ''
-output principalBindings object = { apim: principalIds.apim, project: principalIds.project, certificateReader: certificateIdentityPrincipalId, certificateOperator: managementPrincipalId }
+output principalBindings object = { apim: principalIds.apim, project: principalIds.project }

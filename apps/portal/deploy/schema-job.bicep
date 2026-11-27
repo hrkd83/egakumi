@@ -8,9 +8,6 @@ param registryName string
 param imageDigest string
 param runtimeIdentity object
 param schemaIdentity object
-@minLength(36)
-@maxLength(36)
-param managementSqlClientId string
 param sqlServer string
 param database string
 param apiKeyGroups array = []
@@ -39,7 +36,6 @@ var variables = {
   AZURE_CLIENT_ID: schemaIdentity.clientId
   PORTAL_SQL_RUNTIME_CLIENT_ID: runtimeIdentity.clientId
   PORTAL_SQL_RUNTIME_USER_NAME: runtimeIdentity.name
-  PORTAL_SQL_MANAGEMENT_CLIENT_ID: managementSqlClientId
   // 配列JSONの先頭「[」が入れ子のARM評価で式として再解釈されないようにします。
   // JSON.parseは先頭空白を許容するため、SQL初期化へ渡す配列の内容は変わりません。
   PORTAL_API_KEY_GROUPS: concat(' ', string(apiKeyGroups))

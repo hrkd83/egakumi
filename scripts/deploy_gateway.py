@@ -29,9 +29,7 @@ from deployment.helpers.credential_image import (
 )
 from deployment.helpers.credential_broker_lifecycle import prepare_secret
 from deployment.helpers.credential_pools import credential_login_enabled, resource_names
-from deployment.helpers.management_maintenance import management_maintenance_inputs
 from deployment.helpers.management_client_assets import management_client_inventory, update_management_client_assets
-from deployment.helpers.management_sql_discovery import discover_management_sql_identity
 from deployment.helpers.grpc_lifecycle import configure_named_values, require_shared_ingress
 from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, state_from_outputs
 from standard_apis import resolve_publication_configuration
@@ -83,7 +81,6 @@ def foundation_inputs(config, state):
     schema = foundation.get('schemaIdentity')
     if not isinstance(schema, dict) or str(schema.get('id', '')).lower() != identity.lower():
         raise ValueError('Core schema identity differs from this environment')
-    foundation['managementMaintenance'] = management_maintenance_inputs(config, foundation.get('managementMaintenance'))
     management_client_inventory(config, state)
     vault = 'https://' + expected['vaultName'] + '.vault.azure.net/secrets/'
     features = output.get('ingressSecrets', {})
@@ -272,7 +269,7 @@ def main(argv=None):
         'database': resource_names(config)['database'],
         'imageBuild': not digest,
         'imageReuseVerificationPending': not args.execute and not args.image_digest,
-        'steps': ['discover-management-sql-identity', 'build-or-reuse-image', 'prepare-database-and-credential-manager', 'initialize-sql',
+        'steps': ['build-or-reuse-image', 'prepare-database-and-credential-manager', 'initialize-sql',
                   'update-broker-and-apim-settings', 'publish-apis-products-subscriptions', 'reconcile-released-api-membership', 'remove-default-apim-samples']
                  + (['configure-gateway-identity-callback-waf'] if login_enabled else [])
                  + (['configure-gateway-speech-waf'] if speech_content_type_paths(config) else [])
@@ -290,14 +287,6 @@ def main(argv=None):
     if config.get('gateway', {}).get('authentication', {}).get('credentialLogin', {}).get('identity'):
         values['credentialIdentitySecret'] = load_credential_identity_secret(config)
     verify_foundation(config, foundation, transport)
-    identity_record = workspace.state / 'gateway-management-sql-identity.json'
-    if identity_record.exists():
-        from deployment.helpers.private_permissions import check_private_permissions
-        check_private_permissions(identity_record)
-    foundation['managementMaintenance']['sqlClientId'] = discover_management_sql_identity(
-        config, management_client_inventory(config, state), transport,
-        record=lambda value: protected_json(identity_record, value),
-        prior_receipt=json.loads(identity_record.read_text(encoding='utf-8')) if identity_record.exists() else None)
     values['brokerKey'] = broker_secret(config, foundation, transport)
     if not digest:
         values['imageDigest'] = build_image(config, image_state, transport, data=data, source_hash=source_hash,

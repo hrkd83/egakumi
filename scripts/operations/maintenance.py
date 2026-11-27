@@ -38,9 +38,6 @@ MODULES = {
     'dns': ('audit-storage-private-dns.bicep', {'Microsoft.Network/privateDnsZones', 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups', 'Microsoft.Resources/deployments'}),
     'link': ('audit-storage-private-dns-link.bicep', {'Microsoft.Network/privateDnsZones/virtualNetworkLinks'}),
     'roles': ('management-maintenance-roles.bicep', {'Microsoft.Authorization/roleDefinitions'}),
-    'aca': ('management-aca-bindings.bicep', {'Microsoft.Authorization/roleAssignments'}),
-    'monitoring': ('management-monitoring-bindings.bicep', {'Microsoft.Authorization/roleAssignments'}),
-    'readers': ('audit-reader-bindings.bicep', {'Microsoft.Authorization/roleAssignments'}),
     'client': ('management-maintenance-client.bicep', {'Microsoft.Compute/virtualMachines/runCommands'}),
 }
 
@@ -151,7 +148,7 @@ def verify_role_what_if(config, document, definitions):
 
 
 class MaintenanceUpgrade:
-    """前提照合→PE→NSG→DNS→RBAC→stateの順序を保護記録付きで実行する。"""
+    """前提照合→PE→NSG→DNS→ロール定義とclient→stateの順序を保護記録付きで実行する。"""
 
     def __init__(self, context, *, compiler=None, sleep=time.sleep, monotonic=time.monotonic):
         self.context = context
@@ -221,26 +218,6 @@ class MaintenanceUpgrade:
                 addresses = [entry.get('ipv4Address') for entry in record.get('properties', {}).get('aRecords', [])]
                 if group is None or key not in bindings['ipSets'] or sorted(addresses) != sorted(bindings['ipSets'][key]):
                     raise OperationError('An existing audit Blob DNS record is unmanaged or differs from the endpoint')
-
-    def existing_reader(self, scope, principal, role):
-        """同じscope/MI/組込みroleの実在割当を保持し、別GUIDで重複作成しない。"""
-        result = self.context.request('GET', scope+'/providers/Microsoft.Authorization/roleAssignments', '2022-04-01')
-        body = result.get('body')
-        if (result.get('statusCode') != 200 or not isinstance(body, dict)
-                or not isinstance(body.get('value'), list) or body.get('nextLink')):
-            raise OperationError('The existing scoped reader assignments could not be fully inspected')
-        matches = []
-        for assignment in body['value']:
-            properties = assignment.get('properties', {})
-            if (properties.get('scope', '').casefold() == scope.casefold()
-                    and properties.get('principalId', '').casefold() == principal.casefold()
-                    and properties.get('roleDefinitionId', '').rsplit('/',1)[-1].casefold() == role):
-                if assignment.get('type', '').casefold() != 'microsoft.authorization/roleassignments':
-                    raise OperationError('The scoped reader assignment identity is unverified')
-                matches.append(assignment)
-        if len(matches) > 1:
-            raise OperationError('The existing scoped reader assignments are ambiguous')
-        return bool(matches)
 
     def validate_roles(self):
         template = checked_template(self.compiler(MODULES['roles'][0]), MODULES['roles'][1])
@@ -338,22 +315,11 @@ class MaintenanceUpgrade:
         containers = storage.get('containerIds')
         if not isinstance(containers, list) or not containers or len(containers) != len(set(containers)):
             raise OperationError('The constructed audit container inventory is incomplete')
-        readers = {key: [] for key in COLLECTORS}
-        retained_readers = []
         for identity in containers:
             matching = [key for key in COLLECTORS if identity.casefold().startswith(storage[key]['id'].casefold() + '/blobservices/default/containers/')]
             if len(matching) != 1:
                 raise OperationError('An audit container is outside the constructed collectors')
             self.context.verify_resource(identity, '2023-05-01', 'Microsoft.Storage/storageAccounts/blobServices/containers')
-            collector, name = matching[0], identity.rsplit('/', 1)[-1]
-            if self.existing_reader(identity, principal, '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'):
-                retained_readers.append(identity)
-                continue
-            existing = next((reader for reader in self.config['monitoring']['auditReaders']
-                             if reader['collector'] == collector and reader['containerName'] == name
-                             and reader['principalId'].casefold() == principal.casefold()), None)
-            readers[collector].append(copy.deepcopy(existing) if existing is not None else
-                    {'containerName': name, 'principalId': principal, 'principalType': 'ServicePrincipal'})
         svc = f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/{self.config['resourceGroupNames']['svc']}/providers/Microsoft.App/"
         app_names = [outputs['portal']['applicationName']]
         job_names = list(resource_names(self.config).values())
@@ -381,12 +347,9 @@ class MaintenanceUpgrade:
                 or workspace.get('properties', {}).get('customerId') != monitoring['workspaceCustomerId']):
             raise OperationError('The recorded workspace name and ID differ')
         self.verify_dns(bindings)
-        existing_workspace_reader = self.existing_reader(workspace['id'], principal, '3b03c2da-16b3-4a49-8834-0f8130efdd3b')
         plan = {'status': 'verified-plan', 'principalId': principal, 'bindings': bindings, 'auditStorage': storage,
-                'sqlDatabases': sql_databases,
-                'readers': readers, 'applicationNames': app_names, 'jobNames': job_names,
-                'environmentNames': [outputs['portal']['environmentName']], 'workspaceName': monitoring['workspaceName'],
-                'retainedAuditReaders': retained_readers, 'existingWorkspaceReader': existing_workspace_reader}
+                'sqlDatabases': sql_databases, 'applicationNames': app_names, 'jobNames': job_names,
+                'environmentNames': [outputs['portal']['environmentName']]}
         self.context.record('maintenance', plan)
         return plan
 
@@ -462,20 +425,13 @@ class MaintenanceUpgrade:
         link = self.deploy('link', 'nw', {'resourcePrefix': stem, 'tags': tags, 'vnetId': vnet,
                          'privateDnsZoneId': dns['privateDnsZoneId'], 'dnsRecordsValidated': True})
         roles = self.deploy('roles', None, {'resourceStem': stem})
-        metadata = management_maintenance_inputs(self.config, {'principalId': plan['principalId'], 'roleDefinitionIds': roles['roleDefinitionIds']})
-        self.deploy('aca', 'svc', {**metadata, **{key: plan[key] for key in ('applicationNames', 'jobNames', 'environmentNames')}})
-        if not plan['existingWorkspaceReader']:
-            self.deploy('monitoring', 'monitor', {'principalId': plan['principalId'], 'workspaceName': plan['workspaceName']})
-        for collector in COLLECTORS:
-            self.deploy('readers', 'monitor', {'storageAccountName': plan['auditStorage'][collector]['name'], 'readers': plan['readers'][collector]})
+        metadata = management_maintenance_inputs(self.config, roles)
         inventory = self.client_inventory(plan)
         self.deploy('client', 'maint', {'vmName': self.context.state['outputs']['managementVm']['name'],
                                      'location': self.config['location'], 'tags': tags, 'inventory': inventory})
         state = copy.deepcopy(self.context.state)
         state['outputs']['managementMaintenance'] = metadata
         state['outputs']['managementClientInventory'] = inventory
-        for key in ('portal', 'gatewayFoundation'):
-            state['outputs'][key]['managementMaintenance'] = metadata
         state['outputs']['auditStoragePrivateAccess'] = {
             'privateEndpoints': endpoints['privateEndpoints'], 'privateDnsZoneId': dns['privateDnsZoneId'],
             'privateDnsZoneGroupIds': dns['privateDnsZoneGroupIds'], 'privateDnsLinkId': link['privateDnsLinkId']}

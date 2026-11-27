@@ -64,7 +64,7 @@ NSGの `allow-internet-egress` がTCP80／443を許可していても、Firewall
 
 | 規則名 | 種別・通信 | 宛先 | 通信ID・用途 | 対応管理VM NSG・採用理由 |
 | --- | --- | --- | --- | --- |
-| `allow-mgmt-vm-entra` | N・TCP443 | `AzureActiveDirectory`タグ | [`FLOW-MGMT-ENTRA`](network-communication-requirements.md#flow-mgmt-entra)。Entraログインと管理IDを利用した後続認証 | `allow-entra-egress`。VM内IMDSへのHTTP80取得とは別の外向き通信 |
+| `allow-mgmt-vm-entra` | N・TCP443 | `AzureActiveDirectory`タグ | [`FLOW-MGMT-ENTRA`](network-communication-requirements.md#flow-mgmt-entra)。Entra SSH、管理VM上の本人認証とMicrosoft Graphでの本人の照合 | `allow-entra-egress`。VM内IMDSへのHTTP80取得とは別の外向き通信 |
 | `allow-mgmt-vm-arm` | N・TCP443 | `AzureResourceManager`タグ | [`FLOW-MGMT-ARM`](network-communication-requirements.md#flow-mgmt-arm)。構築資源の管理API操作、ログ接続token取得 | `allow-azure-resource-manager-egress`。VMを全リソースの保守拠点とするための管理到達性 |
 | `allow-mgmt-vm-monitor` | N・TCP443 | `AzureMonitor`タグ | [`FLOW-MGMT-MONITOR`](network-communication-requirements.md#flow-mgmt-monitor)。AMAの監視送信、保存済みログ閲覧 | `allow-monitor-egress`。監視送信と閲覧は用途・認可を分ける |
 | `allow-mgmt-vm-agent-storage` | N・TCP443 | `Storage`タグ | [`FLOW-MGMT-AGENT-STORAGE`](network-communication-requirements.md#flow-mgmt-agent-storage)。Agent配布・状態等の直接Storage依存、診断取得 | `allow-storage-egress`。構築監査Blob PEへの閲覧許可とは別 |
@@ -126,7 +126,7 @@ Brokerは初期構築の常設構成要素とし、`credentialProfiles`が空で
 | --- | --- | --- | --- | --- |
 | `allow-mgmt-vm-certificate-validation` | A・HTTP80、HTTPS443 | `CERT-VALIDATION`（7宛先） | [`FLOW-MGMT-CERTIFICATE-VALIDATION`](network-communication-requirements.md#flow-mgmt-certificate-validation)。保守処理の証明書／PKI確認 | `allow-internet-egress`。既存の互換到達性を維持し、全7宛先の必須利用とは区別 |
 | `allow-mgmt-vm-linux-packages` | A・HTTP80、HTTPS443 | `LINUX-PACKAGES` | [`FLOW-MGMT-LINUX-PACKAGES`](network-communication-requirements.md#flow-mgmt-linux-packages)。Ubuntu、PowerShell、Azure CLI等の準備 | `allow-internet-egress`。初期構築から保守clientを再現する配布依存 |
-| `allow-mgmt-vm-aca-dev-https` | A・HTTPS443 | 構築リージョンの `<region>.azurecontainerapps.dev` | [`FLOW-MGMT-ACA-DEV`](network-communication-requirements.md#flow-mgmt-aca-dev)。ACA App／Jobのログ、exec等のDev gateway接続 | `allow-internet-egress`。単一リージョンの共用gatewayへ接続し、対象App／Job操作は別途MI／RBACで制限 |
+| `allow-mgmt-vm-aca-dev-https` | A・HTTPS443 | 構築リージョンの `<region>.azurecontainerapps.dev` | [`FLOW-MGMT-ACA-DEV`](network-communication-requirements.md#flow-mgmt-aca-dev)。ACA App／Jobのログ、exec等のDev gateway接続 | `allow-internet-egress`。単一リージョンの共用gatewayへ接続し、対象App／Jobの操作は保守担当者本人への一時RBACで制御 |
 | `allow-mgmt-vm-approved-services` | A・HTTPS443 | `MGMT-SERVICES` | [`FLOW-MGMT-APPROVED-SERVICES`](network-communication-requirements.md#flow-mgmt-approved-services)。ACME発行、配布、ARM、構築した公開Hostの保守確認 | `allow-internet-egress`、該当するARMタグ許可。自由な宛先追加入力を廃止し、共通配布先と構築Hostから生成 |
 
 送信元は全件管理VMサブネット。ACA Dev gatewayはリージョン共用であり、当Firewall規則だけで接続対象のApp／Jobを限定しない。ログ閲覧、exec、環境token、Jobログ等のMI／RBACとclient/APIの条件は[通信要件](network-communication-requirements.md)で別に管理する。
@@ -181,7 +181,7 @@ Premiumでは、構築CLIがRFC1918と構築VNetのCIDRからAppGWサブネッ�
 | `FW-D05` | APIM NTPはAPIMサブネット・UDP123・宛先`*`を維持し、管理VMはホストPHCを使う | APIMはDNS回答差を回避するNSG328と組み合わせる。管理VMのPHC／VMBusは非IPなので旧FW NTPを撤去し、UDP123／319／320を追加しない。guest同期の先行成立と現在状態の確認は分ける |
 | `FW-D06` | 同じHTTPSでもEntra／ARM／Monitor／build等の用途を規則名で分離する | 同じタグやNetwork RuleとApplication Ruleの重複を明記し、特定の後段規則hitは保証しない |
 | `FW-D07` | 証明書確認7宛先を維持する | 基盤互換到達性を失わない。全宛先の毎回利用、将来の証明書購入方式とは区別 |
-| `FW-D08` | 管理VM ACA Dev gatewayを単一構築リージョンに常設許可する | 管理VMからのログ・exec等の保守経路を成立させる。対象操作はMI／RBACで認可 |
+| `FW-D08` | 管理VM ACA Dev gatewayを単一構築リージョンに常設許可する | 管理VMからのログ・exec等の保守経路を成立させる。対象操作は保守担当者本人への一時RBACで認可 |
 | `FW-D09` | 任意Internet Network Rule、自由なFW宛先配列、ipify probeを作らない | 必要な固定FQDN・生成済み業務宛先と暗黙Denyで管理 |
 | `FW-D10` | AppGW専用の2規則でTLS検査 | 外向きと保守の既存TLS契約を維持し、検査ログはURLを除去して保存する |
 

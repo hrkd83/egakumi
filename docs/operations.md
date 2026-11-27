@@ -80,7 +80,7 @@ Gatewayの公開処理は、未使用と判定できるAPIM初期サンプル（
 
 ## アプリ配備の途中で失敗した場合
 
-`azd up`は共通基盤の`postprovision`成功後にGateway→Portalを実行します。Gatewayが失敗したらPortalへ進まず、Portalが失敗したらup全体が失敗します。基盤の作成結果だけを一式の完了としません。
+`azd up`は共通基盤の`postprovision`成功後にGatewayを配備します。初回のPortal本体は、Entra担当者が署名証明書を登録した後に個別配備します。両アプリを更新する場合、各アプリの終了結果を確認します。
 
 1. 終了した工程・終了コード・配備記録と、現在のAzure上の状態を確認する。
 2. 同じparamsと`.local/<environment>/state/latest.json`を保持して原因を修正する。SQLやイメージ構築の失敗を飛ばさない。
@@ -105,7 +105,7 @@ python3 scripts/deploy_applications.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 ## DNS用マネージドIDと権限を更新する
 
-Azure Public DNSは事前作成したUAMIを使います。IDを変更する場合は、新しいIDへDNS権限を付与し、paramsの`certificate.azureDnsManagedIdentityResourceId`と、必要なら`certificate.azureDnsSubscriptionId`を更新して同じ環境へ反映します。管理VMへの関連付け・実際の証明書更新を確認してから旧権限を回収します。外部で作成したDNS用ID・公開ゾーンはCoreの撤去対象に含めません。
+Azure Public DNSは事前作成したUAMIを使います。IDを変更する場合は、新しいIDへDNS権限を付与し、paramsの`certificate.azureDnsManagedIdentityResourceId`と、必要なら`certificate.azureDnsSubscriptionId`を更新して同じ環境へ反映します。公開TLS Jobへの関連付け・実際の証明書更新を確認してから旧権限を回収します。外部で作成したDNS用ID・公開ゾーンはCoreの撤去対象に含めません。
 
 IDや権限の変更前に[DNS事前準備](setup/03-public-dns.md)を確認してください。
 
@@ -117,62 +117,57 @@ APIキー管理・購読同期はPortalの管理画面を使います。[購読�
 
 ## 管理VMから保守データを取得する
 
-構築した管理VM自身のSystemAssignedマネージドID（MI）で、監査Blob、保存済みログ、ACAのログを取得し、明示したAppのコンテナーへ有限のexecを行います。入口は[management_client.py](../scripts/management_client.py)です。人間のAzure CLI認証・既存環境への資材適用はWindows側で行い、このclientはLinux管理VM内だけで実行します。VM内で人間の`az login`、Windowsの認証キャッシュのコピー、別のIDの指定は行いません。clientはIMDSでVM資源とMIの主体・テナントをinventoryへ照合し、tokenをメモリーだけで扱います。
+保守の責任者は、担当者本人の Microsoft Entra Object ID に、作業の開始前に必要な権限を手動で付与し、終了時に回収します。作業票に対象・操作・開始／終了時刻・付与担当・回収担当を記録します。手動のAzure RBAC割当は期限で自動削除されません。PIMが利用できる場合は任意で使えます。
 
-### 初期資材と既存環境への適用を分ける
+初回構築では、監査用のPE・DNS、管理VM上のクライアントと対象一覧、担当者本人向けのACA保守ロール定義を準備します。Gateway・Portalの配備時には、実際に構築したApp・Job・DBを対象一覧へ追加します。[既存環境への限定適用](../scripts/operations/maintenance.py)もロール定義と対象一覧を構築します。旧資材で既に作ったVMの保守権限を回収する場合、対象MI・割当スコープ・DBユーザー・証明書更新の依存を別途照合し、権限管理者が個別に回収します。
 
-初期構築はBicepで権限・監査Blob PE・DNS・NSG・clientを準備します。Gateway／Portal配備は、実際に構築したApp・Jobを同じinventoryへ追加します。client本体、固定依存、inventoryはVM内の公開インストーラ配置契約`/opt/core/maintenance/`へroot所有で配置されます。inventoryは`inventory.json`、Pythonは`venv/bin/python`です。実資源を含むinventoryは公開資材ではありません。
+### 保守の付与・回収
 
-今回の資材をまだ適用していない既存環境では、同じparamsとCore stateを保持し、[maintenance.py](../scripts/operations/maintenance.py)で読取計画を確認してから、対象限定の適用を行います。通常運用で基盤全体の`azd up`を再実行しません。次はWindows PowerShellで、構築時の保護paramsを指す`DEPLOY_PARAMS_FILE`を選択した後に実行する例です。
+1. [管理VMへの本人接続](operations/management-vm-access.md)を参照し、対象VMへ一時的に `Virtual Machine User Login` を本人へ付与します。クライアントを使う場合、OS管理者は本人を一時的に `core-maintenance` へ追加します。
+2. 次のうち作業に必要なロールだけを付与し、新規の割当IDを保護記録へ保存します。SQLの場合は [DB単位の付与・回収手順](operations/management-sql-access.md) を使います。
+3. 本人で接続し、許可された対象と必要な操作を確認します。SQLの作業後はSQLセッションを閉じ、DBAが回収し、本人がVMにいる間に対象DBへの新規接続拒否を確かめます。
+4. 残る保守ロールを回収して新規操作の拒否を確認し、SSH・ログ・execのセッションを終了します。ゲストの本人用CLIで `az logout` を実行し、OSグループとVMログイン割当を回収した後、新規SSH接続の拒否を確認します。直接・継承された権限と、セッション・トークンが残り得る時間を作業票に記録します。
 
-```powershell
-python -B scripts/operations/maintenance.py --config $env:DEPLOY_PARAMS_FILE
-python -B scripts/operations/maintenance.py --config $env:DEPLOY_PARAMS_FILE --execute
+| 操作 | ロールと割当スコープ | 権限の範囲 |
+| --- | --- | --- |
+| 監査Blob | `Storage Blob Data Reader` ／ 対象コンテナー | 指定Blobの読取 |
+| 保存ログ | `Log Analytics Data Reader` ／ 対象Workspace | Workspaceのログ照会 |
+| ACA Appログ | `appLogs` ／ 対象App | App・revision・replica、Appトークン、console・systemログ |
+| ACA App exec | `appLogs` と `appExec` ／ 対象App | 対象コンテナーでのコマンド実行。参照できる秘密とAppのIDで利用できる接続先にも影響する |
+| ACA環境ログ | `environmentLogs` ／ 対象ACA環境 | 環境情報とDev APIトークン。環境トークンはログ取得以外にも使える |
+| ACA Jobログ | `jobLogs` ／ 対象Job | Jobと子資源の参照、Jobトークン、実行ログ |
+
+ACAロール定義のIDはCore出力 `managementMaintenance.roleDefinitionIds`、対象のResource IDは配備出力から取得します。既存割当と継承を確認してから、権限管理者が手動割当を行います。以下のIDはプレースホルダーです。
+
+```sh
+az role assignment create --assignee-object-id '<OPERATOR_OBJECT_ID>' \
+  --assignee-principal-type User --role '<ROLE_DEFINITION_ID>' \
+  --scope '<EXACT_RESOURCE_ID>' --query id --output tsv
+
+az role assignment delete --ids '<RECORDED_ASSIGNMENT_ID>'
 ```
 
-計画時にもAzureの所有資源・既存NSG・権限・監査PE/DNSを読み取ります。反映では、同じMIの同じscopeに既にあるBlob／WorkspaceのReader割当を維持し、異なる主体の既存権限を追加対象へ流用しません。手動DNS、未知のNSG、所有不一致、読み切れていない権限一覧などは停止条件です。`assets-applied`・`clientPrepared`と`runtimeVerified: false`は資材工程の結果であり、実データ取得の成功を表しません。
-
-### inventoryと権限の範囲
-
-inventoryは構築出力から生成し、VM・MI・テナント・Subscription、App、Job、ACA環境、Workspace、監査Storageとコンテナーを記録します。対象のResource IDを明示して操作し、名前から別資源を推測したり、inventoryを手動で広げたりしません。Core stateは端末の`.local/<environment>/state/latest.json`、実情報を含む入力・証跡は同じ環境の保護領域で管理します。VM内にcheckoutがある場合も、その中での保守入出力は直下の`.local/`に限定します。
-
-| 対象 | 常設する権限・scope | 読めるもの／扱えるもの |
-| --- | --- | --- |
-| 監査Blob | 構築した監査コンテナー単位のStorage Blob Data Reader | collectJapan／collectFoundryの指定Blob。書込み・削除権限は追加しない |
-| 保存ログ | 構築Workspace単位のLog Analytics Data Reader | ACA以外も含めたWorkspace全体の保存ログ。将来同じWorkspaceへ追加するログも対象 |
-| ACA Appログ | 構築App単位のカスタムロール | App／revision／replica情報、App自身のtoken取得、console／systemログ。設定metadataや平文環境変数も閲覧範囲に含む |
-| ACA App exec | 構築App単位の別カスタムロール | コンテナー内コマンドの実行。コンテナーが読めるマウント済み秘密やアプリのIDで利用できる接続先にも影響する |
-| ACA環境ログ | 構築managedEnvironment単位のreadとgetAuthToken | 環境情報とDev API用token。tokenがログ専用であるという保証は置かない |
-| ACA Jobログ | 構築Job単位のカスタムロール | Jobと子資源の情報、Job自身のtoken取得、実行ログ。Job起動・listSecrets・exec権限は追加しない |
-| SQL直接保守 | 構築したGateway／Portalの各DB内の`core_management_vm`へ`db_owner` | データ・DDL・DB内権限の保守。SQLサーバーのEntra管理者や、他のDBへの権限は追加しない |
-
-カスタムロールの定義はSubscription scopeに作りますが、割当scopeは上表の構築資源です。VM内のプログラム・ログイン者はMIを利用でき、保存先から見えるアクセス主体もVMのMIです。人間ごとのID認可・監査に置き換わる機能ではありません。clientが提供する操作を限定していても、環境tokenのAzure側利用範囲までログ専用に制限したとは扱いません。
+空環境から構築した構成では、公開TLSのDNS更新・Key Vault操作とPortalの署名証明書を[専用ACA Job](operations/certificate-jobs.md)が担当します。Gateway・Portalのイメージビルド中は、管理VMのIDへ一時的に `AcrPush` が追加されるため、担当者のシェル保守時間をビルドと重ねません。SSH権限を回収した後、本人の既存セッションを終了し、ローカルの公開鍵でも再接続できないことを実環境で確認します。
 
 ### 保護入出力とSQLを含む8種類の操作
 
-次はLinux管理VM内の例です。配置契約以外のID・名前はプレースホルダーであり、対象は保護inventoryと現在のApp／Job metadataから選びます。root所有のinventoryを読むため、以下では`sudo`でclientを実行します。出力先と入力先はroot所有・700、入力ファイルは600で事前準備し、リンクや他人の共有フォルダーを使いません。
+[管理クライアント](../scripts/management_client.py) と対象一覧は `/opt/core/maintenance/` にroot所有で配置されます。担当者はVM内で本人のAzure CLIセッションを作り、`sudo`を付けずに実行します。入出力先は本人所有の700ディレクトリ、入力ファイルは600にします。チェックアウト内ではルートの `.local/<environment>/` を使います。出力は未作成のファイルを指定し、本文を端末や公開ログへ転記しません。
+
+ブラウザーを使えない管理VMでは、組織がデバイスコード認証を許可している場合に以下のように本人でサインインします。認証コードは保護された接続で扱います。本人のCLIプロファイルは共有せず、保守クライアントの実行中にアカウントを切り替えません。条件付きアクセスで制限される場合は、組織で認められた本人認証を確認します。クライアントはAzure CLIの現在のテナントと本人のMicrosoft Graph Object IDを確認するため、ゲストからMicrosoft Graphへの既存Entra経路と、Azure CLIが本人プロファイルを取得できることも受入で確かめます。 [Azure CLIで本人のObject IDを確認する手順](https://learn.microsoft.com/en-us/entra/identity/users/how-to-get-signed-in-identity)
 
 ```sh
-MAINTENANCE_PYTHON=/opt/core/maintenance/venv/bin/python
-MAINTENANCE_CLIENT=/opt/core/maintenance/management_client.py
-MAINTENANCE_INVENTORY=/opt/core/maintenance/inventory.json
-MAINTENANCE_INPUT_DIRECTORY=/opt/core/maintenance/input
-MAINTENANCE_OUTPUT_DIRECTORY=/opt/core/maintenance/evidence/'<RUN_ID>'
-sudo install -d -m 700 "$MAINTENANCE_INPUT_DIRECTORY" /opt/core/maintenance/evidence "$MAINTENANCE_OUTPUT_DIRECTORY"
-sudo "$MAINTENANCE_PYTHON" -I -B "$MAINTENANCE_CLIENT" --help
+az login --tenant '<AZURE_TENANT_ID>' --allow-no-subscriptions --use-device-code --output none
 ```
 
-各操作は`--inventory`と、まだ存在しない新規`--output`を共通で指定します。本文は600の出力ファイルだけへ保存し、通常の端末出力には取得内容・tokenを出しません。既存出力は上書きせず、失敗で部分出力が残った場合も成功とは扱いません。表示・転送する前に保護記録として確認し、Git・公開ログ・配布物へ混ぜません。
-
 ```sh
-sudo "$MAINTENANCE_PYTHON" -I -B "$MAINTENANCE_CLIENT" \
-  --inventory "$MAINTENANCE_INVENTORY" \
+/opt/core/maintenance/venv/bin/python -I -B /opt/core/maintenance/management_client.py \
+  --operator-object-id '<OPERATOR_OBJECT_ID>' \
   --output "$MAINTENANCE_OUTPUT_DIRECTORY/blob.bin" \
   blob-read --resource-id '<AUDIT_STORAGE_RESOURCE_ID>' \
   --container '<CONSTRUCTED_CONTAINER_NAME>' --blob '<BLOB_NAME>'
 ```
 
-同じ呼出しの末尾を次の表で選び、`--output`も操作ごとに新しいファイル名へ変えます。7個のサブコマンドで、Appログのconsole／systemを分けた8種類の操作です。
+ほかの操作では、毎回新しい `--output` を指定し、サブコマンドと追加引数を選びます。
 
 | 操作 | サブコマンドと追加引数 | 選択・確認事項 |
 | --- | --- | --- |
@@ -185,7 +180,7 @@ sudo "$MAINTENANCE_PYTHON" -I -B "$MAINTENANCE_CLIENT" \
 | Appへの限定exec | `app-exec --resource-id '<APP_RESOURCE_ID>' --revision '<REVISION_NAME>' --replica '<REPLICA_NAME>' --container '<CONTAINER_NAME>' --command-file "$MAINTENANCE_INPUT_DIRECTORY/command.txt" --seconds 60` | 明示したコンテナーへ、保護コマンドファイルの内容だけを送る |
 | SQL直接保守 | `sql-query --database credentials --query-file "$MAINTENANCE_INPUT_DIRECTORY/maintenance.sql"` | `credentials`または`portal`の構築DBだけを選択。SQL本文は保護ファイルへ保存 |
 
-SQLは管理VM自身のMIで認証し、構築サーバーのFQDNへTCP1433で接続します。固定ODBC Driver 18で暗号化とサーバー証明書検証を維持します。SQL本文・結果・失敗時の詳細は保護ファイルへ保存し、tokenは保存しません。更新SQLの実行と結果保存は別の段階です。commit後に結果保存が失敗した場合も、更新を未実行と決めつけて再送しません。
+SQLは担当者本人のEntra IDで認証し、構築サーバーのFQDNへTCP1433で接続します。固定ODBC Driver 18で暗号化とサーバー証明書検証を維持します。SQL本文・結果・失敗時の詳細は保護ファイルへ保存し、tokenは保存しません。更新SQLの実行と結果保存は別の段階です。commit後に結果保存が失敗した場合も、更新を未実行と決めつけて再送しません。
 
 ログ取得は`follow=false`の有限tailで、`--tail`は0〜300です。JobログはPreview APIを使い、client内でmetadata用とreplica／token用のAPI版を固定しています。実環境での提供状況・認可・実行ログ保持を確認するまでは取得成功を保証しません。
 
@@ -193,7 +188,7 @@ execの`command.txt`には、目的が明確で短時間で終了するコマン
 
 ### 実環境の確認結果を記録する
 
-今回の資材はBicepコンパイルと独立した合成入力によるローカル試験で確認しています。初期Azure配備、MIの実token取得、SQL直接保守、Blob／Workspaceの実データ、App／環境／JobのDev API、WebSocket exec、Serialの実ログインは別の実環境試験です。未実施の操作を検証済みにしません。8操作それぞれについて、対象、権限scope、ネットワーク到達、取得内容、必要なら拒否条件を保護証跡へ記録します。
+今回の資材はBicepコンパイルと独立した合成入力によるローカル試験で確認しています。初期Azure配備、担当者本人の実トークン取得、SQL直接保守、Blob／Workspaceの実データ、App／環境／JobのDev API、WebSocket exec、Serialの実ログインは別の実環境試験です。未実施の操作を検証済みにしません。8操作それぞれについて、対象、権限scope、ネットワーク到達、取得内容、必要なら拒否条件を保護証跡へ記録します。
 
 ## Serial Consoleのローカル認証を準備する
 

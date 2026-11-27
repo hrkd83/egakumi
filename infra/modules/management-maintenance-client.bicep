@@ -1,4 +1,4 @@
-// 構築出力の対象だけを扱うMI用clientを準備します。通信・認可の成功試験は別工程です。
+// 構築出力の対象だけを扱う保守者用clientを準備します。通信・認可の成功試験は別工程です。
 targetScope = 'resourceGroup'
 param vmName string
 param location string

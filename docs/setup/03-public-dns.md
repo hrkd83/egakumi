@@ -4,7 +4,7 @@
 
 Gateway・Portalの公開名を管理するAzure Public DNSゾーンと、証明書の発行・自動更新に使うユーザー割り当てマネージドID（UAMI）を事前に用意します。CoreのIaCは、この公開ゾーン・DNS用ID・DNS側のロール割り当てを作成しません。
 
-証明書はAzure Public DNSでDNS-01認証を行い、管理VMがDNS用UAMIで取得・更新します。
+証明書はAzure Public DNSでDNS-01認証を行い、専用ACAの公開TLS JobがDNS用UAMIで取得・更新します。
 
 公開ゾーン・ドメイン・DNS用IDはCoreとは独立した前提資源です。既存資源は対象と権限を照合して再利用します。新規に準備する場合はDNS担当者が費用・保持条件を確認します。これらはCoreの`azd down`では削除しません。
 
@@ -40,7 +40,7 @@ Gateway・Portalの公開名を管理するAzure Public DNSゾーンと、証明
 | --- | --- | --- |
 | NS | 構築前にDNS担当者が委任 | 対象ゾーンへの問い合わせをAzureへ届ける |
 | Entra所有確認TXT | Entraのドメイン確認で必要な場合 | テナントのドメイン所有確認。証明書処理では削除しない |
-| `_acme-challenge`のTXT | 証明書の取得・更新時に管理VMが自動作成・回収 | DNS-01認証 |
+| `_acme-challenge`のTXT | 証明書の取得・更新時に公開TLS Jobが自動作成・回収 | DNS-01認証 |
 | Gateway・PortalのAエイリアス | CoreのAppGW Public IP作成後にhookが設定 | 対象環境の公開入口へ接続 |
 
 DNS-01はTXTで検証するため、AレコードをAppGWへ向ける前でも証明書を取得できます。config側でAzure提供DNSに固定する、VNetやFirewallの名前解決とは別の準備です。
@@ -71,13 +71,13 @@ CM用Entraアプリのclient secretが必要な構成では、その秘密入力
 
 ## 5. 構築後のDNSと証明書を確認する
 
-管理VMは固定版Posh-ACMEで検証用TXTを作成し、認証後に同じ検証値だけを回収します。有効な認証を再利用する場合は、新しいTXTを作成しないこともあります。失敗後のTXT残存はDNS担当者が当該注文と照合します。Entra所有確認TXTや、無関係な検証値を一括削除しません。
+公開TLS Jobは固定版Posh-ACMEで検証用TXTを作成し、認証後に同じ検証値だけを回収します。有効な認証を再利用する場合は、新しいTXTを作成しないこともあります。失敗後のTXT残存はDNS担当者が当該注文と照合します。Entra所有確認TXTや、無関係な検証値を一括削除しません。
 
-証明書とACMEの更新状態はCoreのKey Vaultへ保存します。DNSの公開IDはparamsと管理VMの設定に保存します。定期更新は管理VMからUAMIで認証するため、構築端末での再サインインは不要です。
+証明書とACMEの更新状態は公開TLS用Key Vaultへ保存します。DNS用UAMIはparamsで指定し、公開TLS Jobへ関連付けます。定期更新時もそのIDで認証するため、構築端末での再サインインは不要です。
 
 `postprovision`は、公開ホスト名に最も長く一致するAzure DNSゾーンを探し、Gateway・PortalのAエイリアスを対象環境のAppGW Public IPリソースへ接続します。構築実行者には、ゾーンの読取とAレコード編集の権限が必要です。既存TTL・メタデータは保持し、別サービスを参照するレコードや同名CNAMEがあれば停止します。結果は`.local/<environment>/state/public-dns.json`へ保存します。
 
-構築後は公開DNS、実際のブラウザーからのTLS接続、Portal初期画面、証明書のSAN・期限、管理VMの更新timerを確認します。標準configは12時間ごとに確認し、残日数30日以内で更新します。UAMIの存続、VMへの関連付け、DNS権限、管理VMからDNS API・Key Vaultへの接続を維持してください。証明書の更新と、AppGWが公開ホストごとに返す証明書の反映は別々に確認します。[運用手順](../operations.md#dns用マネージドidと権限を更新する)
+構築後は公開DNS、実際のブラウザーからのTLS接続、Portal初期画面、証明書のSAN・期限、公開TLS Jobの実行履歴を確認します。標準configは12時間ごとに確認し、残日数30日以内で更新します。UAMIの存続、公開TLS Jobへの関連付け、DNS権限、専用ACA環境からDNS API・Key Vaultへの接続を維持してください。証明書の更新と、AppGWが公開ホストごとに返す証明書の反映は別々に確認します。[運用手順](../operations.md#dns用マネージドidと権限を更新する)
 
 ## このページの完了状態
 

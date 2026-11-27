@@ -109,8 +109,12 @@ def parse_build_result(view, source_hash):
 
 
 def build_image(config, state, transport, *, data, source_hash, record, sleep=time.sleep,
-                monotonic=time.monotonic, progress=print, timeout=2700, prior_receipt=None):
-    targets = build_targets(config, state)
+                monotonic=time.monotonic, progress=print, timeout=2700, prior_receipt=None,
+                pipeline=None, registry_api=REGISTRY_API):
+    pipeline = pipeline or (build_targets, render_build_script, parse_build_result,
+                            lambda registry: None, '認証窓口')
+    select_targets, render_script, parse_result, validate_registry, component = pipeline
+    targets = select_targets(config, state)
     prior_id = (prior_receipt or {}).get('commandId')
     if not owned_build_command(prior_id, targets['commandId']):
         prior_id = targets['commandId']
@@ -133,10 +137,11 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
     principal = vm.get('identity', {}).get('principalId', '')
     if str(vm.get('id', '')).lower() != targets['vmId'].lower() or not re.fullmatch(r'[0-9a-fA-F-]{36}', principal):
         raise ValueError('Build VM is missing its system managed identity')
-    registry = checked(transport, 'GET', targets['registryId'] + '?api-version=' + REGISTRY_API, label='Read private registry')
+    registry = checked(transport, 'GET', targets['registryId'] + '?api-version=' + registry_api, label='Read private registry')
     if (str(registry.get('id', '')).lower() != targets['registryId'].lower()
             or registry.get('properties', {}).get('loginServer') != targets['registryServer']):
         raise ValueError('Build registry differs from the configured registry')
+    validate_registry(registry)
     registry_generation = image_build.registry_generation(registry, targets)
     run_id = uuid.uuid4().hex
     # A unique resource name prevents a recreated Run Command from reusing the VM agent's
@@ -151,13 +156,13 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
     record(receipt)
     submitted, cleanup_errors, failure = False, [], None
     try:
-        progress('認証窓口: 管理VMへ一時的にAcrPushを付与します。', flush=True)
+        progress(f'{component}: 管理VMへ一時的にAcrPushを付与します。', flush=True)
         checked(transport, 'PUT', role_path, {'properties': {
             'principalId': principal, 'principalType': 'ServicePrincipal',
             'roleDefinitionId': '/subscriptions/' + config['subscriptionId'] + '/providers/Microsoft.Authorization/roleDefinitions/' + ACR_PUSH,
         }}, label='Grant temporary AcrPush')
-        script = render_build_script(config, targets, data, source_hash, 'build-' + run_id)
-        progress('認証窓口: 管理VMでイメージを作成し、非公開ACRへ登録します。', flush=True)
+        script = render_script(config, targets, data, source_hash, 'build-' + run_id)
+        progress(f'{component}: 管理VMでイメージを作成し、非公開ACRへ登録します。', flush=True)
         # submitted is set before sending: a lost PUT response must not leave an untracked root command.
         submitted = True
         command_body = {'location': vm['location'], 'properties': {
@@ -175,13 +180,13 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
             properties = body.get('properties', {})
             view = properties.get('instanceView', {})
             if view.get('executionState') in ('Succeeded', 'Failed', 'TimedOut', 'Canceled'):
-                digest = parse_build_result(view, source_hash)
+                digest = parse_result(view, source_hash)
                 receipt.update(status='built', imageDigest=digest)
                 break
             if properties.get('provisioningState') == 'Failed':
                 raise ValueError('Credential image Run Command provisioning failed')
             if monotonic() >= notice:
-                progress('認証窓口: イメージの作成・登録を継続中です。', flush=True)
+                progress(f'{component}: イメージの作成・登録を継続中です。', flush=True)
                 notice = monotonic() + 60
             sleep(10)
         else:

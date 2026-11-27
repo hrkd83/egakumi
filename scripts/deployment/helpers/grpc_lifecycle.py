@@ -8,6 +8,7 @@ APIM受信HTTP/2はBicepと同じfalseに限定更新し、他customProperties�
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -82,33 +83,84 @@ def prepare_secret(config: dict, root: Path, write_protected) -> dict:
     for active, purpose, parameter in ((enabled(config), "l7-ingress", "l7IngressSecret"),
                                        (owner_ticket_enabled(config), "realtime-ticket", "realtimeTicketKey")):
         if active:
-            result[parameter] = _prepare_credential(config, root, purpose, write_protected)
+            result[parameter] = _prepare_credential(config, root, purpose, write_protected, record_registration=True)
     return result
 
 
-def _prepare_credential(config: dict, root: Path, purpose: str, write_protected) -> str:
-    """既存の所有者限定ファイルを照合して再利用し、なければ暗号学的乱数で生成する。"""
-    path = secret_path(config, root, purpose)
+def _read_credential(config: dict, path: Path, *, verify_registration=False) -> dict | None:
     for parent in (path, *path.parents):
         if parent.is_symlink():
             raise ValueError("L7 ingress credential path must not use symlinks")
-    identity = {key: config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem")}
-    if path.exists():
-        if not path.is_file() or (os.name != "nt" and stat.S_IMODE(path.stat().st_mode) != 0o600):
-            raise ValueError("L7 ingress credential requires a private regular file")
-        try:
-            current = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            raise ValueError("L7 ingress credential file is invalid") from None
-        if not isinstance(current, dict) or any(current.get(key) != value for key, value in identity.items()):
-            raise ValueError("L7 ingress credential belongs to a different environment")
-        value = current.get("value")
-        if not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{128}", value):
-            raise ValueError("L7 ingress credential file is invalid")
-    else:
-        value = secrets.token_hex(64)
-        write_protected(path, {**identity, "value": value})
-    return value
+    if not path.exists():
+        return None
+    if not path.is_file() or (os.name != "nt" and stat.S_IMODE(path.stat().st_mode) != 0o600):
+        raise ValueError("L7 ingress credential requires a private regular file")
+    try:
+        current = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("L7 ingress credential file is invalid") from None
+    if not isinstance(current, dict) or any(current.get(key) != config[key]
+            for key in ("subscriptionId", "azureTenantId", "resourceStem")):
+        raise ValueError("L7 ingress credential belongs to a different environment")
+    value = current.get("value")
+    if not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{128}", value):
+        raise ValueError("L7 ingress credential file is invalid")
+    generation = current.get("generation")
+    if verify_registration and ("generation" in current or "localIntegrity" in current):
+        if (not isinstance(generation, str) or re.fullmatch(r"[a-f0-9]{32}", generation) is None
+                or current.get("localIntegrity") != hashlib.sha256(value.encode("ascii")).hexdigest()):
+            raise ValueError("Ingress credential provenance is invalid; restore the protected file")
+    return current
+
+
+def _prepare_credential(config: dict, root: Path, purpose: str, write_protected, *, record_registration=False) -> str:
+    """Keep the current credential and record ingress registration only for its owning caller."""
+    path = secret_path(config, root, purpose)
+    current = _read_credential(config, path, verify_registration=record_registration)
+    created = current is None
+    if created:
+        current = {key: config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem")}
+        current["value"] = secrets.token_hex(64)
+    record_generation = record_registration and "generation" not in current
+    if record_generation:
+        current["generation"] = secrets.token_hex(16)
+        # The integrity value stays exclusively in the protected source file.
+        current["localIntegrity"] = hashlib.sha256(current["value"].encode("ascii")).hexdigest()
+    if created or record_generation:
+        write_protected(path, current)
+    return current["value"]
+
+
+def plan_secret_registration(config, root, transport, credentials):
+    """Identify initial ARM writes using only the two exact child resources' metadata."""
+    plan = {}
+    for purpose, parameter, name in (
+        ("l7-ingress", "l7IngressSecret", SECRET_NAME),
+        ("realtime-ticket", "realtimeTicketKey", TICKET_NAME),
+    ):
+        if parameter not in credentials:
+            continue
+        current = _read_credential(config, secret_path(config, root, purpose), verify_registration=True)
+        if current is None or not current.get("generation") or current["value"] != credentials[parameter]:
+            raise ValueError("The owned ingress credential source could not be verified")
+        identity = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['svc']}"
+                    f"/providers/Microsoft.KeyVault/vaults/kv-{config['resourceStem']}/secrets/{name}")
+        result = transport.request("GET", identity + "?api-version=2024-11-01")
+        status, body = result.get("statusCode"), result.get("body")
+        if type(status) is int and status == 404:
+            plan[parameter] = current["generation"]
+            continue
+        if (type(status) is not int or status != 200 or not isinstance(body, dict)
+                or str(body.get("id", "")).casefold() != identity.casefold()
+                or str(body.get("type", "")).casefold() != "microsoft.keyvault/vaults/secrets"
+                or not isinstance(body.get("tags"), dict)
+                or body["tags"].get("egakumi-ingress-generation") != current["generation"]
+                or not isinstance(body.get("properties"), dict)
+                or not isinstance(body["properties"].get("attributes"), dict)
+                or body["properties"]["attributes"].get("enabled") is not True):
+            raise ValueError("Ingress secret registration differs; restore the protected source or rebuild the environment")
+        # A matching, enabled registration needs no PUT or additional version.
+    return plan
 
 
 def remove_secret(config: dict, root: Path) -> None:

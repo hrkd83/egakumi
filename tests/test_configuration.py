@@ -378,6 +378,17 @@ class ConfigurationTests(unittest.TestCase):
         return configuration.normalize_configuration(fixture() if value is None else value, base_directory=CORE / "config")
 
 
+    def test_certificate_subnet_is_allocated_from_free_space_or_checked_when_explicit(self):
+        raw = fixture()
+        prefixes = raw["network"]["subnetPrefixes"]
+        prefixes.pop("certificate", None)
+        derived = self.normalize(raw)["network"]["subnetPrefixes"]["certificate"]
+        self.assertEqual(derived, "10.40.3.0/27")
+        for prefix in ("10.40.3.0/28", prefixes["aca"], "192.0.2.0/27"):
+            prefixes["certificate"] = prefix
+            with self.subTest(prefix=prefix), self.assertRaisesRegex(configuration.ConfigurationError, "subnetPrefixes"):
+                self.normalize(raw)
+
     def test_external_subsystems_are_not_core_configuration(self):
         """別システムのホスト設定を黙ってコア資源へ取り込まない。"""
         for key in ("managementApplication", "platformTools"):
@@ -390,7 +401,7 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaises(configuration.ConfigurationError):
             self.normalize(raw)
         self.assertEqual(set(self.normalize()["network"]["subnetPrefixes"]),
-                         {"agw", "firewall", "apim", "pep", "management", "aca"})
+                         {"agw", "firewall", "apim", "pep", "management", "aca", "certificate"})
 
     def test_names_are_derived_for_exact_five_groups(self):
         actual = self.normalize()
@@ -1070,7 +1081,7 @@ class ConfigurationTests(unittest.TestCase):
             normalized = self.normalize(raw)
             with mock.patch.object(configuration, "load_dns_plugin_arguments", side_effect=AssertionError("Azure uses managed identity")):
                 secrets = configuration.load_secret_inputs(normalized)
-            self.assertEqual(secrets["dnsPluginArgumentsJson"], "")
+            self.assertNotIn("dnsPluginArgumentsJson", secrets)
             self.assertNotIn("pluginArgumentsFile", configuration.build_bicep_configuration(normalized)["certificate"])
 
     def test_plain_cloudflare_token_is_rejected_without_value_in_error(self):

@@ -187,16 +187,17 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
             elif isinstance(value, list):
                 for item in value:
                     yield from resource_types(item)
-        for resource_type in resource_types(main):
-            self.assertFalse(str(resource_type).startswith("Microsoft.ApiManagement/service/apis"))
-            self.assertNotEqual(resource_type, "Microsoft.ApiManagement/service/backends")
-        azure_modules = [resource for resource in resources if 'tenantId' in resource.get('properties', {}).get('parameters', {})]
-        self.assertEqual(len(azure_modules), 3)
-        for resource in azure_modules:
+        for template in (main, self.compile("infra/public-ingress.bicep")):
+            for resource_type in resource_types(template):
+                self.assertFalse(str(resource_type).startswith("Microsoft.ApiManagement/service/apis"))
+                self.assertNotEqual(resource_type, "Microsoft.ApiManagement/service/backends")
+        for suffix in ('services', 'core-entra-settings', 'credential-sql', 'certificate-storage'):
+            module, = [resource for resource in resources
+                       if f"-{suffix}'" in resource.get('name', '')
+                       and 'tenantId' in resource.get('properties', {}).get('parameters', {})]
             expected = ("[coalesce(tryGet(parameters('configuration'), 'entraTenantId'), parameters('configuration').azureTenantId)]"
-                        if 'core-entra-settings' in resource['name']
-                        else "[parameters('configuration').azureTenantId]")
-            self.assertEqual(resource['properties']['parameters']['tenantId']['value'], expected)
+                        if suffix == 'core-entra-settings' else "[parameters('configuration').azureTenantId]")
+            self.assertEqual(module['properties']['parameters']['tenantId']['value'], expected)
 
 
 if __name__ == "__main__":

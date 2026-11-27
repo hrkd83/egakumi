@@ -64,6 +64,34 @@ def remote_script(action, config):
     ])
 
 
+def run_job_worker(ctx, state, action, arguments, *, retry_failed=False):
+    from deployment.helpers.certificate_jobs import run_certificate_action
+    from deployment.lifecycle import ArmTransport
+
+    pending = state.get('jobRequest')
+    if pending is None:
+        pending = {'id': uuid.uuid4().hex, 'action': action, 'arguments': arguments}
+        state['jobRequest'] = pending
+        save(ctx, state)
+    elif pending.get('action') != action or pending.get('arguments') != arguments:
+        raise OperationError('Finish the saved certificate job before starting another action')
+    transport = ctx.transport if ctx.transport is not None else ArmTransport(ctx.config)
+    result = run_certificate_action(ctx.config, ctx.state['outputs'], transport,
+                                    lambda path, record: ctx.save_private(path, record, overwrite=True),
+                                    workspace=ctx.workspace, mode='portal', action=action.lower(),
+                                    arguments=arguments, operation_id=pending['id'], retry_failed=retry_failed)
+    if action == 'Retire':
+        if result != {'retired': True, 'keyId': state['previous']['keyId']}:
+            raise OperationError('Old key disabling was not confirmed')
+    else:
+        result = certificate_record(result, ctx.config)
+        if action in ('Activate', 'Inspect') and result['certificateId'] != arguments['certificateId']:
+            raise OperationError('The worker returned another certificate version')
+    pending['result'] = result
+    save(ctx, state)
+    return result
+
+
 def run_worker(ctx, state, action, arguments, *, sleep=time.sleep, clock=time.monotonic, timeout=960):
     """応答不明時は保存済みexact commandを照合し、PUTを重ねません。"""
     vm = targets(ctx)
@@ -119,6 +147,10 @@ def run_worker(ctx, state, action, arguments, *, sleep=time.sleep, clock=time.mo
 
 def finish_worker(ctx, state):
     """結果を永続化した後だけexact commandを回収します。"""
+    if 'result' in state.get('jobRequest', {}):
+        state.pop('jobRequest')
+        save(ctx, state)
+        return
     pending = state.get('vmRequest')
     if not pending or 'result' not in pending:
         return
@@ -170,7 +202,14 @@ def deploy(ctx, slot, image):
 def perform(ctx, state, action, args):
     """手動登録と受入を挟み、現在版を無効化しない順序で更新します。"""
     phase = state['phase']
-    if getattr(args, 'resume_failed_worker', False) and state.get('vmRequest'):
+    retry_failed = getattr(args, 'resume_failed_worker', False)
+    if ctx.state['outputs'].get('certificateBootstrap'):
+        def invoke(action, arguments):
+            return run_job_worker(ctx, state, action, arguments, retry_failed=retry_failed)
+    else:
+        def invoke(action, arguments):
+            return run_worker(ctx, state, action, arguments)
+    if retry_failed and state.get('vmRequest'):
         pending = state['vmRequest']
         vm = targets(ctx)
         if not pending['resourceId'].startswith(vm + '/runCommands/portal-auth-'):
@@ -184,7 +223,7 @@ def perform(ctx, state, action, args):
         ctx.record('portal-auth-worker-recovery', {'resourceId': pending['resourceId'], 'action': pending['action']})
         state.pop('vmRequest')
         save(ctx, state)
-    if state.get('vmRequest', {}).get('result') and phase in ('prepared', 'switched', 'retired', 'initial'):
+    if (state.get('vmRequest', {}).get('result') or state.get('jobRequest', {}).get('result')) and phase in ('prepared', 'switched', 'retired', 'initial'):
         finish_worker(ctx, state)
     if action == 'prepare':
         if phase not in ('initial', 'verified', 'retired', 'preparing', 'prepared'):
@@ -193,7 +232,7 @@ def perform(ctx, state, action, args):
             state.setdefault('requestId', uuid.uuid4().hex)
             state['phase'] = 'preparing'
             save(ctx, state)
-            candidate = run_worker(ctx, state, 'Prepare', {'requestId': state['requestId'], 'currentKeyId': state['current']['keyId']})
+            candidate = invoke('Prepare', {'requestId': state['requestId'], 'currentKeyId': state['current']['keyId']})
             if candidate['keyId'] == state['current']['keyId']:
                 raise OperationError('The renewal candidate reused the current key')
             state['candidate'] = candidate
@@ -225,7 +264,7 @@ def perform(ctx, state, action, args):
             verify_runtime(ctx, state['current'], state['imageDigest'])
         deploy(ctx, 'candidate', state['imageDigest'])
         verify_runtime(ctx, state['candidate'], state['imageDigest'])
-        run_worker(ctx, state, 'Activate', {'certificateId': state['candidate']['certificateId']})
+        invoke('Activate', {'certificateId': state['candidate']['certificateId']})
         state['current'] = state.pop('candidate')
         state['phase'] = 'switched'
         save(ctx, state)
@@ -244,7 +283,7 @@ def perform(ctx, state, action, args):
         save(ctx, state)
         deploy(ctx, 'previous', state['imageDigest'])
         verify_runtime(ctx, state['previous'], state['imageDigest'])
-        run_worker(ctx, state, 'Activate', {'certificateId': state['previous']['certificateId']})
+        invoke('Activate', {'certificateId': state['previous']['certificateId']})
         state['current'] = state.pop('previous')
         state.pop('candidate', None)
         state['phase'] = 'initial'
@@ -256,7 +295,7 @@ def perform(ctx, state, action, args):
         if phase != 'verified' or not args.entra_old_certificate_removed:
             raise OperationError('Complete acceptance and manually remove the old Entra certificate before retiring its key')
         verify_runtime(ctx, state['current'], state['imageDigest'])
-        run_worker(ctx, state, 'Retire', {'certificateId': state['previous']['certificateId'], 'currentKeyId': state['current']['keyId']})
+        invoke('Retire', {'certificateId': state['previous']['certificateId'], 'currentKeyId': state['current']['keyId']})
         state['phase'] = 'retired'
         state.pop('requestId', None)
         save(ctx, state)

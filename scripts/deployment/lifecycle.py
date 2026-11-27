@@ -88,13 +88,17 @@ if __name__ == "__main__":
     os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 import argparse
+import base64
 import copy
+import hashlib
 from datetime import datetime, timezone
 from http.client import IncompleteRead
+import ipaddress
 import json
 from pathlib import Path
 import re
 import shutil
+import socket
 import ssl
 import subprocess
 import tempfile
@@ -127,12 +131,12 @@ from .helpers.apim_egress import APIM_EGRESS_RULE_NAMES, validate_apim_egress_ru
 from .helpers.apim_generations import assert_current_instance, verify_state as verify_apim_state
 from .helpers.capacity import verify_capacity
 from .helpers.powershell_runtime import locate_powershell, powershell_environment
-from .helpers.grpc_lifecycle import apim_name_matches, configure_endpoint as configure_grpc_endpoint, prepare_secret as prepare_grpc_secret, remove_secret as remove_grpc_secret
+from .helpers.grpc_lifecycle import apim_name_matches, configure_endpoint as configure_grpc_endpoint, plan_secret_registration, prepare_secret as prepare_grpc_secret, remove_secret as remove_grpc_secret
 from .helpers.operator_access import OperatorAccessError, cleanup_disabled_operator
 from .helpers.dns_nsg import DnsNsgError, retire_dns_rules
 from .helpers.appgw_egress_nsg import AppgwEgressNsgError, retire_appgw_egress_rules
 from .helpers.fixed_nsg import FixedNsgError, prepare_fixed_nsg_rules, complete_fixed_nsg_rules
-from .helpers.portal_gateway import require_appgw_backend_tls_ready
+from .helpers.portal_gateway import gateway_id, require_appgw_backend_tls_ready
 from .helpers.management_host_time import ManagementHostTimeError, require_management_host_time_core_ready
 from .helpers import serial_initialization
 from .helpers.serial_credentials import (
@@ -201,13 +205,81 @@ def upgrade_journal(config: dict, category: str):
     return record
 
 
+def require_core_appgw_ready(config, transport):
+    """通常のHTTPS検査を行い、初回B2の所有済み未完了要求だけ再開できるようにする。"""
+    try:
+        return require_appgw_backend_tls_ready(config, transport, allow_new=True)
+    except ValueError as tls_error:
+        workspace = local_paths(config, ROOT)
+        path = workspace.checked(workspace.state / "public-ingress-pending.json")
+        try:
+            require_serial_storage_permissions(path)
+            state = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise tls_error from None
+        if not isinstance(state, dict):
+            raise
+        plan = state.get("gatewayPlan")
+        monitoring = state.get("ingressMonitoringPlan")
+        if (any(state.get(key) != config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem"))
+                or state.get("resourceGroupNames") != config["resourceGroupNames"]
+                or state.get("apimInstanceId") != apim_instance_id(config)
+                or not isinstance(plan, dict) or not isinstance(monitoring, dict)):
+            raise
+        resource = public_ingress_deployment_id(config)
+        request = transport.request("GET", resource + "?api-version=2022-09-01")
+        observed = request.get("body") or {}
+        properties = observed.get("properties", {})
+        saved = properties.get("parameters") or {}
+        if (request.get("statusCode") != 200
+                or str(observed.get("id", "")).casefold() != resource.casefold()
+                or observed.get("tags", {}).get("azd-env-name") != config["environmentName"]
+                or properties.get("provisioningState") not in ("Accepted", "Running", "Creating", "Updating", "Failed")
+                or saved.get("gatewayPlan", {}).get("value") != plan
+                or saved.get("ingressMonitoringPlan", {}).get("value") != monitoring):
+            raise
+        identity = gateway_id(config)
+        current = transport.request("GET", identity + "?api-version=2024-05-01")
+        gateway = current.get("body") or {}
+        if (current.get("statusCode") != 200 or str(gateway.get("id", "")).casefold() != identity.casefold()
+                or (gateway.get("tags") or {}).get("environment") != config["environmentName"]
+                or (gateway.get("tags") or {}).get("product") != config["productName"]
+                or gateway.get("properties", {}).get("provisioningState") not in ("Creating", "Updating", "Failed")):
+            raise
+        return {"newGateway": True, "certificateReleasePending": True}
+
+
+def require_certificate_registry_ready(config, transport):
+    """既存の非公開ACRの設定を変える前にB2の対応条件を照合する。"""
+    from .helpers.certificate_image import REGISTRY_API, ensure_private_registry
+
+    stem = config["resourceStem"]
+    registry_name = "acr" + stem.replace("-", "")
+    resource = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['svc']}"
+                f"/providers/Microsoft.ContainerRegistry/registries/{registry_name}")
+    response = transport.request("GET", resource + "?api-version=" + REGISTRY_API)
+    observed = require_success(response, "Inspect existing private certificate registry", allowed=(200, 404))
+    if response["statusCode"] == 404:
+        return
+    if not isinstance(observed, dict) or str(observed.get("id", "")).casefold() != resource.casefold():
+        raise DeploymentError("The existing private registry response identifies another resource")
+    tags = observed.get("tags")
+    if (not isinstance(tags, dict) or tags.get("product") != config["productName"]
+            or tags.get("environment") != config["environmentName"]):
+        raise DeploymentError("The existing private registry does not match the selected environment")
+    try:
+        ensure_private_registry(observed)
+    except ValueError as error:
+        raise DeploymentError(str(error)) from None
+
+
 def prepare_core_network_upgrade(config: dict, transport, *, execute=True) -> dict:
     """既存VMのPHC同期準備とPortal移行を確認してから、全NSGの旧子規則を安全に移す。"""
     try:
         require_management_host_time_core_ready(config, transport)
     except ManagementHostTimeError as error:
         raise DeploymentError(str(error)) from None
-    require_appgw_backend_tls_ready(config, transport, allow_new=True)
+    require_core_appgw_ready(config, transport)
     record = upgrade_journal(config, "fixed-nsg-prepare")
     try:
         return prepare_fixed_nsg_rules(config, transport, execute=execute, record=record)
@@ -429,10 +501,11 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
                    if diagnostic_setting_properties is None else copy.deepcopy(diagnostic_setting_properties))
     if not isinstance(diagnostics, dict) or set(diagnostics) != set(canonical_diagnostics):
         raise DeploymentError("Core diagnostic generated properties are incomplete")
+    secure_inputs = {key: value for key, value in (secrets or {}).items() if key != "dnsPluginArgumentsJson"}
     values = {"configuration": configuration, "phase": phase,
               "manageAuditImmutabilityPolicies": manage_policies,
               "retainedAuditImmutabilityPolicyIds": list(retained_policy_ids or []),
-              "preserveAuditCollection": preserve_collection, "diagnosticSettingProperties": diagnostics, **(secrets or {}),
+              "preserveAuditCollection": preserve_collection, "diagnosticSettingProperties": diagnostics, **secure_inputs,
               "existingNetworkSecurityGroupNames": list(existing_nsg_names or []),
               "existingRouteTableRoutes": copy.deepcopy(existing_route_table_routes or {}),
               "existingApimHostnameConfigurations": copy.deepcopy(existing_apim_hostname_configurations or {}),
@@ -733,7 +806,8 @@ def discover_existing_network_security_groups(config: dict, transport: ArmTransp
     expected_tags = {"product": config["productName"], "environment": config["environmentName"],
                      "azd-env-name": config["environmentName"]}
     existing = []
-    for suffix in ("agw", "apim", "pep", "vm", "aca"):
+    suffixes = ("agw", "apim", "pep", "vm", "aca", "certificate")
+    for suffix in suffixes:
         name = f"nsg-{config['resourceStem']}-{suffix}"
         resource_id = prefix + name
         response = transport.request("GET", resource_id + "?api-version=2025-01-01")
@@ -767,7 +841,7 @@ def discover_existing_route_table_routes(config: dict, transport: ArmTransport) 
                      "azd-env-name": config["environmentName"]}
     route_properties = {"addressPrefix", "nextHopType", "nextHopIpAddress", "hasBgpOverride"}
     existing = {}
-    suffixes = ("agw", "apim", "vm", "aca")
+    suffixes = ("agw", "apim", "vm", "aca", "certificate")
     for suffix in suffixes:
         name = f"rt-{config['resourceStem']}-{suffix}"
         resource_id = prefix + name
@@ -813,9 +887,11 @@ def discover_existing_route_table_routes(config: dict, transport: ArmTransport) 
             # id/type/etag/進行状態は読取用。既存の全書込可能値だけを複写する。
             sanitized.append({"name": route_name, "properties": {
                 key: copy.deepcopy(value) for key, value in fields.items() if key in route_properties}})
-        if suffix == "aca":
+        if suffix in ("aca", "certificate"):
             if properties.get("disableBgpRoutePropagation") is not True:
                 raise DeploymentError("ACA public HTTPS requires BGP propagation to be disabled")
+            if suffix == "certificate" and any(route["name"] != "default-egress" for route in sanitized):
+                raise DeploymentError("Certificate ACA uses only the owned default Firewall route")
             try:
                 subnets = config["network"]["subnetPrefixes"]
                 validate_aca_route_snapshot(sanitized, subnets["firewall"], subnets["agw"])
@@ -1380,6 +1456,11 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
     # azdと同じ所有タグを付け、前処理で中断しても通常のdownが対象を認識できるようにする。
     path = f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/{config['resourceStem']}-{phase}?api-version=2022-09-01"
     transport = ArmTransport(config)
+    if phase == "core" and secrets is None:
+        secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json)}
+    if phase == "core":
+        require_certificate_registry_ready(config, transport)
+        secrets = {**(secrets or {}), "ingressSecretRegistration": plan_secret_registration(config, ROOT, transport, secrets or {})}
     serial_password = _prepare_management_serial_password(config, transport) if phase == "core" else ""
     if phase == "core":
         prepare_core_network_upgrade(config, transport)
@@ -1394,8 +1475,6 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
     existing_workspace_privacy_dcr_id = read_workspace_privacy_link(config, transport)
     if diagnostic_setting_properties is None:
         diagnostic_setting_properties = prepare_diagnostic_settings(config, transport, phase, preserve_collection)
-    if phase == "core" and secrets is None:
-        secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json)}
     if phase == "core":
         # An explicit secrets dict must not override the owned initial generation.
         secrets = {**{key: value for key, value in (secrets or {}).items() if key != "managementAdminPassword"},
@@ -1432,12 +1511,18 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
                 protected_json(reapply[0], {**reapply[1], 'status': 'reapply-succeeded'})
             outputs = {key: item["value"] for key, item in deployment["properties"]["outputs"].items()}
             if phase == "core":
-                _save_deployment_state(config, outputs)
-                _bind_management_serial_password(config, outputs, transport, serial_password)
-                complete_core_network_upgrade(config, transport)
-                protected_json(local_paths(config, ROOT).state / "ingress-bootstrap.json",
-                               configure_grpc_endpoint(config, outputs, transport,
-                                                       mutation_recorder=upgrade_journal(config, "ingress-endpoint")))
+                if outputs.get("certificateBootstrap"):
+                    outputs, _ = finish_certificate_core(
+                        config, outputs, transport, serial_password,
+                        request_body["properties"]["parameters"]["l7IngressSecret"]["value"],
+                        request_body["properties"]["parameters"]["firewallTlsInspection"]["value"].get("rootCaData", ""))
+                else:
+                    _save_deployment_state(config, outputs)
+                    _bind_management_serial_password(config, outputs, transport, serial_password)
+                    complete_core_network_upgrade(config, transport)
+                    protected_json(local_paths(config, ROOT).state / "ingress-bootstrap.json",
+                                   configure_grpc_endpoint(config, outputs, transport,
+                                                           mutation_recorder=upgrade_journal(config, "ingress-endpoint")))
             return outputs
         if status == "Failed" and phase == "monitoring" and reapply is None and time.monotonic() < deadline:
             proof = _monitoring_export_reapply_ready(config, template, deployment, transport, deadline)
@@ -1481,6 +1566,8 @@ def state_from_outputs(config: dict, outputs: dict) -> dict:
         "serviceLocations": {"keyVault": config["location"], "foundry": config["foundryLocation"], "apim": config["location"]},
         "outputs": outputs,
     }
+    if "certificateVault" in state["serviceResourceIds"]:
+        state["serviceLocations"]["certificateVault"] = config["location"]
     try:
         verify_apim_state(config, state)
     except ValueError as error:
@@ -1708,10 +1795,12 @@ def _preprovision(config: dict) -> None:
     # 先に済ませる。RG・監視・VM等の課金資源は、以下の確認が終わるまで作らない。
     register_providers(config)
     transport = ArmTransport(config)
-    require_appgw_backend_tls_ready(config, transport, allow_new=True)
+    require_core_appgw_ready(config, transport)
+    require_certificate_registry_ready(config, transport)
     serial_password = _prepare_management_serial_password(config, transport)
     secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json),
                "managementInitialSerialGeneration": _management_serial_generation(config, serial_password)}
+    secrets["ingressSecretRegistration"] = plan_secret_registration(config, ROOT, transport, secrets)
     # 固定名の競合は有料の監視・ネットワーク作成より前に検出する。
     # 回避名のAPIMを増やさず、同名で再実行できる状態かだけを読み取る。
     apim_name_receipt = local_paths(config, ROOT).state / "apim-name-preparation.json"
@@ -1755,10 +1844,10 @@ def _preprovision(config: dict) -> None:
     _save_deployment_state(config, outputs)
     # Workspace作成とDCR作成を終えてから関連付け、次のCore PUTでもその実参照を保持します。
     workspace_privacy_dcr_id = ensure_workspace_link(config, transport)
-    # Action Groupは、この後のCore配備中に作られます。確認メールが既に届いた
+    # Action Groupは、この後の公開入口配備で作られます。確認メールが既に届いた
     # という案内にはせず、届いた時点から30分以内の本人確認が必要だと先に知らせます。
     # 長い構築の完了を待たず確認し、メールアドレス・OTPはここへ入力しません。
-    print(f"Action group ag-{config['resourceStem']}-ops will be created during the following Core deployment. "
+    print(f"Action group ag-{config['resourceStem']}-ops will be created during the public ingress deployment. "
           "New/unverified email recipients should watch for Azure's verification email and complete "
           "verification within 30 minutes from when that email is sent; do not wait for azd up to finish. "
           "Never enter the OTP here. If expired, use Azure Portal > Action group > Overview > "
@@ -1809,54 +1898,220 @@ def preprovision(config: dict) -> None:
         raise
 
 
-def postprovision(config: dict) -> None:
-    # このazd環境が記録したメイン配備だけから実際の出力を読む。
-    """実配備出力を照合・保存し、証明書と入口設定を仕上げて生成秘密入力を回収する。"""
-    env = run(["azd", "env", "get-values", "--environment", config["environmentName"], "-o", "json"])
-    deployment_name = env.get("CORE_DEPLOYMENT_NAME")
-    if not deployment_name:
-        raise DeploymentError("CORE_DEPLOYMENT_NAME is missing; deployment outputs were not recorded")
-    response = run(["az", "deployment", "sub", "show", "--subscription", config["subscriptionId"],
-                    "--name", deployment_name, "-o", "json"])
-    outputs = {key: item["value"] for key, item in response["properties"]["outputs"].items()}
-    if outputs.get("resourceGroups") != config["resourceGroupNames"]:
-        raise DeploymentError("The deployment group list differs from the configured five groups")
-    # 構築の実出力を保存してから、証明書参照などの仕上げを行う。
-    # 仕上げが失敗しても、作成済み資源の正確な撤去記録を失わない順番にする。
-    try:
-        _save_deployment_state(config, outputs)
-        from .helpers.portal_auth_certificate import collect_initial_certificate
-        transport = ArmTransport(config)
-        collect_initial_certificate(config, outputs, transport, protected_json)
-        dns_receipt_path = local_paths(config, ROOT).state / "public-dns.json"
-        # 以前の成功記録を、今回の仕上げに成功した記録として残さない。
-        dns_receipt_path.unlink(missing_ok=True)
-        serial_password = _read_initial_serial_deployment_input(config)
-        if serial_password and response.get("properties", {}).get("provisioningState") != "Succeeded":
-            raise DeploymentError("The initial Core deployment success could not be verified; retain its pending credential")
-        _bind_management_serial_password(config, outputs, transport, serial_password)
-        complete_core_network_upgrade(config, transport)
-        grpc_receipt = configure_grpc_endpoint(config, outputs, transport,
-                                               mutation_recorder=upgrade_journal(config, "ingress-endpoint"))
-        if grpc_receipt["enabled"]:
-            protected_json(local_paths(config, ROOT).state / "ingress-bootstrap.json", grpc_receipt)
-        # DNS専用Subscriptionへの操作は別の接続に限定する。認証するテナントは
-        # Azureリソースのテナントで、CM用Entraアプリのテナントとは分ける。
-        certificate = config["certificate"]
-        dns_transport = None
-        if certificate.get("mode") == "dnsPlugin" and certificate.get("plugin") == "Azure":
-            dns_transport = ArmTransport({**config, "subscriptionId": certificate["azureDnsSubscriptionId"]})
-            print("公開DNS: GatewayとPortalのAエイリアスを確認しています。", flush=True)
-        dns_receipt = configure_public_dns(config, outputs, transport, dns_transport)
-        protected_json(dns_receipt_path, dns_receipt)
-        if dns_receipt["status"] == "configured":
-            print("公開DNS: 今回のApp Gatewayへの接続を確認しました。", flush=True)
+def waiting_for_appgw_certificate_role(error):
+    """新しい対象secretのロール伝搬だけを公開入口の再配備へ渡す。"""
+    if not isinstance(error, dict):
+        return False
+    code = error.get("code")
+    if code == "UserAssignedIdentityDoesNotHaveGetPermissionOnKeyVault":
+        return True
+    if code not in ("DeploymentFailed", "ResourceDeploymentFailure", "ApplicationGatewayKeyVaultSecretException"):
+        return False
+    details = error.get("details")
+    return isinstance(details, list) and bool(details) and all(waiting_for_appgw_certificate_role(item) for item in details)
+
+
+def public_ingress_deployment_id(config):
+    return (f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/"
+            f"{config['resourceStem']}-public-ingress")
+
+
+def deploy_public_ingress(config, outputs, transport, l7_secret, firewall_root_ca, *, sleep=time.sleep, clock=time.monotonic):
+    """証明書ゲート後に、AppGWと公開入口に従属する監視だけを配備する。"""
+    if not isinstance(l7_secret, str) or not re.fullmatch(r"[a-f0-9]{128}", l7_secret):
+        raise DeploymentError("The protected L7 ingress credential is required")
+    gateway_plan, monitoring_plan = outputs["gatewayPlan"], outputs["ingressMonitoringPlan"]
+    bootstrap = outputs["certificateBootstrap"]
+    if gateway_plan.get("keyVaultCertificateSecretId") != bootstrap["certificateSecretUri"]:
+        raise DeploymentError("The gateway plan has a different certificate reference")
+    template = run(["az", "bicep", "build", "--file", str(ROOT / "infra/public-ingress.bicep"), "--stdout"])
+    resource = public_ingress_deployment_id(config)
+    path = resource + "?api-version=2022-09-01"
+    body = {"location": config["location"],
+            "tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME, "azd-layer-name": ""},
+            "properties": {"mode": "Incremental", "template": template, "parameters": {
+                "gatewayPlan": {"value": gateway_plan}, "ingressMonitoringPlan": {"value": monitoring_plan},
+                "firewallRootCaData": {"value": firewall_root_ca},
+                "monitoringContact": {"value": {"operatorEmailAddresses": config["monitoring"]["operatorEmailAddresses"]}},
+                "l7IngressSecret": {"value": l7_secret}}}}
+    initial = transport.request("GET", path)
+    existing = require_success(initial, "Inspect public ingress deployment", allowed=(200, 404))
+    current = existing.get("properties", {})
+    if initial["statusCode"] == 200 and str(existing.get("id", "")).casefold() != resource.casefold():
+        raise DeploymentError("Public ingress deployment returned another resource")
+    if initial["statusCode"] == 404 or current.get("provisioningState") in ("Succeeded", "Failed", "Canceled"):
+        require_success(transport.request("PUT", path, body=body), "Deploy public ingress", allowed=(200, 201, 202))
+    else:
+        recorded = current.get("parameters") or {}
+        if (recorded.get("gatewayPlan", {}).get("value") != gateway_plan
+                or recorded.get("ingressMonitoringPlan", {}).get("value") != monitoring_plan):
+            raise DeploymentError("An existing public ingress request differs from the current input")
+    deadline = clock() + 3600
+    role_retries = 0
+    while clock() < deadline:
+        observed = require_success(transport.request("GET", path), "Read public ingress deployment")
+        if str(observed.get("id", "")).casefold() != resource.casefold():
+            raise DeploymentError("Public ingress deployment returned another resource")
+        props = observed.get("properties", {})
+        status = props.get("provisioningState")
+        if status == "Succeeded":
+            value = props.get("outputs", {}).get("gateway", {}).get("value")
+            expected_url = "https://" + config["gateway"]["publicHostName"]
+            if (not isinstance(value, dict) or value.get("publicUrl") != expected_url
+                    or str(value.get("id", "")).casefold() != gateway_id(config).casefold()
+                    or value.get("publicIpId") != gateway_plan.get("publicIpId")
+                    or value.get("publicIp") != gateway_plan.get("publicIpAddress")):
+                raise DeploymentError("Public ingress output does not match the prepared gateway")
+            return value
+        if (status == "Failed" and role_retries < 5 and clock() + 30 < deadline
+                and waiting_for_appgw_certificate_role(props.get("error"))):
+            role_retries += 1
+            sleep(30)
+            require_success(transport.request("PUT", path, body=body), "Retry public ingress certificate access",
+                            allowed=(200, 201, 202))
+            continue
+        if status in ("Failed", "Canceled", "Deleted"):
+            raise DeploymentError("Public ingress deployment did not succeed")
+        sleep(min(10, max(0, deadline - clock())))
+    raise DeploymentError("Public ingress deployment is still pending; inspect the existing request")
+
+
+def observe_initial_certificate(config, gateway, certificate, *, sleep=time.sleep, clock=time.monotonic):
+    """公開DNSを更新する前に対象PIPへ接続し、両SNIの実leafを照合する。"""
+    address = str(ipaddress.IPv4Address(gateway["publicIp"]))
+    hosts = (config["gateway"]["publicHostName"], config["portal"]["publicHostName"])
+    expected = base64.b64decode(certificate["publicCertificate"], validate=True)
+    expected_hash = hashlib.sha256(expected).digest()
+    if config["certificate"].get("directory") == "staging":
+        # Stagingの信頼は、この実行が検証した公開leafだけに限定する。
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.load_verify_locations(cadata=ssl.DER_cert_to_PEM_cert(expected))
+        context.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
+    else:
+        context = ssl.create_default_context()
+    deadline = clock() + 900
+    while clock() < deadline:
+        for hostname in hosts:
+            try:
+                with socket.create_connection((address, 443), timeout=max(0.1, min(10, deadline - clock()))) as raw:
+                    with context.wrap_socket(raw, server_hostname=hostname) as tls:
+                        if hashlib.sha256(tls.getpeercert(binary_form=True)).digest() != expected_hash:
+                            break
+            except (OSError, ssl.SSLError):
+                break
         else:
-            print("公開DNS: ご利用のDNS管理画面でGatewayとPortalの公開レコードを設定してください。", flush=True)
+            return
+        sleep(min(10, max(0, deadline - clock())))
+    raise DeploymentError("The expected certificate was not observed on both gateway hostnames; public DNS was not advanced")
+
+
+def finish_public_dns(config, outputs, transport):
+    certificate = config["certificate"]
+    dns_transport = None
+    if certificate.get("mode") == "dnsPlugin" and certificate.get("plugin") == "Azure":
+        dns_transport = ArmTransport({**config, "subscriptionId": certificate["azureDnsSubscriptionId"]})
+        print("公開DNS: GatewayとPortalのAエイリアスを確認しています。", flush=True)
+    return configure_public_dns(config, outputs, transport, dns_transport)
+
+
+def require_certificate_job_cutover(config, outputs, transport):
+    """旧VMタイマーの管理資源が残る環境との並行発行を避ける。"""
+    vm = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['maint']}"
+          f"/providers/Microsoft.Compute/virtualMachines/vm-{config['resourceStem']}-mgmt")
+    if str(outputs.get("managementVm", {}).get("id", "")).casefold() != vm.casefold():
+        raise DeploymentError("The certificate bootstrap VM does not match the selected Core deployment")
+    response = transport.request("GET", vm + "/runCommands/configure-public-certificate?api-version=2024-07-01")
+    if response.get("statusCode") != 404:
+        raise DeploymentError("Verify retirement of the previous VM certificate automation before starting the ACA job")
+
+
+def finish_certificate_core(config, outputs, transport, serial_password, l7_secret, firewall_root_ca):
+    """Coreの依存先を記録し、初回発行・公開・DNSを同じ順序で完了する。"""
+    from .helpers.certificate_jobs import complete_initial_certificates
+    from .helpers.portal_auth_certificate import store_initial_certificate
+    from operations.common import OperationContext, OperationError
+
+    workspace = local_paths(config, ROOT)
+    context = OperationContext(workspace.params, config, state_from_outputs(config, outputs), workspace, transport)
+    try:
+        with context.locked():
+            _save_deployment_state(config, outputs)
+            require_certificate_job_cutover(config, outputs, transport)
+            dns_path = workspace.state / "public-dns.json"
+            dns_path.unlink(missing_ok=True)
+            _bind_management_serial_password(config, outputs, transport, serial_password)
+            complete_core_network_upgrade(config, transport)
+            issued = complete_initial_certificates(config, outputs, transport, protected_json,
+                                                   workspace=workspace, repository=ROOT)
+            store_initial_certificate(config, workspace, issued["portal"], protected_json)
+            pending_path = workspace.state / "public-ingress-pending.json"
+            pending = {key: config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem", "resourceGroupNames")}
+            pending.update(apimInstanceId=apim_instance_id(config), gatewayPlan=outputs["gatewayPlan"],
+                           ingressMonitoringPlan=outputs["ingressMonitoringPlan"])
+            protected_json(pending_path, pending)
+            gateway = deploy_public_ingress(config, outputs, transport, l7_secret, firewall_root_ca)
+            require_appgw_backend_tls_ready(config, transport)
+            observe_initial_certificate(config, gateway, issued["tls"])
+            final = {**outputs, "gateway": gateway,
+                     "endpoints": {**outputs["endpoints"], "public": gateway["publicUrl"]},
+                     "certificateBootstrap": {**outputs["certificateBootstrap"], "imageDigest": issued["imageDigest"]},
+                     "ingressSecrets": {**outputs["ingressSecrets"], "enabled": True}}
+            protected_json(workspace.state / "ingress-bootstrap.json",
+                           configure_grpc_endpoint(config, final, transport,
+                                                   mutation_recorder=upgrade_journal(config, "ingress-endpoint")))
+            receipt = finish_public_dns(config, final, transport)
+            protected_json(dns_path, receipt)
+            _save_deployment_state(config, final)
+            pending_path.unlink(missing_ok=True)
+            return final, receipt
+    except OperationError as error:
+        raise DeploymentError(str(error)) from None
+
+
+def postprovision(config: dict) -> None:
+    """今回のネイティブCore配備を確認し、初回発行と公開入口を仕上げる。"""
+    workspace = local_paths(config, ROOT)
+    try:
+        env = run(["azd", "env", "get-values", "--environment", config["environmentName"], "-o", "json"])
+        deployment_name = env.get("CORE_DEPLOYMENT_NAME")
+        if not deployment_name:
+            raise DeploymentError("CORE_DEPLOYMENT_NAME is missing; deployment outputs were not recorded")
+        response = run(["az", "deployment", "sub", "show", "--subscription", config["subscriptionId"],
+                        "--name", deployment_name, "-o", "json"])
+        outputs = {key: item["value"] for key, item in response["properties"]["outputs"].items()}
+        if outputs.get("resourceGroups") != config["resourceGroupNames"]:
+            raise DeploymentError("The deployment group list differs from the configured five groups")
+        transport = ArmTransport(config)
+        if outputs.get("certificateBootstrap"):
+            if response["properties"].get("provisioningState") != "Succeeded":
+                raise DeploymentError("The Core foundation deployment did not succeed")
+            initial_password = _read_initial_serial_deployment_input(config)
+            parameters_path = workspace.checked(workspace.parameters)
+            require_serial_storage_permissions(parameters_path)
+            generated = json.loads(parameters_path.read_text(encoding="utf-8"))
+            entries = generated["parameters"]
+            credential = entries["l7IngressSecret"]["value"]
+            firewall_root_ca = entries["firewallTlsInspection"]["value"].get("rootCaData", "")
+            outputs, dns_receipt = finish_certificate_core(config, outputs, transport, initial_password, credential, firewall_root_ca)
+        else:
+            _save_deployment_state(config, outputs)
+            from .helpers.portal_auth_certificate import collect_initial_certificate
+            collect_initial_certificate(config, outputs, transport, protected_json)
+            dns_path = workspace.state / "public-dns.json"
+            dns_path.unlink(missing_ok=True)
+            serial_password = _read_initial_serial_deployment_input(config)
+            if serial_password and response.get("properties", {}).get("provisioningState") != "Succeeded":
+                raise DeploymentError("The initial Core deployment success could not be verified; retain its pending credential")
+            _bind_management_serial_password(config, outputs, transport, serial_password)
+            complete_core_network_upgrade(config, transport)
+            ingress = configure_grpc_endpoint(config, outputs, transport,
+                                              mutation_recorder=upgrade_journal(config, "ingress-endpoint"))
+            if ingress["enabled"]:
+                protected_json(workspace.state / "ingress-bootstrap.json", ingress)
+            dns_receipt = finish_public_dns(config, outputs, transport)
+            protected_json(dns_path, dns_receipt)
     finally:
-        # 証明書やドメイン設定の確認が失敗しても、生成した秘密入りARM入力は残さない。
-        # 元の保護ファイルは保持するため、原因解消後に再利用できる。
-        local_paths(config, ROOT).parameters.unlink(missing_ok=True)
+        workspace.parameters.unlink(missing_ok=True)
     print(json.dumps({"deployed": True, "publicUrl": outputs["endpoints"]["public"],
                       "publicDnsStatus": dns_receipt["status"],
                       "apiPublicationStatus": "managed-separately"}))
@@ -1904,7 +2159,7 @@ def main(argv=None) -> int:
             # preprovisionにも同じ確認を残し、azd provision単独でも前提を満たす。
             register_providers(config)
             transport = ArmTransport(config)
-            require_appgw_backend_tls_ready(config, transport, allow_new=True)
+            require_core_appgw_ready(config, transport)
             for key, value in (("AZURE_SUBSCRIPTION_ID", config["subscriptionId"]), ("AZURE_TENANT_ID", config["azureTenantId"]), ("AZURE_LOCATION", config["location"])):
                 run(["azd", "env", "set", key, value, "--environment", config["environmentName"]])
             # azdがpreup後に読む入力枠を用意する。秘密入りの実入力は監視基盤の準備後に作る。

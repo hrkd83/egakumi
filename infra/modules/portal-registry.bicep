@@ -6,7 +6,7 @@ param tags object = resourceGroup().tags
 param pullIdentityId string
 param pullIdentityPrincipalId string
 
-resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
+resource registry 'Microsoft.ContainerRegistry/registries@2025-11-01' = {
   #disable-next-line BCP334
   name: 'acr${replace(stem, '-', '')}'
   location: location
@@ -16,7 +16,12 @@ resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
     adminUserEnabled: false
     publicNetworkAccess: 'Disabled'
     networkRuleBypassOptions: 'None'
+    networkRuleBypassAllowedForTasks: false
     dataEndpointEnabled: true
+    anonymousPullEnabled: false
+    roleAssignmentMode: 'LegacyRegistryPermissions'
+    // Container Apps uses an ARM-audience managed identity token to pull.
+    policies: { azureADAuthenticationAsArmPolicy: { status: 'enabled' } }
   }
 }
 // ID用RGで作成したIDに、このACRのイメージを取得するAcrPull権限を付与します。

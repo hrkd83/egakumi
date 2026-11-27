@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""管理VM自身のIDで、構築した資源の保守データを保護ファイルへ取得する。
+"""管理VMで担当者本人のEntra IDを使い、構築した資源を保守する。
 
-人間のAzure CLIログインや保存tokenは使用しない。実サービスの認可・通信成功は
-各操作の実検証で確認する。入力inventoryは構築出力から生成した内部資材である。
+Azure CLIで本人としてサインインしてから実行する。Azureの認可と通信は各操作で
+確認する。inventoryは構築時にrootが配置し、担当者は読み取りだけを行う。
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from pathlib import Path
 import re
 import stat
 import struct
+import subprocess
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
@@ -44,8 +45,11 @@ SQL_DRIVER = 'ODBC Driver 18 for SQL Server'
 SQL_ACCESS_TOKEN_ATTRIBUTE = 1256
 SQL_ALIASES = ('credentials', 'portal')
 IMDS_ORIGIN = 'http://169.254.169.254'
-IMDS_TOKEN_API = '2018-02-01'
 IMDS_COMPUTE_API = '2021-02-01'
+INVENTORY_PATH = Path('/opt/core/maintenance/inventory.json')
+MAINTENANCE_GROUP = 'core-maintenance'
+AZURE_CLI = '/usr/bin/az'
+TOKEN_RESOURCES = frozenset((ARM_AUDIENCE, STORAGE_AUDIENCE, LOGS_AUDIENCE, SQL_AUDIENCE))
 APP_API = '2025-07-01'
 JOB_API = '2023-11-02-preview'
 JOB_METADATA_API = '2025-10-02-preview'
@@ -108,9 +112,13 @@ def read_protected(path):
     path = _plain_path(path)
     _owner_only(path.parent, directory=True)
     _owner_only(path)
+    return _read_bound_file(path, path.lstat())
+
+
+def _read_bound_file(path, expected):
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(descriptor, 'rb') as stream:
-        actual, expected = os.fstat(stream.fileno()), path.lstat()
+        actual = os.fstat(stream.fileno())
         if (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino):
             raise MaintenanceError('The protected maintenance input changed while opening')
         result = stream.read(MAX_JSON_BYTES + 1)
@@ -135,8 +143,22 @@ def protected_output(path):
         os.fsync(stream.fileno())
 
 
-def load_inventory(path):
-    return validate_inventory(json.loads(read_protected(path)))
+def load_inventory():
+    """管理者が原本を設置し、保守グループに読み取りだけを許したinventoryを読む。"""
+    import grp
+
+    path = _plain_path(INVENTORY_PATH)
+    group_id = grp.getgrnam(MAINTENANCE_GROUP).gr_gid
+    for parent in path.parents:
+        info = parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) & 0o022:
+            raise MaintenanceError('The installed inventory requires protected root-owned ancestors')
+    directory, info = path.parent.lstat(), path.lstat()
+    if (directory.st_gid != group_id or stat.S_IMODE(directory.st_mode) != 0o750
+            or not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_gid != group_id
+            or stat.S_IMODE(info.st_mode) != 0o640):
+        raise MaintenanceError('The installed inventory must be root-owned and read-only for the maintenance group')
+    return validate_inventory(json.loads(_read_bound_file(path, info)))
 
 
 def validate_inventory(inventory):
@@ -236,71 +258,66 @@ class HttpTransport:
             raise MaintenanceError('The maintenance endpoint did not return valid metadata') from None
 
 
-class VmIdentity:
-    """IMDSのSystemAssigned tokenだけをメモリーに保持する。"""
-    def __init__(self, inventory, transport):
+class OperatorIdentity:
+    """本人のAzure CLIセッションから保守先専用の委任トークンを取得する。"""
+    def __init__(self, inventory, transport, operator_object_id, *, run=None):
+        if not _guid(operator_object_id):
+            raise MaintenanceError('An explicit operator Entra object ID is required')
         self.inventory, self.transport, self.tokens = inventory, transport, {}
+        self.operator_object_id = operator_object_id.casefold()
+        self.tenant_id = inventory['azureTenantId'].casefold()
+        self.run = run or subprocess.run
         self.verified = False
-        self.compute_vm_id = None
-        self.sql_client_id = None
 
-    def verify_vm(self):
+    def _azure_cli(self, *arguments):
+        try:
+            result = self.run([AZURE_CLI, *arguments, '--output', 'json', '--only-show-errors'],
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              check=True, timeout=45)
+            if len(result.stdout) <= 65536:
+                data = json.loads(result.stdout)
+                if isinstance(data, dict):
+                    return data
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+        raise MaintenanceError('Azure CLI could not read the operator session; sign in as the named user') from None
+
+    def verify_session(self):
         compute = self.transport.json('GET', IMDS_ORIGIN + '/metadata/instance/compute?'
             + urlencode({'api-version': IMDS_COMPUTE_API}), headers={'Metadata': 'true'})
         if (not isinstance(compute, dict)
                 or str(compute.get('resourceId', '')).casefold() != self.inventory['managementVmId'].casefold()):
             raise MaintenanceError('This client must run on its constructed management VM')
-        self.compute_vm_id = compute.get('vmId')
+        account = self._azure_cli('account', 'show')
+        user = account.get('user')
+        if (account.get('environmentName') != 'AzureCloud'
+                or str(account.get('tenantId', '')).casefold() != self.tenant_id
+                or not isinstance(user, dict) or user.get('type') != 'user'):
+            raise MaintenanceError('Use an AzureCloud user signed in to the inventory tenant')
+        operator = self._azure_cli('ad', 'signed-in-user', 'show', '--query', '{id:id}')
+        if str(operator.get('id', '')).casefold() != self.operator_object_id:
+            raise MaintenanceError('The signed-in Azure CLI user is not the named operator')
         self.verified = True
 
     def token(self, audience):
-        if audience not in (ARM_AUDIENCE, STORAGE_AUDIENCE, LOGS_AUDIENCE, SQL_AUDIENCE):
+        if audience not in TOKEN_RESOURCES:
             raise MaintenanceError('The maintenance token audience is not approved')
         if not self.verified:
-            self.verify_vm()
+            self.verify_session()
         cached = self.tokens.get(audience)
         if cached and cached[1] > time.time() + 60:
             return cached[0]
-        value = self.transport.json('GET', IMDS_ORIGIN + '/metadata/identity/oauth2/token?'
-            + urlencode({'api-version': IMDS_TOKEN_API, 'resource': audience}), headers={'Metadata': 'true'})
-        try:
-            token = value['access_token']
-            payload = token.split('.')[1]
-            claims = json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
-            expiry = int(value['expires_on'])
-            valid = (value['token_type'].casefold() == 'bearer' and value['resource'] == audience
-                     and claims['oid'].casefold() == self.inventory['managementPrincipalId'].casefold()
-                     and claims['tid'].casefold() == self.inventory['azureTenantId'].casefold()
-                     and expiry > time.time() + 60)
-        except (KeyError, ValueError, TypeError, AttributeError, IndexError, UnicodeError):
-            valid = False
-        if not valid:
-            raise MaintenanceError('IMDS did not return the constructed VM identity for the approved audience')
-        if audience == SQL_AUDIENCE:
-            client_id = claims.get('appid', claims.get('azp'))
-            sql_valid = (
-                _guid(self.compute_vm_id) and _guid(client_id)
-                and isinstance(claims.get('aud'), str)
-                and claims['aud'].rstrip('/') == SQL_AUDIENCE.rstrip('/')
-                and str(claims.get('xms_mirid', '')).casefold() == self.inventory['managementVmId'].casefold()
-                and type(claims.get('exp')) is int and claims['exp'] == expiry
-                and isinstance(token, str) and len(token.split('.')) == 3 and token.isascii()
-                and not any(character.isspace() for character in token)
-                and ('appid' not in claims or 'azp' not in claims
-                     or str(claims['appid']).casefold() == str(claims['azp']).casefold())
-                and (self.sql_client_id is None or client_id.casefold() == self.sql_client_id.casefold()))
-            if not sql_valid:
-                raise MaintenanceError('IMDS SQL identity claims do not match the constructed VM generation and audience')
-            self.sql_client_id = client_id
+        value = self._azure_cli('account', 'get-access-token', '--tenant', self.tenant_id, '--resource', audience)
+        # The receiving Azure service validates its access token. A client
+        # uses the CLI response metadata, since Microsoft APIs may issue opaque tokens.
+        token, expiry = value.get('accessToken'), value.get('expires_on')
+        if (not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9._~+/-]+=*', token)
+                or str(value.get('tokenType', '')).casefold() != 'bearer'
+                or str(value.get('tenant', '')).casefold() != self.tenant_id
+                or type(expiry) is not int or expiry <= time.time() + 60):
+            raise MaintenanceError('Azure CLI did not return a current bearer token for the selected tenant')
         self.tokens[audience] = (token, expiry)
         return token
-
-    def sql_identity(self):
-        """Return non-secret internal grant inputs, never the IMDS token."""
-        self.token(SQL_AUDIENCE)
-        return {'sqlClientId': self.sql_client_id, 'principalId': self.inventory['managementPrincipalId'],
-                'tenantId': self.inventory['azureTenantId'], 'managementVmId': self.inventory['managementVmId'],
-                'vmId': self.compute_vm_id}
 
 
 def _headers(identity, audience, *, content_type=None):
@@ -364,8 +381,8 @@ def _sql_value(value):
 def sql_query(inventory, database_alias, query, identity, output, *, seconds=60, max_rows=1000, driver=None):
     """Execute a protected batch against exactly one constructed user database.
 
-    Database-owner maintenance is intentional; no arbitrary server/database,
-    saved password, CLI identity, unverified TLS or connection pool is used.
+    The connection uses the named operator's delegated Entra token and checks
+    the server certificate. SQL Database enforces the operator's grants.
     https://learn.microsoft.com/en-us/sql/connect/odbc/using-azure-active-directory
     """
     inventory = validate_inventory(inventory)
@@ -646,7 +663,7 @@ def app_exec(inventory, resource_id, revision, replica, container, command, seco
 
 def parser():
     value = argparse.ArgumentParser(description=__doc__)
-    value.add_argument('--inventory', required=True, help='Constructed-resource protected JSON; never public parameters')
+    value.add_argument('--operator-object-id', required=True, help='Entra object ID of the named user in the Azure tenant')
     value.add_argument('--output', required=True, help='New output file within an existing owner-only directory')
     commands = value.add_subparsers(dest='operation', required=True)
     blob = commands.add_parser('blob-read')
@@ -656,12 +673,11 @@ def parser():
     query = commands.add_parser('workspace-query')
     query.add_argument('--resource-id', required=True)
     query.add_argument('--query-file', required=True)
-    sql = commands.add_parser('sql-query', help='Protected SQL batch on a constructed user database using the VM identity')
+    sql = commands.add_parser('sql-query', help='Protected SQL batch on a constructed database as the named operator')
     sql.add_argument('--database', choices=SQL_ALIASES, required=True)
     sql.add_argument('--query-file', required=True)
     sql.add_argument('--seconds', type=int, default=60)
     sql.add_argument('--max-rows', type=int, default=1000)
-    commands.add_parser('sql-identity', help='Save the non-secret VM identity inputs for constructed database grants')
     app = commands.add_parser('app-logs')
     app.add_argument('--resource-id', required=True)
     app.add_argument('--type', choices=('console', 'system'), required=True)
@@ -687,9 +703,11 @@ def parser():
 
 def main(argv=None):
     arguments = parser().parse_args(argv)
-    inventory = load_inventory(arguments.inventory)
+    if os.name != 'posix' or os.geteuid() == 0:
+        raise MaintenanceError('Run as the named Linux operator without sudo')
+    inventory = load_inventory()
     transport = HttpTransport()
-    identity = VmIdentity(inventory, transport)
+    identity = OperatorIdentity(inventory, transport, arguments.operator_object_id)
     query = read_protected(arguments.query_file).decode('utf-8') if arguments.operation in ('workspace-query', 'sql-query') else None
     command = read_protected(arguments.command_file).decode('utf-8').strip() if arguments.operation == 'app-exec' else None
     if arguments.operation == 'sql-query':
@@ -712,8 +730,6 @@ def main(argv=None):
             blob_read(inventory, arguments.resource_id, arguments.container, arguments.blob, identity, transport, output)
         elif arguments.operation == 'workspace-query':
             workspace_query(inventory, arguments.resource_id, query, identity, transport, output)
-        elif arguments.operation == 'sql-identity':
-            output.write((json.dumps(identity.sql_identity()) + '\n').encode('utf-8'))
         elif arguments.operation == 'app-logs':
             app_logs(inventory, arguments.resource_id, arguments.type, arguments.revision, arguments.replica,
                      arguments.container, arguments.tail, identity, transport, output)

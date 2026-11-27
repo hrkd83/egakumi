@@ -51,7 +51,9 @@ param(
     [string]$L7IngressSecret='',
     [string]$RealtimeTicketKey='',
     [string]$RotateFromThumbprint='',
-    [switch]$ReadProtectedEnvironment
+    [switch]$ReadProtectedEnvironment,
+    [switch]$ContainerJob,
+    [switch]$CheckOnly
 )
 
 Set-StrictMode -Version Latest
@@ -367,7 +369,10 @@ function Invoke-Json([string]$Uri,[string]$Method='GET',$Body=$null,[bool]$Allow
         $request=[Net.HttpWebRequest]::Create($Uri)
         $request.Method=$Method; $request.AllowAutoRedirect=$false; $request.Timeout=30000; $request.ReadWriteTimeout=30000
         if ($imds) {$request.Proxy=$null; $request.Headers.Add('Metadata','true')}
-        else {$request.Headers.Add('Authorization','Bearer '+(Get-VaultToken))}
+        else {
+            if ($ContainerJob) {$request.Proxy=$null}
+            $request.Headers.Add('Authorization','Bearer '+(Get-VaultToken))
+        }
         if ($null -ne $Body) {
             $bytes=[Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 30 -Compress))
             $request.ContentType='application/json'; $request.ContentLength=$bytes.Length
@@ -404,7 +409,9 @@ function Get-VaultToken {
     if ($null -eq $script:Token -or $script:Token.expires -le [DateTimeOffset]::UtcNow.AddMinutes(5).ToUnixTimeSeconds()) {
         # IMDS chooses this VM's SystemAssigned identity. Do not reject a valid
         # token because Azure represents the vault audience as its service GUID.
-        $value=Invoke-Json 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net'
+        $value=if ($ContainerJob) { Get-CertificateJobToken 'Vault' $env:CERTIFICATE_CLIENT_ID ('https://'+$script:Config.keyVaultName+'.vault.azure.net') } else {
+            Invoke-Json 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net'
+        }
         if (-not $value.access_token -or [long]$value.expires_on -le [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) {throw 'Managed identity token unavailable'}
         $script:Token=@{value=[string]$value.access_token; expires=[long]$value.expires_on}
     }
@@ -440,7 +447,7 @@ function Get-AzureDnsPluginArguments {
         throw 'Azure DNS requires a subscription and user-assigned managed identity resource ID'
     }
     $uri='http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F&mi_res_id='+[Uri]::EscapeDataString($identity)
-    $token=Invoke-Json $uri
+    $token=if ($ContainerJob) { Get-CertificateJobToken 'Arm' $env:CERTIFICATE_DNS_CLIENT_ID } else {Invoke-Json $uri}
     if (-not $token.access_token -or [long]$token.expires_on -le [DateTimeOffset]::UtcNow.AddMinutes(5).ToUnixTimeSeconds()) {
         throw 'Azure DNS managed identity token unavailable'
     }
@@ -497,7 +504,7 @@ function Convert-PluginArguments([string]$Json) {
 function Ensure-PoshAcme {
     $script:Stage='module-installation'
     if (-not (Get-Module -ListAvailable -Name Posh-ACME | Where-Object {$_.Version -eq [version]$script:ModuleVersion})) {
-        if ($Action -ne 'Install') {throw 'Pinned certificate module must be installed by azd up'}
+        if ($ContainerJob -or $Action -ne 'Install') {throw 'Pinned certificate module must be installed by azd up'}
         Install-Module -Name Posh-ACME -RequiredVersion $script:ModuleVersion -Repository PSGallery -Scope AllUsers -Force -AllowClobber -Confirm:$false *> $null
     }
     # Posh-ACME は POSHACME_HOME を読む前に OS の HOME を参照します。
@@ -588,6 +595,7 @@ function Assert-Certificate($Leaf,$Collection,[bool]$CheckPrivateKey) {
     if ($eku.Count -ne 1 -or @($eku[0].EnhancedKeyUsages | Where-Object {$_.Value -eq '1.3.6.1.5.5.7.3.1'}).Count -ne 1) {throw 'TLS server authentication usage is required'}
     $chain=New-Object Security.Cryptography.X509Certificates.X509Chain
     try {
+        if ($ContainerJob) {Set-CertificateJobChainTrust $chain $script:Config.directoryUrl}
         $chain.ChainPolicy.RevocationMode=[Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
         $chain.ChainPolicy.VerificationFlags=[Security.Cryptography.X509Certificates.X509VerificationFlags]::NoFlag
         $chain.ChainPolicy.UrlRetrievalTimeout=[TimeSpan]::FromSeconds(15)
@@ -884,6 +892,52 @@ function Resume-ExistingAcmeOrder($Order) {
     throw 'Existing ACME order processing did not complete'
 }
 
+function Get-CertificateJobOrderIntent {
+    $entry=Get-VaultSecret ($script:Config.certificateName+'-acme-job-order')
+    if ($null -eq $entry) {return $null}
+    $state=$entry.value | ConvertFrom-Json -AsHashtable
+    if ($state -isnot [System.Collections.IDictionary] -or $state.status -cnotin @('requesting','saved','complete') -or
+        ($state.status -eq 'requesting' -and (-not $state.Contains('previous') -or $state.previous -isnot [string])) -or
+        ($state.status -eq 'saved' -and (-not $state.Contains('location') -or -not $state.location))) {
+        throw 'Invalid durable ACME job state'
+    }
+    if ($state.status -ne 'complete') {return $state}
+}
+
+function Save-CertificateJobOrderIntent([hashtable]$State) {
+    [void](Set-VaultSecret ($script:Config.certificateName+'-acme-job-order') ($State | ConvertTo-Json -Compress))
+}
+
+function Resolve-CertificateJobOrder($Intent, $Order, [bool]$SameDomains) {
+    if ($null -eq $Order -or -not $SameDomains -or -not [string]$Order.location) {throw 'ACME issuance needs order reconciliation'}
+    if ($Intent.status -eq 'saved') {
+        if ($Intent.location -cne $Order.location) {throw 'Durable ACME order differs'}
+    } elseif ($Intent.status -eq 'requesting') {
+        if ($Intent.previous -ceq [string]$Order.location) {throw 'ACME issuance needs order reconciliation'}
+        Save-CertificateJobOrderIntent @{status='saved'; location=[string]$Order.location}
+    } else {throw 'Invalid ACME order state'}
+    return $Order
+}
+
+function New-CertificateJobOrder($Previous, [string[]]$Domains, [hashtable]$PluginArguments, [string]$Password) {
+    $previousLocation=if ($null -eq $Previous) {''} else {[string]$Previous.location}
+    # Before the first CA mutation, make an ambiguous call recoverable or block
+    # it for reconciliation. Never replace a previous order from a stale replica.
+    Save-CertificateJobOrderIntent @{status='requesting'; previous=$previousLocation}
+    $settings=@{ Domain=$Domains; Name=$script:Config.certificateName; Plugin=$script:Config.dnsPlugin; PluginArgs=$PluginArguments;
+        KeyLength='2048'; PfxPassSecure=(ConvertTo-SecureString $Password -AsPlainText -Force);
+        DnsSleep=([int](Get-Setting 'dnsSleepSeconds' 60)); ValidationTimeout=([int](Get-Setting 'validationTimeoutSeconds' 120));
+        Force=$true }
+    New-PAOrder @settings *> $null
+    $order=Get-PAOrder -Name $script:Config.certificateName
+    if ($null -eq $order -or -not $order.location -or $order.location -ceq $previousLocation) {throw 'New ACME order was not confirmed'}
+    # Save the order before DNS challenge/finalize, so a replacement replica
+    # resumes the same CA order after the Blob lease expires.
+    Save-AcmeState
+    Save-CertificateJobOrderIntent @{status='saved'; location=[string]$order.location}
+    return $order
+}
+
 <#
 .SYNOPSIS
 既存の証明書を検証し、必要に応じて DNS-01 で発行または更新します。
@@ -918,6 +972,7 @@ function Ensure-Certificate {
     }
     Ensure-PoshAcme
     Restore-AcmeState
+    $jobOrderIntent=if ($ContainerJob) {Get-CertificateJobOrderIntent}
     if ($script:Config.dnsPlugin -ne 'Azure') {
         $secretName=$script:Config.certificateName+'-dns-plugin-args'
         if ($Action -eq 'Install' -and $DnsPluginArgumentsJson) {
@@ -939,7 +994,7 @@ function Ensure-Certificate {
     $password=[string]$passwordSecret.value
     # Reapplying azd up reuses a sufficiently valid certificate. Credentials
     # have still been rotated in the Vault and will be reread by the next task.
-    if (-not $rotate -and (Test-ReusableCertificate $current $renewDays)) {
+    if (-not $rotate -and $null -eq $jobOrderIntent -and (Test-ReusableCertificate $current $renewDays)) {
         if (@(Get-ChildItem -LiteralPath $env:POSHACME_HOME -Recurse -File -Force).Count -gt 0) {Save-AcmeState}
         return
     }
@@ -952,6 +1007,7 @@ function Ensure-Certificate {
     } else {Set-PAAccount -UseAltPluginEncryption *> $null}
     $name=$script:Config.certificateName
     $domains=@(Get-CertificateHostnames 'hostnames')
+    $jobOperationCompleted=$false
     try {
         if ($script:Config.dnsPlugin -eq 'Azure') {
             $script:Stage='dns-managed-identity-authentication'
@@ -965,11 +1021,20 @@ function Ensure-Certificate {
             $sameDomains=(($orderDomains | Where-Object {$_} | Sort-Object -Unique) -join ',') -ieq (($domains | Sort-Object -Unique) -join ',')
         }
         if ($rotate -and ($null -eq $order -or -not $sameDomains)) {throw 'Planned rotation requires the existing matching ACME order'}
-        if ($null -eq $order -or -not $sameDomains) {
-            # SANが増減したときだけ既存注文を置き換えます。通常更新・再試行ではForceしません。
-            # Posh-ACME 4.34.0はMainDomainだけの変更をSAN差分と判定しないため、
-            # 例: 単一gateway名→*.example.comの変更も、こちらで集合を照合します。
-            New-PACertificate -Domain $domains -Name $name -Contact $script:Config.accountEmail -AcceptTOS -DirectoryUrl $script:Config.directoryUrl -Plugin $script:Config.dnsPlugin -PluginArgs $pluginArguments -CertKeyLength '2048' -PfxPassSecure (ConvertTo-SecureString $password -AsPlainText -Force) -DnsSleep ([int](Get-Setting 'dnsSleepSeconds' 60)) -ValidationTimeout ([int](Get-Setting 'validationTimeoutSeconds' 120)) -Force:($null -ne $order) *> $null
+        if ($null -ne $jobOrderIntent) {
+            $order=Resolve-CertificateJobOrder $jobOrderIntent $order $sameDomains
+            Set-PAOrder -Name $name -Plugin $script:Config.dnsPlugin -PluginArgs $pluginArguments *> $null
+            Resume-ExistingAcmeOrder $order
+        } elseif ($null -eq $order -or -not $sameDomains) {
+            if ($ContainerJob) {
+                $order=New-CertificateJobOrder $order $domains $pluginArguments $password
+                Resume-ExistingAcmeOrder $order
+            } else {
+                # SANが増減したときだけ既存注文を置き換えます。通常更新・再試行ではForceしません。
+                # Posh-ACME 4.34.0はMainDomainだけの変更をSAN差分と判定しないため、
+                # 例: 単一gateway名→*.example.comの変更も、こちらで集合を照合します。
+                New-PACertificate -Domain $domains -Name $name -Contact $script:Config.accountEmail -AcceptTOS -DirectoryUrl $script:Config.directoryUrl -Plugin $script:Config.dnsPlugin -PluginArgs $pluginArguments -CertKeyLength '2048' -PfxPassSecure (ConvertTo-SecureString $password -AsPlainText -Force) -DnsSleep ([int](Get-Setting 'dnsSleepSeconds' 60)) -ValidationTimeout ([int](Get-Setting 'validationTimeoutSeconds' 120)) -Force:($null -ne $order) *> $null
+            }
         } else {
             $cached=Get-PACertificate -Name $name
             $cacheDays=if ($rotate) {[int](Get-Setting 'minimumValidDays' 7)} else {$renewDays}
@@ -1003,8 +1068,14 @@ function Ensure-Certificate {
                         try {$sameCurrentLeaf=[string]$recovered.Thumbprint -ieq $currentLeaf.Thumbprint} finally {$currentLeaf.Dispose()}
                     }
                     if (-not $sameCurrentLeaf) {throw 'Recovered ACME certificate is not a usable replacement'}
-                    Submit-Renewal -Name $name -PluginArgs $pluginArguments -Force *> $null
+                    if ($ContainerJob) {
+                        $order=New-CertificateJobOrder $order $domains $pluginArguments $password
+                        Resume-ExistingAcmeOrder $order
+                    } else {Submit-Renewal -Name $name -PluginArgs $pluginArguments -Force *> $null}
                 }
+            } elseif ($ContainerJob) {
+                $order=New-CertificateJobOrder $order $domains $pluginArguments $password
+                Resume-ExistingAcmeOrder $order
             } else {
                 Submit-Renewal -Name $name -PluginArgs $pluginArguments -Force *> $null
             }
@@ -1018,6 +1089,7 @@ function Ensure-Certificate {
         if (-not $path.StartsWith($env:POSHACME_HOME+[IO.Path]::DirectorySeparatorChar,[StringComparison]::Ordinal)) {throw 'Unexpected certificate file location'}
         Assert-NoReparse $path
         Import-Pfx ([IO.File]::ReadAllBytes($path)) $password
+        $jobOperationCompleted=$ContainerJob
         if ($rotate) {$script:RotationOutcome='replacement-issued-and-imported'}
     } finally {
         # Preserve the account/order after failures as well. The DNS plugin's
@@ -1025,6 +1097,7 @@ function Ensure-Certificate {
         # no zone-wide TXT deletion is performed by this service.
         $operationStage=$script:Stage
         Save-AcmeState
+        if ($jobOperationCompleted) {Save-CertificateJobOrderIntent @{status='complete'}}
         $script:Stage=$operationStage
         $pluginArguments=$null; $secret=$null; $password=$null; $passwordSecret=$null
     }
@@ -1073,7 +1146,7 @@ CA の fullchain は root を含まない場合があります。管理 VM 内�
 出力なし。
 #>
 function Ensure-ApimCertificateChain {
-    if (-not (Get-Setting 'l7IngressEnabled' $false)) {return}
+    if (-not $ContainerJob -and -not (Get-Setting 'l7IngressEnabled' $false)) {return}
     $script:Stage='apim-certificate-chain'
     # APIM's Key Vault certificate contract requires intermediates AND root.
     # Posh-ACME fullchain commonly omits the trust anchor. Complete the PFX
@@ -1088,6 +1161,7 @@ function Ensure-ApimCertificateChain {
         $collection.Import([Convert]::FromBase64String($secret.value),'',$flags)
         $leaves=@($collection | Where-Object {$_.HasPrivateKey})
         if ($leaves.Count -ne 1) {throw 'Public certificate private key is invalid'}
+        if ($ContainerJob) {Set-CertificateJobChainTrust $chain $script:Config.directoryUrl}
         $chain.ChainPolicy.RevocationMode=[Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
         $chain.ChainPolicy.VerificationFlags=[Security.Cryptography.X509Certificates.X509VerificationFlags]::NoFlag
         foreach ($item in $collection) {[void]$chain.ChainPolicy.ExtraStore.Add($item)}
@@ -1213,13 +1287,25 @@ function Register-RenewalTask {
 # 入口処理：入力検証 → 専用領域の準備 → 排他 → 証明書 → 共有鍵 → 定期更新登録。
 # 途中失敗なら成功扱いにせず、finally で token と秘密入力を捨てて排他を解放します。
 try {
-    if (-not $IsLinux -or (Get-UnixIdentity) -ne 0) {throw 'Run certificate maintenance as root on Linux'}
+    if ($ContainerJob) {
+        if (-not $IsLinux) {throw 'Certificate job requires Linux'}
+    } else {
+        if (-not $IsLinux -or (Get-UnixIdentity) -ne 0) {throw 'Run certificate maintenance as root on Linux'}
+    }
+    if ($CheckOnly -and -not $ContainerJob) {throw 'CheckOnly requires the certificate job'}
+    if ($ContainerJob) {
+        if ($ReadProtectedEnvironment -or $ConfigFile -or $DnsPluginArgumentsJson -or $L7IngressSecret -or $RealtimeTicketKey) {throw 'Host inputs are unsupported in the certificate job'}
+    }
     if ($ReadProtectedEnvironment) {Read-ManagedInput}
-    if ($Action -eq 'Renew') {
+    if (-not $ContainerJob -and $Action -eq 'Renew') {
         Assert-PrivatePath $ConfigFile
         $PublicConfigJson=[IO.File]::ReadAllText($ConfigFile)
     }
     $script:Config=$PublicConfigJson | ConvertFrom-Json
+    if ($ContainerJob) {
+        $script:Config | Add-Member -NotePropertyName 'accountEmail' -NotePropertyValue $env:CERTIFICATE_ACCOUNT_EMAIL -Force
+        [Environment]::SetEnvironmentVariable('CERTIFICATE_ACCOUNT_EMAIL', $null)
+    }
     Assert-SupportedCertificateProvider
     [void](Get-PlannedRotationThumbprint)
     if ($script:Config.keyVaultName -notmatch '^[a-zA-Z][a-zA-Z0-9-]{1,22}[a-zA-Z0-9]$' -or $script:Config.certificateName -notmatch '^[a-zA-Z0-9-]{1,80}$') {throw 'Invalid public certificate configuration'}
@@ -1233,8 +1319,9 @@ try {
     if ([int](Get-Setting 'minimumValidDays' 7) -lt 1 -or [int](Get-Setting 'minimumValidDays' 7) -gt [int](Get-Setting 'renewBeforeDays' 30) -or (Get-Setting 'moduleVersion' '4.34.0') -ne $script:ModuleVersion) {throw 'Invalid certificate validation settings'}
     if ($script:Config.directoryUrl -notin @('https://acme-v02.api.letsencrypt.org/directory','https://acme-staging-v02.api.letsencrypt.org/directory')) {throw 'Unsupported automated ACME configuration'}
     if ($script:Config.accountEmail -notmatch '^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$' -or [int](Get-Setting 'dnsSleepSeconds' 60) -lt 0 -or [int](Get-Setting 'validationTimeoutSeconds' 120) -lt 1) {throw 'Invalid DNS validation settings'}
-    New-PrivateDirectory '/var/lib/egakumi-certificates'
-    $script:Root=Join-Path '/var/lib/egakumi-certificates' ($script:Config.keyVaultName+'-'+$script:Config.certificateName)
+    $stateRoot=if ($ContainerJob) {Join-Path $env:HOME 'certificates'} else {'/var/lib/egakumi-certificates'}
+    New-PrivateDirectory $stateRoot
+    $script:Root=Join-Path $stateRoot ($script:Config.keyVaultName+'-'+$script:Config.certificateName)
     New-PrivateDirectory $script:Root
     $previousConfig=Join-Path $script:Root 'config.json'
     if (Test-Path -LiteralPath $previousConfig) {
@@ -1242,18 +1329,41 @@ try {
         $previous=[IO.File]::ReadAllText($previousConfig) | ConvertFrom-Json
         Assert-PreviousCertificateHostname $previous
     }
-    $script:LockStream=Enter-MaintenanceLock
-    Ensure-Certificate
-    Ensure-ApimCertificateChain
-    Set-L7IngressProof
-    Set-RealtimeTicketKey
-    if ($Action -eq 'Install') {Register-RenewalTask}
-    Write-MaintenanceEvent $true $script:Stage
+    if ($ContainerJob) {
+        if (-not $CheckOnly) {
+            Ensure-Certificate
+            Ensure-ApimCertificateChain
+        }
+        $script:Stage='certificate-readback'
+        $certificate=Get-CurrentCertificate
+        if (-not (Test-ReusableCertificate $certificate ([int](Get-Setting 'minimumValidDays' 7)))) {throw 'No verified certificate is available'}
+        $origin='https://'+$script:Config.keyVaultName+'.vault.azure.net'
+        $name=[regex]::Escape($script:Config.certificateName)
+        if ($certificate.id -cnotmatch ('^'+[regex]::Escape($origin)+'/certificates/'+$name+'/[a-f0-9]{32}$') -or
+            $certificate.sid -cnotmatch ('^'+[regex]::Escape($origin)+'/secrets/'+$name+'/[a-f0-9]{32}$')) {throw 'Certificate readback references differ'}
+        $publicLeaf=[Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String($certificate.cer))
+        try {
+            $result=@{certificateId=$certificate.id; secretId=$certificate.sid; certificateThumbprint=$publicLeaf.Thumbprint.ToLowerInvariant();
+                notBefore=[DateTimeOffset]::new($publicLeaf.NotBefore.ToUniversalTime()).ToUnixTimeSeconds();
+                expires=[DateTimeOffset]::new($publicLeaf.NotAfter.ToUniversalTime()).ToUnixTimeSeconds();
+                publicCertificate=$certificate.cer; dnsNames=@(Get-CertificateDnsNames $publicLeaf)}
+            Write-Output ('EGAKUMI_CERTIFICATE_RESULT:' + ($result | ConvertTo-Json -Depth 10 -Compress))
+        } finally {$publicLeaf.Dispose()}
+    } else {
+        $script:LockStream=Enter-MaintenanceLock
+        Ensure-Certificate
+        Ensure-ApimCertificateChain
+        Set-L7IngressProof
+        Set-RealtimeTicketKey
+        if ($Action -eq 'Install') {Register-RenewalTask}
+        Write-MaintenanceEvent $true $script:Stage
+    }
     exit 0
 } catch {
     # Never echo exception bodies, protected input, plugin output, PFX data or
     # HTTP request headers to Managed Run Command status or journald.
-    Write-MaintenanceEvent $false $script:Stage
+    if ($ContainerJob) {Write-Output ('CERTIFICATE_STAGE:'+ $script:Stage)}
+    else {Write-MaintenanceEvent $false $script:Stage}
     exit 1
 } finally {
     $DnsPluginArgumentsJson=$null; $L7IngressSecret=$null; $RealtimeTicketKey=$null; $RotateFromThumbprint=''; $script:Token=$null

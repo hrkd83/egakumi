@@ -91,8 +91,7 @@ class ApiFoundationBicepTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.main = compile_bicep('infra/main.bicep')
-        cls.gateway = next(item for item in cls.main['resources']
-                           if 'publishedApiPaths' in item.get('properties', {}).get('parameters', {}))
+        cls.gateway = cls.main['variables']['gatewayPlan']
         cls.services = next(item for item in cls.main['resources']
                             if 'modelDeployments' in item.get('properties', {}).get('parameters', {}))
 
@@ -100,7 +99,7 @@ class ApiFoundationBicepTests(unittest.TestCase):
         return DiscoveryExpression(expression, self.main['variables']).evaluate({'configuration': config})
 
     def paths(self, name, config):
-        return self.value(self.gateway['properties']['parameters'][name]['value'], config)
+        return self.value(self.gateway[name], config)
 
     def apim_logs(self, config):
         # The CLI now generates the canonical properties; Bicep passes that

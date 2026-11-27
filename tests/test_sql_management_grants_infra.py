@@ -1,4 +1,4 @@
-"""Schema jobs receive constructed VM client IDs; Apps keep runtime identities."""
+"""Verify that the constructed databases use dedicated schema and runtime identities."""
 import unittest
 
 from bicep_helpers import compile_bicep
@@ -12,34 +12,47 @@ class SqlManagementGrantInfrastructureTests(unittest.TestCase):
         cls.portal = compile_bicep('apps/portal/deploy/main.bicep')
         cls.portal_schema = compile_bicep('apps/portal/deploy/schema-job.bicep')
 
-    def test_internal_client_id_is_mandatory_not_a_user_creation_flag(self):
-        for template in (self.broker, self.portal, self.portal_schema):
-            parameter = template['parameters']['managementSqlClientId']
-            self.assertEqual(parameter['type'], 'string')
-            self.assertNotIn('defaultValue', parameter)
-            self.assertEqual((parameter['minLength'], parameter['maxLength']), (36, 36))
-
-    def test_schema_jobs_receive_client_ids_while_runtime_uses_only_its_own_identity(self):
+    def test_broker_schema_job_grants_the_runtime_principal_using_its_schema_identity(self):
+        job = next(resource for resource in self.broker['resources']
+                   if resource['type'] == 'Microsoft.App/jobs'
+                   and resource['properties']['configuration']['triggerType'] == 'Manual')
+        app = next(resource for resource in self.broker['resources']
+                   if resource['type'] == 'Microsoft.App/containerApps')
+        self.assertEqual(job['identity']['userAssignedIdentities'], {
+            "[format('{0}', parameters('schemaIdentity').id)]": {}
+        })
+        self.assertEqual(app['identity']['userAssignedIdentities'], {
+            "[format('{0}', parameters('runtimeIdentity').id)]": {}
+        })
         schema_environment = self.broker['variables']['schemaEnvironment']
-        self.assertIn("'SQL_MANAGEMENT_CLIENT_ID', parameters('managementSqlClientId')", schema_environment)
-        self.assertNotIn('SQL_MANAGEMENT_CLIENT_ID', self.broker['variables']['runtimeEnvironment'])
-        portal_variables = self.portal_schema['variables']['variables']
-        self.assertEqual(portal_variables['PORTAL_SQL_MANAGEMENT_CLIENT_ID'], "[parameters('managementSqlClientId')]")
-        self.assertEqual(portal_variables['AZURE_CLIENT_ID'], "[parameters('schemaIdentity').clientId]")
-        self.assertEqual(portal_variables['PORTAL_SQL_RUNTIME_CLIENT_ID'], "[parameters('runtimeIdentity').clientId]")
-        broker_job = next(resource for resource in self.broker['resources']
-            if resource['type'] == 'Microsoft.App/jobs' and resource['properties']['configuration']['triggerType'] == 'Manual')
-        self.assertEqual(broker_job['properties']['template']['containers'][0]['args'], ["[parameters('schemaAction')]"])
+        self.assertIn("'AZURE_CLIENT_ID', parameters('schemaIdentity').clientId", schema_environment)
+        self.assertIn("'SQL_RUNTIME_CLIENT_ID', parameters('runtimeIdentity').clientId", schema_environment)
+        self.assertEqual(job['properties']['template']['containers'][0]['args'], ["[parameters('schemaAction')]"])
 
-    def test_app_entrypoints_handoff_only_constructed_metadata_to_schema_modules(self):
-        broker_module = next(resource for resource in self.gateway['resources']
-            if 'managementSqlClientId' in resource.get('properties', {}).get('parameters', {}))
-        self.assertEqual(broker_module['properties']['parameters']['managementSqlClientId']['value'],
-            "[parameters('foundation').managementMaintenance.sqlClientId]")
-        schema_module = next(resource for resource in self.portal['resources']
-            if 'managementSqlClientId' in resource.get('properties', {}).get('parameters', {}))
-        self.assertEqual(schema_module['properties']['parameters']['managementSqlClientId']['value'],
-            "[parameters('managementSqlClientId')]")
+    def test_portal_schema_job_uses_schema_for_sql_and_runtime_for_apim(self):
+        job = next(resource for resource in self.portal_schema['resources']
+                   if resource['type'] == 'Microsoft.App/jobs')
+        self.assertEqual(job['identity']['userAssignedIdentities'], {
+            "[format('{0}', parameters('schemaIdentity').id)]": {},
+            "[format('{0}', parameters('runtimeIdentity').id)]": {},
+        })
+        variables = self.portal_schema['variables']['variables']
+        self.assertEqual(variables['PORTAL_SQL_AUTH'], 'managed-identity')
+        self.assertEqual(variables['AZURE_CLIENT_ID'], "[parameters('schemaIdentity').clientId]")
+        self.assertEqual(variables['PORTAL_SQL_RUNTIME_CLIENT_ID'], "[parameters('runtimeIdentity').clientId]")
+        self.assertEqual(variables['PORTAL_API_KEY_APIM_CLIENT_ID'], "[parameters('runtimeIdentity').clientId]")
+        self.assertEqual(variables['PORTAL_SQL_DATABASE'], "[parameters('database')]")
+
+    def test_app_entrypoints_pass_the_constructed_database_and_schema_identity(self):
+        for template, expected_schema in (
+            (self.gateway, "[parameters('foundation').schemaIdentity]"),
+            (self.portal, "[parameters('schemaIdentity')]"),
+        ):
+            parameters = next(resource['properties']['parameters'] for resource in template['resources']
+                              if {'database', 'schemaIdentity', 'runtimeIdentity'}
+                              <= resource.get('properties', {}).get('parameters', {}).keys())
+            self.assertEqual(parameters['schemaIdentity']['value'], expected_schema)
+            self.assertIn('outputs.database.value', parameters['database']['value'])
 
     def test_each_app_exports_only_its_constructed_database_for_maintenance_inventory(self):
         for template in (self.gateway, self.portal):

@@ -23,7 +23,6 @@ SCHEMA = Path(__file__).resolve().parents[1] / "sql" / "001_initial.sql"
 CLEANUP_BATCH_SIZE = 100
 CLEANUP_IDLE_SECONDS = 60 * 24 * 60 * 60
 CLEANUP_BUDGET_SECONDS = 300
-MANAGEMENT_SQL_USER_NAME = "core_management_vm"
 
 # Runtime includes the web application and its reconciliation job. Schema and
 # pool initialization remain with the separate migration identity. In particular,
@@ -91,51 +90,17 @@ def grant_runtime_access(store, *, runtime_user_name, runtime_sid):
                 cursor.execute("ALTER ROLE " + _identifier(role) + " DROP MEMBER " + name)
 
 
-def management_identity_sid(*, management_client_id, runtime_client_id, schema_client_id, runtime_user_name):
-    """Reject missing/shared constructed identities before any schema changes."""
+def migration_runtime_client_id(environment):
+    """Validate the application principal and separate schema identity before migration."""
     try:
-        identities = [uuid.UUID(value) for value in (management_client_id, runtime_client_id, schema_client_id)]
+        runtime = uuid.UUID(environment.get("SQL_RUNTIME_CLIENT_ID"))
+        schema = uuid.UUID(environment.get("AZURE_CLIENT_ID"))
     except (ValueError, AttributeError, TypeError):
         raise ValueError("SQL deployment identities require nonzero client IDs") from None
-    if any(identity.int == 0 for identity in identities) or len(set(identities)) != 3:
-        raise ValueError("SQL management, runtime and schema identities must differ")
-    _identifier(runtime_user_name)
-    if runtime_user_name.casefold() == MANAGEMENT_SQL_USER_NAME.casefold():
-        raise ValueError("SQL management and runtime principal names must differ")
-    # CREATE USER WITH SID/TYPE=E uses the client ID for SAMI and UAMI.
-    # https://learn.microsoft.com/en-us/sql/t-sql/statements/create-user-transact-sql?view=azuresqldb-current#k-create-a-contained-database-user-from-a-microsoft-entra-principal-without-validation
-    return identities[0].bytes_le
-
-
-def grant_management_access(store, *, management_sid):
-    """Grant the constructed VM db_owner only in the schema job's current DB."""
-    if not isinstance(management_sid, bytes) or len(management_sid) != 16 or not any(management_sid):
-        raise ValueError("SQL management identity SID is invalid")
-    name = _identifier(MANAGEMENT_SQL_USER_NAME)
-    with store._db(transaction=True) as cursor:
-        cursor.execute("DECLARE @result int; EXEC @result = sp_getapplock "
-                       "@Resource=N'core-management-sql-grants', @LockMode='Exclusive', "
-                       "@LockOwner='Transaction', @LockTimeout=20000; "
-                       "IF @result < 0 THROW 51000, 'SQL management grant lock unavailable', 1;")
-        cursor.execute("SELECT name,sid,type FROM sys.database_principals WHERE name=? OR sid=?",
-                       MANAGEMENT_SQL_USER_NAME, management_sid)
-        existing = cursor.fetchall()
-        if (len(existing) > 1 or any(len(row) != 3 or row[0] != MANAGEMENT_SQL_USER_NAME
-                or not isinstance(row[1], (bytes, bytearray, memoryview))
-                or bytes(row[1]) != management_sid or row[2] != "E" for row in existing)):
-            raise StoreConflict("Existing SQL management principal differs from the constructed identity")
-        if not existing:
-            cursor.execute("CREATE USER " + name + " WITH SID=0x" + management_sid.hex() + ", TYPE=E;")
-        cursor.execute("SELECT IS_ROLEMEMBER(N'db_owner',?)", MANAGEMENT_SQL_USER_NAME)
-        membership = cursor.fetchone()
-        if membership is None or len(membership) != 1 or type(membership[0]) is not int or membership[0] not in (0, 1):
-            raise StoreConflict("SQL management role membership is not known")
-        if membership[0] == 0:
-            cursor.execute("ALTER ROLE [db_owner] ADD MEMBER " + name)
-        cursor.execute("SELECT IS_ROLEMEMBER(N'db_owner',?)", MANAGEMENT_SQL_USER_NAME)
-        verified = cursor.fetchone()
-        if verified is None or len(verified) != 1 or type(verified[0]) is not int or verified[0] != 1:
-            raise StoreConflict("SQL management role membership was not established")
+    if not runtime.int or not schema.int or runtime == schema:
+        raise ValueError("SQL runtime and schema identities must be nonzero and distinct")
+    _identifier(environment.get("SQL_RUNTIME_USER_NAME"))
+    return str(runtime)
 
 
 def migrate(store, *, runtime_client_id, runtime_user_name, profiles, schema_path=SCHEMA):
@@ -404,19 +369,15 @@ def main(argv=None):
     check = commands.add_parser("reconcile")
     check.add_argument("--execute", "--apply", action="store_true")
     args = parser.parse_args(argv)
+    runtime_client_id = migration_runtime_client_id(os.environ) if args.command == "migrate" else None
     store = SqlStore.from_environment()
     if args.command == "observe-schema":
         result = schema_snapshot(store)
     elif args.command == "migrate":
-        management_sid = management_identity_sid(management_client_id=os.environ["SQL_MANAGEMENT_CLIENT_ID"],
-            runtime_client_id=os.environ["SQL_RUNTIME_CLIENT_ID"], schema_client_id=os.environ["AZURE_CLIENT_ID"],
-            runtime_user_name=os.environ["SQL_RUNTIME_USER_NAME"])
         print(json.dumps(observe_schema_before_migration(store)), flush=True)
-        result = migrate(store, runtime_client_id=os.environ["SQL_RUNTIME_CLIENT_ID"],
+        result = migrate(store, runtime_client_id=runtime_client_id,
                          runtime_user_name=os.environ["SQL_RUNTIME_USER_NAME"],
                          profiles=json.loads(os.environ["BROKER_PROFILES_JSON"]))
-        grant_management_access(store, management_sid=management_sid)
-        result["managementAccessGranted"] = True
     else:
         import httpx
         from azure.identity import ManagedIdentityCredential

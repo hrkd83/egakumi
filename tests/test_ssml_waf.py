@@ -100,10 +100,7 @@ class SsmlWafTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.main = compile_bicep('infra/main.bicep')
-        resources = cls.main["resources"]
-        cls.module = next(item for item in (resources.values() if isinstance(resources, dict) else resources)
-                          if "wafPolicyIdentifier" in item.get("properties", {}).get("parameters", {}))
-        cls.template = cls.module["properties"]["template"]
+        cls.template = compile_bicep('infra/modules/application-gateway.bicep')
         resources = cls.template["resources"]
         cls.resources = list(resources.values() if isinstance(resources, dict) else resources)
 
@@ -378,8 +375,8 @@ class SsmlWafTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 expected = [] if mutation == "name" else ["/models/azure-speech/v1/recognize"]
                 self.assertEqual(paths(changed), expected)
-        self.assertEqual(self.module["properties"]["parameters"]["speechRawBodyPaths"],
-                         {"value": "[variables('speechRawBodyPaths')]"})
+        self.assertEqual(self.main['variables']['gatewayPlan']['speechRawBodyPaths'],
+                         "[variables('speechRawBodyPaths')]")
         self.assertNotIn("speechRawBodyPaths", self.main["parameters"])
 
 

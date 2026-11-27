@@ -60,6 +60,12 @@ def _scope(config):
             raise ValueError()
         prefixes = {key: str(ipaddress.ip_network(config['network']['subnetPrefixes'][key], strict=True))
                     for key in (*GROUPS, 'firewall')}
+        certificate = config['network']['subnetPrefixes'].get('certificate')
+        if certificate is not None:
+            prefix = ipaddress.ip_network(certificate, strict=True)
+            if prefix.prefixlen > 27:
+                raise ValueError()
+            prefixes['certificate'] = str(prefix)
         if any(ipaddress.ip_network(v).version != 4 for v in prefixes.values()): raise ValueError()
         expected = {key: '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames'][key]
                     for key in ('nw', 'svc', 'maint', 'monitor')}
@@ -209,10 +215,10 @@ def _verify_group(config, transport, identity):
         raise FixedNsgError('Network resource group ownership is unverified')
 
 
-def _verify_aca_egress_path(config, transport, subnet):
+def _verify_aca_egress_path(config, transport, subnet, *, suffix='aca'):
     groups, stem, prefixes = _scope(config)
     network = groups['nw'] + '/providers/Microsoft.Network/'
-    route_table_id = network + 'routeTables/rt-' + stem + '-aca'
+    route_table_id = network + 'routeTables/rt-' + stem + '-' + suffix
     if (_ref(subnet.get('routeTable')) != route_table_id.casefold()
             or subnet.get('defaultOutboundAccess') is not False or subnet.get('natGateway')
             or subnet.get('serviceEndpoints') not in (None, [])
@@ -232,6 +238,9 @@ def _verify_aca_egress_path(config, transport, subnet):
     if table.get('disableBgpRoutePropagation') is not True:
         raise FixedNsgError('The ACA route table must disable BGP propagation')
     try:
+        if suffix == 'certificate' and (not isinstance(table.get('routes'), list)
+                                        or len(table['routes']) != 1):
+            raise ValueError()
         validate_aca_route_snapshot(table.get('routes'), prefixes['firewall'], prefixes['agw'],
                                     firewall_ip=firewall_ip, require_default=True)
     except ValueError:
@@ -245,7 +254,8 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False,
         raise FixedNsgError('The internal ACA association phase is invalid')
     allowed_bindings = {('ips', key) for key in ('firewallPublic', 'appGatewayPublic', 'apim', 'aca', 'management')}
     allowed_bindings.update(('ipSets', key) for key in
-                            ('foundry', 'keyVault', 'registry', 'sql', 'auditStorageJapan', 'auditStorageFoundry'))
+                            ('foundry', 'keyVault', 'registry', 'sql', 'auditStorageJapan', 'auditStorageFoundry',
+                             'certificateVault', 'certificateBlob'))
     if (_required_bindings is not None and (not isinstance(_required_bindings, frozenset)
                                            or not _required_bindings <= allowed_bindings)):
         raise FixedNsgError('The internal partial-build binding inventory is invalid')
@@ -264,8 +274,31 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False,
     if (not isinstance(dns, dict) or dns.get('servers') not in (None, []) or dns.get('enableProxy') is not True):
         raise FixedNsgError('Fixed initial NSG rules require live Azure-provided Firewall DNS and its proxy')
     raw_subnets = vnet['properties'].get('subnets')
-    if not isinstance(raw_subnets, list) or len(raw_subnets) != 6:
+    if not isinstance(raw_subnets, list):
         raise FixedNsgError('The owned VNet subnet inventory differs')
+    certificate_name = 'snet-' + stem + '-certificate'
+    certificate_subnets = [subnet for subnet in raw_subnets if isinstance(subnet, dict)
+                           and str(subnet.get('name', '')).casefold() == certificate_name.casefold()]
+    if len(certificate_subnets) > 1 or len(raw_subnets) != 6 + len(certificate_subnets):
+        raise FixedNsgError('The owned VNet subnet inventory differs')
+    if certificate_subnets:
+        certificate = certificate_subnets[0]
+        p = certificate.get('properties')
+        certificate_nsg = nw + NSG_TYPE.removeprefix('Microsoft.Network/') + '/nsg-' + stem + '-certificate'
+        certificate_route = nw + 'routeTables/rt-' + stem + '-certificate'
+        if (not isinstance(p, dict) or 'certificate' not in prefixes
+                or _ref(certificate) != (vnet_id + '/subnets/' + certificate_name).casefold()
+                or (p.get('addressPrefixes') or [p.get('addressPrefix')]) != [prefixes['certificate']]
+                or _ref(p.get('networkSecurityGroup')) != certificate_nsg.casefold()
+                or _ref(p.get('routeTable')) != certificate_route.casefold()
+                or p.get('defaultOutboundAccess') is not False):
+            raise FixedNsgError('The dedicated certificate subnet does not match the deployment scope')
+        if not permit_unassociated_aca:
+            _verify_aca_egress_path(config, transport, p, suffix='certificate')
+    else:
+        # The NSG-only maintenance entry may still inspect a known six-subnet
+        # Core. Once the new subnet exists every B2 rule is verified below.
+        prefixes.pop('certificate', None)
     subnet_ids = {}
     parents = _parents(config, transport)
     for key in (*GROUPS, 'firewall'):
@@ -346,12 +379,20 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False,
         'auditStorageJapan': ('audit-japan-blob', groups['monitor']+'/providers/Microsoft.Storage/storageAccounts/st'+stem.replace('-', '')+'jp', ['blob'], 'Microsoft.Storage/storageAccounts', '2023-05-01'),
         'auditStorageFoundry': ('audit-foundry-blob', groups['monitor']+'/providers/Microsoft.Storage/storageAccounts/st'+stem.replace('-', '')+'us', ['blob'], 'Microsoft.Storage/storageAccounts', '2023-05-01'),
     }
+    if 'certificate' in prefixes:
+        targets.update({
+            'certificateVault': ('tls-vault', service_prefix + 'Microsoft.KeyVault/vaults/kvtls-' + stem,
+                                 ['vault'], 'Microsoft.KeyVault/vaults', '2024-11-01'),
+            'certificateBlob': ('certificate-blob', service_prefix + 'Microsoft.Storage/storageAccounts/st'
+                                + stem.replace('-', '') + 'cert', ['blob'], 'Microsoft.Storage/storageAccounts', '2025-01-01'),
+        })
     sets = {}; seen_ips = set()
     for key, (suffix, target_id, group_ids, kind, api) in targets.items():
         if not required('ipSets', key): continue
         pe_id = nw + 'privateEndpoints/pe-' + stem + '-' + suffix
         pe = _read(config, transport, pe_id, 'Microsoft.Network/privateEndpoints',
-                   required=not (_required_bindings is None and permit_pending_audit_endpoints and key.startswith('auditStorage')))
+                   required=not (_required_bindings is None and permit_pending_audit_endpoints
+                                 and key.startswith(('auditStorage', 'certificate'))))
         if pe is None:
             # Core preparation precedes creation of the two audit endpoints.
             # No missing binding is supplied to a rule or completion check.
@@ -422,11 +463,22 @@ def _temporary_priorities(group):
     return result
 
 
+def _fixed_rules_by_group(prefixes):
+    base = {group: entry['rules'] for group, entry in _catalog('nsg-rule-priorities.json')['groups'].items()}
+    if 'certificate' in prefixes:
+        for group, rules in _catalog('certificate-nsg-rules.json')['groups'].items():
+            if group not in base or set(base[group]) & set(rules):
+                raise FixedNsgError('The certificate NSG manifest overlaps the fixed rules')
+            base[group] = {**base[group], **rules}
+    return base
+
+
 def _classify(parents, bindings, *, require_complete=False, accept_previous_names=False):
-    fixed = _catalog('nsg-rule-priorities.json'); legacy = _catalog('nsg-legacy-rule-definitions.json')
+    fixed = _fixed_rules_by_group(bindings['subnets'])
+    legacy = _catalog('nsg-legacy-rule-definitions.json')
     plan = []
     for key in GROUPS:
-        current = _inventory(parents[key]); desired = fixed['groups'][key]['rules']
+        current = _inventory(parents[key]); desired = fixed[key]
         older = legacy['groups'].get(key, {'rules': {}}); temporary = _temporary_priorities(older)
         renamed = {previous: name for name, previous in _PREVIOUS_RULE_NAMES.get(key, {}).items()}
         matching = set()
@@ -751,11 +803,11 @@ def prepare_fixed_nsg_rules(config, transport, *, execute=False, record=None, ma
     # Exact desired static children need no priority migration or live IP read.
     _, _, prefixes = _scope(config)
     static_bindings = {'subnets': prefixes, 'ips': {}, 'ipSets': {}}
-    fixed = _catalog('nsg-rule-priorities.json')
+    fixed = _fixed_rules_by_group(prefixes)
     static_only = True
     for key, parent in parents.items():
         for name, child in _inventory(parent).items():
-            rule = fixed['groups'][key]['rules'].get(name)
+            rule = fixed[key].get(name)
             if (rule is None or any(token.split(':', 1)[0] not in ('subnet', 'tag', 'literal')
                                     for token in rule['source'] + rule['destination'])
                     or _properties(child) != _definition(rule, static_bindings)):
@@ -768,7 +820,7 @@ def prepare_fixed_nsg_rules(config, transport, *, execute=False, record=None, ma
     required_bindings = set(); fixed_names_only = True
     for key, parent in parents.items():
         for name in _inventory(parent):
-            rule = fixed['groups'][key]['rules'].get(name)
+            rule = fixed[key].get(name)
             if rule is None:
                 fixed_names_only = False; break
             for token in rule['source'] + rule['destination']:
@@ -779,7 +831,7 @@ def prepare_fixed_nsg_rules(config, transport, *, execute=False, record=None, ma
     bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True,
                                       permit_pending_audit_endpoints=True, _required_bindings=required_bindings)
     if required_bindings is not None and any(
-            _properties(child) != _definition(fixed['groups'][key]['rules'][name], bindings)
+            _properties(child) != _definition(fixed[key][name], bindings)
             for key, parent in parents.items() for name, child in _inventory(parent).items()):
         # A matching name alone never bypasses the legacy/modified-rule audit.
         required_bindings = None

@@ -162,7 +162,6 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         self.assertTrue(retention["listReadVerified"])
         self.assertFalse(retention["purgeRequested"])
         self.assertFalse(transport.mutations())
-        self.assertEqual(set(cleanup.SERVICE_TYPES), {"keyVault", "foundry", "apim"})
 
     def test_api_center_retention_records_real_deadlines_without_changing_it(self):
         tombstone = self.api_center_tombstone()

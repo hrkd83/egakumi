@@ -123,10 +123,7 @@ class WafLayoutBicepTests(unittest.TestCase):
         identifier = self.template["parameters"]["wafPolicyIdentifier"]
         self.assertEqual((identifier["minLength"], identifier["maxLength"]), (6, 6))
         self.assertNotIn("defaultValue", identifier)
-        modules = self.main["resources"]
-        modules = list(modules.values()) if isinstance(modules, dict) else modules
-        module = next(item for item in modules if "wafPolicyIdentifier" in item.get("properties", {}).get("parameters", {}))
-        wiring = module["properties"]["parameters"]["wafPolicyIdentifier"]["value"]
+        wiring = self.main["variables"]["gatewayPlan"]["wafPolicyIdentifier"]
         self.assertEqual(GatewayExpression(wiring, self.main["variables"]).evaluate({
             "configuration": {"services": {"apimInstanceId": IDENTIFIER}}}), IDENTIFIER)
         self.assertEqual({profile["name"] for profile in self.profiles}, DATA_PURPOSES)

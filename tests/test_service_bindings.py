@@ -21,6 +21,9 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
             'bindings': compile_bicep('infra/modules/service-bindings.bicep'),
             'main': compile_bicep('infra/main.bicep'),
             'services': compile_bicep('infra/modules/services.bicep'),
+            'public_ingress': compile_bicep('infra/public-ingress.bicep'),
+            'certificate_storage': compile_bicep('infra/modules/certificate-storage.bicep'),
+            'registry': compile_bicep('infra/modules/portal-registry.bicep'),
             'gateway': compile_bicep('apps/apim/deploy/main.bicep'),
         }
 
@@ -37,30 +40,46 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
         self.assertEqual(grant["properties"]["principalId"], "[parameters('principalIds').apim]")
         self.assertEqual(grant["properties"]["principalType"], "ServicePrincipal")
 
-    def test_management_vm_receives_only_certificate_and_secret_roles_at_the_target_vault(self):
-        """証明書VMの付与先を実ARMで限定し、APIM管理権限の混入を拒否する。"""
-        template = self.templates["bindings"]
-        resources = template["resources"]
-        resources = list(resources.values()) if isinstance(resources, dict) else resources
-        grants = [resource for resource in resources
+    def test_certificate_worker_is_scoped_to_the_isolated_vault(self):
+        template = self.templates["certificate_storage"]
+        self.assertNotIn("managementPrincipalId", template["parameters"])
+        self.assertNotIn("managementPrincipalId", self.templates["bindings"]["parameters"])
+        grants = [resource for resource in template["resources"]
                   if resource["type"] == "Microsoft.Authorization/roleAssignments"
-                  and resource.get("properties", {}).get("principalId") == "[parameters('managementPrincipalId')]"]
+                  and resource.get("properties", {}).get("principalId") == "[parameters('tlsPrincipalId')]"
+                  and "Microsoft.KeyVault/vaults" in resource.get("scope", "")]
+        self.assertEqual(len(grants), 1)
+        self.assertIn("resourceId('Microsoft.KeyVault/vaults'", grants[0]["scope"])
+        self.assertIn("kvtls-", grants[0]["scope"])
+        self.assertEqual(grants[0]["properties"]["principalType"], "ServicePrincipal")
+
+    def test_public_tls_and_portal_cannot_write_each_others_receipts(self):
+        grants = [row for row in self.templates["certificate_storage"]["resources"]
+                  if row["type"] == "Microsoft.Authorization/roleAssignments"
+                  and "certificate-state-blob-operator" in row["properties"]["roleDefinitionId"]]
         self.assertEqual(len(grants), 2)
-        expected_roles = {
-            "[variables('certificatesOfficerRoleId')]": "a4417e6f-fecd-4de8-b567-7b0420556985",
-            "[variables('secretsOfficerRoleId')]": "b86a8fe4-44ce-4948-aee5-eccb2c155cd7",
-        }
-        self.assertEqual({grant["properties"]["roleDefinitionId"] for grant in grants}, set(expected_roles))
-        for expression, role_id in expected_roles.items():
-            variable = expression.split("'")[1]
-            self.assertEqual(template["variables"][variable],
-                             "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '" + role_id + "')]")
-        for grant in grants:
-            with self.subTest(role=grant["properties"]["roleDefinitionId"]):
-                self.assertEqual(grant["scope"], "[resourceId('Microsoft.KeyVault/vaults', parameters('names').keyVault)]")
-                self.assertEqual(grant["properties"]["principalType"], "ServicePrincipal")
-                self.assertEqual(grant["condition"],
-                                 "[and(parameters('grantManagementCertificateAccess'), not(empty(parameters('managementPrincipalId'))))]")
+        self.assertTrue(all("storageAccounts/blobServices/containers" in row["scope"] for row in grants))
+        scopes = {row["properties"]["principalId"]: row["scope"] for row in grants}
+        self.assertIn("'certificate-jobs'", scopes["[parameters('tlsPrincipalId')]"])
+        self.assertNotIn("'portal-certificate-state'", scopes["[parameters('tlsPrincipalId')]"])
+        self.assertIn("'portal-certificate-state'", scopes["[parameters('portalPrincipalId')]"])
+        self.assertNotIn("'certificate-jobs'", scopes["[parameters('portalPrincipalId')]"])
+
+    def test_private_registry_preserves_restrictions_with_managed_identity_pull(self):
+        registry, = [row for row in self.templates["registry"]["resources"]
+                     if row["type"] == "Microsoft.ContainerRegistry/registries"]
+        self.assertEqual(registry["apiVersion"], "2025-11-01")
+        self.assertEqual(registry["sku"]["name"], "Premium")
+        self.assertEqual(registry["properties"], {
+            "adminUserEnabled": False,
+            "publicNetworkAccess": "Disabled",
+            "networkRuleBypassOptions": "None",
+            "networkRuleBypassAllowedForTasks": False,
+            "dataEndpointEnabled": True,
+            "anonymousPullEnabled": False,
+            "roleAssignmentMode": "LegacyRegistryPermissions",
+            "policies": {"azureADAuthenticationAsArmPolicy": {"status": "enabled"}},
+        })
 
     def test_cm_uses_builtin_apim_contributor_only_at_the_provider_scope(self):
         roles = []
@@ -134,7 +153,10 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
             "Microsoft.App/managedEnvironments",
             "Microsoft.ContainerRegistry/registries",
         })
-        self.assertEqual(hosts(self.templates["main"]), portal_hosts)
+        dedicated, = [resource for resource in self.templates["main"]["resources"]
+                      if resource.get("name") == "[format('{0}-certificate-environment', variables('stem'))]"]
+        self.assertEqual({kind for kind, _ in hosts(dedicated)}, {"Microsoft.App/managedEnvironments"})
+        self.assertEqual(hosts(self.templates["main"]), sorted(portal_hosts + hosts(dedicated)))
         self.assertIn(("Microsoft.App/containerApps", "[format('ca-{0}-credentials', parameters('stem'))]"),
                       hosts(self.templates["gateway"]))
 
@@ -230,6 +252,7 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
                 for item in value:
                     walk(item)
         walk(self.templates["main"])
+        walk(self.templates["public_ingress"])
         # Bicep の existing APIM 参照も type を持つ。実際に identity を配備する本体を対象にする。
         apim = [item for item in found if item["type"] == "Microsoft.ApiManagement/service" and "identity" in item]
         gateways = [item for item in found if item["type"] == "Microsoft.Network/applicationGateways"]

@@ -1,5 +1,5 @@
-// 管理VMのSystemAssigned IDに付与する保守用カスタムロールの定義です。
-// 定義をこのsubscriptionに作り、割当は別のbindingsで構築した各資源へ限定します。
+// 担当者が保守時に使うカスタムロールを定義します。
+// 割当は作業ごとに、対象資源のスコープで担当者本人に行います。
 targetScope = 'subscription'
 
 @minLength(1)

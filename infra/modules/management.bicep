@@ -48,10 +48,6 @@ param adminUsername string
 param sshPublicKey string
 @description('正式CLI内部の元作成証跡世代。認証秘密や公開作成フラグではありません。')
 param initialSerialGeneration string = ''
-@description('VM ログインの組み込み Azure ロールを付与する対象。一般ログインか管理者ログインかを指定します。')
-param loginAssignments array = []
-@description('Azure DNS更新用の事前作成済みユーザー割り当てMIの完全なリソースID。権限はDNS側で事前付与します。')
-param dnsManagedIdentityResourceId string = ''
 @allowed(['ImageDefault', 'AutomaticByPlatform'])
 @description('Azure による OS パッチ評価方式。使用イメージで対応する設定を指定します。')
 param patchAssessmentMode string = 'ImageDefault'
@@ -61,8 +57,6 @@ param patchMode string = 'ImageDefault'
 
 // Linux 内のホスト名にも同じ環境名・製品名を使い、Azure 上の VM と対応させます。
 var computerName = 'mgmt-${resourceStem}'
-var vmLoginUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'fb879df8-f326-4884-b1cf-06f3ad86be52')
-var vmLoginAdminRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1c0163c0-47e6-4577-8991-ea5c82e286e4')
 
 // 管理 VM のプライベート NIC。Public IP を付けず、外向きはサブネットの UDR を使います。
 resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
@@ -89,10 +83,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
   name: 'vm-${resourceStem}-mgmt'
   location: location
   tags: tags
-  identity: empty(dnsManagedIdentityResourceId) ? { type: 'SystemAssigned' } : {
-    type: 'SystemAssigned, UserAssigned'
-    userAssignedIdentities: { '${dnsManagedIdentityResourceId}': {} }
-  }
+  identity: { type: 'SystemAssigned' }
   properties: {
     hardwareProfile: { vmSize: vmSize }
     securityProfile: {
@@ -169,17 +160,6 @@ resource collectionAssociation 'Microsoft.Insights/dataCollectionRuleAssociation
   name: '${resourceStem}-linux-monitor'
   properties: { dataCollectionRuleId: linuxDataCollectionRuleId }
 }
-
-// 指定ユーザー等へ VM 単位のログイン権限を付与。サブスクリプションの Owner は付けません。
-resource logonGrants 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for assignment in loginAssignments: {
-  scope: vm
-  name: guid(vm.id, assignment.principalId, assignment.role)
-  properties: {
-    principalId: assignment.principalId
-    principalType: assignment.principalType
-    roleDefinitionId: assignment.role == 'Administrator' ? vmLoginAdminRoleId : vmLoginUserRoleId
-  }
-}]
 
 var managementVmResult = {
   id: vm.id

@@ -29,7 +29,8 @@ NETWORK_INPUTS = {
     "addressSpaces": ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24", "10.40.3.0/24"],
     "subnetPrefixes": {"agw": "10.40.0.0/24", "pep": "10.40.1.0/24",
                        "firewall": "10.40.2.0/26", "apim": "10.40.2.64/26",
-                       "management": "10.40.2.128/26", "aca": "10.40.2.192/26"},
+                       "management": "10.40.2.128/26", "aca": "10.40.2.192/26",
+                       "certificate": "10.40.3.0/27"},
 }
 FIREWALL_INPUTS = {
     "snatPrivateRanges": ["IANAPrivateRanges"],
@@ -433,7 +434,6 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
             "generatedApimServiceFqdns": config["generatedApimServiceFqdns"],
             "gatewayPublicHostName": config["gateway"]["publicHostName"],
             "portalPublicHostName": config["portal"]["publicHostName"],
-            "certificateDirectory": config["certificate"]["directory"],
             "foundryPrivateIps": ["10.70.1.4"], "keyVaultPrivateIps": ["10.70.1.5"],
             "auditStorageJapanPrivateIps": ["10.70.1.12"], "auditStorageFoundryPrivateIps": ["10.70.1.14"],
             "managementPrivateIp": "10.70.2.132", "firewallPublicIpAddress": "192.0.2.10",
@@ -444,7 +444,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                                              ("management", "vm"), ("aca", "aca"))}}
         return NetworkArmExpression("[createObject()]", template), parameters
 
-    def test_custom_vnet_address_spaces_and_all_six_subnets_are_in_compiled_arm(self):
+    def test_custom_vnet_address_spaces_and_subnets_are_in_compiled_arm(self):
         config = self.configuration()
         expression, parameters = self.resolver("network", config)
         properties = self.templates["network"]["resources"]["vnet"]["properties"]
@@ -452,9 +452,9 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(expression.resolve(properties["dhcpOptions"], parameters), {"dnsServers": []})
         subnets = expression.resolve(properties["subnets"], parameters)
         self.assertEqual([item["properties"]["addressPrefix"] for item in subnets],
-                         [config["network"]["subnetPrefixes"][key] for key in ("agw", "firewall", "apim", "pep", "management", "aca")])
-        self.assertEqual(len(subnets), 6)
-        for subnet, suffix in zip(subnets, ("agw", None, "apim", "pep", "vm", "aca")):
+                         [config["network"]["subnetPrefixes"][key] for key in ("agw", "firewall", "apim", "pep", "management", "aca", "certificate")])
+        self.assertEqual(len(subnets), 7)
+        for subnet, suffix in zip(subnets, ("agw", None, "apim", "pep", "vm", "aca", "certificate")):
             with self.subTest(suffix=suffix):
                 if suffix is None:
                     self.assertEqual(subnet["name"], "AzureFirewallSubnet")
@@ -486,8 +486,8 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         expression, parameters = self.resolver("network", config)
         resources = self.templates["network"]["resources"]
         subnets = expression.resolve(resources["vnet"]["properties"]["subnets"], parameters)
-        self.assertEqual(len(subnets), 6)
-        aca = subnets[-1]["properties"]
+        self.assertEqual(len(subnets), 7)
+        aca = next(item["properties"] for item in subnets if item["name"] == "snet-test-fixture-aca")
         self.assertEqual(aca["addressPrefix"], "10.70.3.128/27")
         self.assertEqual(aca["delegations"][0]["properties"]["serviceName"], "Microsoft.App/environments")
         self.assertIs(aca["defaultOutboundAccess"], False)
@@ -762,8 +762,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                                               for source in certificate["sourceAddresses"] for host in certificate["targetFqdns"]
                                               for protocol in certificate["protocols"]}
                         self.assertIn(anchor, certificate_tuples)
-                        ca = "acme-v02.api.letsencrypt.org" if directory == "production" else "acme-staging-v02.api.letsencrypt.org"
-                        expected_management = fixed_management | {ca, config["gateway"]["publicHostName"], config["portal"]["publicHostName"]}
+                        expected_management = fixed_management | {config["gateway"]["publicHostName"], config["portal"]["publicHostName"]}
                         self.assertEqual(set(management_rule["targetFqdns"]), expected_management)
                         self.assertEqual(len(management_rule["targetFqdns"]), len(expected_management))
 

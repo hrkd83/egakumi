@@ -14,15 +14,6 @@ param apiKeyCatalogProducts array = []
 param apiKeyVerificationSubscriptions array = []
 param runtimeIdentity object
 param schemaIdentity object
-@minLength(1)
-@description('Coreが構築した管理VM自身のprincipalId。公開設定ではなく構築stateから取得します。')
-param managementPrincipalId string
-@minLength(36)
-@maxLength(36)
-@description('構築した管理VM自身のclientId。SQLのSID用であり、principalIdではありません。')
-param managementSqlClientId string
-@description('Coreが構築した保守ロールのID。作成フラグや利用者の任意入力は設けません。')
-param managementRoleDefinitionIds object
 param sqlServer string
 param databaseSettings object
 param vaultName string
@@ -95,7 +86,6 @@ module schema 'schema-job.bicep' = {
     imageDigest: imageDigest
     runtimeIdentity: runtimeIdentity
     schemaIdentity: schemaIdentity
-    managementSqlClientId: managementSqlClientId
     sqlServer: sqlServer
     database: database.outputs.database
     apiKeyGroups: apiKeyGroups
@@ -152,20 +142,6 @@ module groupReconciliation 'group-reconciliation-job.bicep' = if (deployApplicat
     clientSecretUri: database.outputs.clientSecretUri
     authentication: authentication
     authIdentity: authRuntimeIdentity
-  }
-}
-
-// 初回はSQL初期化Job、更新時はAppと定期Jobも対象にし、予定名へは割り当てません。
-module managementAccess '../../../infra/modules/management-aca-bindings.bicep' = {
-  name: '${stem}-portal-management-access'
-  params: {
-    principalId: managementPrincipalId
-    roleDefinitionIds: managementRoleDefinitionIds
-    applicationNames: deployApplication ? [last(split(application!.outputs.id, '/'))] : []
-    jobNames: deployApplication
-      ? [last(split(schema.outputs.id, '/')), last(split(groupReconciliation!.outputs.id, '/'))]
-      : [last(split(schema.outputs.id, '/'))]
-    environmentNames: [last(split(schema.outputs.environmentId, '/'))]
   }
 }
 

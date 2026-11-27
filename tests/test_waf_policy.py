@@ -1833,10 +1833,7 @@ class DataWafTests(unittest.TestCase):
                 return super().evaluate(parameters, index, tree, bindings)
 
         template = compile_bicep('infra/main.bicep')
-        resources = template['resources']
-        resources = list(resources.values()) if isinstance(resources, dict) else resources
-        module = next(item for item in resources if 'publishedApiPaths' in item.get('properties', {}).get('parameters', {}))
-        expression = module['properties']['parameters']['publishedApiPaths']['value']
+        expression = template['variables']['gatewayPlan']['publishedApiPaths']
         config = {'apiDefinitions': [], 'infrastructureApiDefinitions': infrastructure_api_definitions([])}
         actual = MainExpression(expression, template['variables']).evaluate({'configuration': config})
         self.assertEqual(set(actual), published_paths({'apiDefinitions': []}))

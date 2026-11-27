@@ -117,10 +117,7 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.main = compile_bicep('infra/main.bicep')
-        resources = cls.main['resources']
-        resources = list(resources.values()) if isinstance(resources, dict) else resources
-        cls.module = next(item for item in resources if 'documentUploadPaths' in item.get('properties', {}).get('parameters', {}))
-        cls.template = cls.module['properties']['template']
+        cls.template = compile_bicep('infra/modules/application-gateway.bicep')
         resources = cls.template['resources']
         cls.resources = list(resources.values()) if isinstance(resources, dict) else resources
 
@@ -159,8 +156,8 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
             else: changed['authorization']['operationConstraints']['analyze_document'][field] = value
             with self.subTest(field=field, value=value):
                 self.assertEqual(paths(changed), [])
-        self.assertEqual(self.module['properties']['parameters']['documentUploadPaths'],
-                         {'value': "[variables('documentUploadPaths')]"})
+        self.assertEqual(self.main['variables']['gatewayPlan']['documentUploadPaths'],
+                         "[variables('documentUploadPaths')]")
 
     def test_compiled_document_policy_matches_python_and_keeps_every_common_protection(self):
         values = self.parameters()

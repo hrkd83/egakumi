@@ -72,7 +72,7 @@ MCPも45秒で停止し、既存clientのredirect・自動ツール再実行・s
 
 各ケースと最終結果は、主チェックアウトの選択環境の`evidence/apim-phase12-transports-<generated-run-id>/`へ`context.save_private`で保護保存します。時刻、APIM相関ID、固定API／operation ID、認証方式、HTTP状態、既知イベント数、構造比較のBoolean、固定した例外クラスを記録します。HTTPヘッダー全体、URL、query、token、本文、service session ID、任意の例外メッセージは保存しません。公開用の結果には実環境の時刻・相関ID・実測値を転載しません。
 
-この入口は監査queryを実行せず、全結果で`auditVerified: false`、`phase12Completed: false`を維持します。実照合は[管理VMの正式入口](../../docs/operations.md#管理vmから保守データを取得する)で、Linux管理VM自身のMIと所有inventoryを使う`management_client.py workspace-query --resource-id <WORKSPACE_RESOURCE_ID> --query-file <PROTECTED_QUERY_FILE>`から行います。inventoryと出力指定を含む正式手順に従い、実値入りquery・結果は許可された保護領域で扱います。Windowsの人間認証cacheをVMへコピーしません。
+この入口の結果は`auditVerified: false`、`phase12Completed: false`です。実照合は[管理VMの正式入口](../../docs/operations.md#管理vmから保守データを取得する)で、保守担当者本人のEntra認証と構築inventoryを使う`workspace-query`から行います。実値を含むクエリー・結果は本人所有の保護領域で扱います。
 
 [audit-identification.kql](../audit-identification.kql)を基に、対象時刻・資源・API・operation・要求の全行とtraceを取得します。APIM応答の`apim-request-id`とログの`CorrelationId`が主な照合キーです。clientの`x-ms-client-request-id`だけではAPIM監査の照合完了としません。共通要求準備がこのヘッダーをAPIMの要求IDへ上書きするため、送信したclient値を`CorrelationId`へ代入しません。応答IDを取得できなかった要求は、正式診断に実際に保存された値と、固定した所有APIM・API・メソッド・状態の条件から一意なnative行を観測できた場合だけ補完候補にします。補完後も認証主体・操作・モデルとAppGWの照合を行い、一致しない場合や欠測は保留します。時刻だけの結合は行いません。
 

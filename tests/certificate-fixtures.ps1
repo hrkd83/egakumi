@@ -1,5 +1,6 @@
 # Import only worker functions. Never execute deployment entry points while testing.
 param([scriptblock]$Transform)
+$ContainerJob=$false # Fixtures import functions rather than the worker parameters.
 $certificateTokens=$null
 $certificateParseErrors=$null
 $certificateAst=[Management.Automation.Language.Parser]::ParseFile(
