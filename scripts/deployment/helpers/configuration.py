@@ -1819,9 +1819,10 @@ def build_bicep_configuration(configuration: dict) -> dict:
     """
     _reject_ignored_material_overrides(configuration)
     result = copy.deepcopy(configuration)
-    network = result["network"]
-    network["firewall"].pop("idpsPrivateRanges", None)
-    if network["firewall"]["sku"] == "Premium":
+    network = result.get("network", {})
+    firewall = network.get("firewall", {})
+    firewall.pop("idpsPrivateRanges", None)
+    if firewall.get("sku") == "Premium":
         network["generatedIdpsPrivateRanges"] = _idps_private_ranges(network)
     result["apiDefinitions"] = with_catalog_descriptions(configuration)
     # 標準APIの接続先はGateway配備時に解決する。基盤は公開経路と本文形式だけを
