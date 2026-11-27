@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 
 from test_api_protocols import bound_coverage, bound_external_coverage, configuration
 from arm_helpers import PolicyExpression, compiled_policy_value
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/apim/deploy"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/api-gateway/deploy"))
 import api_publication as publish_apis
 
 CORE = Path(__file__).resolve().parents[1]
@@ -24,7 +24,7 @@ CORE = Path(__file__).resolve().parents[1]
 class ContractRatePublicationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep('apps/apim/api-publication.bicep')
+        cls.template = compile_bicep('apps/api-gateway/api-publication.bicep')
         raw=bound_external_coverage()
         # Explicit external test fixtures exercise every supported protocol; they are not standard Core APIs.
         cls.config=configuration.normalize_configuration(raw,base_directory=CORE/"config")

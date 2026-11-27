@@ -58,7 +58,7 @@ REALTIME_WORKLET_PATH = 'public/realtime-audio-worklet.js'
 
 def model_catalog_snapshot(root):
     """モデルAPIの正本を同梱し、ローカルの古い生成ファイルに依存しないビルドにする。"""
-    folder = Path(root) / 'apps/apim/apis'
+    folder = Path(root) / 'apps/api-gateway/apis'
     if folder.is_symlink() or not folder.is_dir():
         raise ValueError('Gateway model API definitions are missing')
     bindings_file = folder.parent / 'public-bindings.json'
@@ -101,7 +101,7 @@ def model_catalog_snapshot(root):
 def document_contract_snapshot(root):
     """公開Document契約から対応版だけを同梱し、古いローカル生成物を使わない。"""
     from .apim_document_contract import load_document_api_version
-    schema = Path(root) / 'apps/apim/schemas/document-analysis.json'
+    schema = Path(root) / 'apps/api-gateway/schemas/document-analysis.json'
     if schema.is_symlink() or not schema.is_file():
         raise ValueError('The public Document contract must be a regular file')
     return (json.dumps({'apiVersion': load_document_api_version(root)}, ensure_ascii=False, indent=2) + '\n').encode('utf-8')

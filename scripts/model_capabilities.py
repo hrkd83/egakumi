@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 
-CAPABILITIES_FILE = Path(__file__).resolve().parents[1] / "apps/apim/model-capabilities.json"
+CAPABILITIES_FILE = Path(__file__).resolve().parents[1] / "apps/api-gateway/model-capabilities.json"
 LIMIT_KINDS = {"documented", "dynamic", "unsupported", "unverified"}
 
 

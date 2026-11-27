@@ -14,7 +14,7 @@ class ProductSubscriptionDeploymentTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep('apps/apim/api-publication.bicep')
+        cls.template = compile_bicep('apps/api-gateway/api-publication.bicep')
         resources = cls.template["resources"]
         cls.products = [item for item in (resources.values() if isinstance(resources, dict) else resources)
                         if item["type"] == "Microsoft.ApiManagement/service/products"]

@@ -114,9 +114,9 @@ var createWafPolicy = skuName == 'WAF_v2'
 var documentPaths = filter(documentUploadPaths, path => path == '/tools/documents/v1/analyze')
 var useDocumentWafPolicy = createWafPolicy && !empty(documentPaths)
 // PythonのWAF reconcileと同じ正本を使用し、基盤再配備でも実測した除外を維持します。
-var dataManifest = loadJsonContent('../../../apps/apim/waf-data-exclusions.json')
+var dataManifest = loadJsonContent('../../../apps/api-gateway/waf-data-exclusions.json')
 // 入力文書のURLは自由文の7グループ除外へ分類せず、専用パスの個別931130だけを合成します。
-var sourceUrlProfiles = loadJsonContent('../../../apps/apim/waf-source-url-exclusions.json').profiles
+var sourceUrlProfiles = loadJsonContent('../../../apps/api-gateway/waf-source-url-exclusions.json').profiles
 var dataProfiles = map(filter(dataManifest.profiles, profile => createWafPolicy && (profile.scope == 'portal' || length(filter(profile.paths, path => contains(publishedApiPaths, path) && !contains(documentPaths, path))) > 0)), profile => {
   name: profile.name
   scope: profile.scope
@@ -258,7 +258,7 @@ resource gatewayAuthWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicatio
 // 920470（Content-Type 構文）は無効化しません。公開 WAV は単純な audio/wav とし、
 // Speech 固有の codec/samplerate は APIM の固定 backendHeaders で付けます。
 // https://learn.microsoft.com/azure/web-application-firewall/ag/per-site-policies
-var speechControls = loadJsonContent('../../../apps/apim/waf-raw-body-controls.json')
+var speechControls = loadJsonContent('../../../apps/api-gateway/waf-raw-body-controls.json')
 var speechRulePriorities = filter(range(1, 100), candidate => !contains(map(wafCustomRules, rule => rule.priority), candidate))
 var speechTraversalRules = [for (rule, index) in speechControls.rules: {
   name: rule.name
@@ -314,7 +314,7 @@ resource documentUploadWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplica
 
 // JSONを受けるAI用途のMIMEだけを大小文字非依存のBlock判定に置き換えます。
 // Allowによる検査の短絡やraw本文用930110の調整は行いません。
-var jsonContentControls = loadJsonContent('../../../apps/apim/waf-json-content-controls.json')
+var jsonContentControls = loadJsonContent('../../../apps/api-gateway/waf-json-content-controls.json')
 var jsonContentProperties = [for format in jsonContentControls.formats: {
   name: format.name
   properties: union(sharedWafProperties, {

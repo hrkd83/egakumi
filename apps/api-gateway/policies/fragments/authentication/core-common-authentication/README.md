@@ -44,4 +44,4 @@ service.xml の STEP5で監査用の認証済み利用者情報を準備
 
 標準Entra検証の失敗は通常のinboundを中断するため、共通 `on-error` の別フラグメント `core-entra-authentication-error` が監査して401を返す。その他の本人不備は401、会社設定や内部処理の不備は500に分類する。本文・キー・トークン・Cookieを監査へ保存しない。
 
-生成・完全照合のPython側は `scripts/deployment/helpers/apim_common_authentication.py`、IaC側は `apps/apim/api-publication.bicep` が担当する。フラグメント名だけでは内容を信用せず、配備時と読戻し時に実際の本文と固定生成元を照合する。旧inline構成との比較は説明行だけを除いた互換生成を使い、条件式・処理順・式の属性値を保持して明示移行する。
+生成・完全照合のPython側は `scripts/deployment/helpers/apim_common_authentication.py`、IaC側は `apps/api-gateway/api-publication.bicep` が担当する。フラグメント名だけでは内容を信用せず、配備時と読戻し時に実際の本文と固定生成元を照合する。旧inline構成との比較は説明行だけを除いた互換生成を使い、条件式・処理順・式の属性値を保持して明示移行する。

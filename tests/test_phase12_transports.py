@@ -27,7 +27,7 @@ def configuration():
     definitions = []
     models = set()
     for name in transports.WS_APIS:
-        api = json.loads((ROOT / "apps/apim/apis" / (name + ".json")).read_text("utf-8"))
+        api = json.loads((ROOT / "apps/api-gateway/apis" / (name + ".json")).read_text("utf-8"))
         api["backendUrl"] = "wss://backend.example.com/"
         query = api["websocket"].get("queryParameters", {})
         for key, value in query.items():

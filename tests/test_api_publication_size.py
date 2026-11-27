@@ -19,7 +19,7 @@ from arm_helpers import DiscoveryExpression
 from deployment.helpers import credential_login
 
 CORE = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(CORE / "apps/apim/deploy"))
+sys.path.insert(0, str(CORE / "apps/api-gateway/deploy"))
 from publication_templates import publication_parameters, split_publication_templates, source_generation_id
 from api_publication import SOURCE_PRINCIPAL_EXPRESSION, validate_publication_template
 
@@ -195,7 +195,7 @@ class ApiPublicationSizeTests(unittest.TestCase):
             "l7IngressSecretIdentifier": "https://kv-test-fixture.vault.azure.net/secrets/core-l7-ingress-secret",
             "realtimeTicketSecretIdentifier": "https://kv-test-fixture.vault.azure.net/secrets/core-realtime-ticket-key",
         }
-        cls.template = compile_bicep('apps/apim/api-publication.bicep')
+        cls.template = compile_bicep('apps/api-gateway/api-publication.bicep')
         cls.measurements = {}
 
     def split_measurements(self, parameters):
@@ -748,7 +748,7 @@ class ApiPublicationSizeTests(unittest.TestCase):
             from policy_fixture_paths import policy_fixture_path
             from deployment.helpers.apim_audit import render_audit_policy
             raw_policy = render_audit_policy(policy_fixture_path(
-                CORE / "apps/apim/policies", "credential-login/" + operation_name + ".xml").read_text(encoding="utf-8"))
+                CORE / "apps/api-gateway/policies", "credential-login/" + operation_name + ".xml").read_text(encoding="utf-8"))
             expected = reader.resolve("[__bicep.renderCredentialLoginOperation(parameters('fixturePolicy'), parameters('fixtureSettings'), '')]",
                                       {**expanded["parameters"], "fixturePolicy": raw_policy, "fixtureSettings": fixture_settings})
             self.assertEqual(ET.tostring(root), ET.tostring(ET.fromstring(expected)), operation_name)

@@ -18,14 +18,14 @@ from test_api_protocols import bound_external_coverage, configuration
 
 
 CORE = Path(__file__).resolve().parents[1]
-POLICIES = CORE / "apps/apim/policies"
-SERVICE_POLICY = CORE / "apps/apim/policies/service.xml"
+POLICIES = CORE / "apps/api-gateway/policies"
+SERVICE_POLICY = CORE / "apps/api-gateway/policies/service.xml"
 
 
 class WebSocketPublicationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep('apps/apim/api-publication.bicep')
+        cls.template = compile_bicep('apps/api-gateway/api-publication.bicep')
 
     def test_private_http_hop_keeps_http_and_websocket_protocols(self):
         """AppGWのTLS終端後のHTTP／WebSocket経路の受付契約を維持する。"""

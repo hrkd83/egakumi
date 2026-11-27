@@ -21,7 +21,7 @@ def rerank_fixture():
     raw = api_fixture()
     api = raw["apiDefinitions"][0]
     # Reuse only the public provider audience, never an adopter's configuration.
-    provider = json.loads((CORE / "apps/apim/apis/cohere-inference-v1.json").read_text())
+    provider = json.loads((CORE / "apps/api-gateway/apis/cohere-inference-v1.json").read_text())
     api.update(backendService="foundryServices", backendAudience=provider["backendAudience"])
     api["operations"] = [{"name": "rerank", "displayName": "Synthetic rerank", "method": "POST",
                           "urlTemplate": "/rerank", "templateParameters": [],
@@ -39,7 +39,7 @@ class RerankConfigurationTests(unittest.TestCase):
         return configuration.normalize_configuration(raw, base_directory=CORE / "config")
 
     def test_shipped_rerank_and_embedding_keep_distinct_semantic_contracts(self):
-        source = json.loads((CORE / "apps/apim/apis/cohere-inference-v1.json").read_text())
+        source = json.loads((CORE / "apps/api-gateway/apis/cohere-inference-v1.json").read_text())
         constraints = source["authorization"]["operationConstraints"]
         self.assertEqual(constraints["rerank"]["kind"], "rerank")
         self.assertEqual(constraints["cohere-embeddings"]["kind"], "textEmbeddings")
@@ -119,7 +119,7 @@ public static class RerankTargetFixture {
   return result.ToString(Formatting.None);
  }
 }'''
-        policy = ET.parse(CORE / "apps/apim/policies/api-templates/rest/rest.xml")
+        policy = ET.parse(CORE / "apps/api-gateway/policies/api-templates/rest/rest.xml")
         required = policy.find("./inbound/choose[@id='core-api-target-validation-selection']/when").get('condition')
         source = (source.replace("__TARGET__", actual_expression("rest.xml", "gatewayTargetDecision"))
                   .replace("__KIND__", actual_expression("rest.xml", "gatewayOperationKind"))
@@ -167,7 +167,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
 class RerankPublicationTests(unittest.TestCase):
     def test_compiled_policy_preserves_semantic_limits_routing_and_audit_without_llm_counting(self):
-        template = compile_bicep("apps/apim/api-publication.bicep")
+        template = compile_bicep("apps/api-gateway/api-publication.bicep")
         api = configuration.normalize_configuration(rerank_fixture(), base_directory=CORE / "config")["apiDefinitions"][0]
         # The deployment stage resolves Foundry's owned endpoint before Bicep.
         api["backendUrl"] = "https://provider.example.com"

@@ -1,4 +1,6 @@
-# APIMのAPI登録用資材
+# API Gatewayの配備資材
+
+業務APIの公開に使うAPI定義、APIMポリシー、Application GatewayのWAFポリシー設定を管理します。
 
 共通基盤と同じparamsを、ルートの`python3 scripts/deploy_gateway.py --config <params> --execute`へ渡します。GatewayのDB・CM・認証窓口が必要な場合は先に配備し、準備完了後にこのフォルダーのAPIを登録します。初回構築では、`azd up`による共通基盤の作成と、公開証明書のEntra登録を済ませてから[Gatewayを個別配備](../../docs/setup/11-deploy-gateway.md)します。
 
@@ -26,11 +28,12 @@ Gateway配備は通常キー用の`released-apis`製品（`Released APIs`）を�
 | --- | --- |
 | [api-publication.bicep](api-publication.bicep) | API・バックエンド・製品・購読を登録・更新する |
 | [policies/](policies/) | 認証・認可、下流認証、モデル制限、監査、プロトコル中継等のXMLテンプレート |
+| [WAF設定](../../docs/testing/waf-compatibility.md) | APIの公開経路に適用する除外・本文検査等を`waf-*.json`で管理 |
 | [schemas/](schemas/) | APIMへ登録するAPI入出力のスキーマ。PIIのJSON契約は[pii.json](schemas/pii.json) |
 | [apis/](apis/) | `<API名>.json`で管理する標準API。1ファイルに1つのAPIオブジェクトを配置 |
 | [public-bindings.json](public-bindings.json) | API定義で共用する公開モデル名とAPI版。Gateway配備とPortalのカタログ生成が同じ値を参照 |
 | [model-capabilities.json](model-capabilities.json) | API・操作・モデル別の公表出力上限、確認元URL、確認日。不定・未対応・未確認を数値と区別する |
-| [../deploy/api_publication.py](deploy/api_publication.py) | 統合配備コマンドから呼ぶAPI登録処理 |
+| [deploy/](deploy/README.md) | Gatewayの統合配備とAPI登録 |
 
 登録方法は[Gatewayの更新手順](../../docs/operations.md#同じ環境を更新する)を参照してください。指定APIと関連資源の配備成功後、キーによる共通認可を全体ポリシーへ統合します。同じIDをGUIでも編集する場合は設定の競合を確認します。
 

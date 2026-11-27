@@ -9,7 +9,7 @@ from .paths import REPOSITORY
 
 API_REQUEST_PREPARATION_ID = "core-api-request-preparation"
 _INCLUDE = {"id": API_REQUEST_PREPARATION_ID, "fragment-id": API_REQUEST_PREPARATION_ID}
-_DIRECTORY = REPOSITORY / "apps/apim/policies/fragments/request" / API_REQUEST_PREPARATION_ID
+_DIRECTORY = REPOSITORY / "apps/api-gateway/policies/fragments/request" / API_REQUEST_PREPARATION_ID
 
 
 def _xml(value: str) -> ET.Element:

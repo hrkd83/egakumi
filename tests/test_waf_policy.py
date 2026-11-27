@@ -305,7 +305,7 @@ class DataWafTests(unittest.TestCase):
 
     def test_plan_displays_the_exact_source_url_rules_for_responses(self):
         config = configuration()
-        config['apiDefinitions'] = [json.loads((ROOT / 'apps/apim/apis/openai-inference-v1.json').read_text())]
+        config['apiDefinitions'] = [json.loads((ROOT / 'apps/api-gateway/apis/openai-inference-v1.json').read_text())]
         planned = plan(config, scopes=('gateway',))['profiles']
         declared = {item['name']: item for item in load_manifest()['profiles']}
         self.assertTrue(any(item['name'] == 'g-responses' for item in planned))
@@ -1254,7 +1254,7 @@ class DataWafTests(unittest.TestCase):
                     selected_profiles(configuration(), manifest=value)
 
     def test_ai_group_policy_uses_only_approved_fields_across_supported_profiles(self):
-        current = load_manifest(ROOT / 'apps/apim/waf-data-exclusions.json')
+        current = load_manifest(ROOT / 'apps/api-gateway/waf-data-exclusions.json')
         self.assertEqual(current['version'], 2)
         profiles = {p['name']: p for p in current['profiles']}
         expected_groups = {
@@ -1669,7 +1669,7 @@ class DataWafTests(unittest.TestCase):
         from bicep_helpers import compile_bicep
         from arm_helpers import PolicyExpression
 
-        current = load_manifest(ROOT / 'apps/apim/waf-data-exclusions.json')
+        current = load_manifest(ROOT / 'apps/api-gateway/waf-data-exclusions.json')
         compiled = compile_bicep(str(ROOT / 'infra/modules/ingress/application-gateway.bicep'))
         expanded = PolicyExpression("[variables('dataManifest')]", compiled['variables'],
                                     functions=compiled.get('functions', [])).evaluate({})
@@ -1718,13 +1718,13 @@ class DataWafTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             folder = Path(folder)
             gateway_template = 'infra/modules/ingress/application-gateway.bicep'
-            for relative in (gateway_template, 'apps/apim/waf-raw-body-controls.json',
-                             'apps/apim/waf-json-content-controls.json', 'apps/apim/waf-source-url-exclusions.json',
+            for relative in (gateway_template, 'apps/api-gateway/waf-raw-body-controls.json',
+                             'apps/api-gateway/waf-json-content-controls.json', 'apps/api-gateway/waf-source-url-exclusions.json',
                              'apps/portal/waf-session-exclusions.json'):
                 target = folder / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / relative, target)
-            (folder / 'apps/apim/waf-data-exclusions.json').write_text(json.dumps(sample), encoding='utf-8')
+            (folder / 'apps/api-gateway/waf-data-exclusions.json').write_text(json.dumps(sample), encoding='utf-8')
             built = subprocess.run([bicep_executable(), 'build', str(folder / gateway_template), '--stdout', '--no-restore'],
                                    env={**os.environ, 'DOTNET_BUNDLE_EXTRACT_BASE_DIR': str(folder)},
                                    capture_output=True, encoding='utf-8', timeout=60)

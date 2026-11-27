@@ -154,7 +154,7 @@ class LivePolicyTests(unittest.TestCase):
             cases.append({'id':'model-'+label,'body':body,'answer':answer,'settings':values})
         for label, error_id in (('exact','core-live-session-request-settings'),('near','core-live-session-request-settings-extra'),('null',None),('empty','')):
             cases.append({'id':'error-'+label,'mode':'error','errorId':error_id,'body':body,'answer':answer})
-        raw=policy_fixture_path(CORE/'apps/apim/policies','live-create.xml').read_text(encoding='utf-8')
+        raw=policy_fixture_path(CORE/'apps/api-gateway/policies','live-create.xml').read_text(encoding='utf-8')
         tree=ET.fromstring(raw)
         # baseの再実装はせず、新しい限定chooseだけを実行して非一致の未処理を確認します。
         error_xml='<policies><on-error>'+ET.tostring(tree.find('./on-error/choose'),encoding='unicode')+'</on-error></policies>'
@@ -203,7 +203,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         for name in ('near','null','empty'):
             self.assertNotIn('status',self.results['error-'+name])
             self.assertEqual(self.results['error-'+name]['audits'],[])
-        raw=policy_fixture_path(CORE/'apps/apim/policies','live-create.xml').read_text(encoding='utf-8')
+        raw=policy_fixture_path(CORE/'apps/api-gateway/policies','live-create.xml').read_text(encoding='utf-8')
         self.assertEqual([node.tag for node in ET.fromstring(raw).find('on-error')],['choose','base'])
 
     def test_existing_order_short_circuit_and_silent_settings_values_are_preserved(self):
@@ -221,7 +221,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
     def test_answer_exposes_the_public_contract_and_rejects_invalid_service_data(self):
         self.assertEqual(json.loads(self.results['valid']['answer']), {'sessionId':'live_synthetic','sdp':'v=0\r\ns=answer\r\n'})
         self.assertEqual(self.results['invalidAnswer']['answer'], '')
-        raw = policy_fixture_path(CORE / 'apps/apim/policies', 'live-create.xml').read_text(encoding='utf-8')
+        raw = policy_fixture_path(CORE / 'apps/api-gateway/policies', 'live-create.xml').read_text(encoding='utf-8')
         root = ET.fromstring(render_audit_policy(raw))
         failure = root.find('./outbound/choose/when/choose/when')
         self.assertEqual([node.tag for node in failure], ['set-variable', 'set-variable', 'set-variable', 'include-fragment', 'return-response'])

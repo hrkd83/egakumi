@@ -39,7 +39,7 @@ AUDIENCE = "44444444-4444-4444-8444-444444444444"
 OTHER = "55555555-5555-4555-8555-555555555555"
 SECOND_CLIENT = "77777777-7777-4777-8777-777777777777"
 PARENT = "66666666-6666-4666-8666-666666666666"
-POLICIES = CORE / "apps/apim/policies"
+POLICIES = CORE / "apps/api-gateway/policies"
 LIMITS = {"requestRate": {"calls": 25, "renewalPeriodSeconds": 60},
           "tokensPerMinute": 20000, "tokenQuota": {"tokens": 1000000, "period": "Monthly"}}
 

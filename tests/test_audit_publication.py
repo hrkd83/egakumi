@@ -48,7 +48,7 @@ class AuditPublicationTests(unittest.TestCase):
    text=node.text or ''
    return (node.tag,tuple(sorted(node.attrib.items())),text if text.strip() else '',
            tuple(structure(child) for child in node),(node.tail or '').strip())
-  directory=CORE/'apps/apim/policies'
+  directory=CORE/'apps/api-gateway/policies'
   marker='__AUDIT_SUBJECT_OBSERVATION_CSHARP__'
   for filename,resource_name,source_marker,comment_mode in (
     ('core-api-settings.xml','apiSettingsFragment','__CORE_API_SETTINGS_CSHARP__','full'),
@@ -103,7 +103,7 @@ class AuditPublicationTests(unittest.TestCase):
   def structure(node):
    return (node.tag,tuple(sorted(node.attrib.items())),(node.text or '').strip(),
            tuple(structure(child) for child in node))
-  raw=policy_fixture_path(CORE/'apps/apim/policies','subscription-profile.xml').read_text(encoding='utf-8')
+  raw=policy_fixture_path(CORE/'apps/api-gateway/policies','subscription-profile.xml').read_text(encoding='utf-8')
   self.assertIn('__SUBSCRIPTION_PROFILE_CSHARP__',raw)
   expected=[structure(node) for node in ET.fromstring(render_audit_policy(raw))]
   def check(value):
@@ -175,7 +175,7 @@ class AuditPublicationTests(unittest.TestCase):
     'inputContracts':{}})
  def test_hosted_store_rewrite_reaches_additional_and_mixed_http_apis(self):
   """合法な追加Hostedの配備と読戻し用sourceへ、同じ本文編集と先行拒否順を渡す。"""
-  raw_policy=(CORE/'apps/apim/policies/api-templates/rest/rest.xml').read_text(encoding='utf-8')
+  raw_policy=(CORE/'apps/api-gateway/policies/api-templates/rest/rest.xml').read_text(encoding='utf-8')
   source=ET.fromstring(render_audit_policy(raw_policy))
   expected=source.find("inbound/choose[@id='core-hosted-response-metadata']")
   self.assertIsNotNone(expected)
@@ -488,7 +488,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
   self.assertEqual(settings['backendAuthentication'],api['backendAuthentication']['mode'])
  def test_credential_caller_canonical_fragment_matches_http_mcp_and_protected_readback_source(self):
   """合法なCM入口から、同名正本・実配備・読戻し期待sourceの一致と先行500を確認する。"""
-  directory=CORE/'apps/apim/policies'
+  directory=CORE/'apps/api-gateway/policies'
   raw_source=policy_fixture_path(directory,'core-credential-connection.xml').read_text(encoding='utf-8')
   self.assertEqual(raw_source.count(CORE_CREDENTIAL_CALLER_MARKER),1)
   session_source=policy_fixture_path(directory,'core-credential-session-use.xml').read_text(encoding='utf-8')
@@ -784,7 +784,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
       self.assertNotRegex(value,r'(?:Request|Response)\s*\.\s*Body\b')
  def test_native_protocols_and_all_transitive_fragments_never_access_opaque_bodies(self):
   self.parameters.update(publishApis=True,l7IngressSecretIdentifier='',entraTenantId=self.config['entraTenantId'])
-  service=ET.fromstring(render_audit_policy((CORE/'apps/apim/policies/service.xml').read_text()
+  service=ET.fromstring(render_audit_policy((CORE/'apps/api-gateway/policies/service.xml').read_text()
     .replace('__L7_INGRESS_REQUIRED__','false').replace('__L7_INGRESS_EXPECTED__','')))
   native_count=0
   for index,api in enumerate(self.parameters['apiDefinitions']):
@@ -1064,10 +1064,10 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
     'unavailable', 'acknowledged', {'captureId': capture_id, 'nextSequence': 1}, 'unavailable'])
 
  def test_only_explicit_api_registration_writes_api_contracts(self):
-  main=(CORE/'infra/main.bicep').read_text(); publisher=(CORE/'apps/apim/deploy/api_publication.py').read_text()
+  main=(CORE/'infra/main.bicep').read_text(); publisher=(CORE/'apps/api-gateway/deploy/api_publication.py').read_text()
   self.assertNotIn('api-publication.bicep',main)
   self.assertNotIn('apiDefinitions: resolvedApis',main)
-  self.assertIn('apps/apim/api-publication.bicep',publisher)
+  self.assertIn('apps/api-gateway/api-publication.bicep',publisher)
   self.assertIn('"apiDefinitions": resolved',publisher)
   self.assertEqual(self.template['resources']['auditContextFragment']['name'],"[format('{0}/{1}', parameters('names').apim, 'core-audit-context')]")
 if __name__=='__main__': unittest.main()

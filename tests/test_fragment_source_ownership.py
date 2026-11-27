@@ -24,7 +24,7 @@ from deployment.helpers.apim_audit import (
     CORE_AUDIT_BODY_MODEL_MARKER,
 )
 
-POLICIES = Path(__file__).resolve().parents[1] / "apps/apim/policies"
+POLICIES = Path(__file__).resolve().parents[1] / "apps/api-gateway/policies"
 PRIMARY = {
     "core-request-context": CORE_REQUEST_CONTEXT_MARKER,
     "core-audit-authenticated-subject": CORE_AUTHENTICATED_SUBJECT_MARKER,

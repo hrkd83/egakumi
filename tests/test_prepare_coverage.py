@@ -211,7 +211,7 @@ class CoveragePreparationTests(unittest.TestCase):
             bindings.write_text(json.dumps(self.bindings))
             before = source.read_bytes()
             actual = subprocess.run([sys.executable, str(CORE / "scripts/prepare_coverage.py"),
-                "--base", str(source), "--overlay", str(CORE / "apps/apim/apis"),
+                "--base", str(source), "--overlay", str(CORE / "apps/api-gateway/apis"),
                 "--bindings", str(bindings), "--output", str(output)], text=True, capture_output=True)
             self.assertEqual(actual.returncode, 0, actual.stdout + actual.stderr)
             saved = json.loads(output.read_text())
@@ -266,7 +266,7 @@ class CoveragePreparationTests(unittest.TestCase):
             original = json.dumps(self.base)
             base.write_text(original)
             command = [sys.executable, str(CORE / "scripts/prepare_coverage.py"), "--base", str(base),
-                "--overlay", str(CORE / "apps/apim/apis"), "--bindings-template",
+                "--overlay", str(CORE / "apps/api-gateway/apis"), "--bindings-template",
                 "--output", str(output)]
             actual = subprocess.run(command, text=True, capture_output=True)
             self.assertEqual(actual.returncode, 0, actual.stdout + actual.stderr)

@@ -16,8 +16,8 @@ import xml.etree.ElementTree as ET
 
 
 CORE = Path(__file__).resolve().parents[1]
-POLICIES = CORE / "apps/apim/policies"
-SERVICE_POLICY = CORE / "apps/apim/policies/service.xml"
+POLICIES = CORE / "apps/api-gateway/policies"
+SERVICE_POLICY = CORE / "apps/api-gateway/policies/service.xml"
 EXPRESSION = "@(context.RequestId.ToString())"
 
 
@@ -85,7 +85,7 @@ class ResponseCorrelationTests(unittest.TestCase):
             self.skipTest("A local Bicep compiler is required")
         count = 0
         with tempfile.TemporaryDirectory(prefix="core-response-correlation-") as folder:
-            for relative in ("apps/apim/api-publication.bicep", "infra/modules/services/services.bicep", "apps/apim/deploy/apim-settings.bicep"):
+            for relative in ("apps/api-gateway/api-publication.bicep", "infra/modules/services/services.bicep", "apps/api-gateway/deploy/apim-settings.bicep"):
                 filename = Path(relative).name
                 output = Path(folder) / (filename + ".json")
                 result = subprocess.run([bicep, "build", str(CORE / relative), "--outfile", str(output)],

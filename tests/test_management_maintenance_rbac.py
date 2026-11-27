@@ -71,7 +71,7 @@ class ManagementMaintenanceRbacTests(unittest.TestCase):
         cls.core = compile_bicep('infra/main.bicep')
         cls.vm = compile_bicep('infra/modules/management/management.bicep')
         cls.broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
-        cls.gateway = compile_bicep('apps/apim/deploy/main.bicep')
+        cls.gateway = compile_bicep('apps/api-gateway/deploy/main.bicep')
         cls.portal = compile_bicep('apps/portal/deploy/main.bicep')
 
     def test_initial_core_and_apps_do_not_assign_aca_maintenance_roles(self):

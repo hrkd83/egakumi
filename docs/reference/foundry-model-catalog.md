@@ -120,7 +120,7 @@ SpeechのAPI例にはSSML読み上げとWAV認識がある。Foundryに配備す
 
 ### Voice Liveの会話モデル
 
-Voice Liveの通常WSSとWebRTC制御は、[公開bindings](../../apps/apim/public-bindings.json)で`gpt-6.1-sol`を選ぶ。2026-11-02に[Microsoftの対応モデル表](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live)を確認し、`gpt-4.1`から、同じAzure音声認識・テキストLLM・Azure音声合成の構成に対応するモデルへ更新した。Voice Liveが管理するモデルの選択であり、Foundryの初期28配備へ追加する指定ではない。
+Voice Liveの通常WSSとWebRTC制御は、[公開bindings](../../apps/api-gateway/public-bindings.json)で`gpt-6.1-sol`を選ぶ。2026-11-02に[Microsoftの対応モデル表](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live)を確認し、`gpt-4.1`から、同じAzure音声認識・テキストLLM・Azure音声合成の構成に対応するモデルへ更新した。Voice Liveが管理するモデルの選択であり、Foundryの初期28配備へ追加する指定ではない。
 
 通常WSSはAPI版`2026-04-10`、WebRTC制御の`/voice-live/realtime/calls`は`2026-01-01-preview`を使う。数値の`max_response_output_tokens`は1〜4,096、モデル最大を選ぶ場合は`"inf"`を送る。モデル仕様の出力最大128,000と、この数値指定の範囲を区別する。[通常WSSの仕様](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference-2026-04-10)、[WebRTC制御の仕様](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-webrtc)
 

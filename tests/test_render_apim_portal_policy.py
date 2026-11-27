@@ -18,7 +18,7 @@ from deployment.helpers.private_permissions import protect_new_path
 import render_apim_portal_policy as portal
 
 
-EXAMPLES = CORE / "apps/apim/policies/portal-examples"
+EXAMPLES = CORE / "apps/api-gateway/policies/portal-examples"
 
 
 def load_example(name):
@@ -137,7 +137,7 @@ class ManualPortalPolicyTests(unittest.TestCase):
         table = (EXAMPLES / "scope-map.md").read_text(encoding="utf-8")
         rows = re.findall(r"\[([a-z0-9-]+)\]\(../../apis/\1\.json\) \| `([^`]+)` \| ([^|]+) \|", table)
         mapped = {name: (path, re.findall(r"`([^`]+)`", operations)) for name, path, operations in rows}
-        definitions = [json.loads(path.read_text(encoding="utf-8")) for path in (CORE / "apps/apim/apis").glob("*.json")]
+        definitions = [json.loads(path.read_text(encoding="utf-8")) for path in (CORE / "apps/api-gateway/apis").glob("*.json")]
         self.assertEqual(len(rows), len(definitions))
         self.assertEqual(mapped, {item["name"]: (item["path"], [operation["name"] for operation in item["operations"]])
                                   for item in definitions})

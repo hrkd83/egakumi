@@ -127,7 +127,7 @@ console.log(JSON.stringify(cookies));
                 self.assertEqual(self.value(portal["condition"], parameters), enabled)
 
     def test_replacing_data_policies_include_session_only_for_portal_profiles(self):
-        manifest = json.loads((ROOT / "apps/apim/waf-data-exclusions.json").read_text(encoding="utf-8"))
+        manifest = json.loads((ROOT / "apps/api-gateway/waf-data-exclusions.json").read_text(encoding="utf-8"))
         path = next(item["paths"][0] for item in manifest["profiles"] if item["scope"] == "gateway")
         parameters = self.parameters(publishedApiPaths=[path])
         profiles = self.value("[variables('dataProfiles')]", parameters)

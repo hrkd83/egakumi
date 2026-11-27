@@ -128,7 +128,7 @@ npm --prefix apps/portal audit
 
 ## 5. Tool GatewayのGraph確認
 
-Gatewayには本人接続v2とGraph APIを配備しておきます。実APIの選択項目は`apps/apim/apis/graph-profile-v1.json`の固定`$select`で、氏名・所属・連絡先・アカウント状態など本人の12属性です。変更を反映したGateway→Portalの順に配備します。ローカル画面の確認だけならAzure側のPortal配備は不要です。
+Gatewayには本人接続v2とGraph APIを配備しておきます。実APIの選択項目は`apps/api-gateway/apis/graph-profile-v1.json`の固定`$select`で、氏名・所属・連絡先・アカウント状態など本人の12属性です。変更を反映したGateway→Portalの順に配備します。ローカル画面の確認だけならAzure側のPortal配備は不要です。
 
 同じ環境の`portal/runtime.env`にサーバー専用の`PORTAL_GATEWAY_URL=https://<GATEWAY_HOST>`を設定します。購読の参照にはAPIキー管理と同じAPIM接続・Entraアプリ権限を使用します。必要な所属グループ・製品承認・既存購読のローカル台帳登録は[Portal配備手順](../setup/12-deploy-portal.md#ローカルsqlへの既存購読登録)に従います。ローカルとAzureのSQLは同期しません。
 

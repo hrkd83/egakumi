@@ -7,7 +7,7 @@ import { graphToolSuccessContract } from "../components/tools/graph-tool-example
 
 /** Gatewayと公開スキーマの読み取り項目を突合し、属性の追加漏れや任意拡張を検知します。 */
 test("本人情報の12属性がGatewayの固定select・画面・JSON仕様で一致する", () => {
-  const api = JSON.parse(readFileSync(new URL("../../apim/apis/graph-profile-v1.json", import.meta.url), "utf8"));
+  const api = JSON.parse(readFileSync(new URL("../../api-gateway/apis/graph-profile-v1.json", import.meta.url), "utf8"));
   const operation = api.operations.find((item: { name: string }) => item.name === "graph_profile_self");
   assert.equal(operation.method, "GET");
   assert.equal(operation.urlTemplate, "/me");

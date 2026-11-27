@@ -21,7 +21,7 @@ from deployment.helpers.apim_audit import render_audit_policy
 from test_credential_login import operation_error_methods,operation_error_cases,assert_shared_operation_error
 
 CORE = Path(__file__).resolve().parents[1]
-POLICIES = CORE / "apps/apim/policies"
+POLICIES = CORE / "apps/api-gateway/policies"
 PII = policy_fixture_path(POLICIES, "pii.xml")
 SETTINGS = {"kind": "pii", "modelVersion": "2025-11-01", "maxRequestBytes": 32768,
             "allowedLanguages": ["ja", "en"], "allowedWarningCodes": ["LongWordsInDocument"]}

@@ -84,7 +84,7 @@ async function writeSnapshot(snapshotFile: string, value: unknown): Promise<void
  * @remarks 正本のないDocker内だけは同梱物を使い、不正な正本から旧値へ退避しません。
  */
 export async function prepareDocumentContract(paths: DocumentContractPaths = {}) {
-  const schemaFile = paths.schemaFile ?? resolve(portalRoot, "../apim/schemas/document-analysis.json");
+  const schemaFile = paths.schemaFile ?? resolve(portalRoot, "../api-gateway/schemas/document-analysis.json");
   const snapshotFile = paths.snapshotFile ?? resolve(portalRoot, "lib/generated/document-analysis-contract.json");
   let schema;
   try { schema = JSON.parse(await readFile(schemaFile, "utf8")); }
@@ -113,7 +113,7 @@ export async function prepareDocumentContract(paths: DocumentContractPaths = {})
  * @returns 生成したか再利用したかと、含まれるModel API数。
  */
 export async function prepareModelCatalog(paths: ModelCatalogPaths = {}) {
-  const sourceDirectory = paths.sourceDirectory ?? resolve(portalRoot, "../apim/apis");
+  const sourceDirectory = paths.sourceDirectory ?? resolve(portalRoot, "../api-gateway/apis");
   const snapshotFile = paths.snapshotFile ?? resolve(portalRoot, "lib/generated/model-api-definitions.json");
   let files: string[];
   try {

@@ -20,7 +20,7 @@ class McpPublicationTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        template = cls.template = compile_bicep('apps/apim/api-publication.bicep')
+        template = cls.template = compile_bicep('apps/api-gateway/api-publication.bicep')
         cls.resource = template["resources"]["apis"]
         cls.generated_description = PolicyExpression(template["resources"]["mcpServers"]["properties"]["description"],
                                                      template["variables"], functions=template["functions"])

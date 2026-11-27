@@ -6,7 +6,7 @@ from .paths import REPOSITORY
 
 
 CHAT_STORE_FRAGMENT_ID = "core-chat-store-disabled"
-_DIRECTORY = REPOSITORY / "apps/apim/policies/fragments/request" / CHAT_STORE_FRAGMENT_ID
+_DIRECTORY = REPOSITORY / "apps/api-gateway/policies/fragments/request" / CHAT_STORE_FRAGMENT_ID
 
 
 def chat_store_disabled_operations(api: dict, *, generated_mcp: bool = False) -> list[str]:

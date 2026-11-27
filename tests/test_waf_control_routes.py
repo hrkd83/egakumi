@@ -20,7 +20,7 @@ from test_waf_policy import ArmMemory
 
 def contracts():
     """公開ソースの既存3 APIだけを、外部接続なしで読みます。"""
-    return [json.loads((ROOT / "apps/apim/apis" / (name + ".json")).read_text())
+    return [json.loads((ROOT / "apps/api-gateway/apis" / (name + ".json")).read_text())
             for name in ("document-analysis-v1", "openai-realtime-control-v1", "openai-realtime-observer-v1")]
 
 

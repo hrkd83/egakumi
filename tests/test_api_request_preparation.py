@@ -18,7 +18,7 @@ from deployment.helpers.apim_api_request import (
 from test_gateway_limits_telemetry import PWSH
 
 
-POLICIES = Path(__file__).resolve().parents[1] / "apps/apim/policies"
+POLICIES = Path(__file__).resolve().parents[1] / "apps/api-gateway/policies"
 # 実環境から独立した合成Resource IDと要求IDだけを使う。
 APIM = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-fixture/providers/Microsoft.ApiManagement/service/fixture"
 FRAGMENT = APIM + "/policyFragments/" + API_REQUEST_PREPARATION_ID

@@ -7,7 +7,7 @@ from .paths import REPOSITORY
 
 INPUT_VALIDATION_FRAGMENT_ID = "core-api-input-validation"
 INPUT_VALIDATION_MARKER = "__CORE_API_INPUT_VALIDATION_CSHARP__"
-_DIRECTORY = REPOSITORY / "apps/apim/policies/fragments/request" / INPUT_VALIDATION_FRAGMENT_ID
+_DIRECTORY = REPOSITORY / "apps/api-gateway/policies/fragments/request" / INPUT_VALIDATION_FRAGMENT_ID
 
 
 def validate_input_contract(operation: dict, api_type: str) -> None:

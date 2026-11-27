@@ -18,7 +18,7 @@ from deployment.helpers.apim_audit import render_audit_policy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICIES = ROOT / "apps/apim/policies"
+POLICIES = ROOT / "apps/api-gateway/policies"
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 SETTINGS = {"modelVersion": "2025-11-01", "maxRequestBytes": 32768,
             "allowedLanguages": ["en", "ja"], "allowedWarningCodes": ["LongWordsInDocument"]}

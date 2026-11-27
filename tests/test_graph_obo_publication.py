@@ -18,10 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 class GraphOboPublicationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep("apps/apim/api-publication.bicep")
+        cls.template = compile_bicep("apps/api-gateway/api-publication.bicep")
 
     def setUp(self):
-        definition = json.loads((ROOT / "apps/apim/apis/graph-profile-v1.json").read_text(encoding="utf-8"))
+        definition = json.loads((ROOT / "apps/api-gateway/apis/graph-profile-v1.json").read_text(encoding="utf-8"))
         self.api = {**definition, "apiType": "http", "backendHeaders": {}}
         self.parameters = {"apiDefinitions": [self.api], "credentialLogin": {}, "graphOboEnabled": True,
                            "publicHostName": "gateway.example.com", "subscriptionKeyHeader": "api-key"}

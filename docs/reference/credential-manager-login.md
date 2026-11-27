@@ -188,7 +188,7 @@ SQL移行後に旧imageだけへ戻しても復旧しない。対応版で前進
 
 ## APIMポリシーの定義場所
 
-すべて`apps/apim/policies`で管理する。APIM共通の購読認可は`service.xml`を維持し、本人接続の処理だけを以下の共通フラグメントで組み込む。
+すべて`apps/api-gateway/policies`で管理する。APIM共通の購読認可は`service.xml`を維持し、本人接続の処理だけを以下の共通フラグメントで組み込む。
 
 | 定義 | APIM上の部品・処理 |
 | --- | --- |
@@ -198,6 +198,6 @@ SQL移行後に旧imageだけへ戻しても復旧しない。対応版で前進
 | `snippets/authentication/credential-challenge/credential-challenge.xml`・同名C# | 認証が必要な場合に短命取引と仮セッションを発行。既存部品へinline展開し、状態と200応答の秘密・期限・Gateway URLを検査する |
 | `operation-policies/credential-login/`のXML・必要な同名C# | 確認済みcallerを引き継ぎ、start/status/commit/logout/logout-all/disconnect・ブラウザー戻り先を固定Brokerへ中継する。各操作の入出力と維持条件は同フォルダーのREADMEで管理する |
 
-GUIでは「API」→「ポリシーフラグメント」と、対象API・OperationのInbound/Outbound processingを確認する。`core-credential-session-use`は本人照合の後に呼ぶ。ヘルスやstatusには含めない。公開API・フラグメントの登録処理は`apps/apim/api-publication.bicep`で管理し、手動設定だけで済ませない。
+GUIでは「API」→「ポリシーフラグメント」と、対象API・OperationのInbound/Outbound processingを確認する。`core-credential-session-use`は本人照合の後に呼ぶ。ヘルスやstatusには含めない。公開API・フラグメントの登録処理は`apps/api-gateway/api-publication.bicep`で管理し、手動設定だけで済ませない。
 
 受入試験では、7日/30日の境界、ポーリングでの非延長、候補保存失敗、確定応答消失、並行更新、旧値猶予の固定、失効との競合、条件付きアクセスの要求を確認する。ローカルの固定時計テストが通っても、実APIM・CM・Entraの結合確認を完了したとは扱わない。

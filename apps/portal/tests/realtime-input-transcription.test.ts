@@ -9,7 +9,7 @@ import { realtimeInputSchema } from "../lib/realtime-request.ts";
 import type { RealtimeModel } from "../lib/model-types.ts";
 
 test("会話の入力字幕モデルは文字起こしの公開登録から導き、別系列へ追加しない", () => {
-  const definition = JSON.parse(readFileSync(new URL("../../apim/apis/openai-transcription-ws-v1.json", import.meta.url), "utf8"));
+  const definition = JSON.parse(readFileSync(new URL("../../api-gateway/apis/openai-transcription-ws-v1.json", import.meta.url), "utf8"));
   assert.equal(definition.websocket.session.models.length, 1);
   const models = getRealtimeModels();
   assert.equal(models.filter((model) => model.family === "realtime").length, 3);

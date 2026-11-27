@@ -13,7 +13,7 @@ from deployment.helpers.apim_browser_exception import expand_browser_exception_f
 from deployment.helpers.apim_authentication import render_service_policy
 from deployment.helpers.apim_common_authentication import expand_common_authentication_fragments, render_common_authentication_fragments
 
-POLICIES = Path(__file__).resolve().parents[1] / "apps/apim/policies"
+POLICIES = Path(__file__).resolve().parents[1] / "apps/api-gateway/policies"
 
 
 class AuditFragmentTests(unittest.TestCase):

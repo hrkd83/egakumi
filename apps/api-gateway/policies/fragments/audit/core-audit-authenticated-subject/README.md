@@ -43,4 +43,4 @@ GUIDと識別子の確認は、前の確認が成功した場合だけ次を評�
 
 CMのブラウザーでのログイン開始・戻り先は、STEP4の共通キー／Bearer検証を省略するため、ここでは共通認証による本人を未確認として扱う。後続の操作・Broker・CMによる取引・本人の確認とは区別する。通常の認証拒否はSTEP4または共通on-errorで終了し、STEP5には到達しない。その段階の拒否監査は各失敗処理が担当する。
 
-このフラグメントは別のフラグメントを入れ子で呼ばず、他の監査ソースも展開しない。生成・照合は `scripts/deployment/helpers/apim_audit.py`、Azureへの登録は `apps/apim/api-publication.bicep` が担当する。後続の `core-gateway-telemetry` は準備済みJSONから許可項目を転記する別の部品である。
+このフラグメントは別のフラグメントを入れ子で呼ばず、他の監査ソースも展開しない。生成・照合は `scripts/deployment/helpers/apim_audit.py`、Azureへの登録は `apps/api-gateway/api-publication.bicep` が担当する。後続の `core-gateway-telemetry` は準備済みJSONから許可項目を転記する別の部品である。

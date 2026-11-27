@@ -25,7 +25,7 @@ PATHS = ['/models/azure-speech/v1/recognize', '/models/azure-speech/v1/synthesiz
 def configuration():
     """実配備と同じAPI定義を使い、環境の識別子は合成値にする。"""
     return {**copy.deepcopy(CONFIG), 'apiDefinitions': [json.loads(
-        (ROOT / 'apps/apim/apis/azure-speech-v1.json').read_text(encoding='utf-8'))]}
+        (ROOT / 'apps/api-gateway/apis/azure-speech-v1.json').read_text(encoding='utf-8'))]}
 
 
 def desired_gateway(source):

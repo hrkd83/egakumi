@@ -14,7 +14,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 CORE = Path(__file__).resolve().parents[1]
-POLICIES = CORE / "apps/apim/policies"
+POLICIES = CORE / "apps/api-gateway/policies"
 from deployment.helpers.apim_audit import render_audit_policy
 from test_common_authentication import csharp_expression
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
@@ -398,7 +398,7 @@ class PolicyStructureTests(unittest.TestCase):
         bicep = bicep_executable()
         with tempfile.TemporaryDirectory(prefix="realtime-publication-") as folder:
             output = Path(folder) / "publication.json"
-            result = subprocess.run([bicep, "build", str(CORE / "apps/apim/api-publication.bicep"), "--outfile", str(output)],
+            result = subprocess.run([bicep, "build", str(CORE / "apps/api-gateway/api-publication.bicep"), "--outfile", str(output)],
                 env={**os.environ, "DOTNET_BUNDLE_EXTRACT_BASE_DIR": tempfile.gettempdir() + "/workforce-bicep-bundle"},
                 capture_output=True, text=True, timeout=90)
             self.assertEqual(result.returncode, 0, result.stderr)

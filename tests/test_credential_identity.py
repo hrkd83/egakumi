@@ -377,7 +377,7 @@ class CredentialIdentityInfrastructureTests(unittest.TestCase):
         executable = shutil.which(os.environ.get('BICEP_CLI', 'bicep'))
         if not executable:
             self.skipTest('A local Bicep compiler is required; no download or environment cache lookup is performed')
-        main = _compiled_template((ROOT / 'apps/apim/deploy/main.bicep').resolve(), executable)
+        main = _compiled_template((ROOT / 'apps/api-gateway/deploy/main.bicep').resolve(), executable)
         access = _compiled_template((ROOT / 'apps/credential-broker/deploy/broker-access.bicep').resolve(), executable)
         self.assertEqual(main['parameters']['credentialIdentitySecret']['type'].casefold(), 'securestring')
         self.assertEqual(access['parameters']['credentialIdentitySecret']['type'].casefold(), 'securestring')

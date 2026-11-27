@@ -28,7 +28,7 @@ ENTRA_NAMED_VALUES = ("core-entra-tenant-id", "core-entra-api-audience",
                       "core-entra-required-scope", "core-entra-user-limits")
 MIGRATION_REQUIRED = (
     "APIM common authentication settings are incompatible. Check the foundation NamedValues and "
-    "reconcile existing Core policy blocks with apps/apim/policies/service.xml before publishing APIs."
+    "reconcile existing Core policy blocks with apps/api-gateway/policies/service.xml before publishing APIs."
 )
 MANAGED_BLOCKS = {"inbound": (REQUEST_CONTEXT_ID, TRUSTED_INGRESS_ID, BROWSER_EXCEPTION_ID, COMMON_AUTHENTICATION_ID, AUTHENTICATED_SUBJECT_ID),
                   "outbound": ("core-response-request-id",),
@@ -230,7 +230,7 @@ def render_service_policy(login: dict | None = None, *, entra: dict | None = Non
 def _render_service_policy(login: dict | None = None, *, entra: dict | None = None,
                            inline_common_authentication: bool = False) -> str:
     """正規の共通部品から、現在のGlobalと初期構築用inlineを生成する。"""
-    directory = REPOSITORY / "apps/apim/policies"
+    directory = REPOSITORY / "apps/api-gateway/policies"
     settings = _entra_policy_settings(entra)
     value = (directory / "service.xml").read_text(encoding="utf-8")
     error_call = '<include-fragment id="core-entra-authentication-error" fragment-id="core-entra-authentication-error" />'

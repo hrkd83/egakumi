@@ -21,7 +21,7 @@ from deployment.helpers.apim_audit import render_audit_policy
 from deployment.helpers.apim_common_authentication import extract_common_authentication_sections
 from policy_fixture_paths import policy_fixture_path
 
-POLICIES = CORE / "apps/apim/policies"
+POLICIES = CORE / "apps/api-gateway/policies"
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 TENANT = "11111111-1111-4111-8111-111111111111"
 PERSON = "22222222-2222-4222-8222-222222222222"

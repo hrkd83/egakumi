@@ -18,9 +18,9 @@ from test_gateway_limits_telemetry import PWSH
 from deployment.helpers.apim_audit import render_audit_policy
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY = ROOT / 'apps/apim/policies/fragments/request/core-speech-ssml-guard/core-speech-ssml-guard.xml'
+POLICY = ROOT / 'apps/api-gateway/policies/fragments/request/core-speech-ssml-guard/core-speech-ssml-guard.xml'
 GUARD_SOURCE = POLICY.with_suffix('.cs')
-SPEECH = json.loads((ROOT / 'apps/apim/apis/azure-speech-v1.json').read_text(encoding='utf-8'))
+SPEECH = json.loads((ROOT / 'apps/api-gateway/apis/azure-speech-v1.json').read_text(encoding='utf-8'))
 
 CSHARP = r'''
 using System;
@@ -165,7 +165,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
 class SpeechSsmlGuardPublicationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep('apps/apim/api-publication.bicep')
+        cls.template = compile_bicep('apps/api-gateway/api-publication.bicep')
         resources = cls.template['resources']
         cls.policy = next(item for item in (resources.values() if isinstance(resources, dict) else resources)
             if item.get('copy', {}).get('name') == 'operationPolicies')

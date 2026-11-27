@@ -18,12 +18,12 @@ from waf_contracts import (APP_GROUPS, CATALOG, MANIFEST, approved_group_scopes,
 class WireContractTests(unittest.TestCase):
     def tree(self, folder):
         root = Path(folder)
-        for name in (CATALOG, MANIFEST, 'apps/apim/public-bindings.json'):
+        for name in (CATALOG, MANIFEST, 'apps/api-gateway/public-bindings.json'):
             target = root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
-        source = ROOT / 'apps/apim/apis'
-        shutil.copytree(source, root / 'apps/apim/apis')
+        source = ROOT / 'apps/api-gateway/apis'
+        shutil.copytree(source, root / 'apps/api-gateway/apis')
         return root
 
     def test_static_bicep_asset_is_the_exact_deterministic_rendering(self):
@@ -139,7 +139,7 @@ class WireContractTests(unittest.TestCase):
     def test_new_published_operation_requires_input_contract_review(self):
         with tempfile.TemporaryDirectory() as folder:
             root = self.tree(folder)
-            path = root / 'apps/apim/apis/openai-images-v1.json'
+            path = root / 'apps/api-gateway/apis/openai-images-v1.json'
             value = json.loads(path.read_text())
             value['operations'].append({'name': 'future-operation', 'method': 'POST', 'urlTemplate': '/future'})
             path.write_text(json.dumps(value))
@@ -149,7 +149,7 @@ class WireContractTests(unittest.TestCase):
     def test_model_add_remove_changes_inventory_without_changing_model_waf_patterns(self):
         with tempfile.TemporaryDirectory() as folder:
             root = self.tree(folder)
-            path = root / 'apps/apim/apis/openai-images-v1.json'
+            path = root / 'apps/api-gateway/apis/openai-images-v1.json'
             value = json.loads(path.read_text())
             constraint = value['authorization']['operationConstraints']['image-edit']
             old_models = constraint['allowedModels'][:]
@@ -205,7 +205,7 @@ class WireContractTests(unittest.TestCase):
 
     def test_inventory_includes_fixed_session_and_public_binding_models(self):
         apis = {json.loads(p.read_text())['name']: json.loads(p.read_text())
-                for p in (ROOT / 'apps/apim/apis').glob('*.json')}
+                for p in (ROOT / 'apps/api-gateway/apis').glob('*.json')}
         inventory = contract_inventory()
         for api in apis.values():
             expected = set(api.get('websocket', {}).get('session', {}).get('models', []))
@@ -237,7 +237,7 @@ class WireContractTests(unittest.TestCase):
 
     def test_all_standard_operations_have_inventory_and_frame_boundary(self):
         inventory = contract_inventory()
-        api_files = list((ROOT / 'apps/apim/apis').glob('*.json'))
+        api_files = list((ROOT / 'apps/api-gateway/apis').glob('*.json'))
         expected = {(a['name'], op['name']) for file in api_files
                     for a in [json.loads(file.read_text())] for op in a.get('operations', [])}
         self.assertEqual({(r['api'], r['operation']) for r in inventory}, expected)

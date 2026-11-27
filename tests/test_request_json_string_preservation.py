@@ -14,7 +14,7 @@ from deployment.helpers.apim_chat_store import render_chat_store_fragment
 
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICIES = ROOT / "apps/apim/policies"
+POLICIES = ROOT / "apps/api-gateway/policies"
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 REQUEST_ID = "11111111-1111-1111-1111-111111111111"
 DEPLOYMENT = "synthetic-deployment"

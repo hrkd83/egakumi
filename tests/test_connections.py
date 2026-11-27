@@ -17,7 +17,7 @@ class ConnectionDeploymentTests(unittest.TestCase):
     """APIM Credential Managerの配備定義をローカルで検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep('apps/apim/deploy/credential-manager.bicep')
+        cls.template = compile_bicep('apps/api-gateway/deploy/credential-manager.bicep')
         resources = cls.template["resources"]
         cls.resources = list(resources.values()) if isinstance(resources, dict) else resources
 

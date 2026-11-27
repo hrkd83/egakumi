@@ -17,7 +17,7 @@ from model_capabilities import apply_model_capabilities
 
 
 ROOT = Path(__file__).resolve().parents[1]
-API_DEFINITION_DIRECTORY = ROOT / "apps/apim/apis"
+API_DEFINITION_DIRECTORY = ROOT / "apps/api-gateway/apis"
 STANDARD_API_ORDER = (
     "openai-inference-v1", "pii-v1", "graph-profile-v1",
     "openai-embeddings-v1", "cohere-inference-v1", "openai-images-v1",
@@ -40,7 +40,7 @@ PLACEHOLDER = re.compile(r"__([A-Z][A-Z0-9_]+)__")
 # Voice Liveのモデル・API版を選択した構成での受入条件は docs/testing/integration-tests.md を参照。
 # https://learn.microsoft.com/azure/ai-services/speech-service/voice-live
 # https://learn.microsoft.com/azure/ai-services/speech-service/voice-live-webrtc
-PUBLIC_BINDINGS = json.loads((ROOT / 'apps/apim/public-bindings.json').read_text(encoding='utf-8'))['bindings']
+PUBLIC_BINDINGS = json.loads((ROOT / 'apps/api-gateway/public-bindings.json').read_text(encoding='utf-8'))['bindings']
 
 
 def _same(actual, expected, label):

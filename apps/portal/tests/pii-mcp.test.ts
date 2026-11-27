@@ -36,7 +36,7 @@ function dependencies(overrides: Partial<PiiGatewayDependencies> = {}, sessionId
 }
 
 test("MCP接続先とツール名は正本から生成される値に一致する", () => {
-  const api = JSON.parse(readFileSync(new URL("../../apim/apis/pii-v1.json", import.meta.url), "utf8"));
+  const api = JSON.parse(readFileSync(new URL("../../api-gateway/apis/pii-v1.json", import.meta.url), "utf8"));
   assert.equal(PII_MCP.apiId, api.mcp.name); assert.equal(PII_MCP.path, `/${api.mcp.path}/mcp`); assert.equal(PII_MCP.toolName, api.mcp.operationNames[0]);
   assert.equal(getPiiMcpEndpoint("https://gateway.example.com"), "https://gateway.example.com/tools/pii-v1-mcp/mcp");
 });

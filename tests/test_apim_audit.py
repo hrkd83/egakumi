@@ -13,7 +13,7 @@ class AuditRenderingTests(unittest.TestCase):
     def test_inline_telemetry_source_round_trips_through_xml_text(self):
         marker = CORE_GATEWAY_TELEMETRY_MARKER
         filename = "fragments/audit/core-gateway-telemetry/core-gateway-telemetry.cs"
-        source = policy_fixture_path(CORE / "apps/apim/policies", filename).read_text(encoding="utf-8")
+        source = policy_fixture_path(CORE / "apps/api-gateway/policies", filename).read_text(encoding="utf-8")
         source = _with_source_line_comments(source)
         template = '<fragment><trace><message>@{\n' + marker + '\n}</message></trace></fragment>'
         rendered = render_audit_policy(template)
@@ -40,7 +40,7 @@ class AuditRenderingTests(unittest.TestCase):
         self.assertIn("gatewayAuthenticatedSubject", tiny[0].find("message").text)
 
     def test_subject_validation_never_reads_tokens_headers_bodies_or_authorization_decision(self):
-        source = (CORE / "apps/apim/policies/fragments/audit/core-audit-authenticated-subject/core-audit-authenticated-subject.cs").read_text(encoding="utf-8")
+        source = (CORE / "apps/api-gateway/policies/fragments/audit/core-audit-authenticated-subject/core-audit-authenticated-subject.cs").read_text(encoding="utf-8")
         for forbidden in ("context.Request", "context.Response", "gatewayValidatedToken", "gatewayDecision", "send-request", "return "):
             with self.subTest(expression=forbidden): self.assertNotIn(forbidden, source)
 
