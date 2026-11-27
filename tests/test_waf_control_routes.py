@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from deployment.helpers.portal_gateway import portal_session_exclusions
 from deployment.helpers.waf_body import portal_document_profile
 from deployment.helpers.waf_names import policy_id
-from waf_policy import (AI_DATA_RULE_GROUPS, CONTROL_DATA_SCOPES, SIGNED_OPERATION_ROUTES,
+from operations.waf_policy import (AI_DATA_RULE_GROUPS, CONTROL_DATA_SCOPES, SIGNED_OPERATION_ROUTES,
                         control_data_profile, desired_policy, load_manifest, published_paths,
                         reconcile, selected_profiles)
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, REWRITE, api_mapping, gateway, policy

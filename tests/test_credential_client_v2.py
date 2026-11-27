@@ -10,8 +10,8 @@ from urllib.error import URLError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from credential_client import CredentialClient, ConnectionError, LoginRequired, NoRedirect, ROTATION_HEADERS
-from credential_session_store import MemorySessionStore
+from clients.credential_client import CredentialClient, ConnectionError, LoginRequired, NoRedirect, ROTATION_HEADERS
+from clients.credential_session_store import MemorySessionStore
 
 
 ORIGIN = "https://gateway.example.com"
@@ -316,9 +316,11 @@ class CredentialCliV2Tests(unittest.TestCase):
                 self.assertEqual(store.read()["status"], "pending")
                 self.assertEqual(store.read()["connectionSession"], CURRENT)
             output.write(value + "\n")
-        with patch("credential_client.CredentialClient", return_value=instance), patch("integration_client.private_text", return_value="private-key"), \
-                patch("credential_client.FileSessionStore", return_value=store), patch("builtins.print", side_effect=print_checked):
-            import credential_client
+        with patch("clients.credential_client.CredentialClient", return_value=instance), \
+                patch("clients.integration_client.private_text", return_value="private-key"), \
+                patch("clients.credential_client.FileSessionStore", return_value=store), \
+                patch("builtins.print", side_effect=print_checked):
+            from clients import credential_client
             self.assertEqual(credential_client.main(["--origin", ORIGIN, "--api-path", PATH, "--key-file", "key", "--session-file", "state"]), 0)
         self.assertEqual(opener.requests[-1].get_header("X-core-connection-session"), CURRENT)
         self.assertEqual(json.loads(output.getvalue().splitlines()[-1])["response"], {"id": "person"})

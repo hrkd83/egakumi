@@ -39,9 +39,9 @@ class InitialCreationTests(unittest.TestCase):
                 "osProfile": {"adminUsername": self.config["management"]["adminUsername"], "linuxConfiguration": {"disablePasswordAuthentication": True}}},
             "identity": {"type": "SystemAssigned", "principalId": "22222222-2222-4222-8222-222222222222", "tenantId": self.config["azureTenantId"]}}
 
-    def record(self, mode="direct"):
+    def record(self):
         self.password = serial.prepare_initial_serial_password(self.config, self.paths, {"statusCode": 404})
-        initial.record_core_request(self.config, self.paths, self.password, mode, self.writer)
+        initial.record_core_request(self.config, self.paths, self.password, self.writer)
         return initial.journal(self.config, self.paths)
 
     def core(self):
@@ -110,7 +110,7 @@ class InitialCreationTests(unittest.TestCase):
                 with self.assertRaises(serial.SerialCredentialError): self.recover(response)
 
     def test_native_resume_after_generated_input_cleanup_uses_original_provenance(self):
-        self.record("native")
+        self.record()
         self.assertFalse(self.paths.parameters.exists())
         self.assertEqual(self.recover(), self.password)
         value = initial.journal(self.config, self.paths)

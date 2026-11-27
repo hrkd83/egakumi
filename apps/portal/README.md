@@ -52,8 +52,8 @@ PortalへのサインインとGateway APIの試用を別の認証取引として
 更新・再試行は構築に使用したparamsとstateで、リポジトリのルートから計画を確認して実行します。
 
 ```sh
-python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
-python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
+python3 -B scripts/deployment/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/deployment/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
 ## ローカルで起動する
@@ -67,9 +67,9 @@ PORTAL_LOCAL_SQL_ENV_FILE="$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admi
   docker compose --env-file "$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admin.env" \
   -f apps/portal/compose.local.yml up -d --wait
 npm --prefix apps/portal ci
-python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" \
+python3 scripts/portal_local/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" \
   --admin -- npm run db:bootstrap-local
-python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" -- npm run dev
+python3 scripts/portal_local/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" -- npm run dev
 ```
 
 [日本語画面](http://localhost:3000/ja)または[英語画面](http://localhost:3000/en)を開きます。`db:bootstrap-local`は開発専用のローカルDBと実行用権限を用意し、Azure SQLを変更しません。

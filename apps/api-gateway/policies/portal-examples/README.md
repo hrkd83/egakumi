@@ -19,7 +19,7 @@ Bearerには既存のEntraユーザー単位の回数枠を適用します。ひ
 
 ```sh
 install -m 600 apps/api-gateway/policies/portal-examples/rest.example.json .local/test/generated/manual-api.json
-python3 -B scripts/render_apim_portal_policy.py --environment test \
+python3 -B scripts/policy/render_apim_portal_policy.py --environment test \
   --config .local/test/generated/manual-api.json \
   --output .local/test/generated/manual-api.xml
 ```

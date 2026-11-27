@@ -36,11 +36,11 @@ class ManagementHostTimeReadinessTests(unittest.TestCase):
                    "type": "Microsoft.Compute/virtualMachines", "tags": {"product": "synthetic", "environment": "test"},
                    "properties": {"provisioningState": "Succeeded", "timeCreated": "2025-01-01T00:00:00Z"}}}
         proof = {"status": "configured", "timeService": "chrony.service",
-                 "timeSource": "azure-host-phc", "timeSynchronized": True, "timeOnly": True}
-        self.command = {"statusCode": 200, "body": {"id": self.target + "/runCommands/configure-host-time",
+                 "timeSource": "azure-host-phc", "timeSynchronized": True}
+        self.command = {"statusCode": 200, "body": {"id": self.target + "/runCommands/configure-linux-audit",
                         "type": "Microsoft.Compute/virtualMachines/runCommands",
                         "properties": {"provisioningState": "Succeeded",
-                                       "source": {"script": host_time.host_time_script()},
+                                       "source": {"script": host_time.GUEST_SCRIPT.read_text(encoding="utf-8")},
                                        "instanceView": {"executionState": "Succeeded", "exitCode": 0,
                                                         "startTime": "2025-01-02T00:00:00Z", "endTime": "2025-01-02T00:01:00Z",
                                                         "output": json.dumps(proof) + "\n"}}}}
@@ -64,28 +64,8 @@ class ManagementHostTimeReadinessTests(unittest.TestCase):
 
     def test_crlf_material_is_normalized_before_comparison(self):
         command = deepcopy(self.command)
-        command["body"]["properties"]["source"]["script"] = host_time.host_time_script().replace("\n", "\r\n")
+        command["body"]["properties"]["source"]["script"] = host_time.GUEST_SCRIPT.read_text(encoding="utf-8").replace("\n", "\r\n")
         self.assertTrue(self.check(command=command)[0]["hostTimePrepared"])
-
-    def test_current_full_audit_is_accepted_when_no_time_only_command_exists(self):
-        audit = deepcopy(self.command)
-        audit["body"]["id"] = self.target + "/runCommands/configure-linux-audit"
-        audit["body"]["properties"]["source"]["script"] = host_time.GUEST_SCRIPT.read_text(encoding="utf-8")
-        proof = json.loads(audit["body"]["properties"]["instanceView"]["output"])
-        del proof["timeOnly"]
-        audit["body"]["properties"]["instanceView"]["output"] = json.dumps(proof)
-        transport = ReadOnlyTransport(self.vm, {"statusCode": 404}, audit)
-        result = host_time.require_management_host_time_core_ready(self.config, transport)
-        self.assertTrue(result["hostTimePrepared"])
-        self.assertEqual(len(transport.calls), 3)
-
-    def test_incomplete_time_only_command_cannot_fall_back_to_another_success(self):
-        command = deepcopy(self.command)
-        command["body"]["properties"]["instanceView"]["executionState"] = "Running"
-        transport = ReadOnlyTransport(self.vm, command, self.command)
-        with self.assertRaises(host_time.ManagementHostTimeError):
-            host_time.require_management_host_time_core_ready(self.config, transport)
-        self.assertEqual(len(transport.calls), 2)
 
     def test_failed_or_unrecognized_vm_reads_never_allow_core(self):
         for status in (401, 403, 409, 500):
@@ -111,7 +91,7 @@ class ManagementHostTimeReadinessTests(unittest.TestCase):
             with self.subTest(status=status), self.assertRaises(host_time.ManagementHostTimeError):
                 self.check(command={"statusCode": status})
 
-    def test_previous_or_changed_guest_material_cannot_authorize_removing_ntp(self):
+    def test_unverified_guest_material_cannot_authorize_network_changes(self):
         for source in (None, {}, {"script": "#!/bin/bash\n# old external NTP setup\n"}):
             command = deepcopy(self.command)
             command["body"]["properties"]["source"] = source

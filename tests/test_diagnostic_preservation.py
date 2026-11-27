@@ -215,7 +215,7 @@ class DiagnosticPreservationTests(unittest.TestCase):
         props["eventHubAuthorizationRuleId"] = self.workspace.replace("Microsoft.OperationalInsights/workspaces/law-", "Microsoft.EventHub/namespaces/eh-") + "/authorizationRules/audit"
         with mock.patch.object(lifecycle, "run", return_value={}), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), mock.patch.object(lifecycle, "read_workspace_privacy_link", return_value=""):
             with self.assertRaisesRegex(lifecycle.DeploymentError, "routing-cross-product"):
-                lifecycle.deploy_phase(self.config, "monitoring")
+                lifecycle.deploy_monitoring(self.config, preserve_collection=False)
         self.assertFalse(any(call[0] != "GET" for call in transport.calls))
 
 

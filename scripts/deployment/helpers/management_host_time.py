@@ -1,8 +1,4 @@
-"""Require the existing VM's host-time preparation before removing NTP egress.
-
-This reads the last successful managed command; it does not run a guest command
-or claim to measure the VM's current clock. New VMs configure PHC during Core.
-"""
+"""Read the Core-managed VM's last PHC preparation result before networking updates."""
 from __future__ import annotations
 
 import json
@@ -12,15 +8,6 @@ from pathlib import Path
 
 COMPUTE_API = "2024-07-01"
 GUEST_SCRIPT = Path(__file__).resolve().parents[3] / "infra/guest/configure-audit.sh"
-TIME_ONLY_DEFAULT = "readonly core_host_time_only=false"
-
-
-def host_time_script():
-    """The dedicated Bicep command changes only this fixed internal literal."""
-    script = GUEST_SCRIPT.read_text(encoding="utf-8").replace("\r\n", "\n")
-    if script.count(TIME_ONLY_DEFAULT) != 1:
-        raise ManagementHostTimeError("The fixed host-time mode could not be verified")
-    return script.replace(TIME_ONLY_DEFAULT, "readonly core_host_time_only=true")
 
 
 class ManagementHostTimeError(RuntimeError):
@@ -56,11 +43,7 @@ def _owned(body, target, kind):
 
 
 def require_management_host_time_core_ready(config, transport):
-    """Read only: require current guest material's successful PHC preparation.
-
-Incremental Core updates the Firewall before configuring the existing guest.
-Apply management-host-time.bicep alone first, while its prior network is retained.
-"""
+    """Check the Core-owned Linux audit command from the current VM instance."""
     target = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/"
               f"{config['resourceGroupNames']['maint']}/providers/Microsoft.Compute/"
               f"virtualMachines/vm-{config['resourceStem']}-mgmt")
@@ -76,24 +59,16 @@ Apply management-host-time.bicep alone first, while its prior network is retaine
             or tags.get("environment") != config["environmentName"]):
         raise ManagementHostTimeError("The management VM ownership differs from the selected construction")
 
-    selected = None
-    for name, time_only in (("configure-host-time", True), ("configure-linux-audit", False)):
-        command = target + "/runCommands/" + name
-        response = _response(transport.request("GET", command + "?api-version=" + COMPUTE_API + "&$expand=instanceView"))
-        if response.get("statusCode") == 404:
-            continue
-        if response.get("statusCode") != 200:
-            raise ManagementHostTimeError("The managed host-time preparation could not be inspected")
-        selected = (_owned(response.get("body"), command, "Microsoft.Compute/virtualMachines/runCommands"), time_only)
-        break
-    if selected is None:
-        raise ManagementHostTimeError("Apply management-host-time.bicep and verify PHC sync before updating Core networking")
-    properties, time_only = selected
+    command = target + "/runCommands/configure-linux-audit"
+    response = _response(transport.request("GET", command + "?api-version=" + COMPUTE_API + "&$expand=instanceView"))
+    if response.get("statusCode") != 200:
+        raise ManagementHostTimeError("The Core Linux audit command could not be inspected")
+    properties = _owned(response.get("body"), command, "Microsoft.Compute/virtualMachines/runCommands")
     source = properties.get("source")
     script = source.get("script") if isinstance(source, dict) else None
-    expected = host_time_script() if time_only else GUEST_SCRIPT.read_text(encoding="utf-8").replace("\r\n", "\n")
+    expected = GUEST_SCRIPT.read_text(encoding="utf-8").replace("\r\n", "\n")
     if not isinstance(script, str) or script.replace("\r\n", "\n") != expected:
-        raise ManagementHostTimeError("The existing management audit result uses different guest material; prepare PHC first")
+        raise ManagementHostTimeError("The existing management audit result uses different guest material")
     view = properties.get("instanceView")
     if (not isinstance(view, dict) or view.get("executionState") != "Succeeded"
             or type(view.get("exitCode")) is not int or view["exitCode"] != 0
@@ -114,7 +89,6 @@ Apply management-host-time.bicep alone first, while its prior network is retaine
             proofs.append(value)
     if (len(proofs) != 1 or proofs[0].get("timeSource") != "azure-host-phc"
             or proofs[0].get("timeSynchronized") is not True
-            or proofs[0].get("timeService") not in ("chrony.service", "chronyd.service")
-            or time_only and proofs[0].get("timeOnly") is not True):
+            or proofs[0].get("timeService") not in ("chrony.service", "chronyd.service")):
         raise ManagementHostTimeError("The managed audit result does not prove Azure PHC synchronization")
     return {"newManagementVm": False, "hostTimePrepared": True, "currentClockMeasured": False}

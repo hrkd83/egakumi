@@ -56,7 +56,7 @@ Portal画面のモデル選択は`prebuilt-read`／`prebuilt-layout`の2種類�
 
 ## 配備と保護
 
-`apps/api-gateway/apis/document-analysis-v1.json`を標準APIとして自動読込し、`released-apis`製品へ関連付けます。既存の検証製品は`pii-users`を使います。`scripts/deploy_gateway.py`がAPI公開に続いて、文書受付の完全パスだけへ専用WAFポリシーを関連付けます。
+`apps/api-gateway/apis/document-analysis-v1.json`を標準APIとして自動読込し、`released-apis`製品へ関連付けます。既存の検証製品は`pii-users`を使います。`scripts/deployment/deploy_gateway.py`がAPI公開に続いて、文書受付の完全パスだけへ専用WAFポリシーを関連付けます。
 
 Gatewayの`/tools/documents/v1/analyze`とPortalの`/api/tools/documents`の専用WAFはPreventionと本文検査を維持し、先頭**2000 KiB**まで検査します。本文・ファイルのサイズ強制は解除し、検査枠を超える部分は検査せず受け付けます。受付MIMEの`920420`とraw本文の`930110`だけを調整し、URI・query・header・cookieのtraversalは4本のBlock規則で補完します。`920470`・`930100`などの他規則、認証・管理経路の厳格なポリシーは維持します。Portal BFFは原本のMIME・先頭形式・受信サイズを確認し、APIMは申告サイズの早期413と残るmodelの条件を確認します。文書の形式・内容・実サイズの受付可否は提供元が判定します。[WAFの適用範囲](../testing/waf-compatibility.md)
 

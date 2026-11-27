@@ -82,7 +82,7 @@ def model_catalog_snapshot(root):
             definitions.append(definition)
     if not definitions:
         raise ValueError('Gateway model API definitions are missing')
-    from model_capabilities import apply_model_capabilities, load_model_capabilities
+    from catalog.model_capabilities import apply_model_capabilities, load_model_capabilities
     capabilities_file = folder.parent / 'model-capabilities.json'
     if capabilities_file.is_symlink():
         raise ValueError('Gateway model capabilities must be a regular file')

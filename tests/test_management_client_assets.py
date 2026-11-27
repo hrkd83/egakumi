@@ -14,18 +14,14 @@ from deployment import lifecycle
 from management_fixtures import client_core_outputs
 
 
-def fixture(*, broker_separated=False):
+def fixture():
     config = {'subscriptionId': '11111111-1111-4111-8111-111111111111',
               'azureTenantId': '22222222-2222-4222-8222-222222222222', 'resourceStem': 'test-fixture',
               'productName': 'fixture', 'environmentName': 'test', 'location': 'japaneast', 'tags': {},
               'resourceGroupNames': {kind: 'rg-test-fixture-' + kind for kind in ('svc', 'monitor', 'maint')}}
     state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
     state['outputs'] = client_core_outputs(config)
-    targets = assets._expected_targets(config, broker_separated=broker_separated)
-    if broker_separated:
-        broker, = targets['gateway']['environmentIds']
-        state['outputs']['brokerPlatform'] = {'environmentId': broker, 'environmentName': broker.rsplit('/', 1)[-1]}
-        state['outputs']['managementClientInventory']['environments'].append(broker)
+    targets = assets._expected_targets(config)
     expected = targets['portal']
     outputs = {'managementMaintenance': copy.deepcopy(expected)}
     template = {'parameters': {'inventory': {'type': 'secureObject'}}, 'resources': [
@@ -38,7 +34,7 @@ class AssetTransport:
         self.config, self.inventory, self.calls = config, state['outputs']['managementClientInventory'], []
         self.failed, self.active, self.submitted = failed, active, False
         self.environments = assets.expected_maintenance_environments(config, state)
-        self.targets = assets._expected_targets(config, broker_separated=self.environments['gateway'] != self.environments['portal'])
+        self.targets = assets._expected_targets(config)
 
     def request(self, method, path, body=None):
         self.calls.append((method, path, body))
@@ -116,19 +112,19 @@ class ManagementClientAssetTests(unittest.TestCase):
             assets.management_client_inventory(config, swapped)
 
     def test_core_gateway_portal_inventory_merge_is_additive_and_idempotent(self):
-        config, state, outputs, _ = fixture(broker_separated=True)
+        config, state, outputs, _ = fixture()
         original = copy.deepcopy(state['outputs']['managementClientInventory'])
         combined = copy.deepcopy(original)
         for component in ('gateway', 'portal', 'gateway', 'portal'):
             combined, _ = assets._merge_outputs(config, combined,
-                {'managementMaintenance': assets._expected_targets(config, broker_separated=True)[component]}, component)
+                {'managementMaintenance': assets._expected_targets(config)[component]}, component)
         self.assertEqual(combined['environments'], original['environments'])
         self.assertEqual(len(combined['sqlDatabases']), 2)
         self.assertEqual({item['alias'] for item in combined['sqlDatabases']}, {'credentials', 'portal'})
         self.assertEqual(state['outputs']['managementClientInventory'], original)
 
     def test_split_environment_requires_both_core_ids_and_exact_gateway_scope(self):
-        config, state, _, template = fixture(broker_separated=True)
+        config, state, _, template = fixture()
         invalid = copy.deepcopy(state)
         invalid['outputs']['managementClientInventory']['environments'].pop()
         with self.assertRaisesRegex(ValueError, 'both required'):
@@ -137,7 +133,7 @@ class ManagementClientAssetTests(unittest.TestCase):
         invalid['outputs']['brokerPlatform']['environmentId'] = state['outputs']['managementClientInventory']['environments'][0]
         with self.assertRaisesRegex(ValueError, 'Broker maintenance environment'):
             assets.management_client_inventory(config, invalid)
-        outputs = {'managementMaintenance': assets._expected_targets(config, broker_separated=True)['gateway']}
+        outputs = {'managementMaintenance': assets._expected_targets(config)['gateway']}
         transport = AssetTransport(config, state)
         with tempfile.TemporaryDirectory() as root, mock.patch.object(lifecycle, 'protected_json'):
             self.assertEqual(assets.update_management_client_assets(config, state, outputs, transport,

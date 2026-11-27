@@ -33,16 +33,15 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         """基盤の再配置は API の説明や公開設定を書き換えず、入口だけを仕上げる。"""
         outputs = self.outputs()
         outputs["endpoints"] = {"public": "https://fixture.example.com"}
-        response = {"properties": {"outputs": {key: {"value": value} for key, value in outputs.items()}}}
         receipt = lifecycle.ROOT / ".local/test/state/api-catalog-publication.json"
         transport = mock.Mock()
         transport.request.side_effect = AssertionError("Foundation must not update API resources")
         for fails in (False, False, True):
-            lifecycle.protected_json(self.paths.parameters, {"fixture": "PRIVATE_INPUT"})
+            response = self.core_completion_response(outputs)
             lifecycle.protected_json(receipt, {"status": "explicit-api-publication"})
             with mock.patch.object(lifecycle, "run", side_effect=[{"CORE_DEPLOYMENT_NAME": "owned-core"}, response]), \
                  mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
-                 mock.patch.object(lifecycle, "configure_grpc_endpoint", side_effect=ValueError("ingress-failed") if fails else None,
+                 mock.patch.object(lifecycle, "verify_apim_endpoint", side_effect=ValueError("ingress-failed") if fails else None,
                                    return_value={"enabled": True, "l7IngressEnabled": True, "runtimeVerified": False}) as ingress, \
                  contextlib.redirect_stdout(io.StringIO()):
                 if fails:
@@ -62,11 +61,11 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             azureDnsSubscriptionId="22222222-2222-2222-2222-222222222222")
         outputs = self.outputs()
         outputs["endpoints"] = {"public": "https://fixture.example.com"}
-        response = {"properties": {"outputs": {key: {"value": value} for key, value in outputs.items()}}}
+        response = self.core_completion_response(outputs)
         core, dns = mock.Mock(), mock.Mock()
         with mock.patch.object(lifecycle, "run", side_effect=[{"CORE_DEPLOYMENT_NAME": "owned-core"}, response]), \
              mock.patch.object(lifecycle, "ArmTransport", side_effect=[core, dns]) as factory, \
-             mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True, "l7IngressEnabled": True}), \
+             mock.patch.object(lifecycle, "verify_apim_endpoint", return_value={"enabled": True, "l7IngressEnabled": True}), \
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.postprovision(self.config)
         dns_config = factory.call_args_list[1].args[0]
@@ -78,13 +77,12 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
     def test_public_dns_failure_preserves_deployment_state_and_removes_secret_inputs(self):
         """DNSの保存失敗を成功扱いにせず、構築記録と秘密入力回収を維持する。"""
         outputs = self.outputs()
-        response = {"properties": {"outputs": {key: {"value": value} for key, value in outputs.items()}}}
-        lifecycle.protected_json(self.paths.parameters, {"fixture": "PRIVATE_INPUT"})
+        response = self.core_completion_response(outputs)
         lifecycle.protected_json(lifecycle.ROOT / ".local/test/state/public-dns.json", {"status": "old-success"})
         self.public_dns.side_effect = ValueError("Public DNS: record conflict")
         with mock.patch.object(lifecycle, "run", side_effect=[{"CORE_DEPLOYMENT_NAME": "owned-core"}, response]), \
              mock.patch.object(lifecycle, "ArmTransport"), \
-             mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True, "l7IngressEnabled": True}), \
+             mock.patch.object(lifecycle, "verify_apim_endpoint", return_value={"enabled": True, "l7IngressEnabled": True}), \
              contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaisesRegex(ValueError, "record conflict"):
                 lifecycle.postprovision(self.config)
@@ -104,7 +102,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-             mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
+             mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()), \
              mock.patch.object(lifecycle, "configure_app_insights_cap"), \
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
@@ -122,7 +120,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-             mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
+             mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()), \
              mock.patch.object(lifecycle, "configure_app_insights_cap"), \
              mock.patch.object(lifecycle, "_prepare_management_serial_password", return_value="PRIVATE_SERIAL_FIXTURE") as prepare, \
              mock.patch.object(lifecycle, "_confirm_management_serial_target") as confirm, \
@@ -133,7 +131,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         prepare.assert_called_once_with(self.config, transport)
         confirm.assert_called_once_with(self.config, transport, "PRIVATE_SERIAL_FIXTURE")
         values = json.loads(self.paths.parameters.read_text(encoding="utf-8"))["parameters"]
-        record.assert_called_once_with(self.config, "PRIVATE_SERIAL_FIXTURE", native=True)
+        record.assert_called_once_with(self.config, "PRIVATE_SERIAL_FIXTURE")
         self.assertNotIn("managementAdminPassword", values)
         self.assertEqual(values["managementInitialSerialGeneration"]["value"], "INITIAL_SERIAL_GENERATION_FIXTURE")
         self.assertNotIn("PRIVATE_SERIAL_FIXTURE", json.dumps(values))
@@ -158,7 +156,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-             mock.patch.object(lifecycle, "deploy_phase", side_effect=lambda *args, **kwargs: events.append("monitoring") or outputs), \
+             mock.patch.object(lifecycle, "deploy_monitoring", side_effect=lambda *args, **kwargs: events.append("monitoring") or outputs), \
              mock.patch.object(lifecycle, "lock_and_verify_policies"), \
              mock.patch.object(lifecycle, "configure_app_insights_cap", side_effect=lambda *args: events.append("cap")), \
              contextlib.redirect_stdout(io.StringIO()):
@@ -176,11 +174,11 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         with mock.patch.object(lifecycle, "local_preflight"), \
              mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-             mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
+             mock.patch.object(lifecycle, "prepare_ingress_secrets", return_value={}), \
              mock.patch.object(lifecycle, "require_certificate_registry_ready"), \
              mock.patch.object(lifecycle, "register_providers"), \
              mock.patch.object(lifecycle, "ArmTransport", return_value=object()), \
-             mock.patch.object(lifecycle, "deploy_phase") as deploy:
+             mock.patch.object(lifecycle, "deploy_monitoring") as deploy:
             with self.assertRaisesRegex(lifecycle.DeploymentError, "固定したAPIM名"):
                 lifecycle.preprovision(self.config)
         deploy.assert_not_called()
@@ -198,7 +196,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-             mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
+             mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()), \
              mock.patch.object(lifecycle, "lock_and_verify_policies"), mock.patch.object(lifecycle, "configure_app_insights_cap"), \
              self.assertRaisesRegex(lifecycle.DeploymentError, "API Center restore failed"):
             lifecycle.preprovision(self.config)
@@ -283,7 +281,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={"sshPublicKey": "NEW_SECRET_FIXTURE"}), \
-             mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
+             mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()), \
              mock.patch.object(lifecycle, "configure_app_insights_cap", side_effect=lifecycle.DeploymentError("mock cap failure")):
             with self.assertRaisesRegex(lifecycle.DeploymentError, "mock cap failure"):
                 lifecycle.preprovision(self.config)
@@ -301,10 +299,10 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={"sshPublicKey": "LOCAL_ONLY_FIXTURE"}), \
-             mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()) as deploy, \
+             mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()) as deploy, \
              mock.patch.object(lifecycle, "configure_app_insights_cap"):
             lifecycle.preprovision(self.config)
-        deploy.assert_called_once_with(self.config, "monitoring", manage_policies=True,
+        deploy.assert_called_once_with(self.config,
                                        retained_policy_ids=[], preserve_collection=False,
                                        diagnostic_setting_properties=mock.ANY)
         state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -333,10 +331,10 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
              mock.patch.object(lifecycle, 'capacity_preflight'), \
              mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
-             mock.patch.object(lifecycle, 'deploy_phase', return_value=self.outputs()) as deploy, \
+             mock.patch.object(lifecycle, 'deploy_monitoring', return_value=self.outputs()) as deploy, \
              mock.patch.object(lifecycle, 'configure_app_insights_cap'), contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
-        deploy.assert_called_once_with(self.config, 'monitoring', manage_policies=True,
+        deploy.assert_called_once_with(self.config,
                                        retained_policy_ids=[], preserve_collection=False,
                                        diagnostic_setting_properties=mock.ANY)
         params = json.loads(self.paths.parameters.read_text(encoding="utf-8"))['parameters']
@@ -359,11 +357,11 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
              mock.patch.object(lifecycle, 'capacity_preflight'), \
              mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
-             mock.patch.object(lifecycle, 'deploy_phase', return_value=self.outputs()) as deploy, \
+             mock.patch.object(lifecycle, 'deploy_monitoring', return_value=self.outputs()) as deploy, \
              mock.patch.object(lifecycle, 'lock_and_verify_policies'), \
              mock.patch.object(lifecycle, 'configure_app_insights_cap'), contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
-        deploy.assert_called_once_with(self.config, 'monitoring', manage_policies=True,
+        deploy.assert_called_once_with(self.config,
                                        retained_policy_ids=[policy], preserve_collection=False,
                                        diagnostic_setting_properties=mock.ANY)
         # 監視で保護を揃えた後のnative coreは、LockedへのPUTをしない。
@@ -384,7 +382,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
              mock.patch.object(lifecycle, 'capacity_preflight'), \
              mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
-             mock.patch.object(lifecycle, 'deploy_phase') as deploy:
+             mock.patch.object(lifecycle, 'deploy_monitoring') as deploy:
             with self.assertRaisesRegex(lifecycle.DeploymentError, 'cannot weaken'):
                 lifecycle.preprovision(self.config)
         deploy.assert_not_called()
@@ -410,7 +408,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                     mock.patch.object(lifecycle, 'azure_preflight'), mock.patch.object(lifecycle, 'register_providers'), \
                     mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
                     mock.patch.object(lifecycle, 'capacity_preflight'), mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
-                    mock.patch.object(lifecycle, 'deploy_phase', return_value=outputs), \
+                    mock.patch.object(lifecycle, 'deploy_monitoring', return_value=outputs), \
                     mock.patch.object(lifecycle, 'lock_and_verify_policies'), \
                     mock.patch.object(lifecycle, 'configure_app_insights_cap'), contextlib.redirect_stdout(io.StringIO()):
                 lifecycle.preprovision(self.config)
@@ -427,7 +425,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
              mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight", side_effect=lifecycle.DeploymentError("mock unavailable quota")), \
-             mock.patch.object(lifecycle, "register_providers") as registration, mock.patch.object(lifecycle, "deploy_phase") as deploy:
+             mock.patch.object(lifecycle, "register_providers") as registration, mock.patch.object(lifecycle, "deploy_monitoring") as deploy:
             with self.assertRaisesRegex(lifecycle.DeploymentError, "unavailable quota"):
                 lifecycle.preprovision(self.config)
         registration.assert_called_once_with(self.config)
@@ -512,7 +510,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
     def test_deploy_phase_file_is_removed_after_command_failure(self):
         with mock.patch.object(lifecycle, "ROOT", self.root), mock.patch.object(lifecycle, "run", side_effect=lifecycle.DeploymentError("mock deployment failure")):
             with self.assertRaisesRegex(lifecycle.DeploymentError, "mock deployment failure"):
-                lifecycle.deploy_phase(self.config, "monitoring")
+                lifecycle.deploy_monitoring(self.config, preserve_collection=False)
         self.assertFalse((self.root / ".local/test/state/monitoring.parameters.json").exists())
 
     def test_pre_stage_has_native_azd_ownership_tags_and_waits_for_success(self):
@@ -523,7 +521,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             }}},
         ])
         with mock.patch.object(lifecycle, "ArmTransport", return_value=transport), mock.patch.object(lifecycle, "run", return_value={"resources": []}):
-            outputs = lifecycle.deploy_phase(self.config, "monitoring")
+            outputs = lifecycle.deploy_monitoring(self.config, preserve_collection=False)
         request = transport.calls[0]
         self.assertEqual(request["method"], "PUT")
         self.assertEqual(request["body"]["tags"], {"azd-env-name": "test", "azd-project-name": "ai-workforce-core", "azd-layer-name": ""})
@@ -557,7 +555,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                  mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
                  mock.patch.object(lifecycle, 'capacity_preflight'), \
                  mock.patch.object(lifecycle, 'load_secret_inputs', side_effect=lambda *a: events.append('secret-inputs') or {}), \
-                 mock.patch.object(lifecycle, 'deploy_phase', side_effect=lambda *a, **k: events.append('monitoring') or self.outputs()), \
+                 mock.patch.object(lifecycle, 'deploy_monitoring', side_effect=lambda *a, **k: events.append('monitoring') or self.outputs()), \
                  mock.patch.object(lifecycle, 'lock_and_verify_policies'), \
                  mock.patch.object(lifecycle, 'configure_app_insights_cap'), \
                  mock.patch.object(lifecycle, 'write_arm_parameters', side_effect=write_core), \
@@ -576,8 +574,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         with mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
              mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport'), \
              mock.patch.object(lifecycle, 'load_secret_inputs') as secrets, \
-             mock.patch.object(lifecycle, 'prepare_grpc_secret') as ingress, \
-             mock.patch.object(lifecycle, 'deploy_phase') as deploy:
+             mock.patch.object(lifecycle, 'prepare_ingress_secrets') as ingress, \
+             mock.patch.object(lifecycle, 'deploy_monitoring') as deploy:
             with self.assertRaisesRegex(ValueError, 'requires a separate migration'):
                 lifecycle.preprovision(self.config)
         for boundary in (secrets, ingress, deploy, self.prepare_nsg):
@@ -587,125 +585,19 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
 
     def test_native_core_failed_completion_keeps_outputs_and_cleans_secret_input(self):
         outputs = self.outputs()
-        response = {'properties': {'outputs': {key: {'value': value} for key, value in outputs.items()}}}
-        lifecycle.protected_json(self.paths.parameters, {'value': 'PRIVATE_INPUT_FIXTURE'})
+        response = self.core_completion_response(outputs)
         self.complete_nsg.side_effect = lifecycle.FixedNsgError('NSG tuple readback failed')
         with mock.patch.object(lifecycle, 'run', side_effect=[{'CORE_DEPLOYMENT_NAME': 'owned-core'}, response]), \
              mock.patch.object(lifecycle, 'ArmTransport'), \
-             mock.patch.object(lifecycle, 'configure_grpc_endpoint') as ingress:
+             mock.patch.object(lifecycle, 'verify_apim_endpoint') as ingress:
             with self.assertRaisesRegex(lifecycle.DeploymentError, 'tuple readback failed'):
                 lifecycle.postprovision(self.config)
         ingress.assert_not_called()
         self.public_dns.assert_not_called()
-        self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8"))['outputs'], outputs)
+        prepared = json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8"))['outputs']
+        self.assertFalse(prepared['ingressSecrets']['enabled'])
+        self.assertEqual(prepared['resourceGroups'], outputs['resourceGroups'])
         self.assertFalse(self.paths.parameters.exists())
-
-    def direct_core(self, *, completion_failure=False, provided_secrets=None):
-        """Coreだけを合成ARMで配備し、実state保存と完了確認の境界を通す。"""
-        events, outputs = [], self.outputs()
-        transport = ScriptedTransport([
-            {'statusCode': 202, 'body': None},
-            {'statusCode': 200, 'body': {'properties': {'provisioningState': 'Succeeded',
-                'outputs': {key: {'value': value} for key, value in outputs.items()}}}},
-        ])
-        existing_names = ['nsg-' + self.config['resourceStem'] + '-' + suffix
-                          for suffix in ('agw', 'apim', 'pep', 'vm', 'aca', 'certificate', 'broker')]
-        self.backend_tls_gate.side_effect = lambda *a, **kw: events.append('backend-tls') or {
-            'newGateway': False, 'protocol': 'Https', 'port': 443, 'portalProbe': '/api/health'}
-        self.prepare_nsg.side_effect = lambda *a, **k: events.append('nsg-stage') or {'azureWrites': 0}
-        original_save = lifecycle._save_deployment_state
-        def save(*args):
-            result = original_save(*args)
-            events.append('saved-state')
-            return result
-        def complete(*args, **kwargs):
-            self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8"))['outputs'], outputs)
-            events.append('nsg-complete')
-            if completion_failure:
-                raise lifecycle.FixedNsgError('NSG tuple readback failed')
-            return {'status': 'completed', 'azureWrites': 0}
-        self.complete_nsg.side_effect = complete
-        def hostnames(*args, custom_properties_out=None):
-            if custom_properties_out is not None:
-                custom_properties_out['apim-' + self.config['resourceStem'] + '-abc123'] = {
-                    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'False'}
-            return {}
-        def bootstrap(*args, mutation_recorder):
-            self.assertTrue(callable(mutation_recorder))
-            mutation_recorder('fixture-bootstrap', {'status': 'planned'})
-            events.append('l7-bootstrap')
-            return {'enabled': True, 'l7IngressEnabled': True, 'runtimeVerified': False}
-        with mock.patch.object(lifecycle, 'run', return_value={'resources': []}), \
-             mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
-             mock.patch.object(lifecycle, 'discover_existing_network_security_groups', return_value=existing_names), \
-             mock.patch.object(lifecycle, 'discover_existing_route_table_routes', return_value={}), \
-             mock.patch.object(lifecycle, 'discover_existing_apim_hostnames', side_effect=hostnames), \
-             mock.patch.object(lifecycle, 'discover_existing_apim_egress_fqdns', return_value=['api.example.invalid']), \
-             mock.patch.object(lifecycle, 'discover_existing_portal_app', return_value=True), \
-             mock.patch.object(lifecycle, 'load_secret_inputs', return_value={'sshPublicKey': 'PRIVATE_SSH_FIXTURE'}) as secrets, \
-             mock.patch.object(lifecycle, 'prepare_grpc_secret', return_value={'l7IngressSecret': 'PRIVATE_L7_FIXTURE'}) as ingress_secrets, \
-             mock.patch.object(lifecycle, 'require_certificate_registry_ready'), \
-             mock.patch.object(lifecycle, 'plan_secret_registration', return_value={}) as registration, \
-             mock.patch.object(lifecycle, '_save_deployment_state', side_effect=save), \
-             mock.patch.object(lifecycle, 'configure_grpc_endpoint', side_effect=bootstrap) as ingress:
-            if completion_failure:
-                with self.assertRaisesRegex(lifecycle.DeploymentError, 'tuple readback failed'):
-                    lifecycle.deploy_phase(self.config, 'core', secrets=provided_secrets)
-            else:
-                self.assertEqual(lifecycle.deploy_phase(self.config, 'core', secrets=provided_secrets), outputs)
-        if provided_secrets is None:
-            secrets.assert_called_once_with(self.config)
-            ingress_secrets.assert_called_once()
-        else:
-            secrets.assert_not_called()
-            ingress_secrets.assert_not_called()
-        registration.assert_called_once_with(self.config, self.root, transport, provided_secrets or {
-            'sshPublicKey': 'PRIVATE_SSH_FIXTURE', 'l7IngressSecret': 'PRIVATE_L7_FIXTURE'})
-        if completion_failure:
-            ingress.assert_not_called()
-        self.assertEqual([call['method'] for call in transport.calls], ['PUT', 'GET'])
-        return events, transport.calls[0]['body']['properties']['parameters']
-
-    def test_direct_core_saves_outputs_then_verifies_complete_set_then_bootstraps_ingress(self):
-        events, parameters = self.direct_core()
-        self.assertEqual(events, ['backend-tls', 'nsg-stage', 'saved-state', 'nsg-complete', 'l7-bootstrap'])
-        self.assertEqual(parameters['sshPublicKey']['value'], 'PRIVATE_SSH_FIXTURE')
-        self.assertEqual(parameters['l7IngressSecret']['value'], 'PRIVATE_L7_FIXTURE')
-        self.assertIn('api.example.invalid', parameters['configuration']['value']['generatedApimServiceFqdns'])
-        self.assertNotIn('apimAllowedFqdns', parameters['configuration']['value']['network']['firewall'])
-        self.assertEqual(parameters['existingApimCustomProperties']['value'], {
-            'apim-' + self.config['resourceStem'] + '-abc123': {
-                'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'False'}})
-        self.assertEqual(parameters['existingNetworkSecurityGroupNames']['value'], [
-            f"nsg-{self.config['resourceStem']}-{suffix}" for suffix in ('agw', 'apim', 'pep', 'vm', 'aca', 'certificate', 'broker')])
-        self.assertTrue(parameters['existingPortalApp']['value'])
-        self.assertNotIn('PRIVATE_', json.dumps(parameters['configuration']['value']))
-        self.assertEqual(json.loads((self.paths.state / 'ingress-bootstrap.json').read_text(encoding="utf-8")),
-                         {'enabled': True, 'l7IngressEnabled': True, 'runtimeVerified': False})
-
-    def test_direct_core_can_use_explicit_secrets_without_reading_or_recreating_credentials(self):
-        _, parameters = self.direct_core(provided_secrets={'l7IngressSecret': 'PRIVATE_PREPARED_FIXTURE'})
-        self.assertEqual(parameters['l7IngressSecret']['value'], 'PRIVATE_PREPARED_FIXTURE')
-
-    def test_direct_core_failed_completion_preserves_actual_deployment_state(self):
-        events, _ = self.direct_core(completion_failure=True)
-        self.assertEqual(events, ['backend-tls', 'nsg-stage', 'saved-state', 'nsg-complete'])
-        self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8"))['outputs'], self.outputs())
-        self.assertFalse((self.paths.state / 'ingress-bootstrap.json').exists())
-
-    def test_upgrade_journal_preserves_repeated_events_and_separate_attempts(self):
-        first = lifecycle.upgrade_journal(self.config, 'ingress-endpoint')
-        first('gateway-before', {'value': 'first-snapshot'})
-        first('gateway-before', {'value': 'second-snapshot'})
-        second = lifecycle.upgrade_journal(self.config, 'ingress-endpoint')
-        second('gateway-before', {'value': 'next-attempt'})
-        directories = list((self.paths.state / 'ingress-endpoint').iterdir())
-        self.assertEqual(len(directories), 2)
-        snapshots = list((self.paths.state / 'ingress-endpoint').glob('*/*.json'))
-        self.assertEqual(len(snapshots), 3)
-        self.assertEqual({json.loads(path.read_text(encoding="utf-8"))['value'] for path in snapshots},
-                         {'first-snapshot', 'second-snapshot', 'next-attempt'})
-        self.assertTrue(all(path.resolve().is_relative_to(self.root) for path in snapshots))
 
     def test_protected_snapshot_syncs_file_before_replacement_and_directory_after(self):
         events, path = [], self.paths.state / 'durable-snapshot.json'

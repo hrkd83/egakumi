@@ -68,8 +68,14 @@ def lock_environment(workspace: LocalPaths):
     except (ValueError, OSError):
         raise OperationError("The protected operation lock could not be opened") from None
     try:
-        if created and os.name == "nt":
-            protect_new_path(path)
+        if os.name == "nt":
+            try:
+                if created:
+                    protect_new_path(path)
+                else:
+                    check_private_permissions(path)
+            except (ValueError, OSError):
+                raise OperationError("The operation lock is not owner-only") from None
         info = os.fstat(descriptor)
         if (not stat.S_ISREG(info.st_mode)
                 or os.name != "nt" and (stat.S_IMODE(info.st_mode) != 0o600

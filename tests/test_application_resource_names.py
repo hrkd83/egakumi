@@ -10,7 +10,7 @@ from configuration_fixtures import fixture
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import deploy_portal
+from deployment import deploy_portal
 from deployment.helpers.configuration import normalize_configuration
 from deployment.helpers.credential_pools import resource_names as broker_names
 from deployment.helpers.portal_resources import resource_names as portal_names

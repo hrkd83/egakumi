@@ -169,7 +169,7 @@ SQLでの独自失効とEntra側の失効は別である。Entraの変更が独�
 WSL/POSIX上の診断コマンドは、利用者別の所有者限定ファイルへ現行値・候補・世代を原子的に保存する。
 
 ```bash
-python3 scripts/credential_client.py \
+python3 scripts/clients/credential_client.py \
   --origin 'https://<GATEWAY_HOST>' \
   --api-path '/tools/graph/v1/me' \
   --key-file '<OWNER_ONLY_KEY_FILE>' \

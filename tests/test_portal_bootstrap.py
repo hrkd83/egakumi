@@ -115,13 +115,13 @@ class PortalBootstrapLifecycleTests(LifecycleFixture, unittest.TestCase):
                     mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
                     mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
                     mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-                    mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
+                    mock.patch.object(lifecycle, "prepare_ingress_secrets", return_value={}), \
                     mock.patch.object(lifecycle, "run", return_value={}), \
                     mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
                     mock.patch.object(lifecycle, "capacity_preflight"), \
                     mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
                     mock.patch.object(lifecycle, "configure_app_insights_cap"), \
-                    mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
+                    mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()), \
                     mock.patch.object(lifecycle, "discover_existing_network_security_groups", return_value=[]), \
                     mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
                     mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}), \
@@ -132,33 +132,6 @@ class PortalBootstrapLifecycleTests(LifecycleFixture, unittest.TestCase):
                 self.assertIs(values["existingPortalApp"]["value"], exists)
                 self.assertFalse(transport.responses)
                 self.assertFalse(transport.mutations())
-
-    def test_direct_core_checks_existing_app_but_monitoring_does_not(self):
-        absent = {"statusCode": 404, "body": None}
-        for phase in ("core", "monitoring"):
-            for exists in (False, True):
-                response = self.app_response() if exists else absent
-                responses = ([absent, response] if phase == "core" else []) + [
-                    {"statusCode": 201, "body": {}}, {"statusCode": 200, "body": {
-                        "properties": {"provisioningState": "Succeeded", "outputs": {}}}}]
-                transport = ScriptedTransport(responses)
-                with self.subTest(phase=phase, exists=exists), \
-                        mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
-                        mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
-                        mock.patch.object(lifecycle, "discover_existing_network_security_groups", return_value=[]), \
-                        mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
-                        mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
-                        mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": False}) as ingress, \
-                        mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}):
-                    lifecycle.deploy_phase(self.config, phase, secrets={})
-                    self.assertEqual(ingress.call_count, 1 if phase == "core" else 0)
-                    values = transport.mutations()[0]["body"]["properties"]["parameters"]
-                    self.assertIs(values["existingPortalApp"]["value"], exists if phase == "core" else False)
-                    self.assertEqual([call["method"] for call in transport.calls],
-                                     (["GET", "GET"] if phase == "core" else []) + ["PUT", "GET"])
-                    if phase == "core":
-                        self.assertIn("/providers/Microsoft.ContainerRegistry/registries/", transport.calls[0]["path"])
-                        self.assertIn("/providers/Microsoft.App/containerApps/", transport.calls[1]["path"])
 
     def test_preservation_does_not_require_a_particular_registry_or_identity_layout(self):
         response = self.app_response()

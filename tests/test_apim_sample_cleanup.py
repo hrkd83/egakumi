@@ -56,9 +56,13 @@ def entity(resource_id, **properties):
     return {"id": resource_id, "properties": properties}
 
 
+def default_echo_properties():
+    return {"path": "echo", "serviceUrl": "https://echoapi.cloudapp.net/api", "apiRevision": "1"}
+
+
 def populated():
     t = Transport()
-    t.resources[ECHO] = entity(ECHO, path="echo", serviceUrl="https://echoapi.cloudapp.net/api", apiRevision="1")
+    t.resources[ECHO] = entity(ECHO, **default_echo_properties())
     for product in (STARTER, UNLIMITED, BUSINESS):
         t.resources[product] = entity(product, displayName=product.rsplit("/", 1)[-1].title())
         t.collections[product + "/apis"] = [entity(product + "/apis/" + ("model-v1" if product == BUSINESS else "echo-api"))]

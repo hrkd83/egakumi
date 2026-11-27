@@ -27,7 +27,7 @@ from uuid import UUID
 
 from .audit_evidence import evidence_container_id, evidence_policy_id
 from .configuration import API_NAME, load_configuration
-from .grpc_lifecycle import apim_name_matches
+from .ingress import apim_name_matches
 from .apim_naming import apim_instance_id, apim_name
 from .credential_pools import resource_names
 from .portal_resources import resource_names as portal_resource_names
@@ -1147,7 +1147,7 @@ def _portal_preflight(configuration: dict, state: Mapping, transport: Transport)
 
 
 def _broker_preflight(configuration: dict, state: Mapping, portal: dict, transport: Transport) -> dict:
-    """専用CAEの固定ID・配備記録・実subnetを確認し、旧Brokerの所有先も特定する。"""
+    """専用CAEの固定ID・配備記録・実subnetを照合する。"""
     targets = {
         'environmentId': portal['environmentId'] + '-broker',
         'subnetId': portal['subnetId'].removesuffix('-aca') + '-broker',
@@ -1164,20 +1164,15 @@ def _broker_preflight(configuration: dict, state: Mapping, portal: dict, transpo
             or not _same(record.get('environmentName'), expected_name)
             or not _same(record.get('infrastructureSubnetId'), targets['subnetId']))):
         _error('credential-state-mismatch', 'Broker専用CAEの配備記録が今回の固定ID・subnetに一致しません。')
-    dedicated = bool(record)
     if isinstance(foundation, Mapping) and any(key in foundation for key in ('brokerEnvironmentId', 'brokerEnvironmentName', 'brokerSubnetId')):
         if (not _same(foundation.get('brokerEnvironmentId'), targets['environmentId'])
                 or not _same(foundation.get('brokerEnvironmentName'), expected_name)
                 or not _same(foundation.get('brokerSubnetId'), targets['subnetId'])):
             _error('credential-state-mismatch', 'GatewayのBroker専用CAEとsubnetが今回の固定IDに一致しません。')
-        dedicated = True
     environment = _read_dedicated_environment(configuration, targets, transport)
     _capture_application_infrastructure(configuration, targets, environment)
     portal['applicationInfrastructure'] = targets['applicationInfrastructure']
-    # 旧構築の成功記録は旧アプリの所有先として維持し、部分構築時だけ実在する専用CAEを参照します。
-    use_dedicated = dedicated or environment is not None and not foundation
-    portal['credentialEnvironmentId'] = targets['environmentId'] if use_dedicated else portal['environmentId']
-    targets['checkSubnet'] = dedicated or environment is not None or 'broker' in configuration.get('network', {}).get('subnetPrefixes', {})
+    portal['credentialEnvironmentId'] = targets['environmentId']
     return targets
 
 
@@ -1277,13 +1272,12 @@ def _delete_portal_before_network(configuration: dict, targets: dict, transport:
             _request(transport, 'DELETE', broker['environmentId'], API['containerApps'])
         _wait_portal_absent(configuration, broker, 'environment', transport,
             max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
-    if broker['checkSubnet'] or environment is not None:
-        result['brokerEnvironment'] = {
-            'resourceId': broker['environmentId'], 'status': 'absent', 'httpStatus': 404,
-            'deleteRequested': environment is not None and not deleting, 'alreadyDeleting': deleting,
-            'subnet': _wait_portal_subnet_released(broker, transport,
-                max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep),
-        }
+    result['brokerEnvironment'] = {
+        'resourceId': broker['environmentId'], 'status': 'absent', 'httpStatus': 404,
+        'deleteRequested': environment is not None and not deleting, 'alreadyDeleting': deleting,
+        'subnet': _wait_portal_subnet_released(broker, transport,
+            max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep),
+    }
     result["crossResourceGroupSubnetReferenceRemoved"] = True
     return result
 
@@ -1437,7 +1431,7 @@ def _credential_apps_preflight(configuration, state, transport, environment):
     if foundation is not None and (not isinstance(foundation, Mapping)
             or foundation and (foundation.get("resourceGroup") != service_group
             or foundation.get("apimName") != apim_name(configuration)
-            or (foundation.get("brokerEnvironmentName") or foundation.get("environmentName")) != environment.rsplit('/', 1)[-1])):
+            or foundation.get("brokerEnvironmentName") != environment.rsplit('/', 1)[-1])):
         _error("credential-state-mismatch", "Gatewayの共通基盤が今回の環境と一致しません。")
     targets = [("jobs", names['reconcileJob']), ("jobs", names['schemaJob']),
                ("containerApps", names['application'])]

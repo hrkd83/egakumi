@@ -537,7 +537,7 @@ class ArmTransportTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "parameters", return_value={"parameters": {}}), \
              mock.patch.object(lifecycle, "ArmTransport", return_value=self.transport), \
              mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(lifecycle.deploy_phase(self.config, "monitoring"), {"result": "ready"})
+            self.assertEqual(lifecycle.deploy_monitoring(self.config, preserve_collection=False), {"result": "ready"})
         self.assertEqual([call.args[0].get_method() for call in self.opener.open.call_args_list], ["PUT", "GET", "GET"])
         sleep.assert_called_once_with(1)
 

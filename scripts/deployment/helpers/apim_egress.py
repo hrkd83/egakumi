@@ -1,11 +1,9 @@
-"""APIMの追加HTTPS規則を、名称移行と基盤再配備で同じ境界から確認する。"""
+"""APIMの追加HTTPS規則を、GatewayとCoreの配備で共通の条件で照合する。"""
 from __future__ import annotations
 
 import re
 
 APIM_EGRESS_RULE_NAME = "allow-apim-approved-services"
-LEGACY_APIM_EGRESS_RULE_NAME = "apim-approved-services"
-APIM_EGRESS_RULE_NAMES = (APIM_EGRESS_RULE_NAME, LEGACY_APIM_EGRESS_RULE_NAME)
 
 _FQDN = re.compile(
     r"(?:\*\.)?(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
@@ -19,7 +17,7 @@ def validate_apim_egress_rule(rule: dict, source_prefix: str) -> None:
         "sourceIpGroups", "destinationAddresses", "fqdnTags", "targetUrls",
         "httpHeaders", "httpHeadersToInsert", "webCategories",
     )
-    if (rule.get("name") not in APIM_EGRESS_RULE_NAMES
+    if (rule.get("name") != APIM_EGRESS_RULE_NAME
             or rule.get("ruleType") != "ApplicationRule"
             or rule.get("sourceAddresses") != [source_prefix]
             or rule.get("protocols") != [{"protocolType": "Https", "port": 443}]

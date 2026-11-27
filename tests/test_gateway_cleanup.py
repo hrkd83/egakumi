@@ -12,9 +12,9 @@ class GatewayCleanupTests(unittest.TestCase):
                        "resourceGroupNames": {"svc": "rg-test-fixture-svc"}, "services": {"apimInstanceId": "abc123"}}
         self.base = "/subscriptions/" + self.config["subscriptionId"] + "/resourceGroups/rg-test-fixture-svc/providers/Microsoft.App/"
         self.foundation = {"resourceGroup": "rg-test-fixture-svc", "apimName": "apim-test-fixture-abc123",
-                           "environmentName": "cae-test-fixture"}
+                           "brokerEnvironmentName": "cae-test-fixture-broker"}
         self.state = {"outputs": {"gatewayFoundation": self.foundation}}
-        self.environment = self.base + "managedEnvironments/cae-test-fixture"
+        self.environment = self.base + "managedEnvironments/cae-test-fixture-broker"
         self.ids = [self.base + "jobs/caj-test-fixture-recon", self.base + "jobs/caj-test-fixture-schema",
                     self.base + "containerApps/ca-test-fixture-credentials"]
         self.resources = {resource_id: {"id": resource_id, "name": resource_id.rsplit('/', 1)[-1],
@@ -36,7 +36,7 @@ class GatewayCleanupTests(unittest.TestCase):
         self.assertEqual(len(transport.calls), 3)
         self.assertEqual(transport.mutations(), [])
 
-    def test_previous_broker_deployment_record_remains_usable(self):
+    def test_gateway_receipt_can_identify_the_current_broker_workload(self):
         state = {"outputs": {"credentialBroker": {"applicationName": "ca-test-fixture-credentials",
                                                    "resourceGroup": "rg-test-fixture-svc"}}}
         transport = FakeTransport(self.resources)
@@ -81,7 +81,7 @@ class GatewayCleanupTests(unittest.TestCase):
 
     def test_foreign_foundation_or_resource_is_rejected_before_mutation(self):
         for field, value in (("resourceGroup", "another-rg"), ("apimName", "apim-another"),
-                             ("environmentName", "cae-another")):
+                             ("brokerEnvironmentName", "cae-another")):
             with self.subTest(field=field):
                 state = copy.deepcopy(self.state)
                 state["outputs"]["gatewayFoundation"][field] = value

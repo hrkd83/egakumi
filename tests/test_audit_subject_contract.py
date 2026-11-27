@@ -174,7 +174,7 @@ class AuditSubjectContractTests(unittest.TestCase):
         subject = self.results["sid-256"]["current"]
         self.assertEqual(len(serialized(subject)), 633)
         self.assertLess(len(serialized(subject)), 1600)
-        query = (ROOT / "scripts/audit-identification.kql").read_text(encoding="utf-8")
+        query = (ROOT / "scripts/audit/audit-identification.kql").read_text(encoding="utf-8")
         match = re.search(r"boundedIdentifier\(subject\.subscriptionId,\s*(\d+)\)", query)
         self.assertIsNotNone(match)
         self.assertEqual(int(match.group(1)), len(subject["subscriptionId"]))

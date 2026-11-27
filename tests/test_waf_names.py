@@ -4,8 +4,8 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS, DATA_POLICY_PREDECESSORS,
-                                          policy_id, policy_name, predecessor_policy_id)
+from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
+                                          policy_id, policy_name)
 
 
 class WafNamesTests(unittest.TestCase):
@@ -47,17 +47,6 @@ class WafNamesTests(unittest.TestCase):
         for key in ("g-other", "p-other", "g-unlisted-purpose", "p-unlisted-purpose"):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 policy_name(self.configuration(), key)
-
-    def test_only_split_pii_profiles_have_an_owned_predecessor_and_old_name_is_not_active(self):
-        config = self.configuration()
-        self.assertEqual(DATA_POLICY_PREDECESSORS, {"g-pii-rest": "g-pii-redact", "g-pii-mcp": "g-pii-redact"})
-        old = policy_id(config, "g-pii-rest").rsplit("/", 1)[0] + "/wafpol-g-pii-redact-abc123"
-        for key in POLICY_KEYS:
-            self.assertEqual(predecessor_policy_id(config, key), old if key in DATA_POLICY_PREDECESSORS else None)
-        self.assertNotIn("g-pii-redact", POLICY_KEYS)
-        with self.assertRaises(ValueError):
-            policy_name(config, "g-pii-redact")
-
 
 if __name__ == "__main__":
     unittest.main()

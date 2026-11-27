@@ -31,8 +31,7 @@ azd upとazd provisionは同じ構築フローを使う。本体構築の前提�
   7. 既存のNSG・ルート・APIM設定・PortalのCAの実在を再確認する。API公開時に
      追加されたFirewallの宛先も読み、今回の構築入力へ引き継ぐ。秘密情報を含む
      一時ファイルとして、アクセスを制限した.local/<environment>/generated/main.parameters.jsonを再生成する。
-     保持確認の前にAzure提供DNSを照合し、不要な既知のDNS用NSG子規則だけを
-     回収する。独自DNSや意味の異なる同名規則がある場合は変更せず停止する。
+     更新前に、対象NSGの所有権と現在の規則を照合する。
 正常終了すると、azd provisionが続いてVM・VNetなどの本体構築を行う。
 この処理の途中で失敗した場合は、生成済みのmain.parameters.jsonを削除して停止する。
 
@@ -44,9 +43,7 @@ main.bicepのcoreフェーズによる本体配備が成功した後、実際の
      一致することを確認する。他の配備を名前から推測して利用しない。
   3. 実際のリソースIDなどを.local/<environment>/state/latest.jsonへ保存する。入口の仕上げが
      失敗しても、後の更新・撤去に必要な構築記録を残すため、先に保存する。
-  4. deployment/helpers/grpc_lifecycle.pyのconfigure_endpoint()を呼び、
-     所有する旧gRPC用ドメインだけを撤去し、標準名のHTTPS保守を維持する。
-     APIM受信HTTP/2をfalseへ限定更新し、他設定の保全と反映完了を確認する。
+  4. 所有するAPIMの既定HTTPSエンドポイントと受信HTTP/2の設定を確認する。
      Named Valueの配置・Key Vault参照の確認は後続のGateway配備が担当する。
   5. 仕上げの確認結果を.local/<environment>/state/ingress-bootstrap.jsonへ保存する。
   6. Azure Public DNSを選んだ場合は、DNS用Subscriptionの公開ゾーンを照合し、
@@ -87,7 +84,6 @@ import subprocess
 import tempfile
 import threading
 import time
-import uuid
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -99,7 +95,6 @@ if __package__ in (None, ""):
     __package__ = "deployment"
 
 from .helpers.paths import REPOSITORY, configuration_path, local_paths, private_parent
-from .helpers.aca_egress import validate_aca_route_snapshot
 from .helpers.azd_parameters import ARM_PARAMETERS_ENV, arm_parameters_reference, complete_arm_parameters
 from .helpers.audit_evidence import evidence_container_id, evidence_policy_id
 from .helpers.configuration import ConfigurationError, build_bicep_configuration, entra_tenant_id, load_configuration, load_firewall_tls_inspection, load_secret_inputs
@@ -111,12 +106,23 @@ from .helpers.log_privacy import LogPrivacyError, existing_workspace_link as rea
 from .helpers.ssh_keys import ensure_management_ssh_key
 from .helpers.apim_preflight import verify_apim_name, ApimPreflightError
 from .helpers.apim_naming import apim_instance_id
-from .helpers.apim_egress import APIM_EGRESS_RULE_NAMES, validate_apim_egress_rule
 from .helpers.apim_generations import assert_current_instance, verify_state as verify_apim_state
 from .helpers.capacity import verify_capacity
 from .helpers.powershell_runtime import locate_powershell, powershell_environment
-from .helpers.grpc_lifecycle import apim_name_matches, configure_endpoint as configure_grpc_endpoint, plan_secret_registration, prepare_secret as prepare_grpc_secret, remove_secret as remove_grpc_secret
-from .helpers.operator_access import OperatorAccessError, cleanup_disabled_operator
+from .arm_response import DeploymentError, require_success, same_azure_location
+from .existing_resources import (
+    discover_existing_apim_egress_fqdns,
+    discover_existing_apim_hostnames,
+    discover_existing_network_security_groups,
+    discover_existing_portal_app,
+    discover_existing_route_table_routes,
+)
+from .helpers.ingress import (
+    plan_secret_registration,
+    prepare_secret as prepare_ingress_secrets,
+    remove_secret as remove_ingress_secrets,
+    verify_endpoint as verify_apim_endpoint,
+)
 from .helpers.fixed_nsg import FixedNsgError, verify_fixed_nsg_before_deployment, verify_fixed_nsg_after_deployment
 from .helpers.portal_gateway import gateway_id, require_appgw_backend_tls_ready
 from .helpers.management_host_time import ManagementHostTimeError, require_management_host_time_core_ready
@@ -138,26 +144,6 @@ PROVIDERS = (
     "Microsoft.Compute", "Microsoft.AlertsManagement",
     "Microsoft.App", "Microsoft.ContainerRegistry", "Microsoft.Sql",
 )
-
-
-class DeploymentError(RuntimeError):
-    """構築の停止理由を、秘密値を含めず呼出元へ返す例外。"""
-    pass
-
-
-def upgrade_journal(config: dict, category: str):
-    """一回の操作ごとに分離し、同じイベントも上書きせず保護記録へ保存する。"""
-    if not re.fullmatch(r"[a-z0-9-]+", category):
-        raise ValueError("Upgrade journal category is invalid")
-    directory = local_paths(config, ROOT).state / category / uuid.uuid4().hex
-    sequence = 0
-    def record(event, value):
-        nonlocal sequence
-        if not isinstance(event, str) or not re.fullmatch(r"[a-zA-Z0-9-]+", event):
-            raise ValueError("Upgrade journal event is invalid")
-        sequence += 1
-        protected_json(directory / f"{sequence:04d}-{event}.json", value)
-    return record
 
 
 def require_core_appgw_ready(config, transport):
@@ -247,17 +233,6 @@ def verify_core_network_after_deployment(config: dict, transport) -> None:
         verify_fixed_nsg_after_deployment(config, transport)
     except FixedNsgError as error:
         raise DeploymentError(str(error)) from None
-
-
-def same_azure_location(actual: str, expected: str) -> bool:
-    """ARMの表示名（Japan East）と設定コード（japaneast）を照合する。
-
-    APIによって同じリージョンが空白付きで返るため、ASCII空白と大小文字だけを
-    正規化する。別リージョン・記号の違いは一致にせず、所有IDやタグの検査も維持する。
-    """
-    if not isinstance(actual, str) or not isinstance(expected, str):
-        return False
-    return actual.replace(" ", "").casefold() == expected.replace(" ", "").casefold()
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -496,7 +471,7 @@ def _management_serial_vm_response(config: dict, transport: ArmTransport) -> dic
 def _serial_core_response(config: dict, transport: ArmTransport, provenance: dict) -> dict:
     """元の内部世代を持つ、選択したCore配備だけを再開時に読む。"""
     deployment = provenance.get("coreDeploymentId")
-    if deployment is None and provenance.get("coreMode") == "native":
+    if deployment is None:
         environment = run(["azd", "env", "get-values", "--environment", config["environmentName"], "-o", "json"])
         name = environment.get("CORE_DEPLOYMENT_NAME")
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.()-]{1,64}", name):
@@ -549,10 +524,9 @@ def _management_serial_generation(config: dict, password: str) -> str:
         raise DeploymentError(str(error)) from None
 
 
-def _record_management_serial_creation(config: dict, password: str, *, native: bool = False) -> None:
+def _record_management_serial_creation(config: dict, password: str) -> None:
     try:
-        serial_initialization.record_core_request(config, local_paths(config, ROOT), password,
-                                                   "native" if native else "direct", protected_json)
+        serial_initialization.record_core_request(config, local_paths(config, ROOT), password, protected_json)
     except SerialCredentialError as error:
         raise DeploymentError(str(error)) from None
 
@@ -739,316 +713,11 @@ class ArmTransport:
                 raise DeploymentError(f"ARM {method} {parsed.path} connection failed ({cause}); {action}") from error
 
 
-def require_success(response: dict, operation: str, allowed=(200, 201, 204)) -> dict:
-    """許可したHTTP状態か確認し、エラー本文を表示せず構造化したbodyを返す。"""
-    if response["statusCode"] not in allowed:
-        raise DeploymentError(f"{operation} failed (HTTP {response['statusCode']})")
-    return response.get("body") or {}
-
-
-def discover_existing_network_security_groups(config: dict, transport: ArmTransport) -> list[str]:
-    """今回の所有NSGだけを読み、同じ環境の既存資源を名前で返す。
-
-    再upでNSG本体を空のpropertiesで更新すると、AppGWが必要とする既存規則を
-    Azureが認識できず拒否する場合がある。本体の新規作成が必要かを先に確認し、
-    規則自体の更新は従来の子リソース配備へ任せる。手動で指定する公開設定にはしない。
-    同名でも所有タグや配置先が違う資源は再利用せず、確認できない応答でも停止する。
-    """
-    prefix = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/"
-              f"{config['resourceGroupNames']['nw']}/providers/Microsoft.Network/networkSecurityGroups/")
-    expected_tags = {"product": config["productName"], "environment": config["environmentName"],
-                     "azd-env-name": config["environmentName"]}
-    existing = []
-    suffixes = ("agw", "apim", "pep", "vm", "aca", "certificate", "broker")
-    if config.get("auditEvidence", {}).get("enabled") is True:
-        suffixes += ("audit",)
-    for suffix in suffixes:
-        name = f"nsg-{config['resourceStem']}-{suffix}"
-        resource_id = prefix + name
-        response = transport.request("GET", resource_id + "?api-version=2025-01-01")
-        body = require_success(response, "Read existing core network security group", allowed=(200, 404))
-        if response["statusCode"] == 404:
-            continue
-        tags = body.get("tags") if isinstance(body, dict) else None
-        if (not isinstance(body, dict)
-                or str(body.get("id", "")).casefold() != resource_id.casefold()
-                or str(body.get("name", "")).casefold() != name.casefold()
-                or str(body.get("type", "")).casefold() != "microsoft.network/networksecuritygroups"
-                or not same_azure_location(body.get("location"), config["location"])
-                or not isinstance(tags, dict)
-                or any(tags.get(key) != value for key, value in expected_tags.items())):
-            raise DeploymentError("Existing network security group does not match this environment's identity, location or ownership tags")
-        existing.append(name)
-    return existing
-
-
-def discover_existing_route_table_routes(config: dict, transport: ArmTransport) -> dict:
-    """今回の基本経路表と有効なACA経路表を読み、親の再配備へ引き継ぐ既存経路だけを返す。
-
-    親の PUT で routes を省略すると既存 UDR が消えるため、動的経路の子が
-    新しい値を上書きするまで現在の経路を保持する。ルート伝搬の設定はコピーせず、
-    Bicep が今回の config を適用する。利用者が指定する公開パラメーターではない。
-    経路の宛先・次ホップ・所属先を確認し、書込対象の設定だけを引き継ぐ。
-    """
-    prefix = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/"
-              f"{config['resourceGroupNames']['nw']}/providers/Microsoft.Network/routeTables/")
-    expected_tags = {"product": config["productName"], "environment": config["environmentName"],
-                     "azd-env-name": config["environmentName"]}
-    route_properties = {"addressPrefix", "nextHopType", "nextHopIpAddress", "hasBgpOverride"}
-    existing = {}
-    suffixes = ("agw", "apim", "vm", "aca", "certificate", "broker")
-    if config.get("auditEvidence", {}).get("enabled") is True:
-        suffixes += ("audit",)
-    for suffix in suffixes:
-        name = f"rt-{config['resourceStem']}-{suffix}"
-        resource_id = prefix + name
-        response = transport.request("GET", resource_id + "?api-version=2025-01-01")
-        body = require_success(response, "Read existing core route table", allowed=(200, 404))
-        if response["statusCode"] == 404:
-            existing[name] = []
-            continue
-        tags = body.get("tags") if isinstance(body, dict) else None
-        if (not isinstance(body, dict)
-                or str(body.get("id", "")).casefold() != resource_id.casefold()
-                or str(body.get("name", "")).casefold() != name.casefold()
-                or str(body.get("type", "")).casefold() != "microsoft.network/routetables"
-                or not same_azure_location(body.get("location"), config["location"])
-                or not isinstance(tags, dict)
-                or any(tags.get(key) != value for key, value in expected_tags.items())):
-            raise DeploymentError("Existing route table does not match this environment's identity, location or ownership tags")
-        properties = body.get("properties")
-        if (not isinstance(properties, dict)
-                or not isinstance(properties.get("routes"), list)
-                or properties.get("provisioningState", "Succeeded") != "Succeeded"):
-            raise DeploymentError("Existing route table properties or current routes could not be verified")
-        sanitized = []
-        seen = set()
-        for route in properties["routes"]:
-            if (not isinstance(route, dict)
-                    or not isinstance(route.get("name"), str) or not route["name"]
-                    or route["name"] != route["name"].strip() or "/" in route["name"]
-                    or route["name"].casefold() in seen):
-                raise DeploymentError("Existing route child identity or properties could not be verified")
-            route_name = route["name"]
-            if (("id" in route and str(route["id"]).casefold() != (resource_id + "/routes/" + route_name).casefold())
-                    or ("type" in route and str(route["type"]).casefold() != "microsoft.network/routetables/routes")):
-                raise DeploymentError("Existing route child does not belong to the expected route table")
-            fields = route.get("properties")
-            if (not isinstance(fields, dict)
-                    or any(not isinstance(fields.get(key), str) or not fields[key] for key in ("addressPrefix", "nextHopType"))
-                    or (fields.get("nextHopIpAddress") is not None and not isinstance(fields["nextHopIpAddress"], str))
-                    or (fields.get("hasBgpOverride") is not None and not isinstance(fields["hasBgpOverride"], bool))
-                    or fields.get("provisioningState", "Succeeded") != "Succeeded"):
-                raise DeploymentError("Existing route semantics could not be verified; no route values were logged")
-            seen.add(route_name.casefold())
-            # id/type/etag/進行状態は読取用。既存の全書込可能値だけを複写する。
-            sanitized.append({"name": route_name, "properties": {
-                key: copy.deepcopy(value) for key, value in fields.items() if key in route_properties}})
-        if suffix in ("aca", "certificate", "broker", "audit"):
-            if properties.get("disableBgpRoutePropagation") is not True:
-                raise DeploymentError("ACA public HTTPS requires BGP propagation to be disabled")
-            if suffix == "certificate" and any(route["name"] != "default-egress" for route in sanitized):
-                raise DeploymentError("Certificate ACA uses only the owned default Firewall route")
-            try:
-                subnets = config["network"]["subnetPrefixes"]
-                validate_aca_route_snapshot(sanitized, subnets["firewall"], subnets["agw"])
-            except ValueError as error:
-                raise DeploymentError(str(error)) from None
-        existing[name] = sanitized
-    return existing
-
-
-def discover_existing_apim_egress_fqdns(config: dict, transport: ArmTransport) -> list[str]:
-    """公開済みAPIのHTTPS宛先を読み、次の基盤配備へ引き継ぐ。
-
-    API公開処理は同じFirewall規則へ宛先を追加する。親の規則群を再配備すると
-    配列全体が置き換わるため、既存の許可先を生成入力にだけ含める。
-    所有者・送信元・HTTPS境界が一致した規則だけを採用し、取得失敗は停止する。
-    """
-    name = "afwp-" + config["resourceStem"]
-    policy_id = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/"
-                 f"{config['resourceGroupNames']['nw']}/providers/Microsoft.Network/firewallPolicies/{name}")
-    response = transport.request("GET", policy_id + "?api-version=2025-01-01")
-    policy = require_success(response, "Read existing API egress policy", allowed=(200, 404))
-    if response["statusCode"] == 404:
-        return []
-    expected_tags = {"product": config["productName"], "environment": config["environmentName"],
-                     "azd-env-name": config["environmentName"]}
-    if (not isinstance(policy, dict)
-            or str(policy.get("id", "")).casefold() != policy_id.casefold()
-            or str(policy.get("name", "")).casefold() != name.casefold()
-            or str(policy.get("type", "")).casefold() != "microsoft.network/firewallpolicies"
-            or not same_azure_location(policy.get("location"), config["location"])
-            or not isinstance(policy.get("tags"), dict)
-            or any(policy["tags"].get(key) != value for key, value in expected_tags.items())):
-        raise DeploymentError("Existing API egress policy does not match this environment's identity, location or ownership tags")
-    group_id = policy_id + "/ruleCollectionGroups/rcg-egress"
-    response = transport.request("GET", group_id + "?api-version=2025-01-01")
-    group = require_success(response, "Read existing API egress rules", allowed=(200, 404))
-    if response["statusCode"] == 404:
-        return []
-    properties = group.get("properties") if isinstance(group, dict) else None
-    if (not isinstance(properties, dict)
-            or str(group.get("id", "")).casefold() != group_id.casefold()
-            or properties.get("provisioningState", "Succeeded") != "Succeeded"
-            or not isinstance(properties.get("ruleCollections"), list)
-            or any(not isinstance(item, dict) for item in properties["ruleCollections"])):
-        raise DeploymentError("Existing API egress rule inventory could not be verified")
-    collections = [item for item in properties["ruleCollections"] if item.get("name") == "allow-apim-egress"]
-    if not collections:
-        return []
-    if (len(collections) != 1
-            or collections[0].get("ruleCollectionType") != "FirewallPolicyFilterRuleCollection"
-            or collections[0].get("action") != {"type": "Allow"}
-            or not isinstance(collections[0].get("rules"), list)
-            or any(not isinstance(item, dict) for item in collections[0]["rules"])):
-        raise DeploymentError("Existing API egress collection has a different permission boundary")
-    rules = [item for item in collections[0]["rules"] if item.get("name") in APIM_EGRESS_RULE_NAMES]
-    if not rules:
-        return []
-    if len(rules) != 1:
-        raise DeploymentError("Existing API egress rule is duplicated across current or legacy names")
-    rule = rules[0]
-    try:
-        validate_apim_egress_rule(rule, config["network"]["subnetPrefixes"]["apim"])
-    except ValueError as exc:
-        raise DeploymentError(str(exc)) from None
-    hosts = []
-    for host in rule["targetFqdns"]:
-        if host.casefold() not in {value.casefold() for value in hosts}:
-            hosts.append(host)
-    return hosts
-
-
-def discover_existing_portal_app(config: dict, transport: ArmTransport) -> bool:
-    """対象 CA の実在と配置先を照合し、初回作成が必要かを基盤配備へ伝える。
-
-    初回は Bicep が初期イメージで作成し、Actions が Portal 本体へ更新する。
-    再 up で本体のイメージ・Ingress・環境変数を初期設定へ戻さないよう、
-    同じ CAE 内の既存 CA は基盤からの PUT を省く。設定や秘密値は複写しない。
-    実在確認の 404 だけを未作成とし、権限エラーや状態不明の応答では停止する。
-    """
-    prefix = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/"
-              f"{config['resourceGroupNames']['svc']}/providers/Microsoft.App/")
-    application_name = f"ca-{config['resourceStem']}-portal"
-    resource_id = prefix + "containerApps/" + application_name
-    expected_environment = prefix + f"managedEnvironments/cae-{config['resourceStem']}"
-    response = transport.request("GET", resource_id + "?api-version=2025-01-01")
-    body = require_success(response, "Read existing Portal Container App", allowed=(200, 404))
-    if response["statusCode"] == 404:
-        return False
-    if (not isinstance(body, dict)
-            or str(body.get("id", "")).casefold() != resource_id.casefold()
-            or str(body.get("name", "")).casefold() != application_name.casefold()
-            or str(body.get("type", "")).casefold() != "microsoft.app/containerapps"
-            or not same_azure_location(body.get("location"), config["location"])):
-        raise DeploymentError("Existing Portal Container App does not match the configured identity or location")
-    properties = body.get("properties")
-    if (not isinstance(properties, dict)
-            or str(properties.get("managedEnvironmentId", "")).casefold() != expected_environment.casefold()):
-        raise DeploymentError("Existing Portal Container App belongs to a different managed environment")
-    if properties.get("provisioningState") != "Succeeded":
-        raise DeploymentError("Existing Portal Container App is not ready; check its deployment before retrying")
-    return True
-
-
-def discover_existing_apim_hostnames(config: dict, transport: ArmTransport, *, custom_properties_out: dict | None = None) -> dict:
-    """同じ環境の APIM を読み、再 PUT で消してはいけない公開ドメイン設定を引き継ぐ。
-
-    証明書の初回発行は APIM 作成後なので、ドメインは postprovision が設定する。
-    次の up では本体 PUT でもその設定を明示する必要がある。Bicep が決める名前末尾を
-    Python で再計算せず、所有 RG の一覧から名前・配置・タグを照合して本体を読み直す。
-    戻り値は実 APIM 名ごとの公開情報だけで、秘密証明書や観測した証明書情報・状態は渡さない。
-    """
-    prefix = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/"
-              f"{config['resourceGroupNames']['svc']}/providers/Microsoft.ApiManagement/service")
-    listed = transport.request("GET", prefix + "?api-version=2024-05-01")
-    inventory = require_success(listed, "Read existing core API Management inventory", allowed=(200, 404))
-    if listed["statusCode"] == 404:
-        return {}
-    if not isinstance(inventory, dict) or not isinstance(inventory.get("value"), list) or inventory.get("nextLink"):
-        raise DeploymentError("Existing API Management inventory could not be verified")
-    candidates = []
-    for item in inventory["value"]:
-        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
-            raise DeploymentError("Existing API Management inventory could not be verified")
-        if apim_name_matches(config, item["name"]):
-            candidates.append(item)
-    if not candidates:
-        return {}
-    if len(candidates) != 1:
-        raise DeploymentError("Existing API Management identity is ambiguous; no domain values were logged")
-    name = candidates[0]["name"]
-    resource_id = prefix + "/" + name
-    response = transport.request("GET", resource_id + "?api-version=2024-05-01")
-    body = require_success(response, "Read existing API Management hostname configuration", allowed=(200,))
-    expected_tags = {"product": config["productName"], "environment": config["environmentName"],
-                     "azd-env-name": config["environmentName"]}
-    tags = body.get("tags") if isinstance(body, dict) else None
-    if (not isinstance(body, dict) or str(body.get("id", "")).casefold() != resource_id.casefold()
-            or str(body.get("name", "")).casefold() != name.casefold()
-            or str(body.get("type", "")).casefold() != "microsoft.apimanagement/service"
-            or not same_azure_location(body.get("location"), config["location"])
-            or not isinstance(tags, dict) or any(tags.get(key) != value for key, value in expected_tags.items())):
-        raise DeploymentError("Existing API Management does not match this environment's identity, location or ownership tags")
-    properties = body.get("properties")
-    if (not isinstance(properties, dict) or properties.get("provisioningState") != "Succeeded"
-            or not isinstance(properties.get("hostnameConfigurations"), list)):
-        raise DeploymentError("Existing API Management hostname configuration is not ready for a new deployment")
-    custom = properties.get("customProperties", {})
-    if (not isinstance(custom, dict) or any(
-            not isinstance(key, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9.]{0,255}", key)
-            or not isinstance(value, str) or value.lower() not in ("true", "false")
-            for key, value in custom.items())):
-        raise DeploymentError("Existing API Management protocol settings cannot be safely preserved")
-    sanitized, seen = [], set()
-    writable = {"type", "hostName", "keyVaultId", "identityClientId", "defaultSslBinding",
-                "negotiateClientCertificate", "certificateSource"}
-    for domain in properties["hostnameConfigurations"]:
-        # ARM GETは証明書本文/パスワードの欄をnullで返すため、nullだけ許容して捨てます。
-        # 非nullの値が返った場合は停止し、公開設定の保持処理へ秘密値をコピーしません。
-        private_response_fields = {"encodedCertificate", "certificatePassword"}
-        if (not isinstance(domain, dict)
-                or any(domain.get(key) is not None for key in private_response_fields)
-                or domain.get("type") not in ("Proxy", "Portal", "Management", "Scm", "DeveloperPortal", "ConfigurationApi")
-                or not isinstance(domain.get("hostName"), str) or not domain["hostName"]
-                or len(domain["hostName"]) > 253
-                or not re.fullmatch(r"(?:\*\.)?(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", domain["hostName"])
-                or any(key in domain and not isinstance(domain[key], bool) for key in ("defaultSslBinding", "negotiateClientCertificate"))
-                or (domain.get("identityClientId") is not None and not re.fullmatch(r"[0-9a-fA-F-]{36}", str(domain["identityClientId"])))):
-            raise DeploymentError("Existing API Management domain cannot be preserved without unsupported or private input")
-        identity = (domain["type"], domain["hostName"].casefold())
-        if identity in seen:
-            raise DeploymentError("Existing API Management domain identity is ambiguous")
-        seen.add(identity)
-        source, vault_uri = domain.get("certificateSource"), domain.get("keyVaultId")
-        if vault_uri:
-            # 参照 URL だけを保持し、Key Vault の証明書・Secret 本文を読むことはない。
-            if not isinstance(vault_uri, str) or any(ord(char) <= 32 for char in vault_uri):
-                raise DeploymentError("Existing API Management certificate reference could not be verified")
-            uri = urlparse(vault_uri)
-            if (source not in (None, "KeyVault") or uri.scheme != "https"
-                    or not re.fullmatch(r"[a-z0-9-]+\.vault\.azure\.net(?::443)?", uri.netloc, re.IGNORECASE)
-                    or uri.query or uri.fragment or uri.params
-                    or not re.fullmatch(r"/secrets/[A-Za-z0-9-]+(?:/[A-Za-z0-9-]+)?/?", uri.path)):
-                raise DeploymentError("Existing API Management certificate reference could not be verified")
-        elif (source not in (None, "BuiltIn")
-                or domain["hostName"].casefold() != (name + ".azure-api.net").casefold()
-                or domain["type"] != "Proxy"):
-            # Managed/inline Custom 証明書の再 PUT を秘密情報なしで保証できないため停止する。
-            raise DeploymentError("Existing API Management certificate requires explicit review before redeployment")
-        sanitized.append({key: copy.deepcopy(value) for key, value in domain.items()
-                          if key in writable and (value is not None or key == "identityClientId")})
-    if custom_properties_out is not None:
-        custom_properties_out[name.casefold()] = copy.deepcopy(custom)
-    return {name.casefold(): sanitized}
-
-
 def local_preflight(config: dict, *, check_power_shell: bool = True, configuration_source: Path | None = None) -> None:
     """選択環境・依存関係を検査し、必要な秘密とSSH鍵をAzure操作前にローカル準備する。"""
     # Bicep consumes the reviewed static rendering. Stop before any Azure write
     # if input types/API routes changed without regenerating that source asset.
-    from waf_contracts import render as check_waf_contract_manifest
+    from validation.waf_contracts import render as check_waf_contract_manifest
     try:
         check_waf_contract_manifest(check=True)
     except (ValueError, OSError, KeyError, TypeError) as error:
@@ -1400,91 +1069,41 @@ def _record_monitoring_reapply(config: dict, proof: dict) -> tuple[Path, dict]:
     return Path(name), record
 
 
-def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_collection=False,
-                 secrets: dict | None = None,
-                 retained_policy_ids: list[str] | None = None, diagnostic_setting_properties: dict | None = None) -> dict:
-    """Bicepをコンパイルし、azdと同じ所有タグで対象フェーズをARM配備する。
-
-    要求受付だけで成功にせず、Succeededまで状態を読む。失敗や待機超過では
-    通常は自動追加せず停止する。監視Export単独の既知失敗が現在の実設定で解消済みの
-    場合だけ、最初の失敗を保存して同じ要求を一回再適用する。
-    """
+def deploy_monitoring(config: dict, *, preserve_collection: bool,
+                      retained_policy_ids: list[str] | None = None,
+                      diagnostic_setting_properties: dict | None = None) -> dict:
+    """監視の先行配備を実行し、Azureが成功を返してから出力を渡す。"""
     template = run(["az", "bicep", "build", "--file", str(ROOT / "infra/main.bicep"), "--stdout"])
-    # 配備タグはARM属性で、az deployment sub createには--tagsがない。ARM経由で
-    # azdと同じ所有タグを付け、前処理で中断しても通常のdownが対象を認識できるようにする。
-    path = f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/{config['resourceStem']}-{phase}?api-version=2022-09-01"
+    path = (f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/"
+            f"deployments/{config['resourceStem']}-monitoring?api-version=2022-09-01")
     transport = ArmTransport(config)
-    if phase == "core" and secrets is None:
-        secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json)}
-    if phase == "core":
-        require_certificate_registry_ready(config, transport)
-        secrets = {**(secrets or {}), "ingressSecretRegistration": plan_secret_registration(config, ROOT, transport, secrets or {})}
-    serial_password = _prepare_management_serial_password(config, transport) if phase == "core" else ""
-    if phase == "core":
-        verify_core_network_before_deployment(config, transport)
-    # monitoring はネットワークを配備しない。core の直接呼出しでも native azd と
-    # 同じ既存確認を行い、途中まで作成済みの場合にも残った動的規則を維持する。
-    existing_nsg_names = discover_existing_network_security_groups(config, transport) if phase == "core" else []
-    existing_routes = discover_existing_route_table_routes(config, transport) if phase == "core" else {}
-    existing_apim_custom_properties = {}
-    existing_apim_hostnames = discover_existing_apim_hostnames(config, transport, custom_properties_out=existing_apim_custom_properties) if phase == "core" else {}
-    existing_apim_egress_fqdns = discover_existing_apim_egress_fqdns(config, transport) if phase == "core" else []
-    existing_portal_app = discover_existing_portal_app(config, transport) if phase == "core" else False
-    existing_workspace_privacy_dcr_id = read_workspace_privacy_link(config, transport)
     if diagnostic_setting_properties is None:
-        diagnostic_setting_properties = prepare_diagnostic_settings(config, transport, phase, preserve_collection)
-    if phase == "core":
-        # An explicit secrets dict must not override the owned initial generation.
-        secrets = {**{key: value for key, value in (secrets or {}).items() if key != "managementAdminPassword"},
-                   "managementInitialSerialGeneration": _management_serial_generation(config, serial_password)}
-
+        diagnostic_setting_properties = prepare_diagnostic_settings(config, transport, "monitoring", preserve_collection)
+    inputs = parameters(
+        config, "monitoring",
+        retained_policy_ids=retained_policy_ids,
+        preserve_collection=preserve_collection,
+        existing_workspace_privacy_dcr_id=read_workspace_privacy_link(config, transport),
+        diagnostic_setting_properties=diagnostic_setting_properties,
+    )
+    # azdと同じ所有タグを付け、前処理で中断しても通常のdownで撤去できるようにする。
     request_body = {
         "location": config["location"],
         "tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME, "azd-layer-name": ""},
-        "properties": {"mode": "Incremental", "template": template,
-                       "parameters": parameters(config, phase, secrets=secrets, manage_policies=manage_policies,
-                                                retained_policy_ids=retained_policy_ids,
-                                                preserve_collection=preserve_collection,
-                                                existing_nsg_names=existing_nsg_names,
-                                                existing_route_table_routes=existing_routes,
-                                                existing_apim_hostname_configurations=existing_apim_hostnames,
-                                                existing_apim_custom_properties=existing_apim_custom_properties,
-                                                existing_apim_egress_fqdns=existing_apim_egress_fqdns,
-                                                existing_portal_app=existing_portal_app,
-                                                existing_workspace_privacy_dcr_id=existing_workspace_privacy_dcr_id,
-                                                diagnostic_setting_properties=diagnostic_setting_properties)["parameters"]},
+        "properties": {"mode": "Incremental", "template": template, "parameters": inputs["parameters"]},
     }
-    if phase == "core":
-        _confirm_management_serial_target(config, transport, serial_password)
-        _record_management_serial_creation(config, serial_password)
     response = transport.request("PUT", path, body=request_body)
-    require_success(response, f"Start {phase} deployment", allowed=(200, 201, 202))
+    require_success(response, "Start monitoring deployment", allowed=(200, 201, 202))
     deadline = time.monotonic() + 7200
     reapply = None
     while True:
-        deployment = require_success(transport.request("GET", path), f"Read {phase} deployment")
+        deployment = require_success(transport.request("GET", path), "Read monitoring deployment")
         status = deployment.get("properties", {}).get("provisioningState")
         if status == "Succeeded":
             if reapply is not None:
                 protected_json(reapply[0], {**reapply[1], 'status': 'reapply-succeeded'})
-            outputs = {key: item["value"] for key, item in deployment["properties"]["outputs"].items()}
-            if phase == "core":
-                if _body_audit_storage(config)["immutabilityMode"] == "Locked":
-                    lock_body_audit_policy(config, outputs, transport)
-                if outputs.get("certificateBootstrap"):
-                    outputs, _ = finish_certificate_core(
-                        config, outputs, transport, serial_password,
-                        request_body["properties"]["parameters"]["l7IngressSecret"]["value"],
-                        request_body["properties"]["parameters"]["firewallTlsInspection"]["value"].get("rootCaData", ""))
-                else:
-                    _save_deployment_state(config, outputs)
-                    _bind_management_serial_password(config, outputs, transport, serial_password)
-                    verify_core_network_after_deployment(config, transport)
-                    protected_json(local_paths(config, ROOT).state / "ingress-bootstrap.json",
-                                   configure_grpc_endpoint(config, outputs, transport,
-                                                           mutation_recorder=upgrade_journal(config, "ingress-endpoint")))
-            return outputs
-        if status == "Failed" and phase == "monitoring" and reapply is None and time.monotonic() < deadline:
+            return {key: item["value"] for key, item in deployment["properties"]["outputs"].items()}
+        if status == "Failed" and reapply is None and time.monotonic() < deadline:
             proof = _monitoring_export_reapply_ready(config, template, deployment, transport, deadline)
             if proof is not None and time.monotonic() < deadline:
                 reapply = _record_monitoring_reapply(config, proof)
@@ -1501,9 +1120,9 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
         if status in ("Failed", "Canceled", "Deleted"):
             if reapply is not None:
                 protected_json(reapply[0], {**reapply[1], 'status': 'reapply-' + status.lower()})
-            raise DeploymentError(f"The {phase} deployment {status}; inspect that deployment before continuing")
+            raise DeploymentError(f"The monitoring deployment {status}; inspect that deployment before continuing")
         if time.monotonic() >= deadline:
-            raise DeploymentError(f"The {phase} deployment is still pending; inspect its status before retrying")
+            raise DeploymentError("The monitoring deployment is still pending; inspect its status before retrying")
         time.sleep(10)
 
 
@@ -1843,7 +1462,7 @@ def _preprovision(config: dict) -> None:
     require_core_appgw_ready(config, transport)
     require_certificate_registry_ready(config, transport)
     serial_password = _prepare_management_serial_password(config, transport)
-    secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json),
+    secrets = {**load_secret_inputs(config), **prepare_ingress_secrets(config, ROOT, protected_json),
                "managementInitialSerialGeneration": _management_serial_generation(config, serial_password)}
     secrets["ingressSecretRegistration"] = plan_secret_registration(config, ROOT, transport, secrets)
     # 固定名の競合は有料の監視・ネットワーク作成より前に検出する。
@@ -1886,9 +1505,10 @@ def _preprovision(config: dict) -> None:
     # 第4段階: コアの操作ログを受け取れるよう、監視・監査の保存先を先に作る。
     # 実際のResource IDを直ちに記録し、途中失敗でも撤去時に同じ対象を辿れるようにする。
     monitoring_diagnostics = prepare_diagnostic_settings(config, transport, "monitoring", preserve_collection)
-    outputs = deploy_phase(config, "monitoring", manage_policies=True,
-                           retained_policy_ids=retained_policy_ids, preserve_collection=preserve_collection,
-                           diagnostic_setting_properties=monitoring_diagnostics)
+    outputs = deploy_monitoring(
+        config, retained_policy_ids=retained_policy_ids, preserve_collection=preserve_collection,
+        diagnostic_setting_properties=monitoring_diagnostics,
+    )
     _save_deployment_state(config, outputs)
     # Workspace作成とDCR作成を終えてから関連付け、次のCore PUTでもその実参照を保持します。
     workspace_privacy_dcr_id = ensure_workspace_link(config, transport)
@@ -1923,7 +1543,7 @@ def _preprovision(config: dict) -> None:
     core_diagnostics = prepare_diagnostic_settings(config, transport, "core")
 
     _confirm_management_serial_target(config, transport, serial_password)
-    _record_management_serial_creation(config, serial_password, native=True)
+    _record_management_serial_creation(config, serial_password)
     body_worm = _body_audit_storage(config)["immutabilityMode"] == "Locked"
     monitoring_worm = config["monitoring"]["auditImmutabilityMode"] == "Locked"
     # 本文ポリシーはCore配備で作成する。監視段階ですでにロックしたポリシーはPUTから外す。
@@ -2067,17 +1687,6 @@ def finish_public_dns(config, outputs, transport):
     return configure_public_dns(config, outputs, transport, dns_transport)
 
 
-def require_certificate_job_cutover(config, outputs, transport):
-    """旧VMタイマーの管理資源が残る環境との並行発行を避ける。"""
-    vm = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['maint']}"
-          f"/providers/Microsoft.Compute/virtualMachines/vm-{config['resourceStem']}-mgmt")
-    if str(outputs.get("managementVm", {}).get("id", "")).casefold() != vm.casefold():
-        raise DeploymentError("The certificate bootstrap VM does not match the selected Core deployment")
-    response = transport.request("GET", vm + "/runCommands/configure-public-certificate?api-version=2024-07-01")
-    if response.get("statusCode") != 404:
-        raise DeploymentError("Verify retirement of the previous VM certificate automation before starting the ACA job")
-
-
 def finish_certificate_core(config, outputs, transport, serial_password, l7_secret, firewall_root_ca):
     """Coreの依存先を記録し、初回発行・公開・DNSを同じ順序で完了する。"""
     from .helpers.certificate_jobs import complete_initial_certificates
@@ -2090,7 +1699,6 @@ def finish_certificate_core(config, outputs, transport, serial_password, l7_secr
     try:
         with context.locked():
             _save_deployment_state(config, outputs)
-            require_certificate_job_cutover(config, outputs, transport)
             dns_path = workspace.state / "public-dns.json"
             dns_path.unlink(missing_ok=True)
             _bind_management_serial_password(config, outputs, transport, serial_password)
@@ -2113,8 +1721,7 @@ def finish_certificate_core(config, outputs, transport, serial_password, l7_secr
                      "certificateBootstrap": {**outputs["certificateBootstrap"], "imageDigest": issued["imageDigest"]},
                      "ingressSecrets": {**outputs["ingressSecrets"], "enabled": True}}
             protected_json(workspace.state / "ingress-bootstrap.json",
-                           configure_grpc_endpoint(config, final, transport,
-                                                   mutation_recorder=upgrade_journal(config, "ingress-endpoint")))
+                           verify_apim_endpoint(config, final, transport))
             receipt = finish_public_dns(config, final, transport)
             protected_json(dns_path, receipt)
             _save_deployment_state(config, final)
@@ -2137,39 +1744,19 @@ def postprovision(config: dict) -> None:
         outputs = {key: item["value"] for key, item in response["properties"]["outputs"].items()}
         if outputs.get("resourceGroups") != config["resourceGroupNames"]:
             raise DeploymentError("The deployment group list differs from the configured five groups")
+        if response["properties"].get("provisioningState") != "Succeeded" or not outputs.get("certificateBootstrap"):
+            raise DeploymentError("The Core foundation deployment did not succeed or has no certificate bootstrap output")
         transport = ArmTransport(config)
         if _body_audit_storage(config)["immutabilityMode"] == "Locked":
-            if response["properties"].get("provisioningState") != "Succeeded":
-                raise DeploymentError("Confirm Core deployment succeeded before locking body evidence")
             lock_body_audit_policy(config, outputs, transport)
-        if outputs.get("certificateBootstrap"):
-            if response["properties"].get("provisioningState") != "Succeeded":
-                raise DeploymentError("The Core foundation deployment did not succeed")
-            initial_password = _read_initial_serial_deployment_input(config)
-            parameters_path = workspace.checked(workspace.parameters)
-            require_serial_storage_permissions(parameters_path)
-            generated = json.loads(parameters_path.read_text(encoding="utf-8"))
-            entries = generated["parameters"]
-            credential = entries["l7IngressSecret"]["value"]
-            firewall_root_ca = entries["firewallTlsInspection"]["value"].get("rootCaData", "")
-            outputs, dns_receipt = finish_certificate_core(config, outputs, transport, initial_password, credential, firewall_root_ca)
-        else:
-            _save_deployment_state(config, outputs)
-            from .helpers.portal_auth_certificate import collect_initial_certificate
-            collect_initial_certificate(config, outputs, transport, protected_json)
-            dns_path = workspace.state / "public-dns.json"
-            dns_path.unlink(missing_ok=True)
-            serial_password = _read_initial_serial_deployment_input(config)
-            if serial_password and response.get("properties", {}).get("provisioningState") != "Succeeded":
-                raise DeploymentError("The initial Core deployment success could not be verified; retain its pending credential")
-            _bind_management_serial_password(config, outputs, transport, serial_password)
-            verify_core_network_after_deployment(config, transport)
-            ingress = configure_grpc_endpoint(config, outputs, transport,
-                                              mutation_recorder=upgrade_journal(config, "ingress-endpoint"))
-            if ingress["enabled"]:
-                protected_json(workspace.state / "ingress-bootstrap.json", ingress)
-            dns_receipt = finish_public_dns(config, outputs, transport)
-            protected_json(dns_path, dns_receipt)
+        initial_password = _read_initial_serial_deployment_input(config)
+        parameters_path = workspace.checked(workspace.parameters)
+        require_serial_storage_permissions(parameters_path)
+        generated = json.loads(parameters_path.read_text(encoding="utf-8"))
+        entries = generated["parameters"]
+        credential = entries["l7IngressSecret"]["value"]
+        firewall_root_ca = entries["firewallTlsInspection"]["value"].get("rootCaData", "")
+        outputs, dns_receipt = finish_certificate_core(config, outputs, transport, initial_password, credential, firewall_root_ca)
     finally:
         workspace.parameters.unlink(missing_ok=True)
     print(json.dumps({"deployed": True, "publicUrl": outputs["endpoints"]["public"],
@@ -2243,7 +1830,7 @@ def main(argv=None) -> int:
                 raise DeploymentError(f"Cleanup requires attention: {error.code}: {error}") from error
             if args.command == "postdown":
                 local_paths(config, ROOT).parameters.unlink(missing_ok=True)
-                remove_grpc_secret(config, ROOT)
+                remove_ingress_secrets(config, ROOT)
                 if receipt["result"].get("credentialManager", {}).get("status") == "unverified":
                     print("Credential Manager: 公開資源の撤去確認は終了しましたが、Microsoft内部アカウントの解放・"
                           "同名CM再構築は未確認です。同名account競合が起きた場合は、削除・配備の記録を添えて"

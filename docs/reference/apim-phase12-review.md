@@ -1,5 +1,7 @@
 # APIM工程1・2の棚卸判断
 
+APIMの棚卸当時の判断を残した記録です。現在の配備と受入は[Gatewayの配備](../setup/11-deploy-gateway.md)と[初回構築の受入](../setup/13-verify-deployment.md)を参照してください。
+
 工程1は各API・操作のInbound、工程2はbackend・outbound・on-errorを対象とする。制御を一つずつ読み、先行処理で保証済みの重複、提供元へ任せられる入力仕様、Gatewayが維持する認証・所有者・保存防止の条件を判断した。この文書は、採用した判断と実装内容をまとめた確認用の報告である。
 
 本OSSはWIPである。ローカルの実装・合成検証、Azureの管理プレーン読戻し、実接続の受入を区別する。対象環境の反映・受入状況は保護記録で管理し、この文書で工程1・2の完了を宣言しない。旧認証互換XML・依存C#と旧形式の再生成処理を公開資材から撤去し、現在の正本へ整理した。保存した過去rawの照合、現在の正本と初期構築用inline、実fragment辞書による限定移行は維持し、ソース整理を実環境の工程完了と同一視しない。
@@ -67,4 +69,3 @@ Azureの既存部品名は維持し、責務別の正本・日本語説明・生
 - [APIポリシーテンプレート](../../apps/api-gateway/policies/api-templates/README.md)
 - [Responses／Hostedの入力・ツール条件](../../apps/api-gateway/policies/fragments/request/core-api-target-validation/README.md)
 - [Entra分離とOBOの工程計画](entra-app-rollout-plan.md)
-- [APIまとめ反映](../../scripts/operations/apim_phase12.md)・[REST受入](../../scripts/operations/apim_phase12_acceptance.md)・[WebSocket／MCP受入](../../scripts/operations/apim_phase12_transports.md)

@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 
 CORE = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("prepare_registration", CORE / "scripts/prepare_registration.py")
+spec = importlib.util.spec_from_file_location("prepare_registration", CORE / "scripts/setup/prepare_registration.py")
 registration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(registration)
 INPUT = {"productName": "egakumi", "environmentName": "test", "apiCenterLocation": "eastus",

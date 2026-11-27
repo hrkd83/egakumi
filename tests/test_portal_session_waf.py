@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from deployment.helpers.portal_gateway import _callback_policy, _portal_policy, portal_session_exclusions
 from deployment.helpers.waf_names import policy_id
 from deployment.helpers.waf_body import ai_body_settings, raw_body_policy
-from waf_policy import desired_policy, exclusion, data_scope_exclusions, load_manifest, reconcile
-from waf_contracts import APP_GROUPS
+from operations.waf_policy import desired_policy, exclusion, data_scope_exclusions, load_manifest, reconcile
+from validation.waf_contracts import APP_GROUPS
 import test_waf_policy as data_fixtures
 
 

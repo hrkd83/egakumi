@@ -14,9 +14,9 @@ import argparse
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
-import stat
 import uuid
 
+from deployment.helpers.private_permissions import check_private_permissions
 from operations.common import OperationContext, OperationError
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,10 +35,7 @@ def read_secret(ctx, path):
     """保護された新値または切戻し値だけを読む。値は例外へ含めない。"""
     target = ctx.output_path(path)
     try:
-        info = target.lstat()
-        if (not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600
-                or info.st_uid != os.geteuid()):
-            raise ValueError()
+        check_private_permissions(target)
         value = target.read_text(encoding='utf-8').rstrip('\r\n')
         if not value:
             raise ValueError()
@@ -68,10 +65,10 @@ def selection(ctx, profile, purpose='cm'):
     if profile not in selected or purpose not in ('cm', 'identity'):
         raise OperationError('Select an existing login credential profile')
     configured = ctx.config['credentialProviders']
-    provider = next(p for p in configured if p['name'] == profile)
+    provider = next((p for p in configured if p['name'] == profile), None)
     identity = login.get('identity')
-    if purpose == 'identity' and not identity:
-        raise OperationError('Independent identity configuration is required for identity credential rotation')
+    if not provider or not identity:
+        raise OperationError('Configure the login provider and the dedicated identity before rotating credentials')
     target = identity if purpose == 'identity' else provider
     client_id = guid(target['clientId'])
     tenant = guid(ctx.config.get('entraTenantId', ctx.config['azureTenantId']))
@@ -81,7 +78,7 @@ def selection(ctx, profile, purpose='cm'):
                  and guid(p['oauthTenantId']) == tenant]
     names = sorted(p['name'] for p in providers if p['name'] in selected)
     files = {str(ctx.output_path(p['clientSecretFile'])) for p in providers}
-    identity_consumer = bool(identity and guid(identity['clientId']) == client_id and guid(identity['tenantId']) == tenant)
+    identity_consumer = guid(identity['clientId']) == client_id and guid(identity['tenantId']) == tenant
     if identity_consumer:
         files.add(str(ctx.output_path(identity['clientSecretFile'])))
     scope = {'subscriptionId': ctx.config['subscriptionId'],
@@ -145,8 +142,8 @@ def save(ctx, path, receipt, phase):
     ctx.save_private(path, receipt, overwrite=path.exists())
 
 
-def update_consumers(ctx, scope, receipt, receipt_path, values, label):
-    """既存moduleだけのIncremental配備とG。旧credentialは削除しない。"""
+def update_consumers(ctx, receipt, receipt_path, label):
+    """保護された入力を同じ環境のGateway配備に反映する。"""
     vault_id = ctx.service_id('keyVault')
     expected = (f"/subscriptions/{ctx.config['subscriptionId']}/resourceGroups/"
                 f"{ctx.config['resourceGroupNames']['svc']}/providers/Microsoft.KeyVault/vaults/kv-{ctx.config['resourceStem']}")
@@ -154,33 +151,9 @@ def update_consumers(ctx, scope, receipt, receipt_path, values, label):
         raise OperationError('Key Vault does not match the selected environment')
     ctx.verify_resource(vault_id, '2023-07-01', 'Microsoft.KeyVault/vaults')
     ctx.verify_resource(ctx.service_id('apim'), '2024-05-01', 'Microsoft.ApiManagement/service')
-    login = ctx.config.get('gateway', {}).get('authentication', {}).get('credentialLogin', {})
-    if scope['profiles'] and 'identity' not in login:
-        update_shared_cm_secrets(ctx, scope, receipt, receipt_path, values, label, vault_id)
-    # 独立OIDCの専用KV参照はGateway配備が保護入力から更新します。
     save(ctx, receipt_path, receipt, label + '-gateway-requested')
-    ctx.run_cli([sys.executable, '-B', str(ROOT / 'scripts/deploy_gateway.py'),
+    ctx.run_cli([sys.executable, '-B', str(ROOT / 'scripts/deployment/deploy_gateway.py'),
                  '--config', str(ctx.config_path), '--execute'])
-
-
-def update_shared_cm_secrets(ctx, scope, receipt, receipt_path, values, label, vault_id):
-    """選択したCMアプリの共有KVだけを更新し、独立OIDCアプリをCMへ代入しない。"""
-    parameter_file = ctx.save_private(ctx.workspace.root / 'generated' /
-        ('entra-rotation-' + uuid.uuid4().hex + '.parameters.json'), {
-            '$schema': 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#',
-            'contentVersion': '1.0.0.0', 'parameters': {
-                'vaultName': {'value': vault_id.rsplit('/', 1)[-1]},
-                'profiles': {'value': {name: {} for name in scope['profiles']}},
-                'providerSecrets': {'value': values}}})
-    save(ctx, receipt_path, receipt, label + '-kv-requested')
-    try:
-        ctx.run_cli(['az', 'deployment', 'group', 'create', '--subscription', ctx.config['subscriptionId'],
-            '--resource-group', ctx.config['resourceGroupNames']['svc'],
-            '--name', 'entra-rotation-' + receipt['operationId'], '--mode', 'Incremental',
-            '--template-file', str(ROOT / 'infra/modules/services/shared-entra-secrets.bicep'),
-            '--parameters', '@' + str(parameter_file), '--only-show-errors', '--output', 'none'])
-    finally:
-        parameter_file.unlink(missing_ok=True)
 
 
 def operate(ctx, args):
@@ -199,9 +172,7 @@ def operate(ctx, args):
         ctx.record('entra-secret-plan', {**plan, 'scope': scope})
         return plan
     if path.exists():
-        info = path.lstat()
-        if (not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600 or info.st_uid != os.geteuid()):
-            raise OperationError('An owner-only rotation receipt is required')
+        check_private_permissions(path)
     receipt = json.loads(path.read_text()) if path.exists() else None
     if receipt is not None and not isinstance(receipt, dict):
         raise OperationError('The rotation receipt format is not recognized')
@@ -270,7 +241,7 @@ def operate(ctx, args):
         for source in scope['inputFiles']:
             ctx.save_private(source, value, overwrite=True)
         receipt['inputDigests'] = {source: hashlib.sha256(Path(source).read_bytes()).hexdigest() for source in scope['inputFiles']}
-        update_consumers(ctx, scope, receipt, path, {n: value for n in scope['profiles']}, 'switch')
+        update_consumers(ctx, receipt, path, 'switch')
         save(ctx, path, receipt, 'switched-auth-unverified')
         return {'stage': 'switch', 'status': 'switched-auth-unverified', 'oldCredentialRetained': True}
     if args.stage == 'rollback':
@@ -284,7 +255,7 @@ def operate(ctx, args):
         save(ctx, path, receipt, 'rollback-inputs-requested')
         for source, value in restore.items():
             ctx.save_private(source, value, overwrite=True)
-        update_consumers(ctx, scope, receipt, path, {n: next(iter(restore.values())) for n in scope['profiles']}, 'rollback')
+        update_consumers(ctx, receipt, path, 'rollback')
         save(ctx, path, receipt, 'rolled-back-auth-unverified')
         return {'stage': 'rollback', 'status': 'rolled-back-auth-unverified'}
     if receipt['phase'] != 'switched-auth-unverified' or not args.verified_new_sign_in or not args.verified_new_connection:

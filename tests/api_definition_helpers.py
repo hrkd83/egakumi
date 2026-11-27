@@ -3,12 +3,6 @@ from copy import deepcopy
 import json
 
 from configuration_fixtures import CORE, fixture
-from standard_apis import load_api_definitions
-
-
-def catalog_overlay():
-    """配備と同じ読み込み口で正式APIを集め、追加設定形式で返す。"""
-    return {"apiDefinitions": load_api_definitions(CORE / "apps/api-gateway/apis")}
 
 
 def configured_base():

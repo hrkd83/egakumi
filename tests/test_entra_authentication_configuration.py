@@ -263,10 +263,10 @@ class EntraConfigurationTests(unittest.TestCase):
                     configuration.normalize_configuration(api_override)
 
     def test_standard_targets_are_generated_from_canonical_definitions_without_backend_resolution(self):
-        from standard_apis import API_DEFINITION_DIRECTORY, load_api_definitions
+        from catalog.standard_apis import API_DEFINITION_DIRECTORY, load_api_definitions
         actual = self.normalize(entra_fixture(), fixture())
         original = copy.deepcopy(actual)
-        with mock.patch("standard_apis._bindings", side_effect=AssertionError("no endpoint or state resolution")):
+        with mock.patch("catalog.standard_apis._bindings", side_effect=AssertionError("no endpoint or state resolution")):
             settings = entra_authentication_settings(actual)
         definitions = load_api_definitions(API_DEFINITION_DIRECTORY)
         expected = [name for api in definitions for name in
@@ -308,7 +308,7 @@ class EntraConfigurationTests(unittest.TestCase):
 
     def test_standard_targets_append_credential_login_without_including_browser_operations(self):
         definitions = [{"name": "business", "mcp": {"name": "business-mcp"}}]
-        with mock.patch("standard_apis.load_api_definitions", return_value=definitions):
+        with mock.patch("catalog.standard_apis.load_api_definitions", return_value=definitions):
             self.assertEqual(_entra_api_names([], credential_login_configured=True),
                              ["business", "business-mcp", "credential-manager-login"])
 

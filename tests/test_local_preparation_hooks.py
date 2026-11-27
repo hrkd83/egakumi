@@ -163,11 +163,11 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "prepare_secrets", side_effect=lambda config, root: events.append("secret-preparation")) as secret_preparation, \
              mock.patch.object(lifecycle, "ensure_management_ssh_key", side_effect=prepare) as key, \
              mock.patch.object(lifecycle, "load_secret_inputs", side_effect=lambda _: events.append("secret-inputs") or {}), \
-             mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
+             mock.patch.object(lifecycle, "prepare_ingress_secrets", return_value={}), \
              mock.patch.object(lifecycle, "azure_preflight", side_effect=azure_boundary), \
              mock.patch.object(lifecycle, "register_providers") as providers, \
              mock.patch.object(lifecycle, "ArmTransport") as arm, \
-             mock.patch.object(lifecycle, "deploy_phase") as deploy, \
+             mock.patch.object(lifecycle, "deploy_monitoring") as deploy, \
              contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(lifecycle.main(["preprovision"]), 1)
             secret_preparation.assert_called_once_with(self.config, self.paths.root)
@@ -190,11 +190,11 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "prepare_secrets") as secret_preparation, \
              mock.patch.object(lifecycle, "ensure_management_ssh_key", side_effect=ValueError("fixture SSH preparation failed")) as key, \
              mock.patch.object(lifecycle, "load_secret_inputs") as secrets, \
-             mock.patch.object(lifecycle, "prepare_grpc_secret") as ingress, \
+             mock.patch.object(lifecycle, "prepare_ingress_secrets") as ingress, \
              mock.patch.object(lifecycle, "azure_preflight") as azure, \
              mock.patch.object(lifecycle, "register_providers") as providers, \
              mock.patch.object(lifecycle, "ArmTransport") as arm, \
-             mock.patch.object(lifecycle, "deploy_phase") as deploy, \
+             mock.patch.object(lifecycle, "deploy_monitoring") as deploy, \
              contextlib.redirect_stderr(error_output):
             self.assertEqual(lifecycle.main(["preprovision"]), 1)
             secret_preparation.assert_called_once_with(self.config, self.paths.root)
@@ -227,11 +227,11 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                  mock.patch.object(lifecycle, "prepare_secrets", side_effect=failure) as secret_preparation, \
                  mock.patch.object(lifecycle, "ensure_management_ssh_key") as key, \
                  mock.patch.object(lifecycle, "load_secret_inputs") as secrets, \
-                 mock.patch.object(lifecycle, "prepare_grpc_secret") as ingress, \
+                 mock.patch.object(lifecycle, "prepare_ingress_secrets") as ingress, \
                  mock.patch.object(lifecycle, "azure_preflight") as azure, \
                  mock.patch.object(lifecycle, "register_providers") as providers, \
                  mock.patch.object(lifecycle, "ArmTransport") as arm, \
-                 mock.patch.object(lifecycle, "deploy_phase") as deploy, \
+                 mock.patch.object(lifecycle, "deploy_monitoring") as deploy, \
                  contextlib.redirect_stderr(output), contextlib.redirect_stdout(output):
                 self.assertEqual(lifecycle.main(["preprovision"]), 1)
                 secret_preparation.assert_called_once_with(self.config, self.paths.root)
@@ -400,11 +400,11 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 hidden = stack.enter_context(mock.patch.object(secret_preparation.getpass, "getpass", side_effect=hidden_input if needs_input else AssertionError("No secret input is allowed")))
                 stack.enter_context(mock.patch.object(lifecycle, "ensure_management_ssh_key", side_effect=prepare_key))
                 load_inputs = stack.enter_context(mock.patch.object(lifecycle, "load_secret_inputs"))
-                stack.enter_context(mock.patch.object(lifecycle, "prepare_grpc_secret"))
+                stack.enter_context(mock.patch.object(lifecycle, "prepare_ingress_secrets"))
                 stack.enter_context(mock.patch.object(lifecycle, "azure_preflight", side_effect=stop_before_azure))
                 providers = stack.enter_context(mock.patch.object(lifecycle, "register_providers"))
                 arm = stack.enter_context(mock.patch.object(lifecycle, "ArmTransport"))
-                deploy = stack.enter_context(mock.patch.object(lifecycle, "deploy_phase"))
+                deploy = stack.enter_context(mock.patch.object(lifecycle, "deploy_monitoring"))
                 stack.enter_context(contextlib.redirect_stdout(output))
                 stack.enter_context(contextlib.redirect_stderr(output))
                 self.assertEqual(lifecycle.main(["preprovision", "--config", str(source)]), 1)
@@ -459,8 +459,8 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
             output = io.StringIO()
             with self.subTest(case=case), contextlib.ExitStack() as stack:
                 boundaries = [stack.enter_context(mock.patch.object(lifecycle, name)) for name in (
-                    "prepare_secrets", "ensure_management_ssh_key", "load_secret_inputs", "prepare_grpc_secret",
-                    "azure_preflight", "register_providers", "ArmTransport", "deploy_phase")]
+                    "prepare_secrets", "ensure_management_ssh_key", "load_secret_inputs", "prepare_ingress_secrets",
+                    "azure_preflight", "register_providers", "ArmTransport", "deploy_monitoring")]
                 input_call = stack.enter_context(mock.patch("builtins.input", side_effect=AssertionError("No input is allowed")))
                 hidden = stack.enter_context(mock.patch.object(secret_preparation.getpass, "getpass", side_effect=AssertionError("No secret read is allowed")))
                 stack.enter_context(contextlib.redirect_stdout(output))

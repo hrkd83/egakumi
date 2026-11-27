@@ -8,9 +8,6 @@ import unittest
 from unittest import mock
 import xml.etree.ElementTree as ET
 
-from authentication_source_fixture import (
-    PREVIOUS_EXPLANATION, annotated_authentication_source, previous_authentication_fixture,
-)
 from deployment.helpers.apim_audit import expand_audit_fragments
 from deployment.helpers.apim_ingress import (
     expand_trusted_ingress_fragment,
@@ -19,7 +16,6 @@ from deployment.helpers.apim_browser_exception import expand_browser_exception_f
 from deployment.helpers import apim_common_authentication as fragments
 from deployment.helpers import credential_login
 from deployment.helpers.apim_authentication import (
-    _render_inline_common_authentication_service_policy,
     read_managed_entra_authentication, render_service_policy,
     transition_common_authentication_policy, validate_common_authentication_policy,
 )
@@ -126,24 +122,6 @@ class CommonAuthenticationFragmentPreservationTests(unittest.TestCase):
                 validate_common_authentication_policy(value, entra=entra_settings())
                 self.assertEqual(read_managed_entra_authentication(value, expected_entra=entra_settings()), entra_settings())
 
-
-    def test_before_inline_current_is_readable_only_through_verified_transition(self):
-        for cm in (False, True):
-            login = login_settings() if cm else None
-            with self.subTest(cm=cm):
-                previous = _render_inline_common_authentication_service_policy(login, entra=entra_settings())
-                self.assertEqual(read_managed_entra_authentication(previous, login,
-                                 expected_entra=entra_settings()), entra_settings())
-                candidate, changed = transition_common_authentication_policy(
-                    previous, login, previous_entra=entra_settings(), entra=entra_settings())
-                self.assertTrue(changed)
-                validate_common_authentication_policy(candidate, login, entra=entra_settings())
-                self.assertEqual(candidate, transition_common_authentication_policy(
-                    candidate, login, previous_entra=entra_settings(), entra=entra_settings())[0])
-                altered = previous.replace("Invalid subscription key", "Unreviewed key exception", 1)
-                self.assertNotEqual(altered, previous)
-                with self.assertRaises(ValueError):
-                    read_managed_entra_authentication(altered, login, expected_entra=entra_settings())
 
     def test_success_markers_remain_at_the_end_of_their_success_paths(self):
         root = ET.fromstring(fragments.render_common_authentication_fragment(entra_enabled=True))
@@ -669,145 +647,6 @@ class CommonAuthenticationCompiledSourceTests(unittest.TestCase):
                 self.assertNotIn(ERROR, actual)
                 self.assertNotIn("/policyFragments/" + ERROR, published)
 
-
-class CommonAuthenticationExpressionTokenTests(unittest.TestCase):
-    def tokens(self, expression):
-        return fragments._previous_authentication_expression_tokens(expression)
-
-    def test_comments_are_skipped_but_raw_regular_character_and_verbatim_literals_are_preserved(self):
-        source = r'''@{ var s = "// /* #if $\""; var c = '\''; var v = @"/* ""quoted"" #if"; return s; }'''
-        previous = source.replace("var s", '/* #if "fake" */ var s', 1).replace("return s", "// prior explanation\n return s", 1)
-        self.assertEqual(self.tokens(source), self.tokens(previous))
-        for before, after in (("quoted", "changed"), ("#if", "#else"), ("\\'", "\\\"")):
-            with self.subTest(literal=before):
-                self.assertNotEqual(self.tokens(source), self.tokens(source.replace(before, after, 1)))
-        self.assertEqual(self.tokens('@{ return @"line\nnext"; }')[-3], '@"line\nnext"')
-
-    def test_adjacent_operators_identifiers_and_numbers_keep_token_boundaries(self):
-        for first, second in (("a + +b", "a++b"), ("a ? .b", "a?.b"), ("a & &b", "a&&b"),
-                              ("name value", "namevalue"), ("1 e2", "1e2"), ("1 .5", "1.5")):
-            with self.subTest(expression=first):
-                self.assertNotEqual(self.tokens("@{ return " + first + "; }"),
-                                    self.tokens("@{ return " + second + "; }"))
-        self.assertEqual(self.tokens("@{ return a /* separated */ + +b; }"),
-                         self.tokens("@{return a+ +b;}"))
-
-    def test_directives_interpolation_raw_or_incomplete_literals_and_unknown_tokens_stop(self):
-        sources = ('@{\n#if FALSE\n return true;\n#endif\n}', '@{ return $"{value}"; }',
-                   '@{ return $@"{value}"; }', '@{ return @$"{value}"; }', '@{ return """raw"""; }',
-                   '@{ /* unclosed }', '@{ return "unclosed; }', "@{ return ''; }",
-                   '@{ return "line\nnext"; }', '@{ return name`other; }', '@{ return 名前; }')
-        for source in sources:
-            with self.subTest(source=source), self.assertRaises(ValueError):
-                self.tokens(source)
-        self.assertNotEqual(self.tokens("@{ return true; }"), self.tokens("@{ // hidden return true; }"))
-
-
-class CommonAuthenticationPreviousSourceBoundaryTests(unittest.TestCase):
-    def test_previous_dictionary_is_opt_in_and_expands_actual_old_raw_without_changing_input(self):
-        for enabled in (False, True):
-            _, _, _, settings, current, previous, global_xml = previous_authentication_fixture(enabled)
-            before = copy.deepcopy(previous)
-            with self.subTest(enabled=enabled):
-                with self.assertRaises(ValueError):
-                    fragments.expand_common_authentication_fragments(global_xml, previous, entra_enabled=enabled)
-                with self.assertRaises(ValueError):
-                    read_managed_entra_authentication(global_xml, expected_entra=settings, fragments=previous)
-                with self.assertRaises(ValueError):
-                    validate_common_authentication_policy(global_xml, entra=settings, fragments=previous)
-                expanded = fragments.expand_previous_common_authentication_fragments(global_xml, previous, entra_enabled=enabled)
-                self.assertIn(PREVIOUS_EXPLANATION.strip(), expanded)
-                self.assertEqual(read_managed_entra_authentication(global_xml, expected_entra=settings,
-                    fragments=previous, allow_previous_explanations=True), settings)
-                self.assertEqual(previous, before)
-                self.assertNotEqual(previous[AUTH], current[AUTH])
-
-    def test_fixed_global_owned_blocks_are_verified_and_transition_produces_current_strict_policy(self):
-        _, _, _, settings, _, previous, global_xml = previous_authentication_fixture()
-        transitioned, changed = transition_common_authentication_policy(global_xml, previous_entra=settings, entra=settings,
-            previous_fragments=previous, allow_previous_explanations=True)
-        self.assertTrue(changed)
-        self.assertNotIn(PREVIOUS_EXPLANATION.strip(), transitioned)
-        validate_common_authentication_policy(transitioned, entra=settings)
-        for mode in ("header-name", "header-expression", "order", "owned-id"):
-            root = ET.fromstring(global_xml)
-            if mode == "header-name": root.find("outbound/set-header").set("name", "unreviewed-header")
-            elif mode == "header-expression": root.find("outbound/set-header/value").text = '@("unreviewed")'
-            elif mode == "owned-id": root.find("inbound/include-fragment").set("id", "unreviewed-id")
-            else:
-                inbound = root.find("inbound")
-                inbound[0], inbound[1] = inbound[1], inbound[0]
-            with self.subTest(mode=mode), self.assertRaises(ValueError):
-                read_managed_entra_authentication(ET.tostring(root, encoding="unicode"), expected_entra=settings,
-                    fragments=previous, allow_previous_explanations=True)
-
-    def test_dictionary_completeness_and_explicit_state_are_required(self):
-        _, _, _, settings, _, previous, global_xml = previous_authentication_fixture()
-        for mode in ("missing-common", "missing-error", "additional", "wrong-state", "no-dictionary"):
-            changed = copy.deepcopy(previous)
-            if mode.startswith("missing"):
-                changed.pop(AUTH if mode == "missing-common" else ERROR)
-            elif mode == "additional": changed["unreviewed"] = changed[AUTH]
-            elif mode == "no-dictionary": changed = None
-            with self.subTest(mode=mode), self.assertRaises(ValueError):
-                read_managed_entra_authentication(global_xml, expected_entra=None if mode == "wrong-state" else settings,
-                    fragments=changed, allow_previous_explanations=True)
-
-    def test_complete_fragment_wrapper_cannot_drop_unexpected_text_before_or_after_its_decision(self):
-        _, _, _, settings, _, previous, global_xml = previous_authentication_fixture()
-        for identifier in (AUTH, ERROR):
-            for location in ("before", "after"):
-                changed = copy.deepcopy(previous)
-                root = ET.fromstring(changed[identifier])
-                if location == "before": root.text = "unreviewed wrapper text"
-                else: root[0].tail = "unreviewed wrapper tail"
-                changed[identifier] = ET.tostring(root, encoding="unicode")
-                with self.subTest(fragment=identifier, location=location), self.assertRaises(ValueError):
-                    read_managed_entra_authentication(global_xml, expected_entra=settings,
-                        fragments=changed, allow_previous_explanations=True)
-
-    def test_previous_reader_does_not_relax_actual_raw_readback_or_new_checkpoint_validation(self):
-        from test_publish_apis import publish
-
-        _, _, plan, settings, _, previous, global_xml = previous_authentication_fixture()
-        with self.assertRaises(ValueError):
-            publish.entra_publication._same_xml(annotated_authentication_source(previous[AUTH]), previous[AUTH], fragment=True)
-        source = {"apis": [{"name": rid.rsplit("/", 1)[-1]} for rid in plan["publishedApiIds"]],
-                  "policies": [{"suffix": "/policyFragments/" + name, "value": value} for name, value in previous.items()]}
-        with self.assertRaises(ValueError):
-            publish.source_checkpoint(plan, source, global_xml)
-
-    def test_comparison_is_limited_to_known_owned_roots_and_requires_actual_transition_dictionary(self):
-        _, _, _, settings, _, previous, global_xml = previous_authentication_fixture()
-        unowned = ET.fromstring('<set-variable id="custom" name="custom" value="@(true)" />')
-        with self.assertRaises(ValueError):
-            fragments._previous_authentication_source_matches(unowned, unowned)
-        with self.assertRaises(ValueError):
-            transition_common_authentication_policy(global_xml, previous_entra=settings, entra=settings,
-                allow_previous_explanations=True)
-
-    def test_code_literals_claims_nonexpression_values_and_xml_order_cannot_change(self):
-        _, _, _, settings, _, previous, global_xml = previous_authentication_fixture()
-        for mode in ("success-code", "literal", "claim", "nonexpression", "extra-attribute", "order", "nested", "directive"):
-            changed = copy.deepcopy(previous)
-            root = ET.fromstring(changed[AUTH if mode != "nonexpression" else ERROR])
-            if mode == "success-code":
-                root.find(".//set-variable[@name='gatewayCommonAuthenticationValidated']").set("value", "@(false)")
-            elif mode == "literal":
-                node = root.find(".//set-variable[@name='gatewayAuthenticationFailure']")
-                node.set("value", node.get("value").replace("Credentials must use the configured headers", "Different failure", 1))
-            elif mode == "claim": root.find(".//required-claims/claim/value").text = "unreviewed-scope"
-            elif mode == "nonexpression": root.find(".//set-header[@name='WWW-Authenticate']/value").text = "Bearer changed"
-            elif mode == "extra-attribute": root.find("choose").set("extra", "true")
-            elif mode == "order": root[0][0], root[0][1] = root[0][1], root[0][0]
-            elif mode == "nested": ET.SubElement(root[0], "include-fragment", {"fragment-id": "unreviewed"})
-            else:
-                node = root.find(".//set-variable[@name='gatewayAuthenticationFailure']")
-                node.set("value", node.get("value").replace("@{", "@{\n#if FALSE\n", 1))
-            changed[AUTH if mode != "nonexpression" else ERROR] = ET.tostring(root, encoding="unicode")
-            with self.subTest(mode=mode), self.assertRaises(ValueError):
-                read_managed_entra_authentication(global_xml, expected_entra=settings,
-                    fragments=changed, allow_previous_explanations=True)
 
 if __name__ == "__main__":
     unittest.main()

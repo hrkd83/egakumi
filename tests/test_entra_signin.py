@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-import entra_signin as signin
+from clients import entra_signin as signin
 from deployment.helpers.powershell_runtime import locate_powershell, powershell_environment
 
 

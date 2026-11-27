@@ -12,11 +12,12 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import deploy_gateway as gateway
+from deployment import deploy_gateway as gateway
 from deployment.helpers.paths import local_paths
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers import credential_broker_lifecycle
 from deployment.helpers.gateway_obo_certificate import deployment_settings as gateway_obo_settings
+from deployment.lifecycle import protected_json
 from test_credential_broker_initial_deployment import fixture as broker_fixture, DIGEST, ok
 from management_fixtures import client_core_outputs
 
@@ -245,7 +246,7 @@ class GatewayDeploymentTests(unittest.TestCase):
         config['gateway']['authentication'].pop('credentialLogin')
         config['credentialProviders'] = []
         writer = mock.Mock()
-        with mock.patch.object(credential_broker_lifecycle, '_prepare_credential', return_value='synthetic-key') as prepare:
+        with mock.patch.object(credential_broker_lifecycle, 'prepare_credential', return_value='synthetic-key') as prepare:
             self.assertEqual(gateway.prepare_secret(config, ROOT, writer), {'credentialBrokerKey': 'synthetic-key'})
         prepare.assert_called_once_with(config, ROOT, 'credential-broker', writer)
         prefix = (gateway.group_scope(config) + '/providers/Microsoft.App/')
@@ -354,6 +355,19 @@ class GatewayDeploymentTests(unittest.TestCase):
             observed['deploy_release'].assert_called_once()
             self.assertEqual(observed['deploy_release'].call_args.args[2]['imageDigest'], DIGEST)
 
+    def test_release_reuses_only_its_already_held_gateway_environment_lock(self):
+        config, state = fixture()
+        config['publishApis'] = True
+        with self.isolated_cli(config, state) as (arguments, observed):
+            workspace = local_paths(config, gateway.REPOSITORY)
+            with gateway.lock_environment(workspace):
+                with self.assertRaisesRegex(gateway.OperationError, 'Another operation'):
+                    gateway.main(arguments)
+                with self.assertRaisesRegex(ValueError, 'held release lock does not match'):
+                    gateway.main(arguments, _locked_workspace=object())
+                self.assertEqual(gateway.main(arguments + ['--image-digest', DIGEST], _locked_workspace=workspace), 0)
+            observed['deploy_release'].assert_called_once()
+
     def test_generated_source_is_saved_protected_and_excluded_from_cli_summary(self):
         config, state = fixture()
         config['publishApis'] = True
@@ -368,6 +382,38 @@ class GatewayDeploymentTests(unittest.TestCase):
             self.assertNotIn('synthetic-private-source', sys.stdout.getvalue())
             self.assertNotIn('entraPublicationSource', sys.stdout.getvalue())
             self.assertEqual(result['apiPublication']['entraPublicationSource'], source)
+
+    def test_resume_preserves_recorded_workload_evidence_and_updates_gateway_receipt(self):
+        config, state = fixture()
+        config['publishApis'] = True
+        plan = {'apimId': 'synthetic-apim', 'deploymentId': 'synthetic-publication'}
+        workload = {'azdUpExecuted': False, 'sqlInitialized': True, 'applicationReady': True,
+                    'imageDigest': DIGEST, 'credentialBroker': {'provisioningState': 'Succeeded'}}
+        publication = {'status': 'management-plane-published', 'entraPublicationSource': {'privateSource': True}}
+        waf = {'speechWaf': {'prepared': True}}
+        with self.isolated_cli(config, state) as (arguments, observed), \
+                mock.patch.object(gateway.api_publication, 'execute_plan', return_value=publication) as resume, \
+                mock.patch.object(gateway, 'configure_gateway_waf', return_value=waf):
+            observed['publication_plan'].return_value = plan
+            path = Path(arguments[3]).parent / 'gateway-api-closed-stage.json'
+            stage = {'scope': {**gateway.publication_scope(config, plan), 'resourceStem': 'synthetic-foreign'},
+                     'gatewayDeployment': workload, 'publication': {'schemaVersion': 1}}
+            protected_json(path, stage)
+            with self.assertRaisesRegex(ValueError, 'does not match the selected publication'):
+                gateway.main(arguments + ['--resume-closed-stage'])
+            observed['transport'].assert_not_called()
+            resume.assert_not_called()
+            stage['scope'] = gateway.publication_scope(config, plan)
+            protected_json(path, stage)
+            self.assertEqual(gateway.main(arguments + ['--resume-closed-stage']), 0)
+            self.assertEqual(resume.call_args.kwargs['stage_record'], stage['publication'])
+            saved_path, saved = observed['protected_json'].call_args.args
+            self.assertEqual(saved_path.name, 'gateway-deployment.json')
+            self.assertEqual(saved, {**workload, **waf, 'status': 'deployed', 'publicationResumed': True,
+                'apiPublication': publication, 'auditEvidenceEnabled': False, 'runtimeVerified': False})
+            observed['deploy_release'].assert_not_called()
+            observed['build_image'].assert_not_called()
+            self.assertNotIn('entraPublicationSource', sys.stdout.getvalue())
 
     def test_empty_business_profiles_still_initialize_broker_before_publication(self):
         config, state = fixture()

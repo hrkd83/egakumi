@@ -49,8 +49,11 @@ def _items(transport, collection, api=APIM_API):
     return items
 
 
-def _default_echo(body):
+def is_default_echo_api(body):
+    """既知のEchoパスとバックエンドを持つ初期リビジョンを識別する。"""
     properties = body.get("properties", {})
+    if not isinstance(properties, dict):
+        return False
     try:
         url = urlsplit(properties.get("serviceUrl", ""))
         return (properties.get("path") == "echo" and properties.get("apiRevision") in (None, "", "1")
@@ -107,7 +110,7 @@ def cleanup_default_samples(apim_id, apis, transport, *, sleep=time.sleep, timeo
 
     echo = _read(transport, echo_id)
     echo_present = echo["statusCode"] == 200
-    echo_is_default = echo_present and _default_echo(echo.get("body") or {})
+    echo_is_default = echo_present and is_default_echo_api(echo.get("body") or {})
     echo_removable = echo_is_default and SAMPLE_API in candidates["apiNames"]
     if echo_present and not echo_removable:
         skip(echo_id, "configured-api" if SAMPLE_API not in candidates["apiNames"] else "customized-api")
@@ -163,5 +166,5 @@ def cleanup_default_samples(apim_id, apis, transport, *, sleep=time.sleep, timeo
     for product_id in eligible_products:
         remove(product_id, "deletedProductIds", lambda b: str(b.get("properties", {}).get("displayName", "")).casefold() == product_id.rsplit("/", 1)[-1])
     if echo_removable:
-        remove(echo_id, "deletedApiIds", _default_echo)
+        remove(echo_id, "deletedApiIds", is_default_echo_api)
     return result

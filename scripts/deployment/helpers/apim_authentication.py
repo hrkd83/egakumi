@@ -15,7 +15,6 @@ from .apim_browser_exception import BROWSER_EXCEPTION_ID, BROWSER_EXCEPTION_VARI
 from .apim_common_authentication import (
     COMMON_AUTHENTICATION_FRAGMENT_ID, ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID,
     render_common_authentication_fragments, expand_common_authentication_fragments,
-    expand_previous_common_authentication_fragments, _previous_authentication_source_matches,
 )
 
 
@@ -34,6 +33,16 @@ MANAGED_BLOCKS = {"inbound": (REQUEST_CONTEXT_ID, TRUSTED_INGRESS_ID, BROWSER_EX
                   "outbound": ("core-response-request-id",),
                   "on-error": ("core-error-request-id",)}
 POLICY_SECTIONS = ("inbound", "backend", "outbound", "on-error")
+CLOSED_INITIAL_POLICY = """<policies>
+  <inbound>
+    <return-response>
+      <set-status code="503" reason="Service Unavailable" />
+    </return-response>
+  </inbound>
+  <backend><forward-request /></backend>
+  <outbound />
+  <on-error />
+</policies>"""
 
 
 def common_authentication_settings(config: dict) -> dict[str, str]:
@@ -78,7 +87,7 @@ def _entra_api_names(definitions: list[dict], *, credential_login_configured: bo
     if not isinstance(definitions, list):
         raise ValueError("Entra authentication API definitions must be an array")
     if not definitions:
-        from standard_apis import API_DEFINITION_DIRECTORY, load_api_definitions
+        from catalog.standard_apis import API_DEFINITION_DIRECTORY, load_api_definitions
         definitions = load_api_definitions(API_DEFINITION_DIRECTORY)
     names, seen = [], set()
     reserved = {credential_login.API_ID.casefold(), credential_login.BROWSER_API_ID.casefold()}
@@ -223,34 +232,18 @@ def validate_entra_named_value(body: dict, name: str, expected: str) -> None:
 
 
 def render_service_policy(login: dict | None = None, *, entra: dict | None = None) -> str:
-    """最新方式だけを生成する。旧client制限付き設定はdesiredへ受け入れない。"""
-    return _render_service_policy(login, entra=entra)
-
-
-def _render_service_policy(login: dict | None = None, *, entra: dict | None = None,
-                           inline_common_authentication: bool = False) -> str:
-    """正規の共通部品から、現在のGlobalと初期構築用inlineを生成する。"""
+    """共通認証フラグメントを参照するGlobalポリシーを生成する。"""
     directory = REPOSITORY / "apps/api-gateway/policies"
     settings = _entra_policy_settings(entra)
     value = (directory / "service.xml").read_text(encoding="utf-8")
     error_call = '<include-fragment id="core-entra-authentication-error" fragment-id="core-entra-authentication-error" />'
     if not settings:
         value = value.replace(error_call, "")
-    if inline_common_authentication:
-        fragments = render_common_authentication_fragments(entra_enabled=bool(settings), source_comments="omit")
-        for identifier, fragment in fragments.items():
-            call = '<include-fragment id="' + identifier + '" fragment-id="' + identifier + '" />'
-            value = value.replace(call, fragment.replace("<fragment>", "").replace("</fragment>", ""), 1)
     return render_audit_policy(value, source_comments="compact")
 
 
-def _render_inline_common_authentication_service_policy(login: dict | None = None, *, entra: dict | None = None) -> str:
-    """現在の共通認証をinlineへ展開し、閉じたGlobalの初期構築にも使う。"""
-    return _render_service_policy(login, entra=entra, inline_common_authentication=True)
-
-
-def _authentication_block(policy: str, *, entra: dict | None = None, fragments: dict[str, str] | None = None,
-                          allow_previous_explanations: bool = False) -> ET.Element:
+def _authentication_block(policy: str, *, entra: dict | None = None,
+                          fragments: dict[str, str] | None = None) -> ET.Element:
     """実際に適用される inbound 直下の認証ブロックを一意に取り出す。"""
     if not isinstance(policy, str) or "<!DOCTYPE" in policy.upper() or "<!ENTITY" in policy.upper():
         raise ValueError(MIGRATION_REQUIRED)
@@ -258,13 +251,11 @@ def _authentication_block(policy: str, *, entra: dict | None = None, fragments: 
         document = ET.fromstring(policy)
     except (ET.ParseError, ValueError, TypeError):
         raise ValueError(MIGRATION_REQUIRED) from None
-    if any(node.get("fragment-id") == COMMON_AUTHENTICATION_FRAGMENT_ID for node in document.iter("include-fragment")):
-        enabled = bool(entra and entra.get("enabled", True))
-        if allow_previous_explanations and fragments is None:
-            raise ValueError("Previous authentication explanations require the actual complete fragment source")
-        trusted = render_common_authentication_fragments(entra_enabled=enabled) if fragments is None else fragments
-        expand = expand_previous_common_authentication_fragments if allow_previous_explanations else expand_common_authentication_fragments
-        document = ET.fromstring(expand(policy, trusted, entra_enabled=enabled))
+    if not any(node.get("fragment-id") == COMMON_AUTHENTICATION_FRAGMENT_ID for node in document.iter("include-fragment")):
+        raise ValueError(MIGRATION_REQUIRED)
+    enabled = bool(entra and entra.get("enabled", True))
+    trusted = render_common_authentication_fragments(entra_enabled=enabled) if fragments is None else fragments
+    document = ET.fromstring(expand_common_authentication_fragments(policy, trusted, entra_enabled=enabled))
     inbound = document.findall("inbound")
     matches = [node for node in document.iter() if node.get("id") == COMMON_AUTHENTICATION_ID]
     if (document.tag != "policies" or len(inbound) != 1 or len(matches) != 1
@@ -296,27 +287,26 @@ def _document(policy: str) -> ET.Element:
     return root
 
 
+def is_closed_initial_policy(policy: str) -> bool:
+    """未配備の部品に依存しない初回ステージ専用Globalを照合する。"""
+    return _structure(_document(policy)) == _structure(_document(CLOSED_INITIAL_POLICY))
+
+
 def merge_common_authentication_policy(policy: str | None, login: dict | None = None,
-                                      *, entra: dict | None = None, migrate_credential_broker: bool = False,
-                                      migrate_entra_authentication: bool = False) -> tuple[str, bool]:
-    """最新方式を統合する。旧生成元は明示遷移での検査だけに分離する。"""
-    return _merge_common_authentication_policy(policy, login, entra=entra,
-                                              migrate_credential_broker=migrate_credential_broker,
-                                              migrate_entra_authentication=migrate_entra_authentication)
+                                       *, entra: dict | None = None) -> tuple[str, bool]:
+    """共通認証の固定ブロックをGlobalポリシーへ統合する。"""
+    return _merge_common_authentication_policy(policy, login, entra=entra)
 
 
 def _merge_common_authentication_policy(policy: str | None, login: dict | None = None,
-                                       *, entra: dict | None = None, migrate_credential_broker: bool = False,
-                                       migrate_entra_authentication: bool = False,
-                                       inline_common_authentication: bool = False,
-                                       previous_explanations: bool = False) -> tuple[str, bool]:
+                                       *, entra: dict | None = None,
+                                       activating_entra_authentication: bool = False) -> tuple[str, bool]:
     """共通処理を各セクションの先頭に置き、既存の追加処理とコメントを保持する。
 
     Core の ID が付いた既存ブロックは期待値と照合する。変更されている場合は、
     管理者が差分を確認して統合できるよう公開前に停止する。
     """
-    expected = _document(_render_service_policy(login, entra=entra,
-                                               inline_common_authentication=inline_common_authentication))
+    expected = _document(render_service_policy(login, entra=entra))
     entra_active = bool(_entra_policy_settings(entra))
     document = _document(policy) if policy is not None else _document(
         '<policies><inbound/><backend><forward-request/></backend><outbound/><on-error/></policies>')
@@ -324,23 +314,20 @@ def _merge_common_authentication_policy(policy: str | None, login: dict | None =
     # 監査の部品は、共通inboundの決めた位置から各1回だけ呼び出します。
     # fragment名だけをコピーした呼出しや、別の分岐・段階からの再実行を受け入れません。
     inbound = document.find("inbound")
-    authentication_inline = inline_common_authentication
     for identifier, section_name in ((COMMON_AUTHENTICATION_ID, "inbound"), (ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID, "on-error")):
         section = document.find(section_name)
         references = [node for node in document.iter() if node.tag == "include-fragment"
                       and (node.get("fragment-id") == identifier or node.get("id") == identifier)]
-        if (authentication_inline and references or len(references) > 1 or any(
+        if (len(references) > 1 or any(
                 node.attrib != {"id": identifier, "fragment-id": identifier} or len(node)
                 or node.text and node.text.strip() or section is None or node not in list(section) for node in references)):
             raise ValueError(MIGRATION_REQUIRED)
-        if (not authentication_inline and any(node.tag == "choose" and node.get("id") == identifier for node in document.iter())
-                and not (migrate_credential_broker and login and identifier == COMMON_AUTHENTICATION_ID)):
+        if any(node.tag == "choose" and node.get("id") == identifier for node in document.iter()):
             raise ValueError(MIGRATION_REQUIRED)
     common_call = document.find("inbound/include-fragment[@id='" + COMMON_AUTHENTICATION_ID + "']")
     error_call = document.find("on-error/include-fragment[@id='" + ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID + "']")
-    if not authentication_inline and entra_active and common_call is not None and error_call is None and not migrate_entra_authentication:
-        # 既存キー専用構成からの有効化は、明示された移行でだけ許可します。
-        # include名が同じでも、その背後の認証状態を暗黙に変更しません。
+    if entra_active and common_call is not None and error_call is None and not activating_entra_authentication:
+        # キー専用のGlobalを照合した有効化処理でだけ、Entraエラー分岐を加えます。
         raise ValueError(MIGRATION_REQUIRED)
     for identifier in (REQUEST_CONTEXT_ID, AUTHENTICATED_SUBJECT_ID):
         references = [node for node in document.iter()
@@ -386,71 +373,6 @@ def _merge_common_authentication_policy(policy: str | None, login: dict | None =
             node.get("id") == "core-entra-authentication-error" for node in document.iter()):
         # 無効時のowned IDは未知の改変。明示遷移で検証済み旧ブロックを除く場合だけ許可します。
         raise ValueError(MIGRATION_REQUIRED)
-    retired = {"core-credential-login-cache-value": "set-variable",
-               "core-credential-login-cache-key": "set-variable",
-               "core-credential-login-cache": "choose"}
-    old_cache = [node for node in document.iter() if node.get("id") in retired]
-    if old_cache:
-        inbound = document.find("inbound")
-        if (not migrate_credential_broker or not login or inbound is None
-                or len(old_cache) != len(retired) or {node.get("id") for node in old_cache} != set(retired)
-                or any(node not in list(inbound) or node.tag != retired[node.get("id")] for node in old_cache)):
-            raise ValueError(MIGRATION_REQUIRED)
-        cache = next(node for node in old_cache if node.tag == "choose")
-        lookup = cache.find("./when/cache-lookup-value")
-        # 実際の配備は、キーがある場合だけ lookup する choose で包まれています。
-        # この範囲に別の処理が混ざっている場合は、まとめて削除しません。
-        if (len(cache) != 1 or cache[0].tag != "when" or len(cache[0]) != 1 or lookup is None
-                or lookup.get("caching-type") != "internal"
-                or lookup.get("variable-name") != "gatewayCredentialCached"
-                or {node.get("name") for node in old_cache if node.tag == "set-variable"}
-                   != {"gatewayCredentialCached", "gatewayCredentialCacheKey"}):
-            raise ValueError(MIGRATION_REQUIRED)
-        for node in old_cache:
-            inbound.remove(node)
-        changed = True
-    # 既知の旧匿名経路だけを、新しいEntra戻り先を加えた経路へ置き換えます。
-    # 手動追加のポリシーや、本文が変更された認可ブロックはこの移行で上書きしません。
-    if migrate_credential_broker and login and any(node.tag == "choose" and node.get("id") == COMMON_AUTHENTICATION_ID for node in document.iter()):
-        _authentication_block(ET.tostring(document, encoding="unicode"), entra=entra)
-        current = document.find("inbound").find("choose[@id='" + COMMON_AUTHENTICATION_ID + "']")
-        # 旧キー認証へ匿名callbackを先に移行し、その後の明示Entra移行と合成できる。
-        wanted = _authentication_block(_render_inline_common_authentication_service_policy(
-            login, entra=entra if current.find(".//validate-azure-ad-token") is not None else None), entra=entra)
-        prior = copy.deepcopy(wanted)
-        anonymous = prior.find("when")
-        condition = ET.fromstring(credential_login.anonymous_policy(login)).get("condition")
-        clause = r' \|\| \(context\.Operation\.Id == "identity-callback"[^)]*\)'
-        previous_condition, count = re.subn(clause, "", condition)
-        if count == 1:
-            anonymous.set("condition", previous_condition)
-            # 現在のchooseでは不要なfalse分岐を、旧構成との照合候補だけへ戻します。
-            # 既存の旧生成方式に含まれている場合は、重複して追加しません。
-            dummy = ET.fromstring('<when condition="@(false)"><set-variable name="gatewayCommonAuthenticationAnonymous" value="@(true)" /></when>')
-            branches = list(prior)
-            if len(branches) < 2 or _structure(branches[1]) != _structure(dummy):
-                prior.insert(1, dummy)
-            if _structure(current) == _structure(prior):
-                inbound = document.find("inbound")
-                position = list(inbound).index(current)
-                inbound.remove(current)
-                replacement = next(node for node in expected.find("inbound") if node.get("id") == COMMON_AUTHENTICATION_ID)
-                inbound.insert(position, copy.deepcopy(replacement))
-                changed = True
-    # 既知の従来キー認証だけを明示移行できる。手動変更を同じIDで上書きしない。
-    if migrate_entra_authentication and entra_active:
-        current_policy = ET.tostring(document, encoding="unicode")
-        if any(node.tag == "choose" and node.get("id") == COMMON_AUTHENTICATION_ID for node in document.iter()):
-            _authentication_block(current_policy, entra=entra)
-            current = document.find("inbound").find("choose[@id='" + COMMON_AUTHENTICATION_ID + "']")
-            prior = _authentication_block(render_service_policy(login))
-            wanted = _authentication_block(ET.tostring(expected, encoding="unicode"), entra=entra)
-            if _structure(current) == _structure(prior):
-                inbound = document.find("inbound")
-                position = list(inbound).index(current)
-                inbound.remove(current)
-                inbound.insert(position, copy.deepcopy(wanted))
-                changed = True
     blocks = dict(MANAGED_BLOCKS)
     if entra_active:
         blocks["on-error"] += ("core-entra-authentication-error",)
@@ -469,9 +391,8 @@ def _merge_common_authentication_policy(policy: str | None, login: dict | None =
         for identifier in identifiers:
             wanted = next(node for node in source if node.get("id") == identifier)
             matches = [node for node in document.iter() if node.get("id") == identifier]
-            same = (not matches or (_previous_authentication_source_matches(matches[0], wanted) if previous_explanations
-                                    else _structure(matches[0]) == _structure(wanted)))
-            if len(matches) > 1 or (matches and (matches[0] not in list(target) or not same)):
+            if len(matches) > 1 or (matches and (matches[0] not in list(target)
+                                               or _structure(matches[0]) != _structure(wanted))):
                 raise ValueError(MIGRATION_REQUIRED)
             existing.append(matches[0] if matches else None)
         # 認証より前に独自の return-response 等がある設定も、処理順の確認を求める。
@@ -502,54 +423,18 @@ def validate_common_authentication_policy(policy: str, login: dict | None = None
         raise ValueError(MIGRATION_REQUIRED)
 
 
-def _validate_previous_common_authentication_policy(policy: str, login: dict | None = None,
-                                                     *, entra: dict | None = None,
-                                                     fragments: dict[str, str] | None = None,
-                                                     allow_previous_explanations: bool = False) -> None:
-    """現在の正本・inlineと、明示された説明差分の旧部品だけを完全照合する。"""
-    # Only the previous fragment-based generation can opt in. The raw dictionary
-    # is checked and expanded, never replaced with a current dictionary. Existing
-    # canonical inline bootstrap retains its complete fixed checks.
-    document = _document(policy)
-    if allow_previous_explanations and document.find(
-            "inbound/include-fragment[@id='" + COMMON_AUTHENTICATION_FRAGMENT_ID + "']") is not None:
-        current = _authentication_block(policy, entra=entra, fragments=fragments, allow_previous_explanations=True)
-        expected = _authentication_block(render_service_policy(login, entra=entra), entra=entra)
-        if not _previous_authentication_source_matches(current, expected):
-            raise ValueError(MIGRATION_REQUIRED)
-        _, changed = _merge_common_authentication_policy(policy, login, entra=entra, previous_explanations=True)
-        if changed:
-            raise ValueError(MIGRATION_REQUIRED)
-        return
-    if document.find("inbound/choose[@id='" + COMMON_AUTHENTICATION_FRAGMENT_ID + "']") is not None:
-        expected = _render_service_policy(login, entra=entra, inline_common_authentication=True)
-        if _structure(_authentication_block(policy, entra=entra)) != _structure(
-                _authentication_block(expected, entra=entra)):
-            raise ValueError(MIGRATION_REQUIRED)
-        _, changed = _merge_common_authentication_policy(
-            policy, login, entra=entra, inline_common_authentication=True)
-        if changed:
-            raise ValueError(MIGRATION_REQUIRED)
-        return
-    validate_common_authentication_policy(policy, login, entra=entra, fragments=fragments)
-
-
 def read_managed_entra_authentication(policy: str, login: dict | None = None, *,
-                                      expected_entra: dict | None = None, fragments: dict[str, str] | None = None,
-                                      allow_previous_explanations: bool = False) -> dict | None:
+                                      expected_entra: dict | None = None,
+                                      fragments: dict[str, str] | None = None) -> dict | None:
     """現在のNV版を、明示された信頼済み論理設定と正本の構造で照合する。
 
     NV参照XMLは実値の証明にならない。呼出側は実4NVもtyped検査し、独立した
-    期待値と照合する。任意の現行XMLを旧生成元として受け入れない。
+    期待値と照合する。
     """
-    if type(allow_previous_explanations) is not bool:
-        raise ValueError("Previous authentication explanations require an explicit Boolean opt-in")
-    block = _authentication_block(policy, entra=expected_entra, fragments=fragments,
-                                  allow_previous_explanations=allow_previous_explanations)
+    block = _authentication_block(policy, entra=expected_entra, fragments=fragments)
     validators = block.findall(".//validate-azure-ad-token")
     if not validators:
-        _validate_previous_common_authentication_policy(policy, login, fragments=fragments,
-                                                       allow_previous_explanations=allow_previous_explanations)
+        validate_common_authentication_policy(policy, login, fragments=fragments)
         return None
     variables = block.findall(".//set-variable[@name='gatewayUserAuthentication']")
     if len(validators) != 1 or len(variables) != 1:
@@ -558,25 +443,18 @@ def read_managed_entra_authentication(policy: str, login: dict | None = None, *,
         settings = _entra_policy_settings(expected_entra)
         if not settings:
             raise ValueError(MIGRATION_REQUIRED)
-        _validate_previous_common_authentication_policy(policy, login, entra=settings, fragments=fragments,
-                                                       allow_previous_explanations=allow_previous_explanations)
+        validate_common_authentication_policy(policy, login, entra=settings, fragments=fragments)
         return settings
     raise ValueError(MIGRATION_REQUIRED)
 
 
 def transition_common_authentication_policy(policy: str, login: dict | None = None, *,
                                             previous_entra: dict | None, entra: dict | None,
-                                            previous_fragments: dict[str, str] | None = None,
-                                            allow_previous_explanations: bool = False) -> tuple[str, bool]:
-    """検証済み旧設定から明示遷移する。無効化時も独自のglobal処理を保持する。"""
-    if type(allow_previous_explanations) is not bool:
-        raise ValueError("Previous authentication explanations require an explicit Boolean opt-in")
-    _validate_previous_common_authentication_policy(policy, login, entra=previous_entra, fragments=previous_fragments,
-                                                   allow_previous_explanations=allow_previous_explanations)
+                                            previous_fragments: dict[str, str] | None = None) -> tuple[str, bool]:
+    """検証済みの共通認証を更新し、Globalに追加された独自処理を保持する。"""
+    validate_common_authentication_policy(policy, login, entra=previous_entra, fragments=previous_fragments)
     desired = _document(render_service_policy(login, entra=entra))
     document = _document(policy)
-    # 認証に加え、既知旧版の要求snapshotとingress拒否監査も明示更新する。
-    # 旧版の完全照合後なので、同じIDを持つ未知の編集を巻き込まない。
     changed = False
     blocks = dict(MANAGED_BLOCKS)
     blocks["on-error"] += ("core-entra-authentication-error",)
@@ -594,8 +472,8 @@ def transition_common_authentication_policy(policy: str, login: dict | None = No
                     target.insert(position, copy.deepcopy(wanted))
                 changed = True
     candidate = ET.tostring(document, encoding="unicode") if changed else policy
-    result, merged = merge_common_authentication_policy(candidate, login, entra=entra,
-                                                       migrate_entra_authentication=True)
+    result, merged = _merge_common_authentication_policy(
+        candidate, login, entra=entra, activating_entra_authentication=not previous_entra)
     validate_common_authentication_policy(result, login, entra=entra)
     return result, changed or merged
 

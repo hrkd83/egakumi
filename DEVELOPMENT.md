@@ -107,7 +107,7 @@ Python 3.11以上と [端末の準備条件](docs/setup/01-prerequisites.md) を
 ```sh
 # リポジトリのルートで実行します。
 python3 -m venv .venv
-.venv/bin/python -m pip install -r scripts/integration-requirements.txt -r apps/credential-broker/requirements.txt -r apps/audit-relay/requirements.txt
+.venv/bin/python -m pip install -r scripts/clients/integration-requirements.txt -r apps/credential-broker/requirements.txt -r apps/audit-relay/requirements.txt
 .venv/bin/python -B -m unittest discover -s tests -v
 PYTHONPATH=apps/credential-broker .venv/bin/python -B -m unittest discover -s apps/credential-broker/tests -v
 PYTHONPATH=apps/audit-relay .venv/bin/python -B -m unittest discover -s apps/audit-relay/tests -v
@@ -168,8 +168,8 @@ SQL統合試験は通常の `npm test` ではスキップします。[SQL統合�
 | 3 | [configuration.py](scripts/deployment/helpers/configuration.py)・[lifecycle.py](scripts/deployment/lifecycle.py) | 合成、入力・秘密参照検査、事前確認、構築後の設定 |
 | 4 | [main.bicep](infra/main.bicep)・[資材一覧](infra/README.md) | 5RG、ネットワーク、ID、サービスの依存関係 |
 | 5 | [certificate.ps1](infra/guest/certificate.ps1)・[configure-audit.sh](infra/guest/configure-audit.sh)・[prepare-management-client.sh](infra/guest/prepare-management-client.sh) | 証明書Jobのワーカー、管理VMのOS監視、保守クライアントの準備 |
-| 6 | [deploy_applications.py](scripts/deploy_applications.py) | 基盤構築後のGateway→Portalの順次実行と、途中失敗時の停止 |
-| 7 | [Gateway配備資材](apps/api-gateway/deploy/README.md)・[deploy_gateway.py](scripts/deploy_gateway.py)・[deploy_portal.py](scripts/deploy_portal.py) | 各アプリのDB・実行用ID・ジョブ・イメージと、API・製品・検証用購読の配備 |
+| 6 | [release.py](scripts/operations/release.py) | 構築後のGateway→Portalの順次更新と、途中失敗時の停止 |
+| 7 | [Gateway配備資材](apps/api-gateway/deploy/README.md)・[deploy_gateway.py](scripts/deployment/deploy_gateway.py)・[deploy_portal.py](scripts/deployment/deploy_portal.py) | GatewayのBroker・監査アプリ・API・製品と、Portalアプリの個別配備 |
 | 8 | [cleanup.py](scripts/deployment/helpers/cleanup.py) | モデル・APIM先削除、削除保護と所有照合 |
 | 9 | [tests](tests)・[Portalテスト](apps/portal/tests/) | ローカルで検査する契約と回帰テスト。実環境の受入条件は冒頭の各仕様書を参照 |
 
@@ -198,7 +198,7 @@ configの`gateway.authentication.credentialLogin`へ共通セッション設定�
 共通管理ブロックは`apim_authentication.py`がIDと内容を照合するため、`service.xml`を変えただけで稼働中の管理ブロックを自動上書きしません。次の確認XMLとソース差分をレビューし、APIMの「すべてのAPI」のポリシー画面で該当ブロックだけを整合させてからGateway個別配備で再照合します。既存の追加処理と同時編集を確認し、画面保存時の競合を無視しません。共通認可・要求IDや`<base />`の継承を保持します。確認XMLへ管理対象外の要素を加えただけでは、Gateway個別配備の反映対象は増えません。
 
 ```sh
-python3 -B scripts/render_apim_policy.py --config "$DEPLOY_PARAMS_FILE" \
+python3 -B scripts/policy/render_apim_policy.py --config "$DEPLOY_PARAMS_FILE" \
   --output "$DEPLOY_LOCAL_DIRECTORY/generated/apim-policy-review.xml"
 ```
 
@@ -216,15 +216,11 @@ python3 -B scripts/render_apim_policy.py --config "$DEPLOY_PARAMS_FILE" \
 
 | 補助CLI | 用途と範囲 |
 | --- | --- |
-| [configure_trial.py](scripts/configure_trial.py) | 既存のCM設定と標準定義から、テキスト・PII・Graphの試験用合成設定を作成する。秘密値を読み取らず、Azureへ接続しない。出力では`publishApis:true`になるため、作成だけと配備を区別する |
-| [prepare_coverage.py](scripts/prepare_coverage.py) | API定義と非秘密のbindingsを合成する独立回帰用の補助。未解決参照・モデル矛盾・APIの上書きを検査し、出力の`publishApis`は`false`にする。Azure変更や推論は行わない |
-| [integration_client.py](scripts/integration_client.py)・[coverage_client.py](scripts/coverage_client.py) | Gateway直接呼出し、負例、接続・監査等の確認。実要求を送るコマンドは接続先と費用・状態変更の範囲を確認して使う |
+| [integration_client.py](scripts/clients/integration_client.py)・[coverage_client.py](scripts/validation/coverage_client.py) | Gateway直接呼出し、負例、接続・監査等の確認。実要求を送るコマンドは接続先と費用・状態変更の範囲を確認して使う |
 
 ```sh
-python3 scripts/configure_trial.py --help
-python3 scripts/prepare_coverage.py --help
-python3 scripts/integration_client.py --help
-python3 scripts/coverage_client.py run --help
+python3 scripts/clients/integration_client.py --help
+python3 scripts/validation/coverage_client.py run --help
 ```
 
 補助CLIの入力・出力・実行条件は [スクリプト一覧](scripts/README.md)を参照してください。実環境の設定・秘密ファイル・参照先は、環境別のGit管理外領域`.local/<environment>/`内で管理します。token・キー・実環境固有値を公開側の引数例・ログ・作業記録へ直接書きません。
@@ -236,14 +232,14 @@ APIの公開パス・認可・操作を変更したら、GatewayとPortalの呼�
 `coverage_client.py prepare --directory "$DEPLOY_LOCAL_DIRECTORY/evidence/preparation/assets"`は合成PNG／PDF／無音WAVを生成します。STT正常系には既知の発話を含む合成WAVを使います。Speech REST TTSの16kHz WAVは16kHz STTへ渡し、WSS用には変換します。
 
 ```sh
-python3 scripts/coverage_client.py convert-audio \
+python3 scripts/validation/coverage_client.py convert-audio \
   --input "$DEPLOY_LOCAL_DIRECTORY/evidence/tts-16k.wav" --output "$DEPLOY_LOCAL_DIRECTORY/evidence/tts-24k.wav"
 ```
 
 WSSの独立CLIは同じ合成WAVで各製品・scenarioを確認します。`roundtrip`は実音声と正常終端、`cancel`は取消確認、`disconnect`は途中切断、`keepalive`は短い無送信後の往復です。取消送信・端末切断だけでサービス側の停止・課金終了と判定しません。
 
 ```sh
-python3 scripts/voice_client.py --url wss://gateway.example.com/models/voice-live/v1/ws \
+python3 scripts/clients/voice_client.py --url wss://gateway.example.com/models/voice-live/v1/ws \
   --product voice-live --voice en-US-Ava:DragonHDLatestNeural \
   --audio-file "$DEPLOY_LOCAL_DIRECTORY/evidence/tts-24k.wav" --key-file "$DEPLOY_LOCAL_DIRECTORY/secrets/gateway-key.txt" \
   --scenario cancel --output "$DEPLOY_LOCAL_DIRECTORY/evidence/voice-live-cancel.json"
@@ -257,6 +253,6 @@ DecisionのCLIは既定で計画表示だけです。標準Gatewayの実行に�
 
 ## 固定依存と配布物
 
-CoreのPython依存は[共通requirements](scripts/integration-requirements.txt)、[Brokerのrequirements](apps/credential-broker/requirements.txt)、[本文監査のrequirements](apps/audit-relay/requirements.txt)で管理します。PortalのNode依存は[package.json](apps/portal/package.json)と[package-lock.json](apps/portal/package-lock.json)で管理します。変更内容に応じたローカル検査と、該当する仕様書の実環境試験で確認します。
+CoreのPython依存は[共通requirements](scripts/clients/integration-requirements.txt)、[Brokerのrequirements](apps/credential-broker/requirements.txt)、[本文監査のrequirements](apps/audit-relay/requirements.txt)で管理します。PortalのNode依存は[package.json](apps/portal/package.json)と[package-lock.json](apps/portal/package-lock.json)で管理します。変更内容に応じたローカル検査と、該当する仕様書の実環境試験で確認します。
 
 公開ソースには架空値と配布可能な素材だけを含めます。秘密・実環境の導入先設定・証明書・実行証跡は環境別のGit管理外領域`.local/<environment>/`で管理し、wheel／image／ZIP等の配布物にも混入させません。実情報の保存を認めるのはルートの`.local/`とazd専用の`.azure/`だけであり、ignore対象一般を保存・公開の許可と解釈しません。不要な生成物は個別に回収し、別用途のデータを一括削除しません。

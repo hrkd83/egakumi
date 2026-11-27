@@ -28,8 +28,8 @@ class ManagementClientInstallTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name).resolve() / 'maintenance'
         self.inventory = fixtures.ManagementClientBicepTests().fixture()[2]
-        self.source = (ROOT / 'scripts/management_client.py').read_bytes()
-        self.requirements = (ROOT / 'scripts/maintenance-requirements.txt').read_bytes()
+        self.source = (ROOT / 'scripts/operations/management_client.py').read_bytes()
+        self.requirements = (ROOT / 'scripts/operations/maintenance-requirements.txt').read_bytes()
         self.unsafe = set()
         self.bad_owners = set()
         self.bad_modes = {}
@@ -206,14 +206,9 @@ class ManagementClientInstallTests(unittest.TestCase):
         for key in ('applications', 'jobs', 'environments'):
             self.assertEqual(saved[key], sorted(set(added[key])))
 
-    def test_legacy_guest_upgrade_and_core_reprepare_preserve_both_constructed_sql_aliases(self):
-        legacy = copy.deepcopy(self.inventory)
-        legacy.pop('sqlDatabases')
-        self.prepare(legacy)
-        # Simulate the earlier installed schema without a SQL family.
+    def test_core_reprepare_preserves_both_constructed_sql_aliases(self):
+        self.prepare(self.inventory)
         target = self.root / 'inventory.json'
-        target.write_text(json.dumps(legacy), encoding='utf-8')
-        target.chmod(0o600)
         base = self.inventory['managementVmId'].split('/providers/', 1)[0]
         for alias in ('credentials', 'portal'):
             added = copy.deepcopy(self.inventory)

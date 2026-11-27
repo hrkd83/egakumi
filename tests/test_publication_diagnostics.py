@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/api-gateway/d
 import api_publication as publish
 import test_publish_apis as publication_cases
 from test_standard_apis import standard_fixture
-import standard_apis
+from catalog import standard_apis
 
 
 def response(body, status=200):

@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import prepare_portal_local_auth as preparation
+from portal_local import prepare_portal_local_auth as preparation
 
 
 class LocalPortalPreparationTests(unittest.TestCase):
@@ -141,15 +141,15 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertEqual("USER_SETTING=keep\n", target.read_text())
         self.assertFalse((self.root / "secrets").exists())
 
-    def test_legacy_portal_settings_require_migration_without_reading(self):
+    def test_app_environment_file_is_refused_before_reading_settings(self):
         target = self.root / "apps/portal/.env.local"
         target.parent.mkdir(parents=True)
         target.write_text("OWNER_SETTING=keep\n", encoding="utf-8")
         for execute in (False, True):
             with self.subTest(execute=execute), \
-                    patch.object(preparation, "read_environment", side_effect=AssertionError("legacy read")), \
+                    patch.object(preparation, "read_environment", side_effect=AssertionError("settings read")), \
                     patch.object(preparation, "deployment_authentication", side_effect=AssertionError("certificate state read")):
-                with self.assertRaisesRegex(preparation.PreparationError, "migrate"):
+                with self.assertRaisesRegex(preparation.PreparationError, r"\.local/<environment>/portal/runtime\.env"):
                     self.prepare(execute=execute, accept_sql_eula=True)
         self.assertEqual("OWNER_SETTING=keep\n", target.read_text())
         self.assertFalse((self.root / ".local").exists())

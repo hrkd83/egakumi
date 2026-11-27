@@ -1,14 +1,12 @@
 """CoreのACA Jobが保存したPortal認証証明書の初期状態を確認する。"""
 from __future__ import annotations
 
-from contextlib import contextmanager
-import os
 from pathlib import Path
 
 from deployment.helpers.configuration import load_configuration
-from deployment.helpers.paths import LocalPaths, private_output, private_parent
+from deployment.helpers.paths import LocalPaths, private_output
 from deployment.helpers.portal_auth_certificate import read_certificate_state
-from deployment.helpers.private_permissions import check_private_permissions, protect_new_path, regular_path
+from deployment.helpers.private_permissions import check_private_permissions, regular_path
 from operations.common import OperationContext, OperationError
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,23 +35,6 @@ def load_context(config_path, runtime_root=None):
     if configuration['environmentName'] != workspace.environment:
         raise OperationError('The parameters differ from the selected protected environment')
     return OperationContext.load(path, runtime_root=root)
-
-
-@contextmanager
-def locked(ctx):
-    """共通lockを使い、新しい空lockも本文を書込む前に実権限で保護します。"""
-    path = ctx.workspace.checked(ctx.workspace.root / '.operations.lock')
-    private_parent(path, ctx.workspace.repository)
-    try:
-        descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600)
-    except FileExistsError:
-        check_private_permissions(path)
-    else:
-        os.close(descriptor)
-        protect_new_path(path)
-    check_private_permissions(path)
-    with ctx.locked():
-        yield
 
 
 def initialize(ctx, *, execute=False):

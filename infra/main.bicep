@@ -917,7 +917,6 @@ output managementInitialSerialCreation object = deployCore && !empty(managementI
 output AZURE_LOCATION string = location
 output gateway object = {}
 // 通常HTTP(S)の入口保護を常設します。APIM保守は標準FQDNのHTTPSを使用します。
-// 旧gRPC専用domainの所有照合には旧証明書の固定パスを使用します。
 output ingressSecrets object = deployCore ? {
   enabled: false
   l7IngressEnabled: useIngressSecrets
@@ -926,7 +925,6 @@ output ingressSecrets object = deployCore ? {
   apimId: services!.outputs.serviceResourceIds.apim
   apimGatewayHost: services!.outputs.apimGatewayHost
   publicHostName: gatewayConfig.publicHostName
-  certificateSecretUri: certificateSecretUri
   namedValueId: '${services!.outputs.serviceResourceIds.apim}/namedValues/core-l7-ingress-secret'
 } : { enabled: false }
 // Expected IDs are available even if the subsequent core deployment fails.

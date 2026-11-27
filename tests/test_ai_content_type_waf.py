@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from deployment.helpers.waf_body import ai_content_type_policy, ai_content_type_profile
 from deployment.helpers.portal_gateway import _writable_policy
-from waf_policy import desired_policy, load_manifest
+from operations.waf_policy import desired_policy, load_manifest
 from test_gateway_callback_waf import CONFIG, policy
 
 

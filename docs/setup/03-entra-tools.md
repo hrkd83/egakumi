@@ -9,7 +9,7 @@
 [第01章](01-prerequisites.md)で環境別paramsのひな型とAPIM識別子を準備してから、リポジトリのルートで実行します。このコマンドはローカルのBicep CLIで登録用の名前とURIを計算します。
 
 ```sh
-python3 -I -B scripts/prepare_registration.py --config "$DEPLOY_PARAMS_FILE"
+python3 -I -B scripts/setup/prepare_registration.py --config "$DEPLOY_PARAMS_FILE"
 ```
 
 出力の `credentialManagerRedirectUri` が登録値です。形式は `https://authorization-manager.consent.azure-apim.net/redirect/apim/<APIM_NAME>` で、導入先のAPIM名まで含みます。`credentialIdentityRedirectUri` も控え、第04章で使います。環境固有の出力を保存する場合は、同じ環境の `.local/<environment>/evidence/` を使います。 [MicrosoftのCredential Manager構成](https://learn.microsoft.com/en-us/azure/api-management/credentials-how-to-azure-ad)

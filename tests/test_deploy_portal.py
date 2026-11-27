@@ -12,7 +12,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import deploy_portal as portal
+from deployment import deploy_portal as portal
 from deployment.helpers.paths import local_paths
 from management_fixtures import client_core_outputs
 

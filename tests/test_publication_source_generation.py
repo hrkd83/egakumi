@@ -311,8 +311,7 @@ class SplitPublicationOrderingTests(unittest.TestCase):
         base.template["outputs"]["publishedApiResourceIds"]["value"] = plan["publishedApiIds"]
         return base, plan, authentication, SplitInitialTransport(original)
 
-    def execute(self, base, plan, authentication, transport, checkpoints, *, failed_closed_stage_attempt=None,
-                restore_recorded_mcp_tool=False):
+    def execute(self, base, plan, authentication, transport, checkpoints, **options):
         saved = bootstrap.transaction_checkpoint
         def checkpoint(*args, generation_id=None, **kwargs):
             value = saved(*args, **kwargs)
@@ -321,9 +320,7 @@ class SplitPublicationOrderingTests(unittest.TestCase):
             return value
         controller = bootstrap.BootstrapControllerTests("runTest")
         with mock.patch.object(bootstrap, "transaction_checkpoint", side_effect=checkpoint):
-            return controller.execute(base, plan, authentication, transport, checkpoints,
-                                      failed_closed_stage_attempt=failed_closed_stage_attempt,
-                                      restore_recorded_mcp_tool=restore_recorded_mcp_tool)
+            return controller.execute(base, plan, authentication, transport, checkpoints, **options)
 
     def test_source_then_resource_graph_checkpoint_and_membership_preserve_the_existing_order(self):
         base, plan, authentication, transport = self.setup_split()
@@ -351,6 +348,78 @@ class SplitPublicationOrderingTests(unittest.TestCase):
         self.assertEqual(transport.inventory, before)
         self.assertFalse(checkpoints)
         self.assertTrue(all("-src-" in call[1] for call in transport.calls if call[0] not in ("GET", "POST")))
+
+    def test_recorded_same_scope_stage_checks_mixed_readback_then_resumes_and_opens_last(self):
+        base, plan, authentication, transport = self.setup_split()
+        checkpoints, stage_records, jobs = [], [], []
+        deployment_id = plan['deploymentId']
+        original = transport.request
+        state = {'fail': False}
+        target = plan['apimId'] + '/apis/model/operations/invoke/policies/policy'
+
+        def request(method, path, body=None, headers=None):
+            resource_id = path.split('?', 1)[0]
+            if method == 'POST' and resource_id == deployment_id + '/exportTemplate':
+                transport.calls.append((method, path, body, headers))
+                return ok({'template': copy.deepcopy(jobs[-1]['template'])})
+            if method != 'PUT' or resource_id != deployment_id:
+                return original(method, path, body, headers)
+            job = copy.deepcopy(body['properties'])
+            jobs.append(job)
+            if state['fail']:
+                transport.calls.append((method, path, body, headers))
+                self.assertFalse(transport.members)
+                self.assertEqual(len(stage_records), 1)
+                # One of two generated policies reached APIM; the failed API
+                # operation kept the policy from its previously opened stage.
+                applied = next(entry for entry in transport.source['policies'] if '/apis/sample/operations/' in entry['suffix'])
+                transport.refresh(plan['apimId'] + applied['suffix'], {'format': 'rawxml', 'value': applied['value']})
+                transport.inventory[deployment_id + '/operations'] = ok({'value': [{
+                    'id': deployment_id + '/operations/synthetic-policy-operation',
+                    'properties': {'provisioningState': 'Failed', 'provisioningOperation': 'Create', 'targetResource': {
+                        'id': target, 'resourceType': 'Microsoft.ApiManagement/service/apis/operations/policies'}},
+                }]})
+                properties = {'provisioningState': 'Failed', 'outputs': {}}
+            else:
+                response = original(method, path, body, headers)
+                properties = response['body']['properties']
+            properties.update(mode='Incremental', parameters=job['parameters'], correlationId='synthetic-job-' + str(len(jobs)))
+            transport.inventory[deployment_id] = ok({'id': deployment_id, 'name': deployment_id.rsplit('/', 1)[-1],
+                'type': 'Microsoft.Resources/deployments', 'tags': body['tags'], 'properties': properties})
+            return ok({}, 202)
+
+        with mock.patch.object(transport, 'request', side_effect=request):
+            self.execute(base, plan, authentication, transport, checkpoints)
+            base.state['apiPublicationSourceCheckpoint'] = checkpoints[-1]
+            authentication.update(previousValue=bootstrap.xml('active'), previousEntra={'apiNames': ['model', 'sample']}, changed=False)
+            transport.source = copy.deepcopy(transport.source)
+            for policy in transport.source['policies']:
+                if '/operations/' in policy['suffix']:
+                    policy['value'] = policy['value'].replace('<outbound><base /></outbound>', '<outbound><base />'
+                        '<set-header name="x-audit-phase" exists-action="override"><value>synthetic</value></set-header></outbound>')
+            base.template['outputs']['entraPublicationSource']['value'] = copy.deepcopy(transport.source)
+            base.template['resources']['synthetic_policy'] = {'type': 'Microsoft.ApiManagement/service/apis/operations/policies',
+                'apiVersion': publish.APIM_API, 'name': 'synthetic/model/invoke/policy'}
+            state['fail'] = True
+            with self.assertRaises(publish.entra_publication.TransitionError):
+                self.execute(base, plan, authentication, transport, checkpoints, record_stage=stage_records.append)
+            self.assertEqual(len(checkpoints), 1)
+            self.assertFalse(transport.members)
+            state['fail'] = False
+            transport.calls.clear()
+            before = copy.deepcopy(transport.inventory[target]['body']['properties'])
+            transport.refresh(target, {'format': 'rawxml', 'value': bootstrap.xml('unreviewed')})
+            with self.assertRaisesRegex(ValueError, 'both recorded old and attempted'):
+                self.execute(base, plan, authentication, transport, checkpoints, stage_record=stage_records[0])
+            self.assertTrue(all(call[0] in ('GET', 'POST') for call in transport.calls))
+            transport.refresh(target, before)
+            transport.calls.clear()
+            result = self.execute(base, plan, authentication, transport, checkpoints, stage_record=stage_records[0])
+
+        self.assertTrue(result['entraAuthentication']['employeePathOpen'])
+        writes = [(method, rid) for method, rid, *_ in transport.calls if method not in ('GET', 'POST')]
+        self.assertEqual(writes, [('PUT', deployment_id), ('CHECKPOINT', 'source'),
+            ('PUT', transport.open_id + '/apis/model'), ('PUT', transport.open_id + '/apis/sample')])
 
 
 if __name__ == "__main__":

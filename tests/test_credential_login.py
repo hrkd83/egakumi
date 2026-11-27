@@ -216,12 +216,7 @@ class CredentialPolicyTests(unittest.TestCase):
   self.assertNotIn("AccessToken",ET.tostring(complete,encoding="unicode"))
   self.assertIn("verifiedOwnerId",complete.find("set-body").text)
 
- def test_browser_callbacks_are_narrowly_anonymous(self):
-  value=ET.fromstring(credential_login.anonymous_policy(self.login)).get("condition")
-  self.assertIn('context.Api.Id == "credential-manager-browser"',value)
-  self.assertIn('context.Operation.Id == "identity-callback"',value)
-  for name in ("start","status","logout"):
-   self.assertNotIn('context.Operation.Id == "'+name+'"',value)
+ def test_broker_operations_inherit_common_authentication(self):
   # ブラウザー取引と管理操作は、モデルAPI用の設定入力を追加せず共通認証を継承します。
   for name in {**credential_login.OPERATIONS,**credential_login.BROWSER_OPERATIONS}:
    root=self.roots[name]

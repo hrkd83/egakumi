@@ -10,8 +10,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import argparse
-import base64
-import hashlib
 import json
 import re
 import subprocess
@@ -19,7 +17,7 @@ import time
 import uuid
 
 from deployment.helpers.portal_auth_certificate import (
-    MARKER, COMPUTE_API, certificate_record, read_certificate_state, save_public_certificate,
+    certificate_record, read_certificate_state, save_public_certificate,
 )
 from operations.common import OperationContext, OperationError
 
@@ -35,33 +33,6 @@ class SafeParser(argparse.ArgumentParser):
 
 def save(ctx, state):
     ctx.save_private(ctx.workspace.state / 'portal-auth-certificate.json', state, overwrite=True)
-
-
-def targets(ctx):
-    vm = ctx.state['outputs']['managementVm']['id']
-    prefix = '/subscriptions/' + ctx.config['subscriptionId'] + '/resourceGroups/'
-    expected = prefix + ctx.config['resourceGroupNames']['maint'] + '/providers/Microsoft.Compute/virtualMachines/vm-' + ctx.config['resourceStem'] + '-mgmt'
-    if vm.casefold() != expected.casefold():
-        raise OperationError('The management VM differs from the selected Core state')
-    ctx.verify_resource(vm, COMPUTE_API, 'Microsoft.Compute/virtualMachines')
-    ctx.verify_resource(ctx.service_id('keyVault'), '2023-07-01', 'Microsoft.KeyVault/vaults')
-    return vm
-
-
-def remote_script(action, config):
-    """配置済みworkerのハッシュを確認してから、秘密を含まない設定だけを渡します。"""
-    digest = hashlib.sha256((ROOT / 'infra/guest/portal-auth-certificate.ps1').read_bytes().replace(b'\r\n', b'\n')).hexdigest()
-    encoded = base64.b64encode(json.dumps(config, separators=(',', ':')).encode()).decode()
-    if action not in ('Prepare', 'Inspect', 'Activate', 'Retire'):
-        raise OperationError('Unsupported certificate worker action')
-    return '\n'.join([
-        '#!/bin/bash', 'set -euo pipefail', 'set +x', 'umask 077',
-        'task_worker=/var/lib/egakumi-portal-auth/worker.ps1',
-        '[ ! -L /var/lib/egakumi-portal-auth ] && [ ! -L "$task_worker" ]',
-        f'[ "$(sha256sum "$task_worker" | cut -d\' \' -f1)" = \'{digest}\' ]',
-        f'export PortalAuthConfigJson=$(printf \'%s\' \'{encoded}\' | base64 --decode)',
-        'pwsh -NoLogo -NoProfile -NonInteractive -Command \'& /var/lib/egakumi-portal-auth/worker.ps1 -Action ' + action + ' -ConfigJson $env:PortalAuthConfigJson\'',
-    ])
 
 
 def run_job_worker(ctx, state, action, arguments, *, retry_failed=False):
@@ -85,93 +56,17 @@ def run_job_worker(ctx, state, action, arguments, *, retry_failed=False):
             raise OperationError('Old key disabling was not confirmed')
     else:
         result = certificate_record(result, ctx.config)
-        if action in ('Activate', 'Inspect') and result['certificateId'] != arguments['certificateId']:
+        if action == 'Activate' and result['certificateId'] != arguments['certificateId']:
             raise OperationError('The worker returned another certificate version')
     pending['result'] = result
     save(ctx, state)
     return result
 
 
-def run_worker(ctx, state, action, arguments, *, sleep=time.sleep, clock=time.monotonic, timeout=960):
-    """応答不明時は保存済みexact commandを照合し、PUTを重ねません。"""
-    vm = targets(ctx)
-    request_config = {'vaultName': 'kv-' + ctx.config['resourceStem'], **ctx.config['portal']['certificate'], **arguments}
-    pending = state.get('vmRequest')
-    if pending:
-        if pending['action'] != action or pending['config'] != request_config:
-            raise OperationError('Finish the saved VM command before starting another action')
-        resource = pending['resourceId']
-    else:
-        resource = vm + '/runCommands/portal-auth-' + uuid.uuid4().hex
-        state['vmRequest'] = {'resourceId': resource, 'action': action, 'config': request_config}
-        save(ctx, state)
-        response = ctx.request('PUT', resource, COMPUTE_API, {
-            'location': ctx.config['location'],
-            'properties': {'source': {'script': remote_script(action, request_config)}, 'asyncExecution': False,
-                           'timeoutInSeconds': 900, 'treatFailureAsDeploymentFailure': True},
-        })
-        if response.get('statusCode') not in (200, 201, 202):
-            raise OperationError('VM command acceptance is unknown; inspect the saved command')
-    deadline = clock() + timeout
-    while clock() < deadline:
-        raw = ctx.run_cli(['az', 'vm', 'run-command', 'show', '--subscription', ctx.config['subscriptionId'],
-                          '--resource-group', ctx.config['resourceGroupNames']['maint'], '--vm-name', vm.rsplit('/', 1)[-1],
-                          '--run-command-name', resource.rsplit('/', 1)[-1], '--instance-view', '--only-show-errors', '--output', 'json'])
-        body = json.loads(raw)
-        if body.get('id') != resource:
-            raise OperationError('The saved VM command cannot be confirmed; no command was resent')
-        properties = body.get('properties', body)
-        view = properties.get('instanceView') or body.get('instanceView') or {}
-        if view.get('executionState') in ('Failed', 'Canceled', 'TimedOut') or properties.get('provisioningState') in ('Failed', 'Canceled'):
-            raise OperationError('The saved VM command failed; review its protected checkpoint before recovery')
-        if view.get('executionState') == 'Succeeded':
-            if view.get('exitCode') != 0:
-                raise OperationError('The certificate worker did not complete successfully')
-            lines = [line[len(MARKER):] for line in view.get('output', '').splitlines() if line.startswith(MARKER)]
-            if len(lines) != 1 or len(lines[0]) > 24000:
-                raise OperationError('The certificate worker result is incomplete')
-            result = json.loads(lines[0])
-            if action == 'Retire':
-                if result != {'retired': True, 'keyId': state['previous']['keyId']}:
-                    raise OperationError('Old key disabling was not confirmed')
-            else:
-                result = certificate_record(result, ctx.config)
-                if action in ('Activate', 'Inspect') and result['certificateId'] != arguments['certificateId']:
-                    raise OperationError('The worker returned another certificate version')
-            state['vmRequest']['result'] = result
-            save(ctx, state)
-            return result
-        sleep(min(5, max(0, deadline - clock())))
-    raise OperationError('The saved VM command is still pending; no additional command was sent')
-
-
 def finish_worker(ctx, state):
-    """結果を永続化した後だけexact commandを回収します。"""
     if 'result' in state.get('jobRequest', {}):
         state.pop('jobRequest')
         save(ctx, state)
-        return
-    pending = state.get('vmRequest')
-    if not pending or 'result' not in pending:
-        return
-    if not pending.get('cleanupRequested'):
-        pending['cleanupRequested'] = True
-        save(ctx, state)
-        response = ctx.request('DELETE', pending['resourceId'], COMPUTE_API)
-        if response.get('statusCode') not in (200, 202, 204):
-            raise OperationError('The completed certificate command could not be reclaimed')
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        response = ctx.request('GET', pending['resourceId'], COMPUTE_API)
-        if response.get('statusCode') == 404:
-            break
-        if response.get('statusCode') != 200 or (response.get('body') or {}).get('id') != pending['resourceId']:
-            raise OperationError('VM command reclamation is not confirmed')
-        time.sleep(5)
-    else:
-        raise OperationError('VM command reclamation remains pending; no deletion was repeated')
-    state.pop('vmRequest')
-    save(ctx, state)
 
 
 def verify_runtime(ctx, certificate, image):
@@ -193,7 +88,7 @@ def verify_runtime(ctx, certificate, image):
 def deploy(ctx, slot, image):
     if not re.fullmatch('sha256:[a-f0-9]{64}', image or ''):
         raise OperationError('A recorded immutable Portal image is required for switching and rollback')
-    result = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/deploy_portal.py'), '--config', str(ctx.config_path),
+    result = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/deployment/deploy_portal.py'), '--config', str(ctx.config_path),
                              '--certificate-slot', slot, '--image-digest', image, '--execute'], cwd=ROOT, check=False)
     if result.returncode:
         raise OperationError('Portal deployment did not complete; retain both certificate versions')
@@ -203,27 +98,13 @@ def perform(ctx, state, action, args):
     """手動登録と受入を挟み、現在版を無効化しない順序で更新します。"""
     phase = state['phase']
     retry_failed = getattr(args, 'resume_failed_worker', False)
-    if ctx.state['outputs'].get('certificateBootstrap'):
-        def invoke(action, arguments):
-            return run_job_worker(ctx, state, action, arguments, retry_failed=retry_failed)
-    else:
-        def invoke(action, arguments):
-            return run_worker(ctx, state, action, arguments)
-    if retry_failed and state.get('vmRequest'):
-        pending = state['vmRequest']
-        vm = targets(ctx)
-        if not pending['resourceId'].startswith(vm + '/runCommands/portal-auth-'):
-            raise OperationError('The saved recovery command belongs to another VM')
-        observed = json.loads(ctx.run_cli(['az', 'vm', 'run-command', 'show', '--subscription', ctx.config['subscriptionId'],
-            '--resource-group', ctx.config['resourceGroupNames']['maint'], '--vm-name', vm.rsplit('/', 1)[-1],
-            '--run-command-name', pending['resourceId'].rsplit('/', 1)[-1], '--instance-view', '--only-show-errors', '--output', 'json']))
-        view = observed.get('properties', observed).get('instanceView') or observed.get('instanceView') or {}
-        if observed.get('id') != pending['resourceId'] or view.get('executionState') not in ('Failed', 'Canceled', 'TimedOut'):
-            raise OperationError('Only an observed terminal failed worker can be resumed; pending work must not be repeated')
-        ctx.record('portal-auth-worker-recovery', {'resourceId': pending['resourceId'], 'action': pending['action']})
-        state.pop('vmRequest')
-        save(ctx, state)
-    if (state.get('vmRequest', {}).get('result') or state.get('jobRequest', {}).get('result')) and phase in ('prepared', 'switched', 'retired', 'initial'):
+    if not ctx.state['outputs'].get('certificateBootstrap'):
+        raise OperationError('Complete the Core certificate job before rotating the Portal certificate')
+
+    def invoke(action, arguments):
+        return run_job_worker(ctx, state, action, arguments, retry_failed=retry_failed)
+
+    if state.get('jobRequest', {}).get('result') and phase in ('prepared', 'switched', 'retired', 'initial'):
         finish_worker(ctx, state)
     if action == 'prepare':
         if phase not in ('initial', 'verified', 'retired', 'preparing', 'prepared'):
@@ -271,8 +152,8 @@ def perform(ctx, state, action, args):
         finish_worker(ctx, state)
         save_public_certificate(ctx.workspace, state['current'])
     elif action == 'verify':
-        if phase != 'switched' or not (args.login_verified and args.graph_verified and args.job_verified):
-            raise OperationError('Verify actual login, Graph management and the scheduled job before acceptance')
+        if phase != 'switched' or not (args.login_verified and args.graph_verified):
+            raise OperationError('Verify actual Portal login and Graph OBO before acceptance')
         verify_runtime(ctx, state['current'], state['imageDigest'])
         state['phase'] = 'verified'
         save(ctx, state)
@@ -309,17 +190,17 @@ def main(argv=None):
     parser.add_argument('--runtime-root', help='Explicit protected runtime checkout for checking initial state')
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--resume-failed-worker', action='store_true', help='Resume a terminal failed worker using its saved KV request checkpoint')
-    for flag in ('entra-registration-confirmed', 'login-verified', 'graph-verified', 'job-verified', 'entra-old-certificate-removed'):
+    for flag in ('entra-registration-confirmed', 'login-verified', 'graph-verified', 'entra-old-certificate-removed'):
         parser.add_argument('--' + flag, action='store_true')
     args = parser.parse_args(argv)
     try:
         if args.action == 'initialize':
             if args.resume_failed_worker or any(getattr(args, flag) for flag in
-                    ('entra_registration_confirmed', 'login_verified', 'graph_verified', 'job_verified', 'entra_old_certificate_removed')):
+                    ('entra_registration_confirmed', 'login_verified', 'graph_verified', 'entra_old_certificate_removed')):
                 raise OperationError('Initial state verification does not accept certificate rotation flags')
-            from operations.portal_certificate_initialization import load_context, initialize, locked
+            from operations.portal_certificate_initialization import load_context, initialize
             ctx = load_context(args.config, args.runtime_root)
-            with locked(ctx):
+            with ctx.locked():
                 print(json.dumps(initialize(ctx, execute=args.execute)))
             return 0
         if args.runtime_root is not None:

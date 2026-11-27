@@ -32,25 +32,6 @@ CoreのアクセスログはStorageへ直接送る設定から外し、変換後
 
 Azure反映時は変換の適用を待ち、架空の識別文字列を含む新しいTLS検査要求で、`AZFWApplicationRule`の`IsTlsInspected`と空の`TargetUrl`を照合します。`AZFWThreatIntel`も対象行を取得できる場合は同じ列を確認します。両分類のStorage直送が停止し、他分類の保存が継続することを確認してから実利用へ進みます。以前に保持したBlobの内容は変更しません。 [Workspace変換の有効化と待ち時間](https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-transformations-create)
 
-## 既存環境の段階更新
-
-既定のコマンドはGETだけで計画を作ります。値を含む詳細な変更前後は、指定したGit管理外ファイルへ保護保存できます。
-
-```sh
-python3 scripts/configure_log_privacy.py --config "$DEPLOY_PARAMS_FILE" \
-  --plan-file "$DEPLOY_LOCAL_DIRECTORY/state/log-privacy-plan.json"
-```
-
-更新は以下の3段階です。これは承認済みの対象へだけ実行してください。
-
-1. `--execute --stage prepare`：CoreのWorkspaceTransforms DCR・関連付け・監査コンテナーと保持を準備する。
-2. 新しい合成要求を送り、pathが残りqueryが消えたログを確認する。その後`--execute --stage export`で既存6テーブルへAGWAccessLogsを追加する。
-3. `am-agwaccesslogs`に変換後の合成記録が到着したことを確認してから`--execute --stage route`を実行する。Access→LAWだけの専用診断設定`diag-<環境>-agw-access`を作成・確認してから、既存`diag-<環境>-agw`のAccessカテゴリだけを除去する。既存設定のWAFカテゴリ・LAW・Storage・その他の設定は保持する。同じWAFカテゴリを同じStorageへ重複登録する設定は作らない。
-
-スクリプトのreadback成功は構成の確認です。取り込み変換の有効化や実Blob到達の成功とは分けます。Microsoftは取り込み変換の反映に最大60分、exportルールの開始にも待ち時間があると説明しています。時刻の新しい合成要求で、変換済み行とStorage到達を確認してください。過去に保存された記録はこの変更では書き換え・削除しません。
-
-切替時はAccess→LAWが短時間だけ2設定から送られる可能性があります。証跡は`TransactionId`で照合し、重複行を要求数として数えません。新規設定が拒否・未確定の場合は既存診断設定を変更せず停止します。Microsoftの診断設定資料には1設定につき宛先種類1つ・1リソース最大5設定という制約があります。WAFの同一Storage重複が許可されることを前提にしない切替です。
-
 ## 企業共通監査の別Workspace
 
 Azure Policyの`setByPolicy-LogAnalytics`等が同じAppGWから企業共通監査へ送る場合、それは共通管理チームが意図して運用する別の信頼境界です。CoreのWorkspace変換はその送信先には適用されません。診断設定から各宛先へ独立して送信されるためです。CoreはPolicy所有設定や別Subscriptionを変更せず、共通監査からの除外・削除も要求しません。Coreの合格を全宛先での機密値非保持とは表現しません。実キー等をクライアントがURLへ付けないことは、これとは別に検査します。

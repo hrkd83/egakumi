@@ -499,18 +499,6 @@ def verify_fixed_nsg_inventory(parents, bindings, *, require_complete=False):
             raise FixedNsgError('The complete fixed NSG rule set has not been deployed and verified')
 
 
-def _snapshot(parent):
-    if parent is None: return None
-    value = copy.deepcopy(parent)
-    for key in ('etag', 'systemData'): value.pop(key, None)
-    p = value['properties']; p.pop('provisioningState', None); p.setdefault('flushConnection', False)
-    for field in ('securityRules', 'defaultSecurityRules'):
-        for child in p.get(field, []):
-            child.pop('etag', None); child['properties'].pop('provisioningState', None)
-        if field in p: p[field].sort(key=lambda child: child['name'].casefold())
-    return value
-
-
 def _etag(value):
     tag = value.get('etag') if isinstance(value, dict) else None
     if (not isinstance(tag, str) or len(tag) > 512
@@ -518,14 +506,6 @@ def _etag(value):
             or tag in ('*', '"*"', 'W/"*"')):
         raise FixedNsgError('A concrete owned NSG child ETag is required')
     return tag
-
-
-def _initial_nsg_tags(config):
-    extra = config.get('tags', {})
-    if not isinstance(extra, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in extra.items()):
-        raise FixedNsgError('Initial NSG construction tags are invalid')
-    return {**copy.deepcopy(extra), 'product': config['productName'], 'environment': config['environmentName'],
-            'azd-env-name': config['environmentName']}
 
 
 def verify_fixed_nsg_before_deployment(config, transport):

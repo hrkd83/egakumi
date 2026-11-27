@@ -17,8 +17,8 @@ from deployment.helpers import waf_body
 from deployment.helpers.waf_names import policy_id, policy_name
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, POOL, BACKEND, REWRITE, gateway, policy
 from test_waf_policy import ArmMemory
-from waf_contracts import MODEL_WAF_PATHS, model_operation_waf_path, require_source_routes
-from waf_policy import canonical_gateway, canonical_policy, desired_policy, load_manifest, path_patterns_overlap, published_paths, reconcile
+from validation.waf_contracts import MODEL_WAF_PATHS, model_operation_waf_path, require_source_routes
+from operations.waf_policy import canonical_gateway, canonical_policy, desired_policy, load_manifest, path_patterns_overlap, published_paths, reconcile
 
 
 def contracts():

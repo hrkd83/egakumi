@@ -1,23 +1,11 @@
 """Existing certificate maintenance rejects uncertain work and accepts only observed public TLS."""
-import ast
-import base64
-import contextlib
 import copy
-from email.message import Message
-import io
-import json
-import os
 from pathlib import Path
-import shutil
-import subprocess
-import tempfile
 from types import SimpleNamespace
 import sys
 import time
 import unittest
 from unittest import mock
-import urllib.request
-from urllib.response import addinfourl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from operations import certificate as cert
@@ -25,7 +13,6 @@ from operations.common import OperationError
 
 SUB = '11111111-1111-1111-1111-111111111111'
 PREFIX = f'/subscriptions/{SUB}/resourceGroups/'
-VM = PREFIX + 'rg-test-maint/providers/Microsoft.Compute/virtualMachines/vm-test-fixture-mgmt'
 GATEWAY = PREFIX + 'rg-test-nw/providers/Microsoft.Network/applicationGateways/agw-test-fixture'
 APIM = PREFIX + 'rg-test-svc/providers/Microsoft.ApiManagement/service/apim-test-fixture-abc123'
 TLS_VAULT_NAME = 'kvtls-test-fixture'
@@ -44,7 +31,7 @@ class Context:
                        'certificate': {'certificateName': 'public-gateway'},
                        'gateway': {'publicHostName': 'gateway.example.com'},
                        'portal': {'publicHostName': 'portal.example.com'}}
-        self.state = {'outputs': {'managementVm': {'id': VM}, 'gateway': {'id': GATEWAY}},
+        self.state = {'outputs': {'gateway': {'id': GATEWAY}},
                       'serviceResourceIds': {'certificateVault': TLS_VAULT, 'keyVault': CREDENTIAL_VAULT}}
         self.calls, self.records = [], []
         self.transport = mock.Mock()
@@ -57,6 +44,7 @@ class Context:
         self.apim = {'id': APIM, 'properties': {'hostnameConfigurations': [
             {'type': 'Proxy', 'hostName': 'gateway.example.com', 'keyVaultId': TLS_VAULT_URI + '/secrets/public-gateway'}]}}
         self.patch_status = 200
+        self.use_certificate_job()
 
     def use_certificate_job(self):
         bootstrap = {'certificateVaultId': TLS_VAULT, 'certificateVaultName': TLS_VAULT_NAME,
@@ -91,31 +79,29 @@ class Context:
 
 def metadata():
     return {'certificateId': TLS_VAULT_URI + '/certificates/public-gateway/' + 'a' * 32,
-            'secretVersionUri': TLS_VAULT_URI + '/secrets/public-gateway/' + 'a' * 32,
-            'enabled': True, 'expires': int(time.time()) + 86400, 'thumbprint': THUMB, 'timerEnabled': True}
+            'notBefore': int(time.time()) - 86400, 'notAfter': int(time.time()) + 86400, 'thumbprint': THUMB}
 
 
 class CertificateTests(unittest.TestCase):
     def setUp(self):
         self.ctx = Context()
 
-    def test_plan_has_no_arm_vm_or_public_network_activity(self):
-        self.ctx.use_certificate_job()
+    def test_plan_has_no_arm_or_public_network_activity(self):
         with mock.patch.object(cert, 'job_metadata') as job, mock.patch.object(cert, 'tls_leaf') as tls:
             result = cert.operate(self.ctx, SimpleNamespace(stage='renew', execute=False, thumbprint=None))
         self.assertEqual(result['status'], 'planned')
         self.assertEqual(result['certificateConsumer'], 'application-gateway')
-        self.assertTrue(result['newJob'])
+        self.assertEqual(result['execution'], 'container-app-job')
         self.assertEqual(self.ctx.calls, [])
         job.assert_not_called()
         tls.assert_not_called()
 
     def test_foreign_output_and_invalid_thumbprint_stop_before_writes(self):
-        for foreign_vm, thumbprint in ((True, None), (False, 'not-a-thumbprint')):
+        for foreign_gateway, thumbprint in ((True, None), (False, 'not-a-thumbprint')):
             ctx = Context()
-            if foreign_vm:
-                ctx.state['outputs']['managementVm']['id'] += '-foreign'
-            with self.subTest(foreign_vm=foreign_vm), mock.patch.object(ctx, 'verify_resource') as verify, \
+            if foreign_gateway:
+                ctx.state['outputs']['gateway']['id'] += '-foreign'
+            with self.subTest(foreign_gateway=foreign_gateway), mock.patch.object(ctx, 'verify_resource') as verify, \
                     self.assertRaises(OperationError):
                 cert.operate(ctx, SimpleNamespace(stage='renew', execute=True, thumbprint=thumbprint))
             verify.assert_not_called()
@@ -127,37 +113,34 @@ class CertificateTests(unittest.TestCase):
             cert.operate(self.ctx, SimpleNamespace(stage='renew', execute=True, thumbprint=None))
         self.assertEqual(self.ctx.calls, [])
 
-    def test_bootstrap_mismatch_never_starts_a_certificate_job_or_vm_worker(self):
+    def test_bootstrap_mismatch_never_starts_a_certificate_job(self):
         for field, unsafe_value in [('certificateVaultId', CREDENTIAL_VAULT),
                                     ('certificateVaultName', 'kv-test-fixture'),
                                     ('certificateSecretUri', TLS_VAULT_URI + '/secrets/public-gateway/' + 'a' * 32)]:
             ctx = Context()
             ctx.use_certificate_job()[field] = unsafe_value
             with self.subTest(field=field), mock.patch.object(cert, 'job_metadata') as job, \
-                    mock.patch.object(cert, 'run_worker') as worker, mock.patch.object(ctx, 'verify_resource') as verify, \
+                    mock.patch.object(ctx, 'verify_resource') as verify, \
                     self.assertRaisesRegex(OperationError, 'recorded certificate job'):
                 cert.operate(ctx, SimpleNamespace(stage='check', execute=True, thumbprint=None))
             job.assert_not_called()
-            worker.assert_not_called()
             verify.assert_not_called()
             self.assertEqual(ctx.calls, [])
 
-    def test_record_without_dedicated_vault_cannot_fall_back_to_credentials(self):
+    def test_record_without_dedicated_vault_cannot_start_a_job(self):
         self.ctx.state['serviceResourceIds'].pop('certificateVault')
-        with mock.patch.object(cert, 'run_worker') as worker, self.assertRaises(OperationError):
+        with mock.patch.object(cert, 'job_metadata') as job, self.assertRaises(OperationError):
             cert.operate(self.ctx, SimpleNamespace(stage='renew', execute=True, thumbprint=None))
-        worker.assert_not_called()
+        job.assert_not_called()
         self.assertEqual(self.ctx.calls, [])
 
     def test_certificate_job_checks_renews_and_synchronizes_owned_public_leaves(self):
         for stage in ('check', 'renew', 'sync'):
             ctx = Context()
-            ctx.use_certificate_job()
             changed = {**metadata(), 'thumbprint': 'B' * 40}
             sequence = [metadata(), changed] if stage == 'renew' else [metadata()]
             thumbprint = sequence[-1]['thumbprint']
             with self.subTest(stage=stage), mock.patch.object(cert, 'job_metadata', side_effect=sequence) as job, \
-                    mock.patch.object(cert, 'run_worker') as worker, \
                     mock.patch.object(ctx, 'verify_resource', wraps=ctx.verify_resource) as verify, \
                     mock.patch.object(cert, 'tls_leaf', side_effect=lambda host, port: {
                         'host': host, 'port': port, 'thumbprint': thumbprint, 'trustedAndHostnameVerified': True,
@@ -169,96 +152,10 @@ class CertificateTests(unittest.TestCase):
             if stage == 'renew':
                 expected.append(mock.call(ctx, renew=True, thumbprint=THUMB))
             self.assertEqual(job.call_args_list, expected)
-            worker.assert_not_called()
             self.assertIn(mock.call(GATEWAY, cert.NETWORK_API, 'Microsoft.Network/applicationGateways'), verify.call_args_list)
             self.assertTrue(all(call.args[0] == GATEWAY for call in verify.call_args_list))
             self.assertEqual(tls.call_args_list, [mock.call('gateway.example.com', 443), mock.call('portal.example.com', 443)])
             self.assertEqual([call[0] for call in ctx.calls].count('PATCH'), 0 if stage == 'check' else 2)
-
-    def test_remote_script_uses_existing_worker_and_never_reads_secret_endpoint(self):
-        text = cert.remote_script(TLS_VAULT_NAME, 'public-gateway', renew=True, thumbprint=THUMB)
-        self.assertIn('-Action Renew', text)
-        self.assertNotIn('-Action Install', text)
-        self.assertIn('-RotateFromThumbprint ' + THUMB, text)
-        self.assertIn('sha256sum', text)
-        self.assertIn('/certificates/public-gateway?', text)
-        self.assertNotIn('/secrets/', text)
-        self.assertNotIn('az login', text)
-        program = cert.metadata_program(TLS_VAULT_NAME, 'public-gateway', 'unit')
-        ast.parse(program)
-
-    def metadata_transport(self, redirect=None):
-        """Run real urllib proxy/redirect handlers; intercept before any socket opens."""
-        requests = []
-        public = metadata()
-        certificate = {'id': public['certificateId'], 'sid': public['secretVersionUri'],
-                       'attributes': {'enabled': True, 'exp': public['expires']},
-                       'cer': base64.b64encode(b'independent synthetic public leaf').decode()}
-        def offline_open(handler, connection, request, **options):
-            kind = 'imds' if request.full_url.startswith('http://169.254.169.254/') else 'vault'
-            requests.append({'kind': kind, 'host': request.host, 'tunnelHost': request._tunnel_host,
-                             'url': request.full_url, 'headers': dict(request.header_items())})
-            headers = Message()
-            status = 302 if kind == redirect else 200
-            if status == 302:
-                headers['Location'] = 'https://redirect-target.invalid/untrusted'
-            value = {'access_token': 'placeholder'} if kind == 'imds' else certificate
-            response = addinfourl(io.BytesIO(json.dumps(value).encode()), headers, request.full_url, status)
-            response.msg = 'Found' if status == 302 else 'OK'
-            return response
-        proxy = 'http://untrusted-proxy.invalid:8888'
-        environment = {'http_proxy': proxy, 'https_proxy': proxy, 'HTTP_PROXY': proxy,
-                       'HTTPS_PROXY': proxy, 'no_proxy': '', 'NO_PROXY': ''}
-        output = io.StringIO()
-        with mock.patch.dict(os.environ, environment, clear=True), \
-                mock.patch.object(urllib.request.AbstractHTTPHandler, 'do_open', new=offline_open), \
-                mock.patch.object(subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
-                contextlib.redirect_stdout(output):
-            if redirect:
-                with self.assertRaises(SystemExit) as stopped:
-                    exec(compile(cert.metadata_program(TLS_VAULT_NAME, 'public-gateway', 'unit'),
-                                 '<synthetic-certificate-metadata>', 'exec'), {})
-                self.assertEqual(stopped.exception.code, 1)
-            else:
-                exec(compile(cert.metadata_program(TLS_VAULT_NAME, 'public-gateway', 'unit'),
-                             '<synthetic-certificate-metadata>', 'exec'), {})
-        return requests, output.getvalue()
-
-    def test_imds_bypasses_environment_proxy_while_vault_retains_its_proxy(self):
-        requests, output = self.metadata_transport()
-        self.assertEqual([r['kind'] for r in requests], ['imds', 'vault'])
-        self.assertEqual((requests[0]['host'], requests[0]['tunnelHost']), ('169.254.169.254', None))
-        self.assertEqual(requests[0]['headers']['Metadata'], 'true')
-        self.assertEqual(requests[0]['url'],
-                         'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net')
-        self.assertNotIn('Authorization', requests[0]['headers'])
-        self.assertEqual((requests[1]['host'], requests[1]['tunnelHost']),
-                         ('untrusted-proxy.invalid:8888', TLS_VAULT_HOST))
-        self.assertEqual(requests[1]['headers']['Authorization'], 'Bearer placeholder')
-        self.assertIn('/certificates/public-gateway?', requests[1]['url'])
-        self.assertNotIn('/secrets/', requests[1]['url'])
-        self.assertTrue(output.startswith(cert.MARKER))
-        self.assertNotIn('placeholder', output)
-
-    def test_imds_and_vault_both_reject_redirects_without_forwarding_credentials(self):
-        for source in ('imds', 'vault'):
-            with self.subTest(source=source):
-                requests, output = self.metadata_transport(redirect=source)
-                self.assertEqual([r['kind'] for r in requests], ['imds'] if source == 'imds' else ['imds', 'vault'])
-                self.assertFalse(any('redirect-target.invalid' in r['url'] for r in requests))
-                self.assertNotIn(cert.MARKER, output)
-                self.assertNotIn('placeholder', output)
-
-    def test_only_current_public_metadata_is_accepted(self):
-        raw = cert.MARKER + json.dumps(metadata())
-        self.assertEqual(cert.public_metadata(raw, TLS_VAULT_NAME, 'public-gateway')['thumbprint'], THUMB)
-        for field, value in [('enabled', False), ('timerEnabled', False), ('expires', 0),
-                             ('certificateId', 'https://foreign.example.com/certificates/public-gateway/' + 'a' * 32)]:
-            bad = metadata(); bad[field] = value
-            with self.subTest(field=field), self.assertRaises(OperationError):
-                cert.public_metadata(cert.MARKER + json.dumps(bad), TLS_VAULT_NAME, 'public-gateway')
-        with self.assertRaises(OperationError):
-            cert.public_metadata(raw + '\n' + raw, TLS_VAULT_NAME, 'public-gateway')
 
     def test_existing_version_pinned_reference_is_not_silently_rewritten(self):
         self.ctx.gateway['properties']['sslCertificates'][0]['properties']['keyVaultSecretId'] += 'a' * 32
@@ -271,18 +168,6 @@ class CertificateTests(unittest.TestCase):
         with self.assertRaises(OperationError):
             cert.verify_references(self.ctx, GATEWAY, TLS_VAULT_NAME, 'public-gateway')
         self.assertEqual(self.ctx.calls, [])
-
-
-
-
-
-
-
-
-
-
-
-
 
     def test_gateway_refresh_preserves_other_tags_and_restores_only_its_tag(self):
         cert.refresh_gateway(self.ctx, GATEWAY)
@@ -314,19 +199,12 @@ class CertificateTests(unittest.TestCase):
         self.assertEqual(cert.etag({'etag': 'W/"opaque"'}), 'W/"opaque"')
 
     def test_explicit_rotation_requires_a_new_leaf_before_sync(self):
-        with mock.patch.object(cert, 'run_worker', side_effect=[metadata(), metadata()]), \
+        with mock.patch.object(cert, 'job_metadata', side_effect=[metadata(), metadata()]), \
                 mock.patch.object(cert, 'refresh_gateway') as refresh:
             with self.assertRaises(OperationError):
                 cert.operate(self.ctx, SimpleNamespace(stage='renew', execute=True, thumbprint=THUMB))
         refresh.assert_not_called()
         self.assertFalse(any(call[0] == 'POST' for call in self.ctx.calls))
-
-
-
-
-
-
-
 
     def test_sync_uses_only_appgw_certificates_and_public_https_hosts(self):
         original_verify = self.ctx.verify_resource
@@ -334,27 +212,18 @@ class CertificateTests(unittest.TestCase):
             self.assertNotEqual(resource_id, APIM)
             return original_verify(resource_id, api, expected_type)
         self.ctx.verify_resource = gateway_only
-        with mock.patch.object(cert, 'run_worker', return_value=metadata()) as worker, \
+        with mock.patch.object(cert, 'job_metadata', return_value=metadata()) as job, \
                 mock.patch.object(cert, 'tls_leaf', side_effect=lambda h, p: {
                     'host': h, 'port': p, 'thumbprint': THUMB,
                     'trustedAndHostnameVerified': True}) as tls:
             result = cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
         self.assertEqual(result['status'], 'public-tls-verified')
-        worker.assert_called_once_with(self.ctx, VM, TLS_VAULT_NAME, 'public-gateway')
+        job.assert_called_once_with(self.ctx)
         self.assertEqual(tls.call_args_list, [mock.call('gateway.example.com', 443), mock.call('portal.example.com', 443)])
         self.assertFalse(any(call[0] == 'POST' or call[1].startswith(APIM) for call in self.ctx.calls))
         self.assertEqual(len([call for call in self.ctx.calls if call[0] == 'PATCH']), 2)
         self.assertEqual(self.ctx.gateway['tags'], {'existing': 'keep'})
         self.assertFalse(any(kind.startswith('certificate-apim') for kind, _ in self.ctx.records))
-
-    def test_sync_succeeds_with_no_custom_apim_certificate(self):
-        self.ctx.apim['properties']['hostnameConfigurations'] = []
-        with mock.patch.object(cert, 'run_worker', return_value=metadata()), \
-                mock.patch.object(cert, 'refresh_gateway') as gateway, \
-                mock.patch.object(cert, 'observe', return_value=[]):
-            cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
-        gateway.assert_called_once_with(self.ctx, GATEWAY)
-        self.assertEqual(self.ctx.calls, [])
 
     def test_gateway_snapshot_failure_stops_before_any_patch(self):
         with mock.patch.object(self.ctx, 'record', side_effect=OperationError('Synthetic record failure')):
@@ -364,21 +233,16 @@ class CertificateTests(unittest.TestCase):
 
     def test_sync_retains_versionless_appgw_reference_validation(self):
         self.ctx.gateway['properties']['sslCertificates'][0]['properties']['keyVaultSecretId'] += 'a' * 32
-        for job_backed in (False, True):
-            if job_backed:
-                self.ctx.use_certificate_job()
-            with self.subTest(job_backed=job_backed), mock.patch.object(cert, 'run_worker') as worker, \
-                    mock.patch.object(cert, 'job_metadata') as job, self.assertRaises(OperationError):
-                cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
-            worker.assert_not_called()
-            job.assert_not_called()
+        with mock.patch.object(cert, 'job_metadata') as job, self.assertRaises(OperationError):
+            cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
+        job.assert_not_called()
         self.assertEqual(self.ctx.calls, [])
 
     def test_sync_is_not_success_when_gateway_or_public_tls_work_fails(self):
         for stage in ('refresh_gateway', 'observe'):
             with self.subTest(stage=stage):
                 ctx = Context()
-                with mock.patch.object(cert, 'run_worker', return_value=metadata()), \
+                with mock.patch.object(cert, 'job_metadata', return_value=metadata()), \
                         mock.patch.object(cert, 'refresh_gateway') as gateway, \
                         mock.patch.object(cert, 'observe', return_value=[]) as observe:
                     {'refresh_gateway': gateway, 'observe': observe}[stage].side_effect = OperationError('Synthetic failure')
@@ -389,7 +253,7 @@ class CertificateTests(unittest.TestCase):
 
     def test_renew_requires_kv_and_every_public_https_leaf_to_match(self):
         changed = metadata(); changed['thumbprint'] = 'B' * 40
-        with mock.patch.object(cert, 'run_worker', side_effect=[metadata(), changed]), \
+        with mock.patch.object(cert, 'job_metadata', side_effect=[metadata(), changed]), \
                 mock.patch.object(cert, 'refresh_gateway') as gateway, \
                 mock.patch.object(cert, 'tls_leaf', side_effect=lambda h, p: {'host': h, 'port': p, 'thumbprint': 'B' * 40}) as tls:
             result = cert.operate(self.ctx, SimpleNamespace(stage='renew', execute=True, thumbprint=THUMB))
@@ -399,152 +263,6 @@ class CertificateTests(unittest.TestCase):
         self.assertFalse(any(call[0] == 'POST' for call in self.ctx.calls))
         observed = self.ctx.records[-1][1]['publicTls']
         self.assertEqual({(v['host'], v['port']) for v in observed}, {('gateway.example.com', 443), ('portal.example.com', 443)})
-
-    def test_vm_command_is_not_repeated_on_pending_timeout(self):
-        self.ctx.run_cli = mock.Mock(side_effect=lambda args: json.dumps({
-            'id': self.ctx.calls[0][1], 'properties': {'instanceView': {'executionState': 'Running'}}}))
-        with self.assertRaises(OperationError):
-            cert.run_worker(self.ctx, VM, TLS_VAULT_NAME, 'public-gateway', timeout=1,
-                            clock=mock.Mock(side_effect=[0, 0, 0, 2]), sleep=lambda _: None)
-        self.assertEqual([v[0] for v in self.ctx.calls], ['PUT'])
-        self.assertIn('--instance-view', self.ctx.run_cli.call_args.args[0])
-
-    def test_only_completed_exact_vm_command_is_reclaimed_and_404_verified(self):
-        calls = []
-        def request(method, resource_id, api, body=None, headers=None):
-            calls.append((method, resource_id))
-            return {'statusCode': {'PUT': 202, 'DELETE': 204, 'GET': 404}[method]}
-        self.ctx.request = request
-        self.ctx.run_cli = lambda args: json.dumps({'id': calls[0][1], 'properties': {'instanceView': {
-            'executionState': 'Succeeded', 'exitCode': 0, 'output': cert.MARKER + json.dumps(metadata())}}})
-        result = cert.run_worker(self.ctx, VM, TLS_VAULT_NAME, 'public-gateway')
-        self.assertEqual(result['thumbprint'], THUMB)
-        self.assertEqual([c[0] for c in calls], ['PUT', 'DELETE', 'GET'])
-        self.assertEqual(len({c[1] for c in calls}), 1)
-        self.assertTrue(calls[0][1].startswith(VM + '/runCommands/operations-certificate-'))
-
-    def test_vm_show_requires_named_identifiers_and_accepts_flat_instance_view(self):
-        calls, cli_calls = [], []
-        def request(method, resource_id, api, body=None, headers=None):
-            calls.append((method, resource_id))
-            return {'statusCode': {'PUT': 202, 'DELETE': 204, 'GET': 404}[method]}
-        def show(arguments):
-            cli_calls.append(arguments)
-            # The CLI also handles location-level commands. Its VM selector
-            # requires these names; --ids alone does not select that branch.
-            required = {'--subscription': SUB, '--resource-group': 'rg-test-maint',
-                        '--vm-name': 'vm-test-fixture-mgmt',
-                        '--run-command-name': calls[0][1].rsplit('/', 1)[-1]}
-            if ('--ids' in arguments or any(option not in arguments
-                    or arguments[arguments.index(option) + 1] != value
-                    for option, value in required.items())):
-                raise OperationError('Specify the VM resource group, VM and run-command name')
-            return json.dumps({'id': calls[0][1], 'instanceView': {
-                'executionState': 'Succeeded', 'exitCode': 0,
-                'output': cert.MARKER + json.dumps(metadata())}})
-        self.ctx.request, self.ctx.run_cli = request, show
-        result = cert.run_worker(self.ctx, VM, TLS_VAULT_NAME, 'public-gateway')
-        self.assertEqual(result['thumbprint'], THUMB)
-        self.assertEqual(len(cli_calls), 1)
-        self.assertEqual([method for method, _ in calls], ['PUT', 'DELETE', 'GET'])
-        self.assertEqual(len({resource_id for _, resource_id in calls}), 1)
-
-    def test_existing_command_reader_cannot_start_or_reclaim_a_command(self):
-        resource_id = VM + '/runCommands/operations-certificate-' + 'a' * 12
-        self.ctx.run_cli = mock.Mock(return_value=json.dumps({'id': resource_id,
-            'instanceView': {'executionState': 'Succeeded', 'exitCode': 0}}))
-        properties, view = cert.read_worker_command(self.ctx, VM, resource_id)
-        self.assertEqual(properties['id'], resource_id)
-        self.assertEqual(view['executionState'], 'Succeeded')
-        self.assertEqual(self.ctx.calls, [])
-        self.assertEqual(self.ctx.records, [])
-        self.ctx.run_cli.reset_mock()
-        for foreign in (resource_id.replace('/vm-test-fixture-mgmt/', '/vm-other/'),
-                        VM + '/runCommands/unrelated-command'):
-            with self.subTest(resource_id=foreign), self.assertRaises(OperationError):
-                cert.read_worker_command(self.ctx, VM, foreign)
-        self.ctx.run_cli.assert_not_called()
-
-    @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'A POSIX shell is required')
-    def test_generated_renewal_uses_os_login_environment_and_reclaims_only_its_transient_unit(self):
-        fake = r'''import json, os, pathlib, pwd, subprocess, sys
-name=pathlib.Path(sys.argv[0]).name; args=sys.argv[1:]; root=pathlib.Path(os.environ['FIXTURE_ROOT'])
-def record(value):
-    with (root/'events.jsonl').open('a') as output: output.write(json.dumps(value)+'\n')
-if name=='systemctl':
-    record({'command':name,'args':args})
-    if args[0]=='is-active': sys.exit(1)
-    if args[0]=='show': print('not-found')
-    elif args[0]=='stop':
-        assert len(args)==2 and '-operations-' in args[1] and args[1].endswith('.service')
-    else: raise AssertionError('Unexpected systemctl operation')
-elif name=='systemd-run':
-    for flag in ['--system','--quiet','--wait','--pipe','--collect','--service-type=exec',
-                 '--uid=root','--gid=root','--property=SetLoginEnvironment=yes','--property=UMask=0077',
-                 '--property=NoNewPrivileges=yes','--property=PrivateTmp=yes','--property=ProtectHome=yes',
-                 '--property=ProtectSystem=strict','--property=ReadWritePaths='+str(root/'state'),
-                 '--property=RuntimeMaxSec=3300','--property=TimeoutStopSec=30','--expand-environment=no']:
-        assert flag in args
-    assert not any(x.startswith(('--setenv=HOME','--property=Environment=HOME=')) for x in args)
-    unit=[x.split('=',1)[1] for x in args if x.startswith('--unit=')]
-    assert len(unit)==1 and '-operations-' in unit[0] and unit[0].endswith('.service')
-    child={key:os.environ[key] for key in ['PATH','FIXTURE_ROOT','FIXTURE_FAIL']}
-    child['HOME']=pwd.getpwuid(os.getuid()).pw_dir
-    for item in args:
-        if item.startswith('--property=Environment='):
-            key,value=item[len('--property=Environment='):].split('=',1)
-            assert key in ('XDG_CACHE_HOME','XDG_CONFIG_HOME','XDG_DATA_HOME')
-            child[key]=value
-    worker=str(root/'bin/pwsh'); record({'command':name,'unit':unit[0]})
-    sys.exit(subprocess.run(args[args.index(worker):],env=child,check=False).returncode)
-elif name=='pwsh':
-    if os.environ.get('HOME')!=pwd.getpwuid(os.getuid()).pw_dir:
-        raise SystemExit('Worker did not receive the OS login HOME')
-    for key,leaf in [('XDG_CACHE_HOME','cache'),('XDG_CONFIG_HOME','config'),('XDG_DATA_HOME','data')]:
-        assert os.environ.get(key)==str(root/'state'/leaf)
-    assert 'CALLER_ONLY_VALUE' not in os.environ
-    assert args==['-NoLogo','-NoProfile','-NonInteractive','-File',str(root/'state/certificate.ps1'),
-                  '-Action','Renew','-ConfigFile',str(root/'state/config.json'),'-RotateFromThumbprint','A'*40]
-    record({'command':name,'osLoginEnvironment':True})
-    sys.exit(9 if os.environ['FIXTURE_FAIL']=='1' else 0)
-else: raise AssertionError('Unexpected fixture command')
-'''
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / 'infra/guest').mkdir(parents=True); (root / 'state').mkdir(); (root / 'bin').mkdir()
-            for leaf in ('cache', 'config', 'data'):
-                (root / 'state' / leaf).mkdir()
-            worker = '# synthetic certificate worker\n'
-            (root / 'infra/guest/certificate.ps1').write_text(worker)
-            (root / 'state/certificate.ps1').write_text(worker)
-            (root / 'state/config.json').write_text(json.dumps({'keyVaultName': TLS_VAULT_NAME, 'certificateName': 'public-gateway'}))
-            for command in ('systemctl', 'systemd-run', 'pwsh'):
-                executable = root / 'bin' / command
-                executable.write_text('#!' + sys.executable + '\n' + fake)
-                executable.chmod(0o700)
-            with mock.patch.object(cert, 'ROOT', root), mock.patch.object(
-                    cert, 'metadata_program', return_value="print('SYNTHETIC_METADATA_REACHED')"):
-                source = cert.remote_script(TLS_VAULT_NAME, 'public-gateway', renew=True, thumbprint=THUMB)
-            source = source.replace(f'/var/lib/egakumi-certificates/{TLS_VAULT_NAME}-public-gateway', str(root / 'state'))
-            source = source.replace('/usr/bin/pwsh', str(root / 'bin/pwsh'))
-            script = root / 'run.sh'; script.write_text(source)
-            environment = {**os.environ, 'PATH': str(root / 'bin') + os.pathsep + os.environ['PATH'],
-                           'FIXTURE_ROOT': str(root), 'CALLER_ONLY_VALUE': 'synthetic caller setting'}
-            environment.pop('HOME', None)
-            for failure in (False, True):
-                with self.subTest(worker_failure=failure):
-                    events = root / 'events.jsonl'
-                    if events.exists():
-                        events.unlink()
-                    result = subprocess.run([shutil.which('bash'), str(script)], env={**environment,
-                        'FIXTURE_FAIL': '1' if failure else '0'}, capture_output=True, text=True, timeout=15)
-                    self.assertEqual(result.returncode, 9 if failure else 0, result.stderr)
-                    records = [json.loads(line) for line in events.read_text().splitlines()]
-                    launches = [r for r in records if r['command'] == 'systemd-run']
-                    self.assertEqual(len(launches), 1)
-                    stops = [r for r in records if r['command'] == 'systemctl' and r['args'][0] == 'stop']
-                    self.assertEqual([r['args'][1] for r in stops], [launches[0]['unit']] if failure else [])
-                    self.assertEqual('SYNTHETIC_METADATA_REACHED' in result.stdout, not failure)
 
 
 if __name__ == '__main__':

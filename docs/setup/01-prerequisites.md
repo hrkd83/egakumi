@@ -117,7 +117,7 @@ Toolsアプリの戻り先には予定APIM名が必要です。ここでAPIM識�
 ```sh
 umask 077
 export DEPLOY_PROFILE='test' # 本番向け標準構成を選ぶ場合は production
-python3 scripts/prepare_local_environment.py \
+python3 scripts/setup/prepare_local_environment.py \
   --environment "$DEPLOY_ENVIRONMENT" --profile "$DEPLOY_PROFILE"
 export DEPLOY_LOCAL_DIRECTORY="$(pwd)/.local/${DEPLOY_ENVIRONMENT}"
 export DEPLOY_PARAMS_FILE="$DEPLOY_LOCAL_DIRECTORY/params.local.json"

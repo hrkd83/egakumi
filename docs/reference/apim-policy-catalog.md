@@ -393,10 +393,6 @@ Entraの共通認証には、次の4つの非秘密の名前付きの値を使�
 
 実行時変数の定義は、GUIのAll APIsまたは対象APIのAll operationsのXMLで確認する。配備時には置換用文字列が設定データのBase64文字列に置き換わるが、画面に実行後の変数値が表示されるわけではない。登録資材の変更と実環境への反映は別に検証する。
 
-旧生成元が一部のAPIしか含まない既存環境では、読み取ったXMLを生成元の証明として代用しない。明示した全APIの整合工程では、既知の旧生成元を独立に照合し、残りのAPI・操作・schema・tool・fragment・接続先をバックアップと競合検出の証跡として読み取る。社員Productへの所属を一時解除して現在の資材を配備し、完全なv2生成元と実設定が一致した後に新しい生成元を保護領域へ記録する。共通認証の切替と社員Productへの所属復帰は最後に行う。既存キーのscope・状態は事前確認し、Foundryの容量とFirewallルールをこの整合工程で変更しない。
-
-この明示的な工程には[reconcile_apim_source.py](../../scripts/reconcile_apim_source.py)を使う。`--config .local/<environment>/params.local.json`だけではローカル計画を作り、`--execute`を追加すると事前確認後にAPIMを反映する。Gatewayの通常配備とは入口を分け、Broker・SQL・Portalの配備を自動で含めない。必要なBrokerやDBの準備が未完了なら、API更新前に停止する。保護されたバックアップは`.local/<environment>/evidence/`、照合済みの新生成元は`.local/<environment>/state/gateway-api-source.json`へ保存する。
-
 Agentのinput透過（MOD-74）はローカル実装・関連検証済みである。`hostedAgentPost`のinput必須・型・user／input_text・許可属性というサンプル検査を撤去し、完全Items・一般ID・file_id・引用情報・未指定を保持する。配列直下の明示的なcode_interpreter_callだけは通常Responsesと同じ条件で403である。MOD-74時点では本文4項目・JSON400・サイズ・認証／枠・store:falseと既存metadataを維持した。関連123件が初回から全件成功した（35.467s、失敗・スキップなし）。共有Hosted174条件と親の追加22条件、読取り・先行停止、実Bicep生成・配備／読戻しsource・正本所有・容量・Razorを確認した。参照転送は所有者隔離や保存停止の確認と別であり、本文直下の受付は別の残件である。MOD-73とは別実行、工程1全体は未完了・Azure未反映である。
 
 Agentの通常オプションと保存防止（MOD-75）はローカル実装・関連検証済みである。本文4項目制限を撤去し、instructions・tools・agent_reference・promptとprevious_response_id・agent_session_idの従来403を目的別に明示する。その他の本文項目は原値で、既存Hosted本文編集でstore:falseと指定時conversation:null／background:falseへ揃える。未指定・非Hostedへ追加せず、metadata・input透過・CI直下拒否・JSON400・サイズ・認証／枠は維持する。関連123件が初回から全件成功した（38.115s、失敗・スキップなし）。共有Hosted264条件と親の追加70条件、読取り・先行停止、実Bicep生成・配備／読戻しsource・正本所有・容量・Razorを確認した。本文modelは原値であり、Agentモデルとの優先順位や全保存停止の保証とは別である。共通Agent入口のローカル棚卸は一区切りで、runtime／所有者／正式A2A・工程1全体は未完了、Azure未反映である。MOD-74とは別実行として扱う。
@@ -407,13 +403,11 @@ Agentの通常オプションと保存防止（MOD-75）はローカル実装・
 
 大きなJSONを出力から省くことと、生成元の完全照合を省くことは別である。保存コードのexport、入力、生成時のManaged Identity、成功した実配備との結び付きを照合し、監査・認証・ポリシー本文の確認は維持する。生成が失敗した段階ではAPIM資源を更新しない。新規構築・更新・復旧の順序は[登録用資材の説明](../../apps/api-gateway/README.md)を参照する。
 
-所属を1件ずつ変更する際の中間読取りでは、全API本体・全APIの操作／Product／revision／schema／tool一覧、共有ポリシー・fragment・Named Value・backend・Product、外部の事前条件を再照合する。個別定義とXMLは、変更対象APIとMCPの操作参照でつながるAPIを両方向・推移的に照合し、無関係APIの個別子資源への反復読取りを省く。保存した全snapshotは保持し、staging前後・共通認証切替後の生成元照合と、全所属変更後の全件照合を続ける。無関係な個別子資源の変更は次の当該API確認または最終全件照合で拒否し、今回追加した所属だけを解除して、正常完了にはしない。未知の構造・未完の生成元は全件読取りに戻し、回復処理と旧構成の明示的整合も従来の全件読取りを使う。この選択は内部処理で行い、params／configの切替フラグは追加しない。
+所属を1件ずつ変更する際の中間読取りでは、全API本体・全APIの操作／Product／revision／schema／tool一覧、共有ポリシー・fragment・Named Value・backend・Product、外部の事前条件を再照合する。個別定義とXMLは、変更対象APIとMCPの操作参照でつながるAPIを両方向・推移的に照合し、無関係APIの個別子資源への反復読取りを省く。保存した全snapshotは保持し、staging前後・共通認証切替後の生成元照合と、全所属変更後の全件照合を続ける。無関係な個別子資源の変更は次の当該API確認または最終全件照合で拒否し、今回追加した所属だけを解除して、正常完了にはしない。未知の構造・未完の生成元は全件読取りに戻し、回復処理も全件読取りを使う。この選択は内部処理で行い、params／configの切替フラグは追加しない。
 
-## 過去の生成元と現在の正本の照合
+## 保存した生成元の確認
 
-旧認証互換XML・依存C#と旧形式の再生成処理は公開資材から撤去する。過去の保護された生成元のraw・参照先・ETagを、現在のXMLへ読み替えない。履歴照合は、同じ完全なAPI構成を持つ独立に検証済みのcurrent scopeと、保存済みの過去rawをそれぞれ厳密に照合する。
-
-現在の正本から派生する共通認証inline生成は、閉じたGlobalの初期構築に使用する。実fragment辞書から読む既知の旧説明差と、有限のBroker/cache移行候補も維持する。これらを、旧literal設定blob・廃止済みgRPC免除・旧audit版の再生成へ広げない。
+現在の資材で配備したAPIを更新するときは、配備と対応する生成元を照合する。保存した記録と実資源が一致しない場合は更新前に停止する。 [Gateway配備](../setup/11-deploy-gateway.md)
 
 ## 全体で共通のポリシー
 
@@ -475,7 +469,7 @@ APIと操作のスコープに登録するテンプレートは、[REST、WebSoc
 
 外部MCPの観測用フローは`api-templates/mcp/external.xml`が所有する。WebSocketの受信queryと固定queryの制御は`api-templates/ws/ws.xml`で管理する。各設定の確認は[query観測部品](../../apps/api-gateway/policies/fragments/request/core-query-observation/README.md)と[運用時の確認](../operations/apim.md)を参照する。
 
-その後に承認したPIIの除外分割は、App GatewayのWAF設定として別に管理する。現行構成はRESTの`g-pii-rest`で`text`、MCPの`g-pii-mcp`で`params.arguments.text`だけを`RequestArgValues / Equals`から除外し、`p-pii-redact`は維持する。このWAF変更はAPIMの入力検査とは独立し、認証・モデル機能・OBO・URI制約・他のWAF規則を変更しない。Azure反映・読戻しと正常REST／MCPの通過・マスキング確認を完了し、旧`g-pii-redact`は参照不在を確認して退役した。未実施の異常系と同名queryへの除外の挙動は残件である。通常reconcileによる旧資源の自動削除へは変更せず、移行中の旧binding保持・復旧と成功後の退役を区別する。[WAF側の設定・移行手順](../testing/waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)を参照する。
+その後に承認したPIIの除外分割は、App GatewayのWAF設定として別に管理する。現行構成はRESTの`g-pii-rest`で`text`、MCPの`g-pii-mcp`で`params.arguments.text`だけを`RequestArgValues / Equals`から除外し、`p-pii-redact`は維持する。このWAF変更はAPIMの入力検査とは独立し、認証・モデル機能・OBO・URI制約・他のWAF規則を変更しない。Azure反映・読戻しと正常REST／MCPの通過・マスキング確認を完了し、旧`g-pii-redact`は参照不在を確認して退役した。未実施の異常系と同名queryへの除外の挙動は残件である。[WAF側の設定と受入確認](../testing/waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)を参照する。
 
 HTTPの`operations[].inputContract = {}`で検査対象を明示し、Bicepが`gatewayControlSettings.inputContracts`へ対象操作IDと空の値`{}`を生成する。この空の値は条件不足ではなく、対象だけを記録し、全対象に共通のContent-Type宣言条件を使う意味である。MIME一覧を表へ持ち込まず、`operations[].method`とURLのARM登録は維持してAPIMに照合を任せる。従来の13操作だけを明示し、未指定のLive・Realtime・PII・MCP・WebSocket等へこの検査を追加しない。`gatewayApiInputValidationPassed`のtrueは対象操作での宣言条件の通過、または未指定による検査省略を表す。完全なMIME構文や要求全体の妥当性を保証せず、認証や後続の本文・モデル検査は省略しない。
 

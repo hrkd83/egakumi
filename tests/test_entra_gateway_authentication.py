@@ -15,7 +15,7 @@ from deployment.helpers.apim_authentication import (
     ENTRA_OPEN_PRODUCT_ID, entra_authentication_settings, merge_common_authentication_policy,
     read_managed_entra_authentication, render_service_policy,
     transition_common_authentication_policy, validate_common_authentication_policy,
-    _render_inline_common_authentication_service_policy, entra_authentication_named_values,
+    entra_authentication_named_values,
     validate_entra_named_values, validate_entra_named_value, ENTRA_NAMED_VALUES,
 )
 from deployment.helpers.apim_audit import render_audit_policy, expand_audit_fragments
@@ -123,17 +123,6 @@ class EntraRenderingTests(unittest.TestCase):
             value = settings(); del value["userLimits"][field]
             with self.subTest(field=field), self.assertRaises(ValueError): render_service_policy(entra=value)
 
-    def test_enabling_migrates_only_exact_owned_key_policy_with_explicit_flag(self):
-        previous, _ = merge_common_authentication_policy(None)
-        with self.assertRaises(ValueError): merge_common_authentication_policy(previous, entra=settings())
-        current, changed = merge_common_authentication_policy(previous, entra=settings(), migrate_entra_authentication=True)
-        self.assertTrue(changed)
-        validate_common_authentication_policy(current, entra=settings())
-        self.assertEqual(merge_common_authentication_policy(current, entra=settings()), (current, False))
-        modified = previous.replace('fragment-id="core-common-authentication"', 'fragment-id="unowned-authentication"')
-        with self.assertRaises(ValueError):
-            merge_common_authentication_policy(modified, entra=settings(), migrate_entra_authentication=True)
-
     def test_current_bearer_support_needs_no_runtime_readiness_marker(self):
         self.assertNotIn("gatewayEntraOperationSupported", render_service_policy(entra=settings()))
         for filename in ("rest.xml", "stream.xml", "generated.xml"):
@@ -198,19 +187,6 @@ class EntraRenderingTests(unittest.TestCase):
         self.assertEqual([node.tag for node in fragment], ["set-variable"])
         self.assertFalse(fragment.findall(".//include-fragment"))
         self.assertEqual(fragment[0].get("name"), "gatewayUserLimits")
-
-    def test_explicit_broker_and_entra_migrations_can_be_composed(self):
-        from test_credential_login import settings as login_settings
-        from authentication_source_fixture import credential_broker_inline_fixture
-        login = login_settings()
-        previous = ET.fromstring(credential_broker_inline_fixture(login))
-        anonymous = previous.find("./inbound/choose[@id='core-common-authentication']/when")
-        old_condition, count = re.subn(r' \|\| \(context\.Operation\.Id == "identity-callback"[^)]*\)', "", anonymous.get("condition"))
-        self.assertEqual(count, 1); anonymous.set("condition", old_condition)
-        current, changed = merge_common_authentication_policy(ET.tostring(previous, encoding="unicode"), login,
-                                                              entra=settings(), migrate_credential_broker=True,
-                                                              migrate_entra_authentication=True)
-        self.assertTrue(changed); validate_common_authentication_policy(current, login, entra=settings())
 
 
 class EntraPolicyTransitionTests(unittest.TestCase):
@@ -317,7 +293,7 @@ class EntraPolicyTransitionTests(unittest.TestCase):
             self.assertIn("manual comment kept", policy)
 
     def test_transition_requires_explicit_compatible_previous_settings(self):
-        previous = _render_inline_common_authentication_service_policy(entra=settings())
+        previous = self.policy(settings())
         for supplied in (None, {"enabled": False}):
             with self.subTest(previous=supplied), self.assertRaises(ValueError):
                 transition_common_authentication_policy(previous, previous_entra=supplied, entra=None)

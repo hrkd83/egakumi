@@ -6,8 +6,8 @@ import unittest
 
 CORE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CORE / "scripts"))
-from model_capabilities import apply_model_capabilities, load_model_capabilities
-from standard_apis import load_api_definitions, API_DEFINITION_DIRECTORY
+from catalog.model_capabilities import apply_model_capabilities, load_model_capabilities
+from catalog.standard_apis import load_api_definitions, API_DEFINITION_DIRECTORY
 from deployment.helpers.configuration import _apis, ConfigurationError
 from test_api_contract_configuration import contract, TENANT
 

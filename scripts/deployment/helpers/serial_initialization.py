@@ -28,7 +28,7 @@ def journal(config, workspace):
     if (not isinstance(value, dict) or set(value) != FIELDS or value.get("schemaVersion") != 1 or value.get("source") != SOURCE
             or value.get("targetVmResourceId") != owner or value.get("adminUsername") != username
             or not isinstance(value.get("credentialGeneration"), str) or not credential._UUID.fullmatch(value["credentialGeneration"])
-            or value.get("coreMode") not in {"direct", "native"} or value.get("initialVmAbsenceVerified") is not True
+            or value.get("coreMode") != "native" or value.get("initialVmAbsenceVerified") is not True
             or value.get("status") not in {"core-requested", "target-confirmed", "dispatch-requested", "complete"}
             or type(value.get("dispatchAttempted")) is not bool
             or value.get("coreDeploymentId") is not None and not isinstance(value["coreDeploymentId"], str)
@@ -41,7 +41,7 @@ def save(workspace, value, writer):
     writer(workspace.checked(workspace.state / FILE), value)
 
 
-def record_core_request(config, workspace, password, mode, writer):
+def record_core_request(config, workspace, password, writer):
     if not password: return
     generation = credential.prepared_initial_serial_generation(config, workspace, password)
     previous = journal(config, workspace)
@@ -50,10 +50,8 @@ def record_core_request(config, workspace, password, mode, writer):
     if previous is not None:
         writer(workspace.checked(workspace.state / ("management-serial-initialization-" + previous["credentialGeneration"] + ".json")), previous)
     owner, username = credential._owner(config)
-    deployment = (f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/{config['resourceStem']}-core"
-                  if mode == "direct" else None)
     save(workspace, {"schemaVersion": 1, "source": SOURCE, "targetVmResourceId": owner, "adminUsername": username,
-                    "credentialGeneration": generation, "coreMode": mode, "coreDeploymentId": deployment,
+                    "credentialGeneration": generation, "coreMode": "native", "coreDeploymentId": None,
                     "status": "core-requested", "target": None, "dispatchAttempted": False, "initialVmAbsenceVerified": True}, writer)
 
 

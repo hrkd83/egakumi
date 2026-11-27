@@ -6,7 +6,7 @@ on:
     branches: [main]
     paths:
       - apps/portal/**
-      - scripts/deploy_portal.py
+      - scripts/deployment/deploy_portal.py
       - scripts/deployment/helpers/portal_image.py
       - scripts/deployment/helpers/portal_authentication.py
       - scripts/deployment/helpers/portal_gateway.py
@@ -42,11 +42,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/deploy_portal.py --config "$CORE_PARAMS_PATH" \
+          python3 scripts/deployment/deploy_portal.py --config "$CORE_PARAMS_PATH" \
             --deployment-name "$CORE_DEPLOYMENT_NAME"
       - name: Build image, initialize SQL, then deploy Portal
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/deploy_portal.py --config "$CORE_PARAMS_PATH" \
+          python3 scripts/deployment/deploy_portal.py --config "$CORE_PARAMS_PATH" \
             --deployment-name "$CORE_DEPLOYMENT_NAME" --execute

@@ -356,7 +356,7 @@ class SsmlWafTests(unittest.TestCase):
         self.assertFalse(any(profile["scope"] == "gateway" for profile in profiles))
 
     def test_main_derives_speech_paths_only_from_the_canonical_api_contract(self):
-        from standard_apis import infrastructure_api_definitions
+        from catalog.standard_apis import infrastructure_api_definitions
         original = json.loads((CORE / "apps/api-gateway/apis/azure-speech-v1.json").read_text())
         expression = GatewayExpression(self.main["variables"]["speechRawBodyPaths"], self.main["variables"])
         def paths(api):

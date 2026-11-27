@@ -119,7 +119,7 @@ PortalログインとGraph管理・定期ジョブを専用アプリのclient as
 
 鍵のversionと公開証明書のthumbprintを組で固定する。認証コード交換とGraph用トークン取得に同じ署名処理を使うが、ID token・Graph token・API tokenの用途は分ける。本人の同一性は認証済みの`tid`と`oid`で確認し、Client ID変更に伴う`sub`を移行キーにしない。
 
-`apps/portal/lib/auth-*`、`lib/client-assertion.ts`、`lib/api-keys/graph.ts`、`scripts/reconcile-api-key-groups.ts`、`apps/portal/deploy/`、`scripts/deploy_portal.py`とローカル認証準備を整備する。認証コードはイメージに含め、Client ID・鍵参照等は配備設定として渡す。Cookie署名鍵と既存の保存暗号化資材を保持する。
+`apps/portal/lib/auth-*`、`lib/client-assertion.ts`、`lib/api-keys/graph.ts`、`scripts/reconcile-api-key-groups.ts`、`apps/portal/deploy/`、`scripts/deployment/deploy_portal.py`とローカル認証準備を整備する。認証コードはイメージに含め、Client ID・鍵参照等は配備設定として渡す。Cookie署名鍵と既存の保存暗号化資材を保持する。
 
 移行中だけ旧Portal構成を復旧用に保持する。新構成の受入後に、Portalの共用secret参照・旧読取権限・旧Portal専用設定を撤去する。恒久互換にはしない。CMが使うsecretや戻り先は、利用先を照合して維持する。
 

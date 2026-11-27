@@ -9,7 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from credential_session_store import FileSessionStore, MemorySessionStore, SessionStateConflict
+from clients.credential_session_store import FileSessionStore, MemorySessionStore, SessionStateConflict
 
 
 class PrivateSessionStoreTests(unittest.TestCase):
@@ -71,7 +71,7 @@ class PrivateSessionStoreTests(unittest.TestCase):
         def replace(source, target):
             events.append("replace")
             return real_replace(source, target)
-        with tempfile.TemporaryDirectory() as folder, patch("credential_session_store.os.fsync", side_effect=sync), \
-                patch("credential_session_store.os.replace", side_effect=replace):
+        with tempfile.TemporaryDirectory() as folder, patch("clients.credential_session_store.os.fsync", side_effect=sync), \
+                patch("clients.credential_session_store.os.replace", side_effect=replace):
             FileSessionStore(Path(folder) / "session.json").write({"pendingRotation": {"private": "candidate"}}, expected_revision=0)
         self.assertEqual(events, ["file", "replace", "directory"])

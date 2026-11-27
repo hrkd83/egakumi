@@ -9,7 +9,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from waf_contracts import (APP_GROUPS, CATALOG, MANIFEST, approved_group_scopes,
+from validation.waf_contracts import (APP_GROUPS, CATALOG, MANIFEST, approved_group_scopes,
                            contract_fields, contract_inventory,
                            generated_manifest, load_contracts, render, require_source_routes)
 
@@ -165,8 +165,8 @@ class WireContractTests(unittest.TestCase):
             render(root, check=True)
 
     def test_normal_update_routes_use_the_canonical_model_prefix_independently_of_model_list(self):
-        from waf_policy import selected_profiles
-        from standard_apis import infrastructure_api_definitions
+        from operations.waf_policy import selected_profiles
+        from catalog.standard_apis import infrastructure_api_definitions
         from deployment.helpers.waf_body import managed_ai_paths
         apis = infrastructure_api_definitions([])
         api = next(a for a in apis if a['name'] == 'openai-images-v1')
@@ -184,7 +184,7 @@ class WireContractTests(unittest.TestCase):
             managed_ai_paths(config)
 
     def test_parameter_only_new_model_keeps_static_bicep_and_python_on_the_same_prefix(self):
-        from standard_apis import infrastructure_api_definitions
+        from catalog.standard_apis import infrastructure_api_definitions
         from deployment.helpers.waf_body import managed_ai_paths
         apis = infrastructure_api_definitions([])
         api = next(a for a in apis if a['name'] == 'openai-images-v1')
@@ -195,7 +195,7 @@ class WireContractTests(unittest.TestCase):
         self.assertIn('/models/openai-images/v1/deployments/*', managed_ai_paths({'apiDefinitions': apis}))
 
     def test_changed_canonical_mime_does_not_inherit_data_exclusion(self):
-        from standard_apis import infrastructure_api_definitions
+        from catalog.standard_apis import infrastructure_api_definitions
         apis = infrastructure_api_definitions([])
         api = next(a for a in apis if a['name'] == 'openai-audio-v1')
         api['authorization']['operationConstraints']['audio-transcriptions']['contentTypes'] = ['application/json']
@@ -217,7 +217,7 @@ class WireContractTests(unittest.TestCase):
                             if row['api'].startswith('azure-voice-live-')))
 
     def test_composed_policy_stops_before_exceeding_azure_exclusion_limit(self):
-        from waf_policy import desired_policy, exclusion
+        from operations.waf_policy import desired_policy, exclusion
         from test_gateway_callback_waf import policy
         profile = next(p for p in generated_manifest()['profiles'] if p['name'] == 'g-responses')
         base = policy()
@@ -256,14 +256,14 @@ class WireContractTests(unittest.TestCase):
 
     def test_deployment_preflight_rejects_drift_before_process_or_azure_work(self):
         from deployment import lifecycle
-        with mock.patch('waf_contracts.render', side_effect=ValueError('synthetic manifest drift')), \
+        with mock.patch('validation.waf_contracts.render', side_effect=ValueError('synthetic manifest drift')), \
                 mock.patch.object(lifecycle, 'run') as process:
             with self.assertRaisesRegex(lifecycle.DeploymentError, 'Regenerate and review'):
                 lifecycle.local_preflight({})
             process.assert_not_called()
 
     def test_normalized_omitted_json_default_retains_canonical_scope(self):
-        from standard_apis import infrastructure_api_definitions
+        from catalog.standard_apis import infrastructure_api_definitions
         apis = infrastructure_api_definitions([])
         for api in apis:
             for constraint in api.get('authorization', {}).get('operationConstraints', {}).values():

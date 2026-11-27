@@ -10,7 +10,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from deployment.helpers import client_tls
-import integration_client as probe
+from clients import integration_client as probe
 
 
 def secure_context():

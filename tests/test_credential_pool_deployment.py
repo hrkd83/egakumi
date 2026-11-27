@@ -16,9 +16,8 @@ from deployment.helpers.credential_pools import (
 )
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration, ConfigurationError, load_configuration_source
-from prepare_credential_pool_config import transform
 from broker_deployment import wait_for_schema
-from deploy_gateway import foundation_inputs
+from deployment.deploy_gateway import foundation_inputs
 from configuration_fixtures import fixture
 from arm_helpers import ArmExpression
 from management_fixtures import client_core_outputs
@@ -125,19 +124,6 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 self.assertNotIn('condition', resource)
         for parameter in ('credentialBrokerUrl', 'credentialBrokerSecretIdentifier'):
             self.assertNotIn('defaultValue', apim['parameters'][parameter])
-
-    def test_migration_preserves_application_identity_and_key_header(self):
-        raw = raw_fixture()
-        raw['credentialProviders'][0]['name'] = 'graph-personal'
-        raw['credentialProviders'][0].pop('pool', None)
-        raw['gateway']['authentication']['credentialLogin']['providerNames'] = ['graph-personal']
-        raw['gateway']['authentication']['subscriptionKeyHeader'] = 'my-api-key'
-        before = copy.deepcopy(raw)
-        new = transform(raw)
-        self.assertEqual(raw, before)
-        self.assertEqual(new['gateway']['authentication']['subscriptionKeyHeader'], 'my-api-key')
-        self.assertEqual(new['credentialProviders'][0]['clientId'], before['credentialProviders'][0]['clientId'])
-        self.assertEqual(new['certificate'], before['certificate'])
 
     def test_pool_limit_and_physical_name_collision_are_rejected(self):
         raw = raw_fixture()

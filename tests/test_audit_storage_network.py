@@ -3,7 +3,6 @@ import unittest
 
 from bicep_helpers import compile_bicep
 from test_parameter_ip_ownership import NetworkArmExpression
-from operations import maintenance
 
 
 class AuditExpression(NetworkArmExpression):
@@ -111,7 +110,6 @@ class AuditStorageNetworkTests(unittest.TestCase):
         self.assertEqual(reader['properties']['template']['resources'], [])
         self.assertEqual(self.records['resources'], [])
         self.assertEqual(set(self.records['parameters']), {'privateDnsZoneId', 'auditStorage'})
-        self.assertEqual(maintenance.checked_template(self.dns, maintenance.MODULES['dns'][1]), self.dns)
 
     def test_vnet_link_is_a_separate_validated_stage_with_public_nxdomain_fallback(self):
         self.assertEqual(self.link['parameters']['dnsRecordsValidated']['allowedValues'], [True])

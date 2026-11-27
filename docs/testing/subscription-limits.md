@@ -1,6 +1,6 @@
 # 購読単位の利用量観測と保護上限の検討
 
-購読キーの保護上限を決める前に、[subscription-usage.kql](../../scripts/subscription-usage.kql)で平常時とピーク時の要求量を確認します。このクエリは読み取り専用です。APIMの設定変更・キー取得・課金計算は行いません。
+購読キーの保護上限を決める前に、[subscription-usage.kql](../../scripts/audit/subscription-usage.kql)で平常時とピーク時の要求量を確認します。このクエリは読み取り専用です。APIMの設定変更・キー取得・課金計算は行いません。
 
 ## 計測の前提
 
@@ -14,7 +14,7 @@
 ## 実行する
 
 1. 対象Log Analyticsワークスペースの「ログ」を開きます。
-2. `scripts/subscription-usage.kql` の全体を貼り付け、冒頭の `apimResourceId` を対象APIMのリソースIDへ置き換えます。秘密のキー値は入力しません。
+2. `scripts/audit/subscription-usage.kql` の全体を貼り付け、冒頭の `apimResourceId` を対象APIMのリソースIDへ置き換えます。秘密のキー値は入力しません。
 3. 必要なら `windowStart` を変更します。既定は1日間で、取り込み待ちとして直近5分を除外しています。画面側の時間範囲も観測期間を含めてください。
 4. 実行し、`ApimSubscriptionId`とAzureポータルの対象APIMの購読IDを照合します。用途は基盤管理者の保護された発行記録で確認します。
 
@@ -57,7 +57,7 @@
 
 `TraceRecords` 内に `accepted` と `backend-response` があっても、HTTP要求は2件にしません。要求数の土台はネイティブGatewayLogsを相関IDでまとめたものです。LLM情報を結合する側も1要求・1モデルの1行へまとめてから結合します。
 
-この数値は課金台帳ではありません。トークン単価・モデル・キャッシュ・音声・画像等をまとめて金額へ換算しません。個別の照合は[既存の監査クエリ](../../scripts/audit-usage.kql)を利用してください。
+この数値は課金台帳ではありません。トークン単価・モデル・キャッシュ・音声・画像等をまとめて金額へ換算しません。個別の照合は[既存の監査クエリ](../../scripts/audit/audit-usage.kql)を利用してください。
 
 ## 上限を検討する順番
 

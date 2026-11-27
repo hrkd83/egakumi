@@ -11,8 +11,6 @@
 | --- | --- | --- |
 | データ項目に対するWAF誤検知 | `scripts/operations/waf.py` | WAF manifestと対象パスの実ポリシー |
 | 5 NSGの通信範囲・優先度 | 対象の規則に限定した操作を決める | [共通採番と規則の用途](network-security-groups.md)、params、Core state |
-| 旧DNS6子規則の回収（互換入口） | `scripts/operations/nsg_dns.py` | Azure提供DNS、所有する3 NSGの既知の6子規則 |
-| 旧AppGW送信3子規則の回収（互換入口） | `scripts/operations/nsg_appgw_egress.py` | 同じVNetのAPIM・Vault PE宛ての既知の3子規則 |
 | APIバックエンド追加に伴う外向き許可 | Gateway個別配備（G） | API定義、対象Firewall規則、APIM実設定 |
 | 通知先・監視条件 | `scripts/operations/monitoring.py` | params・対応Bicep、実通知設定・条件・ログ |
 | AppGW・Container Appの容量 | 対象資源の構成／スケール画面 | 対応config／Bicep、実設定・revision・稼働状態 |
@@ -65,53 +63,6 @@ ETag競合・未完了時も、ポリシーやAppGWを削除して再作成し�
 
 戻す場合は今回変更したmanifest項目だけを旧値へ戻し、同じscopeで計画・反映する。
 実除外・経路と正常／拒否を再確認する。旧資源JSON全体の復元で、他の変更を消さない。
-
-## 不要なDNS用NSG子規則を回収する
-
-この節のCLIは旧資材のDNS6子だけを扱う互換入口である。新規構築では現行の固定NSGを配置する。
-
-Azure提供DNSを使う本構成では、`allow-dns-tcp`と`allow-dns-udp`を
-AppGW・APIM・管理VMのNSGへ追加しない。Incremental配備は省いた子規則を
-削除しないため、既存環境の回収には次の専用入口を使う。
-
-```sh
-python3 -B scripts/operations/nsg_dns.py --config "$DEPLOY_PARAMS_FILE"
-python3 -B scripts/operations/nsg_dns.py --config "$DEPLOY_PARAMS_FILE" --execute
-```
-
-1. 同じ環境の保護params・Core stateを使い、最初に計画する。構成のVNet／
-   Firewall DNS、実VNetの`dhcpOptions.dnsServers`、実Firewall Policyの
-   `dnsSettings.servers`、実Firewall本体のDNSがすべてAzure提供DNSであることを
-   確認する。独自DNSがあれば停止し、この入口でDNSの切替を行わない。
-2. 保護された計画で、3 NSGの所有、規則名、Outbound・TCP／UDP・宛先53・
-   Azure提供DNS宛先・全送信元と、既知の優先度を照合する。PE用NSG、同番号の
-   Inbound規則、独自規則は削除しない。意味の異なる同名規則も停止する。
-3. `--execute`は全対象の事前照合後、直前に再読取して子規則だけをDELETEする。
-   親NSGのPUTは行わない。202応答後は子の不存在と親のSucceededを待ってから
-   次へ進む。他規則・既定規則・タグ・サブネット／NIC／flow log等の関連付けと、
-   DNS設定の保持を最後に照合する。
-4. 再度計画・実行し、残存削除0件・Azure書込0件を確認する。管理VM等の通常の
-   DNS解決と代表接続は別途確認し、規則不存在だけで疎通成功としない。
-
-計画・試行・各削除・結果は環境別`state/operations/`へ保護保存する。
-応答不明・未完了・競合時は自動再送しない。現在の子規則と親NSGを確認してから
-残件を計画し直す。ETagを使える子ではIf-Matchを付けるが、直前読取と
-ローカルロックは別端末の同時変更に対する原子的な排他を保証しない。
-
-この操作は過去の資材で作成した環境に限る。
-[現在の固定集合と移行順序](network-security-groups.md#新規構築と構築の再開)を参照する。
-
-## AppGWの重複する送信規則を回収する
-
-`scripts/operations/nsg_appgw_egress.py`は旧名`allow-apim-http`、`allow-apim-grpc`、
-`allow-key-vault`の3子規則だけを扱う互換入口である。現在のAppGWは通信設計の記録として
-APIM／ACAとKey VaultへのHTTPS443を別のFIX名・割当IPで明示する。
-既定Outbound許可も維持するため、明示Allowだけで送信範囲を限定したとは解釈しない。
-
-この操作は過去の資材で対象の3規則を作成した環境に限る。
-単独の互換CLIを使う場合も、所有・完全一致tuple・既定許可・現在ETagを確認し、
-対象3子だけを回収する。他NSG、UDR、DNS、Firewall、現在のFIX名ルールを削除しない。
-変更前・試行・結果は保護した`state/operations/`へ保存する。
 
 ## AppGW後段のTLS検査を検証する
 

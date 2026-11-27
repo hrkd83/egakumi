@@ -17,7 +17,6 @@ from deployment.helpers.apim_audit import render_audit_fragments
 from deployment.helpers.apim_ingress import TRUSTED_INGRESS_ID, render_trusted_ingress_fragment
 from deployment.helpers.apim_browser_exception import BROWSER_EXCEPTION_ID, render_browser_exception_fragment
 from deployment.helpers.apim_common_authentication import render_common_authentication_fragments
-from authentication_source_fixture import annotated_authentication_source
 
 publish = legacy.publish
 
@@ -44,7 +43,7 @@ def configured():
     return base, plan, inventory
 
 
-def checkpoint_fixture(*, entra_enabled=True, previous_explanations=False):
+def checkpoint_fixture(*, entra_enabled=True):
     base, plan, inventory = configured()
     if not entra_enabled:
         base.config["gateway"]["authentication"].pop("entra")
@@ -63,18 +62,6 @@ def checkpoint_fixture(*, entra_enabled=True, previous_explanations=False):
         rid = plan["apimId"] + "/policyFragments/" + name
         inventory[rid] = response(rid, {"format": "rawxml", "value": value})
     saved = publish.source_checkpoint(plan, source, global_policy)
-    if previous_explanations:
-        # Represent an already-saved annotated raw source. A new checkpoint
-        # still requires canonical code; do not pass annotations to its writer.
-        global_policy = annotated_authentication_source(global_policy)
-        identifiers = set(render_common_authentication_fragments(entra_enabled=entra_enabled))
-        for entry in source["policies"]:
-            identifier = entry["suffix"].removeprefix("/policyFragments/")
-            if identifier in identifiers:
-                entry["value"] = annotated_authentication_source(entry["value"])
-                inventory[plan["apimId"] + entry["suffix"]] = response(
-                    plan["apimId"] + entry["suffix"], {"format": "rawxml", "value": entry["value"]})
-        saved = {**saved, "globalPolicy": global_policy, "source": copy.deepcopy(source)}
     return base, plan, inventory, source, global_policy, saved
 
 
@@ -131,14 +118,12 @@ class EntraFoundationPublicationTests(unittest.TestCase):
 
 class IndependentAuthenticationCheckpointTests(unittest.TestCase):
     def test_checkpoint_preserves_old_api_source_and_restores_independent_expectations(self):
-        for enabled, previous_explanations in ((enabled, previous) for enabled in (False, True)
-                                              for previous in (False, True)):
-            base, plan, _, source, global_policy, saved = checkpoint_fixture(
-                entra_enabled=enabled, previous_explanations=previous_explanations)
+        for enabled in (False, True):
+            base, plan, _, source, global_policy, saved = checkpoint_fixture(entra_enabled=enabled)
             state = {**base.state, "apiPublicationSourceCheckpoint": saved}
             before_config, before_state, before_source = (copy.deepcopy(value) for value in
                                                          (base.config, state, source))
-            with self.subTest(entra=enabled, previous_explanations=previous_explanations):
+            with self.subTest(entra=enabled):
                 self.assertEqual(saved["source"], source)
                 self.assertFalse(any(entry["suffix"].rsplit("/", 1)[-1] in ENTRA_NAMED_VALUES
                                      for entry in source["namedValues"]))

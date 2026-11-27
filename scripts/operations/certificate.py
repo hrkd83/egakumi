@@ -22,10 +22,7 @@ import uuid
 
 from operations.common import OperationContext, OperationError
 
-ROOT = Path(__file__).resolve().parents[2]
-COMPUTE_API = '2024-07-01'
 NETWORK_API = '2024-05-01'
-MARKER = 'EGAKUMI_CERT_METADATA:'
 REFRESH_TAG = 'egakumi-certificate-refresh'
 
 
@@ -37,14 +34,11 @@ def checked_name(value):
 
 def targets(ctx):
     outputs = ctx.state['outputs']
-    vm = outputs['managementVm']['id']
     gateway = outputs['gateway']['id']
     prefix = f"/subscriptions/{ctx.config['subscriptionId']}/resourceGroups/"
-    expected_vm = prefix + ctx.config['resourceGroupNames']['maint'] + '/providers/Microsoft.Compute/virtualMachines/vm-' + ctx.config['resourceStem'] + '-mgmt'
     expected_gateway = prefix + ctx.config['resourceGroupNames']['nw'] + '/providers/Microsoft.Network/applicationGateways/agw-' + ctx.config['resourceStem']
-    if (not isinstance(vm, str) or vm.casefold() != expected_vm.casefold()
-            or not isinstance(gateway, str) or gateway.casefold() != expected_gateway.casefold()):
-        raise OperationError('The recorded VM or Application Gateway differs from the selected environment')
+    if not isinstance(gateway, str) or gateway.casefold() != expected_gateway.casefold():
+        raise OperationError('The recorded Application Gateway differs from the selected environment')
 
     vault_id = ctx.service_id('certificateVault')
     vault = checked_name('kvtls-' + ctx.config['resourceStem'])
@@ -53,16 +47,15 @@ def targets(ctx):
         raise OperationError('The recorded public TLS vault differs from the selected environment')
 
     name = checked_name(ctx.config['certificate']['certificateName'])
-    if 'certificateBootstrap' in outputs:
-        bootstrap = outputs['certificateBootstrap']
-        expected_secret = f'https://{vault}.vault.azure.net/secrets/{name}'
-        if (not isinstance(bootstrap, dict)
-                or not isinstance(bootstrap.get('certificateVaultId'), str)
-                or bootstrap['certificateVaultId'].casefold() != vault_id.casefold()
-                or bootstrap.get('certificateVaultName') != vault
-                or bootstrap.get('certificateSecretUri') not in (expected_secret, expected_secret + '/')):
-            raise OperationError('The recorded certificate job does not match the public TLS vault and certificate')
-    return vm, gateway, vault, name
+    bootstrap = outputs.get('certificateBootstrap')
+    expected_secret = f'https://{vault}.vault.azure.net/secrets/{name}'
+    if (not isinstance(bootstrap, dict)
+            or not isinstance(bootstrap.get('certificateVaultId'), str)
+            or bootstrap['certificateVaultId'].casefold() != vault_id.casefold()
+            or bootstrap.get('certificateVaultName') != vault
+            or bootstrap.get('certificateSecretUri') not in (expected_secret, expected_secret + '/')):
+        raise OperationError('The recorded certificate job does not match the public TLS vault and certificate')
+    return gateway, vault, name
 
 
 def tls_leaf(host, port=443):
@@ -76,150 +69,6 @@ def tls_leaf(host, port=443):
                         'notAfter': certificate.get('notAfter'), 'trustedAndHostnameVerified': True}
     except (OSError, ssl.SSLError, ValueError):
         raise OperationError('Public TLS verification failed; certificate synchronization is not accepted') from None
-
-
-def metadata_program(vault, name, unit):
-    """VM既存MIで公開certificate metadataだけを取得。secret/PFXは要求しない。"""
-    return '''import base64, hashlib, json, subprocess, urllib.request
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs): return None
-try:
-    opener = urllib.request.build_opener(NoRedirect())
-    imds_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
-    request = urllib.request.Request('http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net', headers={'Metadata':'true'})
-    with imds_opener.open(request, timeout=10) as response: token=json.load(response)['access_token']
-    request = urllib.request.Request(URL, headers={'Authorization':'Bearer '+token})
-    with opener.open(request, timeout=15) as response: value=json.load(response)
-    token=None
-    result={'certificateId':value['id'], 'secretVersionUri':value['sid'], 'enabled':value['attributes']['enabled'], 'expires':value['attributes']['exp'], 'thumbprint':hashlib.sha1(base64.b64decode(value['cer'], validate=True)).hexdigest().upper(), 'timerEnabled':subprocess.run(['systemctl','is-enabled','--quiet',UNIT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode==0}
-    print(MARKER+json.dumps(result, separators=(',',':')))
-except Exception:
-    print('Certificate public metadata could not be read')
-    raise SystemExit(1)
-'''.replace('URL', repr(f'https://{vault}.vault.azure.net/certificates/{name}?api-version=7.4')).replace('UNIT', repr(unit + '.timer')).replace('MARKER', repr(MARKER))
-
-
-def remote_script(vault, name, *, renew=False, thumbprint=None):
-    directory = '/var/lib/egakumi-certificates/' + vault + '-' + name
-    unit = 'egakumi-certificate-' + vault + '-' + name
-    expected = hashlib.sha256((ROOT / 'infra/guest/certificate.ps1').read_bytes().replace(b'\r\n', b'\n')).hexdigest()
-    lines = ['#!/bin/bash', 'set -euo pipefail', 'set +x', 'umask 077',
-             f"dir='{directory}'", f"unit='{unit}'",
-             '[ ! -L "$dir" ] && [ ! -L "$dir/certificate.ps1" ] && [ ! -L "$dir/config.json" ]',
-             f"[ \"$(sha256sum \"$dir/certificate.ps1\" | cut -d' ' -f1)\" = '{expected}' ]",
-             f"python3 - \"$dir/config.json\" '{vault}' '{name}' <<'CERTIFICATE_CONFIG'",
-             'import json, sys',
-             'try:',
-             '    with open(sys.argv[1], encoding="utf-8") as stream: config = json.load(stream)',
-             '    if (config["keyVaultName"], config["certificateName"]) != tuple(sys.argv[2:]) or "credentialVaultName" in config: raise ValueError()',
-             'except (KeyError, OSError, TypeError, ValueError):',
-             '    raise SystemExit(1) from None',
-             'CERTIFICATE_CONFIG']
-    if renew:
-        lines += ['if systemctl is-active --quiet "$unit.service"; then exit 1; fi',
-                  'command -v systemd-run >/dev/null 2>&1',
-                  # Reuse the installed worker with the timer's OS login and
-                  # cache environment. No service or timer is installed.
-                  f"task_worker_unit='{unit}-operations-{uuid.uuid4().hex[:12]}.service'",
-                  'task_worker_started=false',
-                  'finish_worker() { task_status=$?; trap - EXIT; if [ "$task_worker_started" = true ] && [ "$task_status" -ne 0 ]; then systemctl stop "$task_worker_unit" >/dev/null 2>&1 || true; fi; exit "$task_status"; }',
-                  'trap finish_worker EXIT', "trap 'exit 130' INT", "trap 'exit 143' TERM",
-                  'task_worker_load=$(systemctl show --property=LoadState --value "$task_worker_unit" 2>/dev/null || true)',
-                  '[ "$task_worker_load" = not-found ]', 'task_worker_started=true',
-                  'systemd-run --system --quiet --wait --pipe --collect --service-type=exec \\',
-                  ' --uid=root --gid=root --property=SetLoginEnvironment=yes --property=UMask=0077 \\',
-                  ' --property="Environment=XDG_CACHE_HOME=$dir/cache" \\',
-                  ' --property="Environment=XDG_CONFIG_HOME=$dir/config" \\',
-                  ' --property="Environment=XDG_DATA_HOME=$dir/data" \\',
-                  ' --property=NoNewPrivileges=yes --property=PrivateTmp=yes --property=ProtectHome=yes \\',
-                  ' --property=ProtectSystem=strict --property="ReadWritePaths=$dir" \\',
-                  ' --property=RuntimeMaxSec=3300 --property=TimeoutStopSec=30 --expand-environment=no \\',
-                  ' --unit="$task_worker_unit" /usr/bin/pwsh -NoLogo -NoProfile -NonInteractive -File "$dir/certificate.ps1" -Action Renew -ConfigFile "$dir/config.json"' +
-                  (' -RotateFromThumbprint ' + thumbprint if thumbprint else '')]
-    lines += ["python3 - <<'CERTIFICATE_METADATA'", metadata_program(vault, name, unit), 'CERTIFICATE_METADATA']
-    return '\n'.join(lines) + '\n'
-
-
-def public_metadata(output, vault, name):
-    lines = [line[len(MARKER):] for line in output.splitlines() if line.startswith(MARKER)]
-    if len(lines) != 1:
-        raise OperationError('The VM public certificate result is missing or ambiguous')
-    try:
-        value = json.loads(lines[0])
-        if set(value) != {'certificateId', 'secretVersionUri', 'enabled', 'expires', 'thumbprint', 'timerEnabled'}:
-            raise ValueError()
-        version = r'[0-9a-f]{32}'
-        if (not re.fullmatch(re.escape(f'https://{vault}.vault.azure.net/certificates/{name}/') + version, value['certificateId'])
-                or not re.fullmatch(re.escape(f'https://{vault}.vault.azure.net/secrets/{name}/') + version, value['secretVersionUri'])
-                or not re.fullmatch(r'[0-9A-F]{40}', value['thumbprint'])
-                or value['enabled'] is not True or value['timerEnabled'] is not True
-                or isinstance(value['expires'], bool) or not isinstance(value['expires'], (int, float))
-                or value['expires'] <= time.time()):
-            raise ValueError()
-        return value
-    except (ValueError, KeyError, TypeError):
-        raise OperationError('The VM public certificate metadata did not match this environment') from None
-
-
-def read_worker_command(ctx, vm, resource_id):
-    """既存の同一VM commandだけを読む。実行要求や回収は行わない。"""
-    if not re.fullmatch(re.escape(vm + '/runCommands/operations-certificate-') + r'[0-9a-f]{12}', resource_id):
-        raise OperationError('Select the exact recorded certificate command for this VM')
-    # Explicit VM identifiers select the managed-command CLI branch;
-    # --ids alone is not expanded by this overloaded show command.
-    raw = ctx.run_cli(['az', 'vm', 'run-command', 'show',
-                      '--subscription', ctx.config['subscriptionId'],
-                      '--resource-group', ctx.config['resourceGroupNames']['maint'],
-                      '--vm-name', vm.rsplit('/', 1)[-1],
-                      '--run-command-name', resource_id.rsplit('/', 1)[-1],
-                      '--instance-view', '--only-show-errors', '--output', 'json'])
-    observed = json.loads(raw)
-    if not isinstance(observed, dict) or str(observed.get('id', '')).casefold() != resource_id.casefold():
-        raise OperationError('The VM command result belongs to another resource')
-    properties = observed.get('properties', observed)
-    view = properties.get('instanceView') or observed.get('instanceView') or {}
-    return properties, view
-
-
-def run_worker(ctx, vm, vault, name, *, renew=False, thumbprint=None, timeout=3600, sleep=time.sleep, clock=time.monotonic):
-    """単一のManaged Run Command。PUTは再送せず、そのexact resourceだけを待つ。"""
-    resource_id = vm + '/runCommands/operations-certificate-' + uuid.uuid4().hex[:12]
-    body = {'location': ctx.config['location'],
-            'tags': {'product': ctx.config['productName'], 'environment': ctx.config['environmentName']},
-            'properties': {'source': {'script': remote_script(vault, name, renew=renew, thumbprint=thumbprint)},
-                           'asyncExecution': False, 'timeoutInSeconds': timeout, 'treatFailureAsDeploymentFailure': True}}
-    ctx.record('certificate-vm-requested', {'resourceId': resource_id, 'renew': renew})
-    response = ctx.request('PUT', resource_id, COMPUTE_API, body)
-    if response.get('statusCode') not in (200, 201, 202):
-        raise OperationError('The VM certificate command was not accepted')
-    deadline = clock() + timeout
-    while clock() < deadline:
-        properties, view = read_worker_command(ctx, vm, resource_id)
-        state = view.get('executionState')
-        if state in ('Failed', 'Canceled', 'TimedOut') or properties.get('provisioningState') in ('Failed', 'Canceled'):
-            ctx.record('certificate-vm-retained', {'resourceId': resource_id, 'state': 'failed', 'deleted': False})
-            raise OperationError('The VM certificate command failed; its request was not repeated')
-        if state == 'Succeeded':
-            if view.get('exitCode') != 0:
-                raise OperationError('The VM certificate worker did not finish successfully')
-            metadata = public_metadata(view.get('output', ''), vault, name)
-            ctx.record('certificate-vm-completed', {'resourceId': resource_id, 'metadata': metadata})
-            deletion = ctx.request('DELETE', resource_id, COMPUTE_API)
-            if deletion.get('statusCode') not in (200, 202, 204):
-                raise OperationError('The completed VM command could not be reclaimed')
-            cleanup_deadline = clock() + 60
-            while clock() < cleanup_deadline:
-                after = ctx.request('GET', resource_id, COMPUTE_API)
-                if after.get('statusCode') == 404:
-                    ctx.record('certificate-vm-reclaimed', {'resourceId': resource_id, 'absent': True})
-                    return metadata
-                if after.get('statusCode') != 200 or str((after.get('body') or {}).get('id', '')).casefold() != resource_id.casefold():
-                    raise OperationError('VM command reclamation is not confirmed')
-                sleep(min(5, max(0, cleanup_deadline - clock())))
-            raise OperationError('VM command deletion remains pending; no additional DELETE was sent')
-        sleep(min(5, max(0, deadline - clock())))
-    ctx.record('certificate-vm-retained', {'resourceId': resource_id, 'state': 'pending', 'deleted': False})
-    raise OperationError('The VM certificate command remains pending; inspect it before retrying')
 
 
 def verify_references(ctx, gateway, vault, name):
@@ -309,32 +158,23 @@ def job_metadata(ctx, *, renew=False, thumbprint=None):
 
 
 def operate(ctx, args):
-    vm, gateway, vault, name = targets(ctx)
+    gateway, vault, name = targets(ctx)
     if args.thumbprint and not re.fullmatch(r'[0-9A-Fa-f]{40}', args.thumbprint):
         raise OperationError('Planned rotation requires the current 40-character public leaf thumbprint')
-    job_backed = 'certificateBootstrap' in ctx.state['outputs']
     plan = {'stage': args.stage, 'status': 'planned', 'azureWrites': 0,
-            'certificateConsumer': 'application-gateway', 'newJob': job_backed, 'pfxDownload': False,
+            'certificateConsumer': 'application-gateway', 'execution': 'container-app-job', 'pfxDownload': False,
             'publicTls': 'not-verified'}
     if not args.execute:
         ctx.record('certificate-plan', plan)
         return plan
-    if not job_backed:
-        ctx.verify_resource(vm, COMPUTE_API, 'Microsoft.Compute/virtualMachines')
     verify_references(ctx, gateway, vault, name)
-    if job_backed:
-        metadata = job_metadata(ctx)
-    else:
-        metadata = run_worker(ctx, vm, vault, name)
+    metadata = job_metadata(ctx)
     if args.stage == 'renew':
         previous_thumbprint = metadata['thumbprint']
         if args.thumbprint and args.thumbprint.upper() != metadata['thumbprint']:
             raise OperationError('The current Key Vault leaf changed; inspect it before requesting rotation')
         rotation_thumbprint = args.thumbprint.upper() if args.thumbprint else metadata['thumbprint'] if getattr(args, 'rotate', False) else None
-        if job_backed:
-            metadata = job_metadata(ctx, renew=True, thumbprint=rotation_thumbprint)
-        else:
-            metadata = run_worker(ctx, vm, vault, name, renew=True, thumbprint=rotation_thumbprint)
+        metadata = job_metadata(ctx, renew=True, thumbprint=rotation_thumbprint)
         if rotation_thumbprint and metadata['thumbprint'] == previous_thumbprint:
             raise OperationError('The requested rotation did not produce a different public leaf')
         ctx.record('certificate-renewed', {'metadata': metadata, 'publicTls': 'not-verified'})

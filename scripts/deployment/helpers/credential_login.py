@@ -120,24 +120,3 @@ def render_connection(filename: str, login: dict, telemetry: str = "") -> str:
     return render_audit_policy(value.replace("__CREDENTIAL_LOGIN_SETTINGS__", encode(login))
         .replace("__CREDENTIAL_LOGIN_ORIGIN_BASE64__", base64.b64encode(login["publicOrigin"].encode()).decode())
         .replace("__GATEWAY_TELEMETRY_XML__", credential_gateway_telemetry(telemetry)), source_comments="compact")
-
-
-def anonymous_policy(login=None) -> str:
-    """ブラウザーの一時 URL と CM 戻り先だけを、厳密な経路一致で匿名公開する。"""
-    if not login:
-        return ""
-    condition = (f'context.Api != null && context.Operation != null && context.Api.Id == "{BROWSER_API_ID}" '
-                 '&& ((context.Operation.Id == "launch" && context.Request.Method == "GET" '
-                 f'&& context.Request.OriginalUrl.Path == "/{BROWSER_API_PATH}/launch") '
-                 '|| (context.Operation.Id == "launch-post" && context.Request.Method == "POST" '
-                 f'&& context.Request.OriginalUrl.Path == "/{BROWSER_API_PATH}/launch") '
-                 '|| (context.Operation.Id == "callback" && context.Request.Method == "GET" '
-                 f'&& context.Request.OriginalUrl.Path == "/{BROWSER_API_PATH}/callback") '
-                 '|| (context.Operation.Id == "identity-callback" && context.Request.Method == "GET" '
-                 f'&& context.Request.OriginalUrl.Path == "/{BROWSER_API_PATH}/identity-callback"))')
-    return ('<!-- 通常のブラウザー遷移は購読キーやBearerトークンを送れないため、進行中の接続ログインの確認へ進めます。\n'
-            '     API ID・操作・HTTPメソッド・パスが一致する4操作だけ共通認証を省略し、不一致は通常の認証へ進めます。\n'
-            '     各段階で起動秘密、Cookieとstate（開始と戻り先を結び付ける値）、期限、本人を確認し、不正なら拒否します。\n'
-            '     この例外を他の業務APIへ広げません。 -->'
-            '<when condition="@(' + escape(condition, {'"': '&quot;'}) + ')">'
-            '<set-variable name="gatewayCommonAuthenticationAnonymous" value="@(true)" /></when>')

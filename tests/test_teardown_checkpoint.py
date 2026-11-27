@@ -47,7 +47,7 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
             return {"status": "complete"}
 
         with mock.patch.object(cleanup, "post_down", side_effect=finish), \
-             mock.patch.object(lifecycle, "remove_grpc_secret"):
+             mock.patch.object(lifecycle, "remove_ingress_secrets"):
             self.assertEqual(self.run_hook("postdown"), 0)
 
     def test_checkpoint_write_failure_stops_before_cleanup_continues(self):
@@ -85,10 +85,10 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
         with mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
              mock.patch.object(lifecycle, 'register_providers'), \
              mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
-             mock.patch.object(lifecycle, 'prepare_grpc_secret', return_value={}), \
+             mock.patch.object(lifecycle, 'prepare_ingress_secrets', return_value={}), \
              mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
              mock.patch.object(lifecycle, 'capacity_preflight'), \
-             mock.patch.object(lifecycle, 'deploy_phase', return_value=self.outputs()), \
+             mock.patch.object(lifecycle, 'deploy_monitoring', return_value=self.outputs()), \
              mock.patch.object(lifecycle, 'lock_and_verify_policies'), \
              mock.patch.object(lifecycle, 'configure_app_insights_cap'), \
              mock.patch.object(lifecycle, 'discover_existing_network_security_groups', return_value=[]), \
@@ -101,10 +101,10 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(json.loads((self.paths.state / "latest.json").read_text())['applicationInfrastructure'], self.inventory)
 
         outputs = {**self.outputs(), 'endpoints': {'public': 'https://gateway.example.test'}}
-        response = {'properties': {'outputs': {key: {'value': value} for key, value in outputs.items()}}}
+        response = self.core_completion_response(outputs)
         with mock.patch.object(lifecycle, 'run', side_effect=[{'CORE_DEPLOYMENT_NAME': 'rebuilt-core'}, response]), \
              mock.patch.object(lifecycle, 'ArmTransport'), \
-             mock.patch.object(lifecycle, 'configure_grpc_endpoint', return_value={'enabled': False}), \
+             mock.patch.object(lifecycle, 'verify_apim_endpoint', return_value={'enabled': False}), \
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.postprovision(self.config)
         rebuilt = json.loads((self.paths.state / "latest.json").read_text())
@@ -148,7 +148,7 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
             lifecycle.protected_json((self.paths.state / "latest.json"), state)
             original = (self.paths.state / "latest.json").read_bytes()
             with self.subTest(state=state), mock.patch.object(lifecycle, 'local_preflight') as local, \
-                 mock.patch.object(lifecycle, 'run') as cli, mock.patch.object(lifecycle, 'deploy_phase') as deploy:
+                 mock.patch.object(lifecycle, 'run') as cli, mock.patch.object(lifecycle, 'deploy_monitoring') as deploy:
                 with self.assertRaises(lifecycle.DeploymentError):
                     lifecycle.preprovision(self.config)
                 self.assertEqual(self.run_hook('preprovision'), 1)
@@ -189,9 +189,9 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
         lifecycle.protected_json(self.paths.parameters, {'fixture': 'PRIVATE_INPUT'})
         original = (self.paths.state / "latest.json").read_bytes()
         outputs = self.outputs()
-        response = {'properties': {'outputs': {key: {'value': value} for key, value in outputs.items()}}}
+        response = self.core_completion_response(outputs)
         with mock.patch.object(lifecycle, 'run', side_effect=[{'CORE_DEPLOYMENT_NAME': 'rebuilt-core'}, response]), \
-             mock.patch.object(lifecycle, 'configure_grpc_endpoint') as grpc:
+             mock.patch.object(lifecycle, 'verify_apim_endpoint') as grpc:
             with self.assertRaises(lifecycle.DeploymentError):
                 lifecycle.postprovision(self.config)
         grpc.assert_not_called()

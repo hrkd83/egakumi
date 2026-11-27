@@ -9,8 +9,8 @@ from pathlib import Path
 import sys
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import coverage_client
-import voice_client
+from validation import coverage_client
+from clients import voice_client
 
 
 class VoiceContractTests(unittest.TestCase):

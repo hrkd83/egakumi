@@ -4,7 +4,7 @@ GatewayとPortalは、OWASP 3.2のPreventionと本文検査を有効にしたま
 
 コマンドはリポジトリルートで実行し、[第01章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で設定した`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を使います。計画・実測記録は同じ環境の領域へ保存します。
 
-入力型と用途分類の正本は `apps/api-gateway/waf-input-contracts.json` です。`scripts/waf_contracts.py` が再利用する内容型を各出現位置へ展開し、Azureへ渡す `apps/api-gateway/waf-data-exclusions.json` を生成・照合します。入力型、経路、通信方式で除外を決め、モデル名・世代・許可モデル数では分岐しません。
+入力型と用途分類の正本は `apps/api-gateway/waf-input-contracts.json` です。`scripts/validation/waf_contracts.py` が再利用する内容型を各出現位置へ展開し、Azureへ渡す `apps/api-gateway/waf-data-exclusions.json` を生成・照合します。入力型、経路、通信方式で除外を決め、モデル名・世代・許可モデル数では分岐しません。
 
 各profileはGatewayまたはPortalの完全パスと、下記の承認済み末尾パターンを指定し、`RequestArgValues`と、動的JSONキーで必要な場合の`RequestArgKeys`を使います。署名付き文書状態参照・通話終了は既存operationの可変ID位置を限定patternへ写し、その専用profileで正確なticket名の`RequestHeaderValues / Equals`を使います。画像編集・文字起こしの2操作は配備名の親パスを使います。任意のAPI templateやheaderを対象にしません。`StartsWith`は`state.`、`questions.`、JSON Schemaやobject形式の引数配下など、区切りを含むデータ構造に限定します。集計規則949110は除外しません。
 
@@ -87,28 +87,17 @@ Gatewayの画像と埋め込みは複数の操作経路を1つのポリシーへ
 
 ### PII入口の除外をRESTとMCPへ分ける
 
-今回の変更は**App GatewayのWAFポリシーと公開パスとの関連付け**です。APIMのAPI定義・キー／Bearer認証・本文変換・モデル機能・OBOを変更するものではありません。APIのURLと正規の送信本文も維持します。
+App GatewayはPIIのREST、MCP、Portalそれぞれの公開パスに、用途別のWAFポリシーを関連付けます。
 
-| 最終候補のprofile | 公開パス | データ欄の除外 |
+| WAFプロファイル | 公開パス | データ欄の除外 |
 | --- | --- | --- |
 | `g-pii-rest` | `/tools/pii/v1/redact` | `RequestArgValues / Equals / text`だけ |
 | `g-pii-mcp` | `/tools/pii-v1-mcp/mcp` | `RequestArgValues / Equals / params.arguments.text`だけ |
-| `p-pii-redact`（維持） | `/api/tools/pii`・`/api/tools/pii-mcp` | 従来の`text`とPortalセッションCookieの除外 |
+| `p-pii-redact` | `/api/tools/pii`・`/api/tools/pii-mcp` | `text`とPortalセッションCookieの除外 |
 
-これまでは`g-pii-redact`に2つのパスと2つのselectorをまとめ、両方の入口で除外の集合和が作用していました。分割後は、RESTへMCP用の`params.arguments.text`、MCPへREST用の`text`のデータ欄除外を追加しません。各正規欄に使う7グループと個別規則の組合せ、Prevention・本文検査・容量・機密値のマスクは維持します。
+Gateway側では表に示す各データ欄に限り、承認済みの管理規則の除外を適用します。Prevention、本文検査、容量制限、機密値のマスクは各入口で有効です。
 
-確認した現行testsと文書には、MCPの入れ子JSONに対して末端名`text`も必要になる根拠はありません。ただし、ローカルの生成・構成照合だけではAzureのJSON解析と正規本文の通過を証明できません。`params.arguments.text`だけの候補で正常なMCP初期化・ツール照会・PII実行を確認し、RESTの正常本文も別に確認します。
-
-`RequestArgValues`は本文だけを選ぶ設定ではありません。分割後も、それぞれの入口で同名queryに引数除外が作用し得ます。queryの拒否・転送、URI制約、他のWAF規則は未棚卸のまま保持し、この変更でqueryを全面許可／拒否したとは扱いません。
-
-PII分割のAzure反映・読戻しと、正常なREST要求およびMCP初期化・ツール照会・PII実行の通過・マスキング確認は完了しました。旧`g-pii-redact`は参照不在を確認して退役しました。未実施の異常系、同名queryへの除外の挙動とログ帰属は残件です。移行時は次の順序で適用・受入・旧資源退役を分け、一連の承認済み変更を一括コミットします。
-
-1. 旧`g-pii-redact`は移行元として限定して認識し、通常reconcileでは削除しません。所有・現在値と既存bindingを照合し、復旧用に旧ポリシーを保持します。
-2. 新しい2ポリシーを用意してから、各公開パスのbindingを新ポリシーへ切り替え、設定を読み戻します。
-3. 正常なREST要求とMCP初期化・ツール照会・PII実行の実WAF通過を確認します。WAF通過、APIM認証、PII処理の成功を分けて記録します。失敗した場合は保持した旧bindingへ戻せる状態を維持します。
-4. 両入口の確認が成功し、旧ポリシーへの参照がないことを照合した後にだけ、旧ポリシーを退役します。その後に保存した構成と期待値を整理します。
-
-旧`g-pii-redact`は移行・復旧用途で保持した資源であり、正常な両入口と参照不在を確認して退役しました。通常の新規構成には選びません。移行時も旧資源の存在だけを理由に自動削除せず、反映・退役をローカル資材から推定しません。
+新規構築後は、WAF設定の読戻しと、RESTのPII実行、MCPの初期化・ツール照会・PII実行をそれぞれ確認します。WAF通過、APIM認証、PIIマスキングの成功を区別して記録します。`RequestArgValues`は同名のquery引数にも作用し得るため、異常系と同名queryは別途確認します。ローカルのmanifest生成と構成照合で確認できるのは、設定と適用先までです。
 
 用途名は検査するHTTP入口を表します。署名ticketを使うRealtime observer以外のRealtime／Live WebSocket入口など、個別のデータ欄除外がない経路は`base`を使います。データ欄の除外はmanifestに明記した条件から生成し、APIのMIMEや機能名によって別の除外を自動追加しません。外部管理ポリシーの指定時は、そのポリシーを再利用します。
 
@@ -116,7 +105,7 @@ PII分割のAzure反映・読戻しと、正常なREST要求およびMCP初期�
 
 OpenAIのResponsesとChat Completionsは、同じ用途のデータ欄に同じアプリケーション攻撃グループ除外を適用します。[MicrosoftのAIチャット向けWAFチューニング指針](https://learn.microsoft.com/azure/architecture/ai-ml/architecture/baseline-microsoft-foundry-chat#web-application-firewall-tuning)に沿って、会話・指示・コード・ツール結果・引数・説明・宣言的Schemaの欄だけを選びます。SQLやコードの構文をモデルへ渡すことは、Gatewayでその構文を実行することとは別の処理です。WAFの評価はHTTP要求単位であり、履歴やツール結果が後続要求の本文に含まれることで検出対象が増えます。
 
-manifest version 2は、validatorに列挙したprofile・経路・データ欄だけで、LFI（930）・RFI（931）・RCE（932）・PHP（933）・XSS（941）・SQLi（942）・Java（944）の7グループ除外と、プロトコル系の個別規則`921110`・`921130`の除外を許可します。グループ除外は`ruleGroupName`を指定し`rules`を省略し、`921110`・`921130`は`REQUEST-921-PROTOCOL-ATTACK`に個別IDを指定します。version 1の個別ID形式は引き続き読み取れます。全managed ruleの除外、集計949110/980130の除外、列挙外の用途・欄へのグループ除外は許可しません。既存の921120・921130・921150等の個別例外は保持し、921グループ全体は除外しません。
+manifest version 2は、validatorに列挙したprofile・経路・データ欄だけで、LFI（930）・RFI（931）・RCE（932）・PHP（933）・XSS（941）・SQLi（942）・Java（944）の7グループ除外と、プロトコル系の個別規則`921110`・`921130`の除外を許可します。グループ除外は`ruleGroupName`を指定し`rules`を省略し、`921110`・`921130`は`REQUEST-921-PROTOCOL-ATTACK`に個別IDを指定します。全managed ruleの除外、集計949110/980130の除外、列挙外の用途・欄へのグループ除外は許可しません。既存の921120・921130・921150等の個別例外は保持し、921グループ全体は除外しません。
 
 Responses／Chat Completionsの承認済み自由文Valuesと、Schema・構造化引数prefixのValuesには、この7グループと`921110`・`921130`を適用します。既存selectorの`800100`・`920230`・`920270`・`920271`等の個別除外は、その変数・演算子・selectorの範囲で保持します。新しい型や階層を追加しても、これらの旧個別除外は自動継承せず、台帳で承認した共有型の7グループと`921110`・`921130`を適用します。個別IDの選択はMicrosoftの指定一覧ではなく、このAPI契約で確認した誤検知への構成判断です。
 
@@ -224,13 +213,13 @@ SSMLのDTD/ENTITY宣言は、WAF本文カスタム規則のMIME対応に依存�
 
 このTTS集約と呼出位置の変更はAzure反映・読戻しを完了しました。キー／BearerのTTS正常WAV応答、DTD宣言の400と対応する監査照合を確認しました。実サイズ超過413と残る異常系は未実施です。従来の試験結果や匿名401を、新しい構成の未確認条件の受入完了へ読み替えません。
 
-`infra/modules/ingress/application-gateway.bicep`と`scripts/waf_policy.py`は同じ正本を使用します。個別Gateway／Portal配備も照合するため、Azure上だけの手動例外が次回配備で消える構成を避けます。専用ポリシーは親を継承しないため、Prevention・本文検査・ログのマスク・customRulesと、manifestのデータ欄除外・上記のAI専用サイズ設定を合成します。企業管理の外部WAFは変更しません。既存の固有保護を表現できない場合は停止します。
+`infra/modules/ingress/application-gateway.bicep`と`scripts/operations/waf_policy.py`は同じ正本を使用します。個別Gateway／Portal配備も照合するため、Azure上だけの手動例外が次回配備で消える構成を避けます。専用ポリシーは親を継承しないため、Prevention・本文検査・ログのマスク・customRulesと、manifestのデータ欄除外・上記のAI専用サイズ設定を合成します。企業管理の外部WAFは変更しません。既存の固有保護を表現できない場合は停止します。
 
 通常の配備と同じparamsを指定して、まずローカル計画を確認できます。計画ではAzureに接続しません。適用時は対象環境とETagを照合し、不要なPUTを行いません。
 
 ```sh
-python3 scripts/waf_policy.py --config "$DEPLOY_PARAMS_FILE"
-python3 scripts/waf_policy.py --config "$DEPLOY_PARAMS_FILE" --scope all --execute
+python3 scripts/operations/waf.py --config "$DEPLOY_PARAMS_FILE"
+python3 scripts/operations/waf.py --config "$DEPLOY_PARAMS_FILE" --scope all --execute
 ```
 
 ## 再現する試験
@@ -246,10 +235,10 @@ python3 scripts/waf_policy.py --config "$DEPLOY_PARAMS_FILE" --scope all --execu
 Portal音声アップロードのfixtureは、現在のSTTモデルと`input`設定JSON＋PCM WAVの2partを使います。TTSをmultipartへ指定する不正な試験を正規ケースに含めません。DecisionのPortal入口はobjectのstateを受けるため、文字列・配列・null等のroot stateは契約外入力の拒否試験へ分類します。従来のexact `state`除外は包含のため保持しますが、現在のPortal正常入力でそのscalar欄を検証済みとは扱いません。
 
 ```sh
-python3 -B scripts/waf_contracts.py --check
-python3 -B scripts/waf_probe.py --suite smoke --dry-run \
+python3 -B scripts/validation/waf_contracts.py --check
+python3 -B scripts/validation/waf_probe.py --suite smoke --dry-run \
   --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-required-plan.json"
-python3 -B scripts/waf_probe.py --suite incident \
+python3 -B scripts/validation/waf_probe.py --suite incident \
   --gateway-base-url https://gateway.example.com --transport curl \
   --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-incident.json"
 ```
@@ -283,8 +272,8 @@ SSMLのDTD・entity宣言はAPIMの`core-speech-ssml-guard`が拒否する境界
 実通信前に`--dry-run`と`--case-filter`で対象を絞り、経路・データ型・対照をレビューします。既定corpusの全件を一括送信した結果だけで、新規selectorや型の検証を置き換えません。
 
 ```sh
-python3 scripts/waf_probe.py --dry-run --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-plan.json"
-python3 scripts/waf_probe.py \
+python3 scripts/validation/waf_probe.py --dry-run --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-plan.json"
+python3 scripts/validation/waf_probe.py \
   --gateway-base-url https://gateway.example.com \
   --portal-base-url https://portal.example.com \
   --transport curl --workers 4 --requests-per-second 4 \
@@ -292,26 +281,26 @@ python3 scripts/waf_probe.py \
   --phase verification --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-verification.json"
 
 # Responses／Chatの正規本文・Schemaと、除外範囲の対照を独立して確認
-python3 scripts/waf_probe.py --ai-coding-only \
+python3 scripts/validation/waf_probe.py --ai-coding-only \
   --gateway-base-url https://gateway.example.com --transport curl \
   --workers 2 --requests-per-second 2 --phase coding-verification \
   --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-ai-coding.json"
 
 # 正規raw本文と、非本文のパストラバーサル対照を別途確認
-python3 scripts/waf_probe.py --raw-body-guards-only \
+python3 scripts/validation/waf_probe.py --raw-body-guards-only \
   --gateway-base-url https://gateway.example.com \
   --portal-base-url https://portal.example.com --transport curl \
   --phase raw-verification --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-raw-guard.json"
 
 # 画像の正規prompt・参照画像と、除外範囲の対照を独立して確認
-python3 scripts/waf_probe.py --image-prompts-only \
+python3 scripts/validation/waf_probe.py --image-prompts-only \
   --gateway-base-url https://gateway.example.com \
   --portal-base-url https://portal.example.com --transport curl \
   --workers 2 --requests-per-second 2 --phase image-verification \
   --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-image-prompts.json"
 
 # 新しい配備名のWAF通過と、未知suffix・別methodのAPIM境界を分けて確認（実Azure未実施）
-python3 scripts/waf_probe.py --model-routes-only \
+python3 scripts/validation/waf_probe.py --model-routes-only \
   --gateway-base-url https://gateway.example.com --transport curl \
   --workers 2 --requests-per-second 2 --phase model-route-verification \
   --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-model-routes.json"
