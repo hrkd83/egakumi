@@ -875,7 +875,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
   properties=canonical_settings(config,'core')['apim-logs']['properties']
   self.assertIn({'category':'GatewayLlmLogs','enabled':True},properties['logs'])
   self.assertEqual(properties['logAnalyticsDestinationType'],'Dedicated')
-  services=compile_bicep('infra/modules/services.bicep')
+  services=compile_bicep('infra/modules/services/services.bicep')
   diagnostic=next(item for item in services['resources']
    if item.get('type')=='Microsoft.Insights/diagnosticSettings' and item.get('name')=='core-audit'
     and "names').apim" in item.get('scope',''))

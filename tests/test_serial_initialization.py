@@ -278,8 +278,8 @@ class InitialCreationTests(unittest.TestCase):
             self.assertEqual(self.recover(), "")
 
     def test_resource_shape_keeps_password_out_of_osprofile_and_uses_named_protected_parameters(self):
-        management = (ROOT / "infra/modules/management.bicep").read_text(encoding="utf-8")
-        module = (ROOT / "infra/modules/management-serial-initialization.bicep").read_text(encoding="utf-8")
+        management = (ROOT / "infra/modules/management/management.bicep").read_text(encoding="utf-8")
+        module = (ROOT / "infra/modules/management/management-serial-initialization.bicep").read_text(encoding="utf-8")
         self.assertNotIn("adminPassword", management)
         self.assertIn("disablePasswordAuthentication: true", management)
         self.assertIn("@secure()\nparam initialPassword string", module)

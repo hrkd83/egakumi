@@ -20,7 +20,7 @@ Application Gateway・Azure Firewall・API Management・Private Endpointで保�
 
 APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。公開例の`<AUTO_GENERATED_APIM_INSTANCE_ID>`は初回自動生成のマーカーです。第1章の準備コマンドが6文字の英小文字・数字へ置換してローカルparamsへ保存し、第03章で同じ値からEntraのCM戻り先を確定します。構築・更新・途中再開では識別子を保持し、撤去後の新規構築は[新しいAPIM識別子の準備](docs/operations.md#撤去後に新しく構築する)から進めます。
 
-共通基盤は`infra/`、証明書用Jobの起動準備・管理VMのOS設定・保守clientの資材は[infra/guest/](infra/guest/)にあります。Gatewayの配備資材は[apps/apim/deploy/](apps/apim/deploy/)にまとめ、API定義・ポリシーは`apps/apim/`、認証窓口のアプリ・SQLは`apps/credential-broker/`、配備用Bicepとイメージ構築スクリプトは`apps/apim/deploy/`に分けています。
+共通基盤は[infra/](infra/README.md)、証明書用Jobの起動準備・管理VMのOS設定・保守clientの資材は[infra/guest/](infra/guest/)にあります。Gatewayの配備資材は[apps/apim/deploy/](apps/apim/deploy/)にまとめ、API定義・ポリシーは`apps/apim/`、認証窓口のアプリ・SQLは`apps/credential-broker/`、配備用Bicepとイメージ構築スクリプトは`apps/apim/deploy/`に分けています。
 
 業務APIの入口は、購読キーを提示した場合はAPIM購読キー、キーなしのBearer要求はEntraユーザートークンにより認可します。不正なキーをBearerで救済しません。Graph等の本人OAuth接続を使うAPIは、入口認可に続いて[Credential Managerの共通接続機能](docs/reference/credential-manager-login.md)を利用します。公開APIと配備モデルの正本は [API定義](apps/apim/apis/)と参照configです。[Gatewayの購読キー認証](docs/reference/gateway-key-auth-plan.md)を参照してください。
 

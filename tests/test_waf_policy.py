@@ -3,6 +3,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 import subprocess
 import tempfile
@@ -1669,7 +1670,7 @@ class DataWafTests(unittest.TestCase):
         from arm_helpers import PolicyExpression
 
         current = load_manifest(ROOT / 'apps/apim/waf-data-exclusions.json')
-        compiled = compile_bicep(str(ROOT / 'infra/modules/application-gateway.bicep'))
+        compiled = compile_bicep(str(ROOT / 'infra/modules/ingress/application-gateway.bicep'))
         expanded = PolicyExpression("[variables('dataManifest')]", compiled['variables'],
                                     functions=compiled.get('functions', [])).evaluate({})
         self.assertEqual(expanded, current)
@@ -1716,19 +1717,15 @@ class DataWafTests(unittest.TestCase):
                                    'scope': 'portal', 'paths': ['/api/models/text']})
         with tempfile.TemporaryDirectory() as folder:
             folder = Path(folder)
-            source = (ROOT / 'infra/modules/application-gateway.bicep').read_text(encoding='utf-8')
-            source = source.replace("loadJsonContent('../../apps/apim/waf-data-exclusions.json')", "loadJsonContent('./manifest.json')")
-            source = source.replace("loadJsonContent('../../apps/apim/waf-raw-body-controls.json')", "loadJsonContent('./raw-controls.json')")
-            source = source.replace("loadJsonContent('../../apps/apim/waf-json-content-controls.json')", "loadJsonContent('./json-controls.json')")
-            source = source.replace("loadJsonContent('../../apps/apim/waf-source-url-exclusions.json')", "loadJsonContent('./source-urls.json')")
-            source = source.replace("loadJsonContent('../../apps/portal/waf-session-exclusions.json')", "loadJsonContent('./portal-session.json')")
-            (folder / 'gateway.bicep').write_text(source, encoding='utf-8')
-            (folder / 'manifest.json').write_text(json.dumps(sample), encoding='utf-8')
-            (folder / 'raw-controls.json').write_text((ROOT / 'apps/apim/waf-raw-body-controls.json').read_text(encoding='utf-8'), encoding='utf-8')
-            (folder / 'json-controls.json').write_text((ROOT / 'apps/apim/waf-json-content-controls.json').read_text(encoding='utf-8'), encoding='utf-8')
-            (folder / 'source-urls.json').write_text((ROOT / 'apps/apim/waf-source-url-exclusions.json').read_text(encoding='utf-8'), encoding='utf-8')
-            (folder / 'portal-session.json').write_text(json.dumps(portal_session_exclusions()), encoding='utf-8')
-            built = subprocess.run([bicep_executable(), 'build', str(folder / 'gateway.bicep'), '--stdout', '--no-restore'],
+            gateway_template = 'infra/modules/ingress/application-gateway.bicep'
+            for relative in (gateway_template, 'apps/apim/waf-raw-body-controls.json',
+                             'apps/apim/waf-json-content-controls.json', 'apps/apim/waf-source-url-exclusions.json',
+                             'apps/portal/waf-session-exclusions.json'):
+                target = folder / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / relative, target)
+            (folder / 'apps/apim/waf-data-exclusions.json').write_text(json.dumps(sample), encoding='utf-8')
+            built = subprocess.run([bicep_executable(), 'build', str(folder / gateway_template), '--stdout', '--no-restore'],
                                    env={**os.environ, 'DOTNET_BUNDLE_EXTRACT_BASE_DIR': str(folder)},
                                    capture_output=True, encoding='utf-8', timeout=60)
             self.assertEqual(built.returncode, 0, built.stderr)

@@ -35,7 +35,7 @@ class MonitoringExportReapplyTests(LifecycleFixture, unittest.TestCase):
         cls.template = compile_bicep('infra/main.bicep')
         module = next(item['properties']['template'] for item in cls.template['resources']
                       if isinstance(item.get('properties', {}).get('template', {}).get('variables', {}).get('exportTables'), list))
-        privacy = json.loads((Path(__file__).resolve().parents[1] / 'infra/log-privacy.json').read_text())
+        privacy = json.loads((Path(__file__).resolve().parents[1] / 'infra/modules/monitoring/log-privacy.json').read_text())
         cls.tables = [privacy['table'] if value == "[variables('privacy').table]" else value
                       for value in module['variables']['exportTables']]
         assert len(cls.tables) == 7 and all(isinstance(value, str) and not value.startswith('[') for value in cls.tables)
@@ -112,7 +112,7 @@ class MonitoringExportReapplyTests(LifecycleFixture, unittest.TestCase):
             return record
         with mock.patch.object(lifecycle, 'run', return_value=copy.deepcopy(self.template if template is None else template)) as compiler, \
              mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
-             mock.patch.object(lifecycle, 'prepare_core_network_upgrade'), \
+             mock.patch.object(lifecycle, 'verify_core_network_before_deployment'), \
              mock.patch.object(lifecycle, 'discover_existing_network_security_groups', return_value=[]), \
              mock.patch.object(lifecycle, 'discover_existing_route_table_routes', return_value={}), \
              mock.patch.object(lifecycle, 'discover_existing_apim_hostnames', return_value={}), \

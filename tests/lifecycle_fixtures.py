@@ -151,8 +151,8 @@ class LifecycleFixture:
         privacy_link = mock.patch.object(lifecycle, "ensure_workspace_link", return_value="/subscriptions/fixture/dataCollectionRules/dcr-fixture-workspace")
         privacy_link.start()
         self.addCleanup(privacy_link.stop)
-        # Tuple/ETag/所有境界は専用のfixed_nsg/Portal移行試験で検査します。
-        # hook試験では実wrapperを通し、ゲート→stage→Core→completeの順を検査します。
+        # NSGの規則と所有境界は専用試験で検査します。
+        # hook試験では実wrapperを通し、Coreの前後に照合する順序を検査します。
         host_time = mock.patch.object(lifecycle, "require_management_host_time_core_ready", return_value={})
         self.host_time_gate = host_time.start()
         self.addCleanup(host_time.stop)
@@ -164,12 +164,10 @@ class LifecycleFixture:
         self.backend_tls_gate = portal_gate.start()
         self.appgw_tls_gate = self.backend_tls_gate
         self.addCleanup(portal_gate.stop)
-        prepare_nsg = mock.patch.object(lifecycle, "prepare_fixed_nsg_rules",
-                                        return_value={"status": "staged", "azureWrites": 0})
+        prepare_nsg = mock.patch.object(lifecycle, "verify_fixed_nsg_before_deployment")
         self.prepare_nsg = prepare_nsg.start()
         self.addCleanup(prepare_nsg.stop)
-        complete_nsg = mock.patch.object(lifecycle, "complete_fixed_nsg_rules",
-                                         return_value={"status": "completed", "azureWrites": 0})
+        complete_nsg = mock.patch.object(lifecycle, "verify_fixed_nsg_after_deployment")
         self.complete_nsg = complete_nsg.start()
         self.addCleanup(complete_nsg.stop)
         # APIMの固定名確認は別の専用試験でARM応答を再現する。hook試験では

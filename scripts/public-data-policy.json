@@ -870,7 +870,8 @@
         "docs/study/video-sample/episodes/08/render-diagrams.mjs",
         "docs/study/video-sample/episodes/08/script.json",
         "docs/study/video-sample/episodes/08/settings-source-review.md",
-        "infra/modules/management.bicep"
+        "infra/modules/management.bicep",
+        "infra/modules/management/management.bicep"
       ]
     },
     {
@@ -1600,7 +1601,8 @@
         "docs/study/video-sample/episodes/a2/revisions/initial-v1/script.json",
         "docs/study/video-sample/episodes/a2/revisions/initial-v1/source-review.md",
         "docs/study/video-sample/episodes/a2/source-review.md",
-        "infra/modules/network.bicep"
+        "infra/modules/network.bicep",
+        "infra/modules/network/network.bicep"
       ]
     },
     {
@@ -1629,7 +1631,8 @@
         "docs/study/video-sample/episodes/a2/revisions/initial-v1/script.json",
         "docs/study/video-sample/episodes/a2/revisions/initial-v1/source-review.md",
         "docs/study/video-sample/episodes/a2/source-review.md",
-        "infra/modules/credential-broker-network.bicep"
+        "infra/modules/credential-broker-network.bicep",
+        "infra/modules/network/credential-broker-network.bicep"
       ]
     },
     {
@@ -1655,7 +1658,8 @@
         "docs/study/video-sample/episodes/a2/revisions/initial-v1/script.json",
         "docs/study/video-sample/episodes/a2/revisions/initial-v1/source-review.md",
         "docs/study/video-sample/episodes/a2/source-review.md",
-        "infra/modules/network.bicep"
+        "infra/modules/network.bicep",
+        "infra/modules/network/network.bicep"
       ]
     },
     {
@@ -1985,6 +1989,7 @@
         "docs/study/video-sample/lesson-visual.mjs",
         "docs/study/video-sample/settings-view-examples.json",
         "infra/modules/network.bicep",
+        "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
         "schemas/configuration.schema.json",
@@ -2072,6 +2077,7 @@
         "docs/study/video-sample/lesson-visual.mjs",
         "docs/study/video-sample/settings-view-examples.json",
         "infra/modules/network.bicep",
+        "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
         "schemas/configuration.schema.json",
@@ -2197,6 +2203,7 @@
         "docs/study/video-sample/lesson-visual.mjs",
         "docs/study/video-sample/settings-view-examples.json",
         "infra/modules/network.bicep",
+        "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
         "schemas/configuration.schema.json",
@@ -2242,6 +2249,7 @@
         "docs/study/video-sample/episodes/08/settings-source-review.md",
         "docs/study/video-sample/lesson-visual.mjs",
         "infra/modules/network.bicep",
+        "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
         "schemas/configuration.schema.json",
@@ -2287,6 +2295,7 @@
         "docs/study/video-sample/episodes/03/versions/diagram-v1/production.md",
         "docs/study/video-sample/lesson-visual.mjs",
         "infra/modules/network.bicep",
+        "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
         "schemas/configuration.schema.json",
@@ -2379,6 +2388,7 @@
         "docs/study/video-sample/episodes/03/versions/diagram-v1/production.md",
         "docs/study/video-sample/lesson-visual.mjs",
         "infra/modules/network.bicep",
+        "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
         "schemas/configuration.schema.json",
@@ -2438,6 +2448,7 @@
         "docs/study/video-sample/lesson-visual.mjs",
         "docs/study/video-sample/settings-view-examples.json",
         "infra/modules/network.bicep",
+        "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
         "schemas/configuration.schema.json",
@@ -2460,6 +2471,7 @@
       "reason": "Independently synthesized Credential Broker subnet in public examples and their validation test; disjoint from the certificate worker subnet.",
       "paths": [
         "infra/modules/network.bicep",
+        "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
         "schemas/configuration.schema.json",
@@ -4097,7 +4109,8 @@
       "value": "10.70.0.0",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4105,7 +4118,8 @@
       "value": "10.70.1.0",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4113,7 +4127,8 @@
       "value": "10.70.1.10",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4121,7 +4136,8 @@
       "value": "10.70.1.11",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4129,7 +4145,8 @@
       "value": "10.70.1.4",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4137,7 +4154,8 @@
       "value": "10.70.1.5",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4145,7 +4163,8 @@
       "value": "10.70.1.6",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4153,7 +4172,8 @@
       "value": "10.70.1.7",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4161,7 +4181,8 @@
       "value": "10.70.1.8",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4169,7 +4190,8 @@
       "value": "10.70.1.9",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4177,7 +4199,8 @@
       "value": "10.70.2.0",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4185,7 +4208,8 @@
       "value": "10.70.2.128",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4193,7 +4217,8 @@
       "value": "10.70.2.132",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4202,6 +4227,7 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py",
         "tests/test_parameter_ip_ownership.py"
       ]
     },
@@ -4210,7 +4236,8 @@
       "value": "10.70.2.196",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4218,7 +4245,8 @@
       "value": "10.70.2.64",
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4227,6 +4255,7 @@
       "reason": "Independently invented offline NSG compilation and conditional ARM migration fixture address, including distinct PE NIC IPs; no real environment data or network request. Exact file/value only, no private-range exemption.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py",
         "tests/test_parameter_ip_ownership.py"
       ]
     },
@@ -4236,6 +4265,7 @@
       "reason": "Independently repeated-digit synthetic subscription identifier for offline ARM NSG/Portal migration fixtures; not copied from any tenant or deployment. Exact file/value only.",
       "paths": [
         "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py",
         "tests/test_portal_backend_http.py"
       ]
     },
@@ -4374,6 +4404,7 @@
       "paths": [
         "tests/test_audit_storage_network.py",
         "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py",
         "tests/test_parameter_ip_ownership.py"
       ]
     },
@@ -4383,7 +4414,8 @@
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_audit_storage_network.py",
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4393,6 +4425,7 @@
       "paths": [
         "tests/test_audit_storage_network.py",
         "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py",
         "tests/test_parameter_ip_ownership.py"
       ]
     },
@@ -4402,7 +4435,8 @@
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_audit_storage_network.py",
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4411,7 +4445,8 @@
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_audit_storage_network.py",
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {
@@ -4420,7 +4455,8 @@
       "reason": "Independent synthetic network address used by offline NSG or maintenance fixtures; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
         "tests/test_audit_storage_network.py",
-        "tests/test_fixed_nsg_migration.py"
+        "tests/test_fixed_nsg_migration.py",
+        "tests/test_fixed_nsg_validation.py"
       ]
     },
     {

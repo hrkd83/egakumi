@@ -10,7 +10,7 @@ import json
 import time
 from .paths import REPOSITORY
 
-PRIVACY = json.loads((REPOSITORY / "infra/log-privacy.json").read_text(encoding="utf-8"))
+PRIVACY = json.loads((REPOSITORY / "infra/modules/monitoring/log-privacy.json").read_text(encoding="utf-8"))
 WORKSPACE_API = "2023-09-01"
 DCR_API = "2023-03-11"
 DIAGNOSTIC_API = "2021-05-01-preview"

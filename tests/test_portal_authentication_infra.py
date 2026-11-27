@@ -134,7 +134,7 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
                     + ("variables" if target == "core" else "parameters") + "('stem'))]")
 
     def test_portal_certificate_job_pulls_private_image_with_the_dedicated_identity(self):
-        jobs = compile_bicep('infra/certificate-jobs.bicep')
+        jobs = compile_bicep('infra/modules/certificates/certificate-jobs.bicep')
         resources = jobs['resources']
         if isinstance(resources, dict):
             resources = resources.values()
@@ -156,7 +156,7 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         self.assertTrue(all('Microsoft.KeyVault/vaults/keys' in item['scope'] for item in assignments))
 
     def test_certificate_worker_can_disable_a_portal_key_but_only_read_the_obo_key(self):
-        storage = compile_bicep('infra/modules/certificate-storage.bicep')
+        storage = compile_bicep('infra/modules/certificates/certificate-storage.bicep')
         modules = storage['resources']
         if isinstance(modules, dict):
             modules = modules.values()
@@ -266,7 +266,7 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         self.assertIn("7f951dda-4ed3-4680-a7ca-43fe172d538d", schema["variables"]["acrPull"])
 
     def test_portal_ingress_keeps_the_configured_long_request_budget(self):
-        ingress = compile_bicep('infra/public-ingress.bicep')
+        ingress = compile_bicep('infra/modules/ingress/public-ingress.bicep')
         resources = ingress['resources']
         if isinstance(resources, dict):
             resources = resources.values()

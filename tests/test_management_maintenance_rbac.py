@@ -67,9 +67,9 @@ def assignments(template):
 class ManagementMaintenanceRbacTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.roles = compile_bicep('infra/modules/management-maintenance-roles.bicep')
+        cls.roles = compile_bicep('infra/modules/management/management-maintenance-roles.bicep')
         cls.core = compile_bicep('infra/main.bicep')
-        cls.vm = compile_bicep('infra/modules/management.bicep')
+        cls.vm = compile_bicep('infra/modules/management/management.bicep')
         cls.broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
         cls.gateway = compile_bicep('apps/apim/deploy/main.bicep')
         cls.portal = compile_bicep('apps/portal/deploy/main.bicep')

@@ -30,7 +30,7 @@
 | 差分 | 確認した実装 | 今回の評価への影響 |
 | --- | --- | --- |
 | Azure DNSの認証を事前作成したユーザー割り当てMIへ変更 | [証明書worker](../../infra/guest/certificate.ps1#L425)がIMDSの`mi_res_id`でDNS用IDを選び、ARM tokenを実行時に取得する | 証明書の初回取得・更新の認証が変わる。通話中の音声フレームを処理する変更ではない |
-| 管理VMへDNS用MIを追加 | [管理VM](../../infra/modules/management.bicep#L87)は従来のシステム割り当てMIも維持。[親Bicep](../../infra/main.bicep#L273)がAzure DNS選択時だけ既存IDを渡す | 管理VMの変更であり、APIMのMIやWebRTCのメディア終端は変わらない |
+| 管理VMへDNS用MIを追加 | [管理VM](../../infra/modules/management/management.bicep#L87)は従来のシステム割り当てMIも維持。[親Bicep](../../infra/main.bicep#L273)がAzure DNS選択時だけ既存IDを渡す | 管理VMの変更であり、APIMのMIやWebRTCのメディア終端は変わらない |
 | Azure DNSの準備入力と送信先を変更 | `certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`を入力し、旧SP資格情報は使わない。管理VMのAzure DNS用自動追加FQDNは`management.azure.com`になる | 旧Azure DNS入力のまま再構築する場合は新しいID参照と権限が必要。これは証明書のDNS-01用で、VNetの名前解決先を変更するものではない |
 | 音声・ネットワークの受入 | [動作テスト仕様書](../testing/integration-tests.md) に従い、採用構成の音声と経路を確認する | WebRTCの制御とmediaを分けて測定する |
 
@@ -40,7 +40,7 @@ Azure DNSの新しいIDが利用できなければ、証明書の取得・更新
 
 ## 現行実装と通信経路
 
-公開paramsはテスト・本番ともネットワークとAPIMが `japaneast`、Foundryが `eastus2`。ローカルの試験用paramsについても、この2項目が同じ値であることを確認した。Foundry用Private Endpointは日本側のVNet内に作成し、別リージョンのFoundryリソースへ接続する。[テストparams](../../params/test.example.json#L103)、[本番params](../../params/production.example.json#L103)、[Foundry配置](../../infra/modules/services.bicep#L109)、[Private Endpoint](../../infra/modules/services-private-endpoints.bicep#L20)
+公開paramsはテスト・本番ともネットワークとAPIMが `japaneast`、Foundryが `eastus2`。ローカルの試験用paramsについても、この2項目が同じ値であることを確認した。Foundry用Private Endpointは日本側のVNet内に作成し、別リージョンのFoundryリソースへ接続する。[テストparams](../../params/test.example.json#L103)、[本番params](../../params/production.example.json#L103)、[Foundry配置](../../infra/modules/services/services.bicep#L109)、[Private Endpoint](../../infra/modules/network/services-private-endpoints.bicep#L20)
 
 ```text
 WebSocketの音声とイベント
@@ -61,9 +61,9 @@ WebRTCの音声と主DataChannel
 | --- | --- | --- |
 | [Realtime作成policy](../../apps/gateway/apim/policies/operation-policies/realtime/realtime-create.xml#L1) | APIMが短期資格情報を取得し、続いてSDPを送る。資格情報を要求内に保持する | 接続開始には直列の上流処理がある。確立後の音声フレームごとにこの処理を行う構成ではない |
 | [WebSocket policy](../../apps/gateway/apim/policies/api-templates/protocol.xml#L1) | 初回handshakeの認可と上流への接続 | 通話中の音声はAPIMを経由するが、各メッセージに通常RESTのpolicyを適用する仕組みではない |
-| [AppGW](../../infra/modules/application-gateway.bicep#L325) | 応答バッファリング無効、backend timeoutは設定値600秒 | SSEの逐次転送を支える。600秒は会話の応答速度を表す値ではない |
+| [AppGW](../../infra/modules/ingress/application-gateway.bicep#L325) | 応答バッファリング無効、backend timeoutは設定値600秒 | SSEの逐次転送を支える。600秒は会話の応答速度を表す値ではない |
 | [APIM転送](../../apps/gateway/apim/policies/api-templates/protocol.xml#L152) | `buffer-response="false"`、timeout 240秒 | 応答の逐次転送とtimeoutの設定であり、TCPの再送待ちやモデル処理を除去しない |
-| [往復ルート](../../infra/modules/network.bicep#L580)・[APIM VIP宛ルート](../../infra/modules/network-bindings.bicep#L169) | AppGWとAPIMの往復をFirewallへ向け、PE宛はVNet内経路を維持 | APIM→Foundry PEが、既定ルートによって必ずFirewallをもう一度通るわけではない |
+| [往復ルート](../../infra/modules/network/network.bicep#L580)・[APIM VIP宛ルート](../../infra/modules/network/network-bindings.bicep#L169) | AppGWとAPIMの往復をFirewallへ向け、PE宛はVNet内経路を維持 | APIM→Foundry PEが、既定ルートによって必ずFirewallをもう一度通るわけではない |
 
 ## 電話サービス→自社サーバー→WebRTC→AIへの対応
 
@@ -83,7 +83,7 @@ WebRTCの音声と主DataChannel
 | Core：Realtime mini | 現行CoreはminiのWebRTCを公開しない | miniが必要な場合だけ、固定モデルの作成・終了・所有者契約を追加設計する |
 | Core：Voice Liveを選ぶ場合 | WebRTC用WSS制御契約はある。RealtimeのREST契約とは別 | 専用の制御URL・モデル・API版・認可を使用し、サービス固有のメディア経路と終了を受け入れる |
 
-根拠：[Realtime制御API定義](../../apps/gateway/apim/apis/openai-realtime-control-v1.json)、[Realtime作成policy](../../apps/gateway/apim/policies/operation-policies/realtime/realtime-create.xml#L1)、[共通のapp-only判定](../../apps/gateway/apim/policies/api-templates/gateway.xml#L76)、[protocolのapp-only判定](../../apps/gateway/apim/policies/api-templates/protocol.xml#L79)、[所有者の照合](../../apps/gateway/apim/policies/operation-policies/realtime/realtime-hangup.xml#L10)、[通信の最終拒否規則](../../infra/modules/network-bindings.bicep#L144)。
+根拠：[Realtime制御API定義](../../apps/gateway/apim/apis/openai-realtime-control-v1.json)、[Realtime作成policy](../../apps/gateway/apim/policies/operation-policies/realtime/realtime-create.xml#L1)、[共通のapp-only判定](../../apps/gateway/apim/policies/api-templates/gateway.xml#L76)、[protocolのapp-only判定](../../apps/gateway/apim/policies/api-templates/protocol.xml#L79)、[所有者の照合](../../apps/gateway/apim/policies/operation-policies/realtime/realtime-hangup.xml#L10)、[通信の最終拒否規則](../../infra/modules/network/network-bindings.bicep#L144)。
 
 ### 既存Coreを利用する接続手順
 
@@ -135,7 +135,7 @@ Voice Liveを選ぶ場合、自社アプリはCoreの`wss://<Gateway>/models/voi
 
 ### 配置先の基盤で確認するネットワーク条件
 
-自社アプリをCoreと別のアプリ基盤へ配置し、既存の公開Core URLで制御する案が、既存Coreへの変更を抑えやすい。CoreのBicepは管理ポータル用ACAを含む6サブネット・4NSG・4ルート表と管理VMを構成し、業務アプリのホストを作る汎用テンプレートではない。空きアドレスがあることだけで、その場所へアプリを配置できる設定が揃っているとは扱わない。[Coreのネットワークの担当範囲](../../infra/modules/network.bicep#L24)
+自社アプリをCoreと別のアプリ基盤へ配置し、既存の公開Core URLで制御する案が、既存Coreへの変更を抑えやすい。CoreのBicepは管理ポータル用ACAを含む6サブネット・4NSG・4ルート表と管理VMを構成し、業務アプリのホストを作る汎用テンプレートではない。空きアドレスがあることだけで、その場所へアプリを配置できる設定が揃っているとは扱わない。[Coreのネットワークの担当範囲](../../infra/modules/network/network.bicep#L24)
 
 | 経路 | 配置先の基盤で確認・追加すること |
 | --- | --- |
@@ -146,9 +146,9 @@ Voice Liveを選ぶ場合、自社アプリはCoreの`wss://<Gateway>/models/voi
 
 メディアの通信許可は、サーバーからの接続と戻り通信を成立させるためのものであり、CoreのAppGWへUDP listenerを追加する変更ではない。HTTP／WSS用のFQDN許可だけでも成立しない。NATの条件によりSTUN／TURN等の設定が必要な場合には、採用ライブラリ・サービス・配置先に合わせて追加し、全構成で自社TURNサーバーが必須とはしない。[RealtimeのFirewall条件](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-webrtc#step-4-optional-configure-network-firewall)、[aiortcのICE設定](https://aiortc.readthedocs.io/en/latest/api.html#aiortc.RTCConfiguration)
 
-Coreの**管理VMをそのまま本番の電話中継サーバーへ転用することは推奨しない**。証明書管理と通話処理の可用性・権限・負荷を分けるため、業務アプリ用ホストを別途用意する案を基本とする。管理VMで限定的な検証をする場合も、現行NSGは未許可の送受信を4096番で拒否し、既定経路はFirewallへ向かう。UDP3478を通すにはNSGとFirewallの両方へ追加許可が必要で、電話側WSSの受信口も別途必要になる。既存の`managementAdditionalSecurityRules`・`managementAdditionalNetworkRules`等はその検証用拡張に利用できるが、業務アプリ用ホストの自動作成は行わない。[管理VMの許可](../../infra/modules/network.bicep#L120)、[管理VMのFirewall規則](../../infra/modules/network.bicep#L395)、[既定経路](../../infra/modules/network.bicep#L581)、[NSGの最終拒否](../../infra/modules/network-bindings.bicep#L144)
+Coreの**管理VMをそのまま本番の電話中継サーバーへ転用することは推奨しない**。証明書管理と通話処理の可用性・権限・負荷を分けるため、業務アプリ用ホストを別途用意する案を基本とする。管理VMで限定的な検証をする場合も、現行NSGは未許可の送受信を4096番で拒否し、既定経路はFirewallへ向かう。UDP3478を通すにはNSGとFirewallの両方へ追加許可が必要で、電話側WSSの受信口も別途必要になる。既存の`managementAdditionalSecurityRules`・`managementAdditionalNetworkRules`等はその検証用拡張に利用できるが、業務アプリ用ホストの自動作成は行わない。[管理VMの許可](../../infra/modules/network/network.bicep#L120)、[管理VMのFirewall規則](../../infra/modules/network/network.bicep#L395)、[既定経路](../../infra/modules/network/network.bicep#L581)、[NSGの最終拒否](../../infra/modules/network/network-bindings.bicep#L144)
 
-自社サーバーがCoreのFirewallから外へ出る配置では、WebRTCもそのFirewallの影響を評価する。以前の端末発WebRTCと同じ経路とは限らず、IDPSを一律に無効化することを開始条件にはしない。既存Foundryの`publicNetworkAccess: Disabled`を解除したり、CoreのPEを撤去したりすることも、本案の必須変更ではない。制御APIのPrivate Linkと、別経路のWebRTCメディアという境界を維持する。[Foundryの設定](../../infra/modules/services.bicep#L111)
+自社サーバーがCoreのFirewallから外へ出る配置では、WebRTCもそのFirewallの影響を評価する。以前の端末発WebRTCと同じ経路とは限らず、IDPSを一律に無効化することを開始条件にはしない。既存Foundryの`publicNetworkAccess: Disabled`を解除したり、CoreのPEを撤去したりすることも、本案の必須変更ではない。制御APIのPrivate Linkと、別経路のWebRTCメディアという境界を維持する。[Foundryの設定](../../infra/modules/services/services.bicep#L111)
 
 ### 自社アプリ側の実装条件と受入
 
@@ -252,13 +252,13 @@ Voice Liveの採用モデルは配備設定から確定し、音声認識・テ�
 
 なお、CoreのRealtime miniはWebSocketのみを公開する契約だが、MicrosoftのWebRTC対応モデル一覧にはminiも含まれる。miniによる低遅延対話が必要なら、Coreで固定モデルのWebRTC作成・所有者・終了契約を追加する候補になる。[Coreのmini契約](../reference/platform.md#音声サービスの選び方)、[音声の受入条件](../testing/integration-tests.md#35-model-gatewayリアルタイム音声)
 
-Coreの[Foundryリソースとモデル配備](../../infra/modules/services.bicep#L111)は一つの共通Foundryを親とし、[backendの合成](../../infra/main.bicep#L308)もその接続先を使う。そのため、`foundryLocation`は音声だけの切替スイッチではない。本調査では、現行East US 2の共通Foundryを維持し、必要ならJapan EastのVoice Live／Speech用リソースを別に用意して比較する案を推奨する。別リソース側のAPIM MI権限、固定backend、必要なPE・DNS・通信許可を揃える。Voice Liveへ切り替える場合には、自社アプリ側もその交渉・イベント・終了契約へ対応する。これは既存Realtimeをサーバーから利用するための設定追加とは別の構成変更である。
+Coreの[Foundryリソースとモデル配備](../../infra/modules/services/services.bicep#L111)は一つの共通Foundryを親とし、[backendの合成](../../infra/main.bicep#L308)もその接続先を使う。そのため、`foundryLocation`は音声だけの切替スイッチではない。本調査では、現行East US 2の共通Foundryを維持し、必要ならJapan EastのVoice Live／Speech用リソースを別に用意して比較する案を推奨する。別リソース側のAPIM MI権限、固定backend、必要なPE・DNS・通信許可を揃える。Voice Liveへ切り替える場合には、自社アプリ側もその交渉・イベント・終了契約へ対応する。これは既存Realtimeをサーバーから利用するための設定追加とは別の構成変更である。
 
 ### Firewallの直列配置は検査要件と効果で選ぶ
 
 MicrosoftのArchitecture Centerは、AppGWの後段にFirewallを置く構成と、AppGWで受信・Firewallで外向きを担当する並列構成の両方を示す。後段Firewallでの検査等が必要なときは直列構成に理由がある。Coreの形自体が非対応の設計ということではない。[AppGWとFirewallの設計パターン](https://learn.microsoft.com/en-us/azure/architecture/example-scenario/gateway/firewall-application-gateway)
 
-Coreの本番設定はPremiumのIDPS **Alert**、TLS inspection設定は含まない。AlertのIDPSは規則処理と並列に動き、Alert and Denyのinline処理とは異なる。現在の設定へ、TLS復号検査やinline IDPSの負荷をそのまま当てはめない。[CoreのFirewall設定](../../config/production.json#L15)、[Firewall policy実装](../../infra/modules/network.bicep#L329)、[IDPSの処理方式](https://learn.microsoft.com/en-us/azure/firewall/rule-processing#idps)
+Coreの本番設定はPremiumのIDPS **Alert**、TLS inspection設定は含まない。AlertのIDPSは規則処理と並列に動き、Alert and Denyのinline処理とは異なる。現在の設定へ、TLS復号検査やinline IDPSの負荷をそのまま当てはめない。[CoreのFirewall設定](../../config/production.json#L15)、[Firewall policy実装](../../infra/modules/network/network.bicep#L329)、[IDPSの処理方式](https://learn.microsoft.com/en-us/azure/firewall/rule-processing#idps)
 
 端末からAzureへ流れるWebRTCメディアには、このCore FirewallのIDPSが直接作用しない。Core内に中継サーバーを置く場合は、そのサーバーの実効ルートを別に確認する。WebSocket音声はCore Firewallを通るため、Alertでも負荷時の影響は比較対象になる。現在の設定だけを根拠にIDPSを遅延の主因と断定せず、影響が小さいと実測済みとも扱わない。Alert and Denyへ変更する場合は、そのmodeで再評価する。
 
@@ -268,7 +268,7 @@ Firewallの遅延probeは、Firewall周辺の状態を調べる補助指標に�
 
 ### 共用Gatewayの容量は実負荷で確認する
 
-CoreはテストがAPIM Developer 1unit、本番がPremium 1unitで、APIMリソースにavailability zoneの指定を持たない。AppGWの最小台数はテスト0、本番2である。テストの成功をそのまま本番の遅延・継続性の保証へ広げることはできない。[テスト設定](../../config/test.json#L31)、[本番設定](../../config/production.json#L39)、[APIM実装](../../infra/modules/services.bicep#L201)
+CoreはテストがAPIM Developer 1unit、本番がPremium 1unitで、APIMリソースにavailability zoneの指定を持たない。AppGWの最小台数はテスト0、本番2である。テストの成功をそのまま本番の遅延・継続性の保証へ広げることはできない。[テスト設定](../../config/test.json#L31)、[本番設定](../../config/production.json#L39)、[APIM実装](../../infra/modules/services/services.bicep#L201)
 
 MicrosoftのAPIM設計指針は、実ワークロードでの負荷試験、重要APIのcompute分離の検討、zone冗長化では少なくとも2unitを推奨している。Coreの1unitを直ちに不足と断定する根拠はないが、常設の音声サービスでは容量と冗長性の設計を追加する必要がある。[APIMのWell-Architected指針](https://learn.microsoft.com/en-us/azure/well-architected/service-guides/azure-api-management)
 

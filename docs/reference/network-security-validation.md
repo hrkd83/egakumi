@@ -43,7 +43,7 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | --- | --- |
 | PHC設定・Core前の先行証跡 | [Linux時刻設定](../../tests/test_management_linux.py)、[管理VM時刻gate](../../tests/test_management_host_time.py) |
 | NSG75／FW35とAPIM UDP123保全 | [Firewall](../../tests/test_firewall_diagnostics.py)、[IP所有境界](../../tests/test_parameter_ip_ownership.py)、[NSG正本](../../tests/test_nsg_rule_priorities.py) |
-| 既存NTP規則の限定撤去と削除前gate | [固定NSG移行](../../tests/test_fixed_nsg_migration.py)、[NSG限定配備](../../tests/test_fixed_nsg_upgrade.py) |
+| 既存NTP規則の限定撤去と削除前gate | [専用運用試験](../../tests/test_management_time_network.py) |
 | guest埋込とCore配備の依存関係 | [guest payload](../../tests/test_guest_deployment_payloads.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
 
 合成VM IDの記述を独立生成値へ調整した後、移行／限定配備の2スイート39試験も再確認し、全件成功した（11.706秒、失敗・エラー・スキップ0）。別実行の件数を112へ加算しない。当時の文書のNSG2表は正本75件の名称と優先度に一致し、FW表は35件に一致した。今回のAzure反映、実VMでのPHC同期・時刻精度、再構築E2Eは未実施である。
@@ -52,19 +52,19 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 機能 | 公開実装・試験根拠 |
 | --- | --- |
-| ACAのFirewall経路 | [Core経路の保全試験](../../tests/test_network_preservation.py)、[NSG限定配備試験](../../tests/test_fixed_nsg_upgrade.py)。Firewallを迂回する公開宛経路の拒否と、所定の経路での再適用を確認する。 |
-| 固定NSGの限定移行 | [nsg-fixed-upgrade.bicep](../../infra/modules/nsg-fixed-upgrade.bicep)、[fixed migration](../../tests/test_fixed_nsg_migration.py)、[upgrade](../../tests/test_fixed_nsg_upgrade.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
+| ACAのFirewall経路 | [Core経路の保全試験](../../tests/test_network_preservation.py)。Firewallを迂回する公開宛経路の拒否と、所定の経路での再適用を確認する。 |
+| 固定NSGの構築と再開 | [配備前後の読戻し試験](../../tests/test_fixed_nsg_validation.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
 | Broker常設 | [Broker配備資材](../../apps/apim/deploy/main.bicep)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py)の`test_broker_resources_are_always_selected_independently_of_business_profiles` |
-| L7入口保護 | [AppGW資材](../../infra/modules/application-gateway.bicep)、[APIM共通policy](../../apps/apim/policies/service.xml)、[trusted ingress](../../tests/test_trusted_ingress.py) |
-| 本文監査の専用経路 | [追加NSG正本](../../infra/audit-evidence-nsg.json)、[本文監査のネットワーク資材](../../infra/modules/audit-evidence-network.bicep)、[資材試験](../../tests/test_audit_evidence_infra.py) |
+| L7入口保護 | [AppGW資材](../../infra/modules/ingress/application-gateway.bicep)、[APIM共通policy](../../apps/apim/policies/service.xml)、[trusted ingress](../../tests/test_trusted_ingress.py) |
+| 本文監査の専用経路 | [追加NSG正本](../../infra/modules/network/nsg/audit-evidence-rules.json)、[本文監査のネットワーク資材](../../infra/modules/audit-evidence/audit-evidence-network.bicep)、[資材試験](../../tests/test_audit_evidence_infra.py) |
 | 監査Blob閲覧 | [本人へ付与する保守権限](../operations/management-vm-access.md)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py) |
-| ACA/保存ログの認可 | [maintenance roles](../../infra/modules/management-maintenance-roles.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py) |
+| ACA/保存ログの認可 | [maintenance roles](../../infra/modules/management/management-maintenance-roles.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py) |
 | 監査Blob閲覧 | [保守時の手動付与](../operations.md#保守の付与回収)、[保守資材の回帰試験](../../tests/test_maintenance_upgrade.py) |
-| ACA/保存ログの認可 | [ACAカスタムロール定義](../../infra/modules/management-maintenance-roles.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py)、[本人クライアント試験](../../tests/test_management_client.py) |
+| ACA/保存ログの認可 | [ACAカスタムロール定義](../../infra/modules/management/management-maintenance-roles.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py)、[本人クライアント試験](../../tests/test_management_client.py) |
 | 保守clientと導入 | [management_client.py](../../scripts/management_client.py)、[client試験](../../tests/test_management_client.py)、[導入試験](../../tests/test_management_client_install.py) |
 | SQL直接保守 | [本人への付与・回収](../operations/management-sql-access.md)、[SQL認可の資材試験](../../tests/test_sql_management_grants_infra.py)、[SQLクライアント試験](../../tests/test_management_sql_client.py) |
-| Serial初期準備 | [初期module](../../infra/modules/management-serial-initialization.bicep)、[初期処理試験](../../tests/test_serial_initialization.py)、[guest試験](../../tests/test_management_serial_guest.py) |
-| 管理VMのAzureホスト時刻 | [guest監査設定](../../infra/guest/configure-audit.sh)、[監査module](../../infra/modules/management-audit.bicep)、[Linux時刻試験](../../tests/test_management_linux.py)。PHC device／`clock_name`、唯一source、既知旧設定の移行、未知設定の拒否、同期確認失敗時の復旧を合成条件で検証する |
+| Serial初期準備 | [初期module](../../infra/modules/management/management-serial-initialization.bicep)、[初期処理試験](../../tests/test_serial_initialization.py)、[guest試験](../../tests/test_management_serial_guest.py) |
+| 管理VMのAzureホスト時刻 | [guest監査設定](../../infra/guest/configure-audit.sh)、[監査module](../../infra/modules/management/management-audit.bicep)、[Linux時刻試験](../../tests/test_management_linux.py)。PHC device／`clock_name`、唯一source、既知旧設定の移行、未知設定の拒否、同期確認失敗時の復旧を合成条件で検証する |
 | Core前の管理VM時刻gate | [読取gate](../../scripts/deployment/helpers/management_host_time.py)、[gate試験](../../tests/test_management_host_time.py)。既存VMの所有・現行script全文一致・RunCommand成功出力、VM作成／実行開始／終了のUTC時刻、旧VMや旧結果の拒否、厳密な整数HTTP404の新規構築判定を検証する。NSG限定移行の旧管理NTP削除にも適用する。先行適用証跡を現在精度の保証にしない |
 
 ## 実環境の実証結果の管理
@@ -138,7 +138,7 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | 高・TLS検査とログ | 検査したURLはFirewallのApplication Rule／Threat Intelログの`TargetUrl`に含まれる可能性があり、OAuthの戻り先には一回限りの値が含まれ得る | URLを記録するカテゴリには取り込み時の削除を適用し、加工前のStorage直送を分ける。合成マーカーのある要求でWorkspace・Storageの双方を確認する。 [Application Ruleログの項目](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwapplicationrule) · [Threat Intelログの項目](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwthreatintel) |
 | 高・Portalと接続所有者 | Portalのプロセスは、同じアプリに割り当てた認証SQL用IDとトークン暗号鍵用IDを使う。侵害時は両方に影響し得る。Entraは同じPortalクライアントで同意済みの別用途にも更新トークンを交換できる | 固定鍵版、期限、認証世代、SQLセッションを照合する。別本人、失効、更新競合、複数レプリカでの停止、インシデント時のセッション失効と鍵更新を受け入れる。 [PortalのID割当](../../apps/portal/deploy/application.bicep) · [Entra追加認証と残る影響](../setup/09-egakumi-portal.md#一度の登録依頼に含める設定) |
 | 高・購読管理への書込み権限 | 公開PortalからAPIM管理権限とSQL台帳の書込み権限を分離した。購読管理の実行IDには対象APIMの購読操作と製品参照を許可する。割当はAPIMインスタンス単位であり、管理サービスの侵害は同じAPIMの他の購読にも影響し得る | 本人トークン、操作時の所属、対象IDと実効権限を[購読管理とプロファイル照会の分離](#購読管理とプロファイル照会の分離)で確認する。既存環境に旧Contributorの割当があれば、移行の受入後に割当IDを特定して個別に回収する。 [APIMロール定義](../../apps/portal/deploy/api-keys.bicep) |
-| 高・共有Key Vaultの読取範囲 | 公開TLSのPFXとACME状態を専用Vaultに分離した。新規資材はAppGWに対象PFXの読取りを付与する。APIMは指定のNamed Valueを参照し、読取のRBACは業務用Vault全体に及ぶ。業務用Vaultは複数処理で共有し、APIM管理プレーンのための例外を持つ | 必要な参照に加え、AppGWによる他のsecretの読取と、APIMや業務用ACAのIDによるTLS Vaultへの未許可操作が拒否されることを確認する。既存環境の広域割当、旧timer、旧証明書とACME状態は実際の依存を確認してから個別に取り扱う。 [Vaultの設定](../../infra/modules/services.bicep) · [RBACの設定](../../infra/modules/service-bindings.bicep) |
+| 高・共有Key Vaultの読取範囲 | 公開TLSのPFXとACME状態を専用Vaultに分離した。新規資材はAppGWに対象PFXの読取りを付与する。APIMは指定のNamed Valueを参照し、読取のRBACは業務用Vault全体に及ぶ。業務用Vaultは複数処理で共有し、APIM管理プレーンのための例外を持つ | 必要な参照に加え、AppGWによる他のsecretの読取と、APIMや業務用ACAのIDによるTLS Vaultへの未許可操作が拒否されることを確認する。既存環境の広域割当、旧timer、旧証明書とACME状態は実際の依存を確認してから個別に取り扱う。 [Vaultの設定](../../infra/modules/services/services.bicep) · [RBACの設定](../../infra/modules/services/service-bindings.bicep) |
 | 高・PortalからBrokerへの横移動 | Brokerを専用の内部ACA環境とサブネットへ分離した。アプリの業務接続をAPIMに限定し、Broker側でも共有鍵・本人・権限を照合する。同じVNetのPEとAzure管理・監視サービスは用途別に利用する | Portal用ACAからBrokerへの直接到達を拒否し、公開Gateway経由の正規処理が成立することを確認する。APIM由来の異常な要求と、Broker実行IDによる対象外の秘密・DB・ARM操作も拒否されることを確認する。 [Broker環境の分離](#credential-broker環境の分離) |
 | 中・接続先、長時間通信と障害 | 検査用中間CAとDNSが経路の信頼点になる。CA失効、証明書名の違い、長い接続の切断はGateway全体へ波及し得る | CAアクセスを専用IDと対象secretへ絞り、切替と期限を運用で確認する。正しい経路と証明書不一致、JSON、SSE、WebSocket、MCPを試験し、タイムアウトとIDPSを監査で識別する |
 

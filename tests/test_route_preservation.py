@@ -21,7 +21,7 @@ class RoutePreservationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.templates = {
             'main': compile_bicep('infra/main.bicep'),
-            'network': compile_bicep('infra/modules/network.bicep'),
+            'network': compile_bicep('infra/modules/network/network.bicep'),
         }
         cls.network = cls.templates["network"]
         cls.route_table = cls.network["resources"]["routeTables"]

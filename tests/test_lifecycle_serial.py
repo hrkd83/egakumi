@@ -89,7 +89,7 @@ class SerialLifecycleTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             for name, value in (("run", {"resources": []}), ("ArmTransport", transport),
                                 ("require_certificate_registry_ready", None), ("plan_secret_registration", {}),
-                                ("prepare_core_network_upgrade", None), ("complete_core_network_upgrade", None),
+                                ("verify_core_network_before_deployment", None), ("verify_core_network_after_deployment", None),
                                 ("discover_existing_network_security_groups", []), ("discover_existing_route_table_routes", {}),
                                 ("discover_existing_apim_hostnames", {}), ("discover_existing_apim_egress_fqdns", []),
                                 ("discover_existing_portal_app", False), ("read_workspace_privacy_link", ""),
@@ -191,7 +191,7 @@ class SerialLifecycleTests(unittest.TestCase):
         def verified_initialization(config,workspace,value,password,transport,template,writer):
             initial.save(workspace,{**value,"dispatchAttempted":True},writer)
             return {**value["target"],"schemaVersion":1,"status":"complete","passwordWriteRequested":True,"verificationAttempted":True,"pamAuthenticated":True,"sshVerified":True}
-        with mock.patch.object(lifecycle,"run",side_effect=[{"CORE_DEPLOYMENT_NAME":self.config["resourceStem"]+"-core"},response,{"CORE_DEPLOYMENT_NAME":self.config["resourceStem"]+"-core"},{"resources":[]}]),              mock.patch.object(initial,"initialize_guest",side_effect=verified_initialization),              mock.patch.object(lifecycle,"ArmTransport",return_value=transport),              mock.patch.object(lifecycle,"_save_deployment_state"),              mock.patch.object(lifecycle,"complete_core_network_upgrade"),              mock.patch.object(lifecycle,"configure_grpc_endpoint",return_value={"enabled":False}),              mock.patch.object(lifecycle,"configure_public_dns",return_value={"status":"configured"}),              contextlib.redirect_stdout(self.output):
+        with mock.patch.object(lifecycle,"run",side_effect=[{"CORE_DEPLOYMENT_NAME":self.config["resourceStem"]+"-core"},response,{"CORE_DEPLOYMENT_NAME":self.config["resourceStem"]+"-core"},{"resources":[]}]),              mock.patch.object(initial,"initialize_guest",side_effect=verified_initialization),              mock.patch.object(lifecycle,"ArmTransport",return_value=transport),              mock.patch.object(lifecycle,"_save_deployment_state"),              mock.patch.object(lifecycle,"verify_core_network_after_deployment"),              mock.patch.object(lifecycle,"configure_grpc_endpoint",return_value={"enabled":False}),              mock.patch.object(lifecycle,"configure_public_dns",return_value={"status":"configured"}),              contextlib.redirect_stdout(self.output):
             lifecycle.postprovision(self.config)
         self.assertEqual(self.receipt()["boundVmId"],self.vm()["body"]["properties"]["vmId"])
         self.assertFalse(self.paths.parameters.exists())

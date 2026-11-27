@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Portal認証証明書の初期発行・更新・手動登録確認・切替・受入・復旧・旧版廃止。既定は計画。"""
+"""Portal認証証明書の初期状態確認・更新・手動登録確認・切替・受入・復旧・旧版廃止。"""
 from __future__ import annotations
 
 import os
@@ -306,7 +306,7 @@ def main(argv=None):
     parser = SafeParser(description=__doc__)
     parser.add_argument('action', choices=('initialize', 'prepare', 'confirm-registration', 'switch', 'verify', 'rollback', 'retire'))
     parser.add_argument('--config', required=True)
-    parser.add_argument('--runtime-root', help='Explicit protected runtime checkout for initialization from isolated source')
+    parser.add_argument('--runtime-root', help='Explicit protected runtime checkout for checking initial state')
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--resume-failed-worker', action='store_true', help='Resume a terminal failed worker using its saved KV request checkpoint')
     for flag in ('entra-registration-confirmed', 'login-verified', 'graph-verified', 'job-verified', 'entra-old-certificate-removed'):
@@ -316,7 +316,7 @@ def main(argv=None):
         if args.action == 'initialize':
             if args.resume_failed_worker or any(getattr(args, flag) for flag in
                     ('entra_registration_confirmed', 'login_verified', 'graph_verified', 'job_verified', 'entra_old_certificate_removed')):
-                raise OperationError('Initialization resumes recorded deployments; failed work requires checkpoint review')
+                raise OperationError('Initial state verification does not accept certificate rotation flags')
             from operations.portal_certificate_initialization import load_context, initialize, locked
             ctx = load_context(args.config, args.runtime_root)
             with locked(ctx):

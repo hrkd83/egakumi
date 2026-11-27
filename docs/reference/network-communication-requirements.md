@@ -24,7 +24,7 @@
 | Firewallの記録範囲 | 実際にFirewallを通る通信だけをルールにする | PEへ直接接続するSQL/Key Vault等に、将来の迂回を想定したFW規則を置かない。通信要件は本書で記録する |
 | 引渡し後の企業接続 | ハブ＆スポーク、中央DNS、企業NTP、許可元IPを手動で調整 | 初期構築の固定資材を企業設定の再適用手段としない。再実行は手動変更を戻し得るため、必要になった場合は別途差分と所有範囲を確認する |
 
-設定・経路の実装元は[network.bicep](../../infra/modules/network.bicep)、[network-bindings.bicep](../../infra/modules/network-bindings.bicep)、[Portalの経路binding](../../infra/modules/portal-network-bindings.bicep)である。[ハブ＆スポーク移行手順](../setup/10-hub-spoke.md)は、初期要件と企業側変更の所有範囲を分けて読む。
+設定・経路の実装元は[network.bicep](../../infra/modules/network/network.bicep)、[network-bindings.bicep](../../infra/modules/network/network-bindings.bicep)、[Portalの経路binding](../../infra/modules/network/portal-network-bindings.bicep)である。[ハブ＆スポーク移行手順](../setup/10-hub-spoke.md)は、初期要件と企業側変更の所有範囲を分けて読む。
 
 公開TLS用Key Vaultと業務用Key Vaultには別々のPrivate Endpointを作り、同じ `privatelink.vaultcore.azure.net` ゾーンへ各Vaultのレコードを登録する。 [証明書用Jobの通信](../operations/certificate-jobs.md)
 

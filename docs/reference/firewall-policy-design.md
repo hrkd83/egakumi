@@ -23,12 +23,12 @@ NSGの `allow-internet-egress` がTCP80／443を許可していても、Firewall
 
 | RCG | 優先度 | collection（優先度） | 規則数 | 正本 |
 | --- | ---: | --- | ---: | --- |
-| `rcg-ingress` | 200 | `allow-agw-to-backends`（200） | 2 | [portal-network-bindings.bicep](../../infra/modules/portal-network-bindings.bicep) |
-| `rcg-platform` | 300 | `allow-apim-platform`（200）、`allow-vm-platform`（210） | 12 | [network.bicep](../../infra/modules/network.bicep) |
-| `rcg-portal` | 350 | `portal-azure-monitor`（150）、`portal-platform-and-probe`（200）、`portal-runner`（300） | 6 | [portal-network.bicep](../../infra/modules/portal-network.bicep) |
-| `rcg-credential-broker` | 360 | `credential-broker-azure`（200） | 3 | [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) |
+| `rcg-ingress` | 200 | `allow-agw-to-backends`（200） | 2 | [portal-network-bindings.bicep](../../infra/modules/network/portal-network-bindings.bicep) |
+| `rcg-platform` | 300 | `allow-apim-platform`（200）、`allow-vm-platform`（210） | 12 | [network.bicep](../../infra/modules/network/network.bicep) |
+| `rcg-portal` | 350 | `portal-azure-monitor`（150）、`portal-platform-and-probe`（200）、`portal-runner`（300） | 6 | [portal-network.bicep](../../infra/modules/network/portal-network.bicep) |
+| `rcg-credential-broker` | 360 | `credential-broker-azure`（200） | 3 | [credential-broker-network.bicep](../../infra/modules/network/credential-broker-network.bicep) |
 | `rcg-portal-gateway` | 370 | `portal-gateway`（100） | 1 | [gateway-egress.bicep](../../apps/portal/deploy/gateway-egress.bicep) |
-| `rcg-egress` | 400 | `allow-apim-egress`（200）、`allow-vm-egress`（210） | 11 | [network.bicep](../../infra/modules/network.bicep) |
+| `rcg-egress` | 400 | `allow-apim-egress`（200）、`allow-vm-egress`（210） | 11 | [network.bicep](../../infra/modules/network/network.bicep) |
 
 同じFirewall Policyへの配備は先行処理の完了後に進め、別アプリのRCGを置き換えない。Portal Gateway用RCGは370とし、Broker用360との同順位を解消する。再配備時に個々の規則だけでなく、所有collectionのpriority、action、規則集合、送信元、宛先、プロトコルを照合する。
 

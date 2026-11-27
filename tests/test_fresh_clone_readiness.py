@@ -103,8 +103,8 @@ class FreshCloneReadinessTests(unittest.TestCase):
         self.root = Path(self.directory.name).resolve()
         # 読む元を公開ソースの種類へ限定する。*.local.jsonやprivate領域を探索しない。
         patterns = ("scripts/**/*.py", "config/test.json", "config/production.json",
-                    "params/*.example.json", "schemas/*.schema.json", "infra/log-privacy.json",
-                    "infra/nsg-rule-priorities.json",
+                    "params/*.example.json", "schemas/*.schema.json", "infra/modules/monitoring/log-privacy.json",
+                    "infra/modules/network/nsg/core-rules.json",
                     "apps/apim/waf-input-contracts.json", "apps/apim/waf-data-exclusions.json",
                     "apps/apim/apis/*.json", "apps/apim/schemas/*.json", "apps/apim/model-capabilities.json",
                     "apps/apim/public-bindings.json")

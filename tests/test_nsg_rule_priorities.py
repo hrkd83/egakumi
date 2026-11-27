@@ -50,8 +50,8 @@ def canonical(p):
 class NsgRulePriorityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.contract = json.loads((ROOT / 'infra/nsg-rule-priorities.json').read_text())
-        cls.templates = {m: compile_bicep('infra/modules/' + m + '.bicep') for m in MODULES}
+        cls.contract = json.loads((ROOT / 'infra/modules/network/nsg/core-rules.json').read_text())
+        cls.templates = {name: compile_bicep(f'infra/modules/network/{name}.bicep') for name in MODULES}
 
     def parameters(self, multiple=True, prefix='10.70'):
         subnets = {'agw': prefix+'.0.0/24', 'pep': prefix+'.1.0/24', 'firewall': prefix+'.2.0/26',

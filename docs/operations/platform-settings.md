@@ -68,7 +68,7 @@ ETag競合・未完了時も、ポリシーやAppGWを削除して再作成し�
 
 ## 不要なDNS用NSG子規則を回収する
 
-この節のCLIは旧資材のDNS6子だけを扱う互換入口である。通常Coreは全72ルールを扱う固定NSG移行に統合し、以下の旧cleanupを個別に重ねて実行しない。
+この節のCLIは旧資材のDNS6子だけを扱う互換入口である。新規構築では現行の固定NSGを配置する。
 
 Azure提供DNSを使う本構成では、`allow-dns-tcp`と`allow-dns-udp`を
 AppGW・APIM・管理VMのNSGへ追加しない。Incremental配備は省いた子規則を
@@ -98,7 +98,7 @@ python3 -B scripts/operations/nsg_dns.py --config "$DEPLOY_PARAMS_FILE" --execut
 残件を計画し直す。ETagを使える子ではIf-Matchを付けるが、直前読取と
 ローカルロックは別端末の同時変更に対する原子的な排他を保証しない。
 
-通常のCoreは全72件の固定NSG移行へ統合し、旧DNS6子の個別cleanupを重ねない。
+この操作は過去の資材で作成した環境に限る。
 [現在の固定集合と移行順序](network-security-groups.md#新規構築と既存環境の移行)を参照する。
 
 ## AppGWの重複する送信規則を回収する
@@ -108,7 +108,7 @@ python3 -B scripts/operations/nsg_dns.py --config "$DEPLOY_PARAMS_FILE" --execut
 APIM／ACAとKey VaultへのHTTPS443を別のFIX名・割当IPで明示する。
 既定Outbound許可も維持するため、明示Allowだけで送信範囲を限定したとは解釈しない。
 
-通常Coreでは全72件を検証して旧子を回収する固定NSG移行を使用し、この旧3子CLIを重ねない。
+この操作は過去の資材で対象の3規則を作成した環境に限る。
 単独の互換CLIを使う場合も、所有・完全一致tuple・既定許可・現在ETagを確認し、
 対象3子だけを回収する。他NSG、UDR、DNS、Firewall、現在のFIX名ルールを削除しない。
 変更前・試行・結果は保護した`state/operations/`へ保存する。
@@ -244,7 +244,7 @@ API Centerへの同期登録がある場合も残存を確認し、今回の専�
 
 ## 監視通知先・条件を更新し、ログを点検する
 
-正本は[監視の関連付け](../../infra/modules/monitoring-bindings.bicep)と
+正本は[監視の関連付け](../../infra/modules/monitoring/monitoring-bindings.bicep)と
 `monitoring`設定である。通知は既存Action groupのメール宛先を使い、
 障害を自動回収する新しい処理は追加しない。
 

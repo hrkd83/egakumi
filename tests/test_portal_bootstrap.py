@@ -229,7 +229,7 @@ class PortalBootstrapBicepTests(unittest.TestCase):
         exported_plan = main['outputs']['gatewayPlan']['value']
         self.assertIn("'portalBackendHost', reference(", exported_plan)
         self.assertIn(".outputs.appHost.value", exported_plan)
-        ingress = compile_bicep('infra/public-ingress.bicep')
+        ingress = compile_bicep('infra/modules/ingress/public-ingress.bicep')
         gateway = next(item for item in ingress['resources']
                        if 'portalBackendHost' in item.get('properties', {}).get('parameters', {}))
         self.assertEqual(gateway['properties']['parameters']['portalBackendHost']['value'],

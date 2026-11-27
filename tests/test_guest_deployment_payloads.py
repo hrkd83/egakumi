@@ -3,10 +3,10 @@
 Only local compilation, shell syntax checks and a harmless shebang probe run.
 No guest setup, cloud deployment, credential handling or host service changes run.
 """
-import base64
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -37,14 +37,12 @@ class PayloadExpression(ArmExpression):
         tree = self.tree if tree is None else tree
         if tree[0] == "call":
             _, name, arguments = tree
-            if name in {"variables", "replace", "base64", "string", "split", "environment"}:
+            if name in {"variables", "replace", "string", "split", "environment"}:
                 values = [self.evaluate(parameters, index, item, bindings) for item in arguments]
                 if name == "variables":
                     return self.resolve(self.variables[values[0]], parameters)
                 if name == "replace":
                     return values[0].replace(values[1], values[2])
-                if name == "base64":
-                    return base64.b64encode(values[0].encode()).decode()
                 if name == "string":
                     return json.dumps(values[0], separators=(",", ":"))
                 if name == "split":
@@ -59,22 +57,28 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
     def setUpClass(cls):
         bicep = bicep_executable()
         cls.templates = {}
+        templates = {
+            "management-audit": "infra/modules/management/management-audit.bicep",
+            "management-host-time": "infra/modules/management/management-host-time.bicep",
+            "portal-network": "infra/modules/network/portal-network.bicep",
+        }
         with tempfile.TemporaryDirectory(prefix="core-guest-payloads-") as folder:
             root = Path(folder)
-            for source in (CORE / "infra/modules").glob("*.bicep"):
-                target = root / "infra/modules" / source.name
+            network = "infra/modules/network"
+            shutil.copytree(CORE / network, root / network)
+            for name in ("management-audit", "management-host-time"):
+                target = root / templates[name]
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(source.read_bytes())
-            (root / "infra/nsg-rule-priorities.json").write_bytes((CORE / "infra/nsg-rule-priorities.json").read_bytes())
+                shutil.copyfile(CORE / templates[name], target)
             (root / "infra/guest").mkdir()
+            guest = "infra/guest/configure-audit.sh"
+            content = (CORE / guest).read_bytes().replace(b"\r\n", b"\n")
             for newline in (b"\n", b"\r\n"):
-                for name in ("configure-audit.sh", "certificate-bootstrap.sh", "certificate.ps1"):
-                    content = (CORE / "infra/guest" / name).read_bytes().replace(b"\r\n", b"\n")
-                    (root / "infra/guest" / name).write_bytes(content.replace(b"\n", newline))
-                for name in ("management-audit", "management-host-time", "certificate", "portal-network"):
+                (root / guest).write_bytes(content.replace(b"\n", newline))
+                for name, relative in templates.items():
                     output = root / (name + ".json")
                     result = subprocess.run(
-                        [bicep, "build", str(root / "infra/modules" / (name + ".bicep")), "--outfile", str(output)],
+                        [bicep, "build", str(root / relative), "--outfile", str(output)],
                         capture_output=True, text=True, check=False, timeout=60,
                         env={**os.environ, "DOTNET_BUNDLE_EXTRACT_BASE_DIR": str(root / "dotnet")},
                     )
@@ -90,7 +94,7 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
 
     def test_actual_run_command_scripts_are_lf_and_have_a_working_linux_shebang(self):
         for newline in (b"\n", b"\r\n"):
-            for name in ("management-audit", "management-host-time", "certificate"):
+            for name in ("management-audit", "management-host-time"):
                 with self.subTest(source_newline=newline, module=name):
                     template = self.templates[newline, name]
                     command, = [item for item in template["resources"]
@@ -109,9 +113,6 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
                             result = subprocess.run([str(probe)], capture_output=True, text=True, timeout=5)
                             self.assertEqual(result.returncode, 0, result.stderr)
                             self.assertEqual(result.stdout, "ready\n")
-                    if name == "certificate":
-                        worker = (CORE / "infra/guest/certificate.ps1").read_bytes().replace(b"\r\n", b"\n")
-                        self.assertIn(base64.b64encode(worker).decode(), script)
 
     def test_host_time_only_payload_shares_the_audit_script_with_one_fixed_mode_change(self):
         for newline in (b"\n", b"\r\n"):

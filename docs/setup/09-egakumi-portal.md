@@ -27,7 +27,7 @@ Portalログイン、Graph所属照会とAPI試用のために、専用のWebア
 
 `postprovision`は開始したACA Job実行の正常終了と保護された結果を照合し、公開証明書を`.local/<environment>/generated/portal-auth-public.cer`へ、固定参照を同じ環境の`state/portal-auth-certificate.json`へ保存します。単にファイルが存在するだけで初期構築の成功とは判断せず、今回のJob実行の終了結果を確認してください。
 
-この初期発行は全体構築のCoreとhookに組み込まれており、構築後に別の発行コマンドを追加で実行する手順にはしません。すでに構築済みの環境へ証明書準備だけを追加する場合は、[初期発行の限定追加手順](../operations/portal-authentication.md#初期構築と既存環境への限定追加)を使います。どちらも公開`.cer`を取得してから、以下の一度のEntra登録依頼へ進みます。
+Core構築で用意した公開`.cer`を使い、以下の一度のEntra登録依頼へ進みます。Jobが失敗した場合は、[Coreの発行結果と再開手順](../operations/portal-authentication.md#初期証明書の発行と確認)を確認してください。
 
 ```mermaid
 flowchart LR

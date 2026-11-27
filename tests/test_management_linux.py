@@ -381,7 +381,7 @@ chronyc() {
         if time_only:
             # 新moduleが実際に生成した全文を実行し、後段SSH/syslogへ進まないことを確認する。
             from test_guest_deployment_payloads import PayloadExpression
-            template = compile_bicep("infra/modules/management-host-time.bicep")
+            template = compile_bicep("infra/modules/management/management-host-time.bicep")
             command, = [item for item in template["resources"]
                         if item["type"] == "Microsoft.Compute/virtualMachines/runCommands"]
             prefix = PayloadExpression(command["properties"]["source"]["script"],
@@ -506,10 +506,10 @@ class LinuxManagementTemplateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.templates = {
-            'management': compile_bicep('infra/modules/management.bicep'),
-            'monitoring': compile_bicep('infra/modules/monitoring.bicep'),
-            'management-audit': compile_bicep('infra/modules/management-audit.bicep'),
-            'management-host-time': compile_bicep('infra/modules/management-host-time.bicep'),
+            'management': compile_bicep('infra/modules/management/management.bicep'),
+            'monitoring': compile_bicep('infra/modules/monitoring/monitoring.bicep'),
+            'management-audit': compile_bicep('infra/modules/management/management-audit.bicep'),
+            'management-host-time': compile_bicep('infra/modules/management/management-host-time.bicep'),
         }
 
     @staticmethod

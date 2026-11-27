@@ -38,33 +38,13 @@ Networkの取消コミット`5f72d83`を取り込んだ後、9スイート102試
 | `test_portal_auth_certificate`、`test_portal_authentication_infra` | 初期公開証明書・state・更新段階、Core/PortalのBicep生成、初期workerと署名ID・権限 |
 | `test_management_client_assets`、`test_management_client_assets_bicep` | Proxyを要求する照合と限定配備、管理client・network・credential networkのBicep生成 |
 | `test_deploy_applications` | 初期構築のGateway-only入口とPortal個別配備の分担 |
-| `test_nsg_rule_priorities`、`test_fixed_nsg_migration`、`test_fixed_nsg_upgrade`、`test_nsg_deployment_order` | 固定NSG集合・SQL向け4規則のTCP1433・既存移行と配備順 |
+| `test_nsg_rule_priorities`、`test_fixed_nsg_validation`、`test_nsg_deployment_order` | 固定NSG集合・SQL向け4規則のTCP1433・固定通信の照合と配備順 |
 
-Proxy取消の統合時点で、`infra/`、`scripts/`、`apps/`の実装は証明書改修済みコミット`511575f`と一致することを確認しました。その後の既存環境向け初期発行入口の追加は、次節の別検証です。Redirect専用module・CLI・manifestと残存参照を除去し、Portal用の公開データ許可定義を保持しました。これらは合成検証であり、Azure操作・SQL実接続・証明書発行・Entraログインの受入ではありません。
+Proxy取消の統合時点で、`infra/`、`scripts/`、`apps/`の実装は証明書改修済みコミット`511575f`と一致することを確認しました。その後に検証した旧VM方式の初期発行は、次節に履歴として記録します。Redirect専用module・CLI・manifestと残存参照を除去し、Portal用の公開データ許可定義を保持しました。これらは合成検証であり、Azure操作・SQL実接続・証明書発行・Entraログインの受入ではありません。
 
-### 限定追加入口と全体構築の確認
+### 従来のVM方式の確認履歴
 
-以下は、従来のVM方式で証明書の3部品限定追加を実装した時点の記録です。当時のCore・hookと`initialize`を対象に、`tests/test_portal_certificate_initialization.py`の21試験を含む7スイート133試験を実行しました。132成功、macOSの一時領域alias専用の1件は対象外でスキップでした。初回の新設試験で失敗したmetadataの比較は、保存前のmetadataとの比較へ修正して回帰を実行しました。現在の新規構築の確認対象は[実環境の構築試験](#実環境の構築試験)を参照します。
-
-| 対象 | 確認内容 |
-| --- | --- |
-| 当時の新規全体構築のBicep | Coreが限定追加と同じ3テンプレート・計4資源を条件付きで呼び出す。専用Entra入力なしで証明書名・有効期間を渡し、TLS/runtime・KV通信/RBAC・監査の準備へ依存する。初期Run CommandのIDを出力 |
-| 当時の`postprovision`と実collector | collectorを置換せず合成ARM応答で公開`.cer`と初期stateを保存。再実行はcurrentを保持。初期発行失敗時の停止、Core記録保持・生成秘密入力回収を確認。違うcurrentへの上書きを拒否 |
-| 限定追加と再開 | 既定計画でPUTなし、実行で3配備のみ。what-ifの追加書込み・Modify/Delete・広い鍵権限・誤principal・別worker・欠落/重複/診断を拒否。不明な受理済みPUTを再送せず、公開証明書の保存失敗から再収集。Failedを自動再実行しない |
-| 保護runtimeとcheckpoint | 明示した別runtimeの正式params/Core stateを読み込み、azd選択・リンク・権限・排他を照合。入力/source/VM principal変更と不正receiptを拒否。初期発行に無関係な更新用受入フラグを拒否 |
-| 既存回帰 | `test_portal_auth_certificate`、`test_portal_authentication_infra`、`test_operations_common`、`test_local_paths`、`test_lifecycle`、`test_deploy_applications`。公開データ検査も成功 |
-
-ARMがwhat-if結果URLへ付けるopaqueな`c/h/s/t` contextと、Subscription直下・Resources providerのlocation配下の結果パスに対応しました。同じ管理ホスト・Subscription、固定API版、既知パラメータの単一値だけを受け付けます。余分なパラメータ・空値・過大値・制御文字・外部ホスト・別Subscription・対象外パス・重複パラメータを拒否します。拒否URLの保護保存で不完全な`Mock` workspaceを使ったfixtureの1エラーは、具体的な合成Pathへ修正しました。修正後はwhat-if対象6試験と、全体構築のBicep/collectorを含む専用22試験がすべて成功しました。
-
-さらに、ARMが空の権限配列を`null`として返し、what-ifで`principalType`を省略する場合に対応しました。対象の管理VM principalId、鍵scope、ロール参照とread/write権限は照合し、実配備のreadbackでは`ServicePrincipal`を必須にしています。空配列のnull表現、追加の広い権限・User種別の拒否、実readbackの厳密さを合成試験へ追加し、what-ifと限定追加・再開の対象17試験がすべて成功しました。この追加後の専用試験は23件です。
-
-これは資材のコンパイルと合成応答によるローカル確認です。新規Azure環境での全体構築、管理VMの実runtime・KV発行、Entra登録・実ログインを実証した結果ではありません。既存環境向け入口のAzure実適用は最終what-ifの確認と判断後に行います。
-
-管理VMの旧鍵版無効化に使うDataActionを`Microsoft.KeyVault/vaults/keys/update/action`へ修正しました。`keys/write`は管理プレーンのActionで、DataActionとして指定するとロール定義が拒否されます。Core生成で鍵単位のreadとupdate/actionだけを要求する回帰を追加し、限定追加・再開とPortal認証資材の関連42試験は全件成功しました。これはローカルの資材・合成試験の結果です。
-
-RGで宣言したロール定義と割当先のロールIDがSubscription直下の正規形で返る場合にも対応しました。GETの接続先は所有RGに限定したまま、同じSubscription・ロールGUIDと要求済みのscope・権限を照合します。別Subscription・GUID・広いassignable scopeの拒否と、受理済み配備を再送せず正規形の読戻しから再開する回帰を追加し、関連45試験は全件成功しました。
-
-証明書の最新GET（policy付き）と版指定GET（policyなし）を区別しました。workerは同じ最新の版で検証したpolicyを、証明書ID・鍵ID・thumbprintと結び付けてVMの保護checkpointへ保存します。オフライン試験では実際のAPIと同じ省略形を使い、現在の別版のpolicyを旧版へ代用しないことと、記録欠落・違う鍵ID・thumbprintの拒否を追加しました。旧版は発行時に検証した有効期間を使用し、新版の期間変更で旧版の照合を拒否しないケースも確認しました。PowerShellの18ケースは全件成功しました。
+ACA Jobへ移行する前は、管理VMへ初回発行用のRun Commandを追加する入口がありました。当時は既存資源への書込み範囲、応答不明時の再送抑止、公開証明書の収集・保存、入力と対象の照合を合成データで検証しました。初回は関連133件中132件成功、macOSの一時領域を使う1件が対象外でした。その後の権限とロール参照の修正を含む関連45件が成功しました。この旧入口に関する結果は履歴です。
 
 ## ローカルで確認する契約
 
@@ -80,7 +60,7 @@ RGで宣言したロール定義と割当先のロールIDがSubscription直下�
 | `tests/test_certificate_jobs.py` | 専用Jobの配備と初回実行順序、非公開イメージ、対象実行と結果の照合、開始応答不明からの再開 |
 | `tests/test_portal_auth_certificate.py` | 初期構築はClient ID不要、手動登録後の2項目入力、公開DERとthumbprint・期限・KV参照、単一worker出力、登録前切替拒否、旧VM入口での不明PUTの再送抑止、手動受入と旧Entra削除の必要性 |
 | `tests/test_portal_authentication_infra.py` | Bicepコンパイル、CoreとPortal本体の資源責任、専用ID、鍵scope権限、secretと証明書の設定、ジョブ・DB・Gateway既存設定 |
-| `tests/test_portal_certificate_initialization.py` | 旧VM方式の限定追加での4資源照合・応答不明PUTの再送抑止・保護runtime |
+| `tests/test_portal_certificate_initialization.py` | ACA Jobが保存した初期状態の読取り、旧構成への初期配備の停止、保護runtimeと排他、旧Coreの発行済み結果の収集 |
 | `tests/test_deploy_applications.py` | アプリ配備補助入口のGateway-only指定と、両アプリの配備順、失敗時の停止、state選択 |
 | Portalの認証・Graphテスト | client assertionの固定宛先・thumbprint・短命性・digest署名・秘密非露出、ログインのtid/oid、Graph管理契約、既存セッション・実行用SQL権限 |
 

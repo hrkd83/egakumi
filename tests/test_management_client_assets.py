@@ -82,7 +82,7 @@ class ManagementClientAssetTests(unittest.TestCase):
         with mock.patch.object(lifecycle, 'run', return_value=template) as run:
             self.assertEqual(assets._client_template(), template)
         run.assert_called_once_with(['az', 'bicep', 'build', '--file',
-            str(assets.REPOSITORY / 'infra/modules/management-maintenance-client.bicep'), '--stdout'])
+            str(assets.REPOSITORY / 'infra/modules/management/management-maintenance-client.bicep'), '--stdout'])
 
     def test_missing_or_foreign_core_inventory_is_not_inferred_from_names(self):
         config, state, outputs, _ = fixture()

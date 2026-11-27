@@ -336,7 +336,7 @@ class LifecycleAppgwEgressTests(LifecycleFixture, unittest.TestCase):
         events = []
         self.host_time_gate.side_effect = lambda *args: events.append("host-time")
         self.appgw_tls_gate.side_effect = lambda *args, **kwargs: events.append("backend-tls")
-        self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("fixed-stage") or {"azureWrites": 0}
+        self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("verify-nsg")
         outputs = self.outputs()
         for phase in ("core", "monitoring"):
             checks = [{"statusCode": 404}] if phase == "core" else []
@@ -351,11 +351,9 @@ class LifecycleAppgwEgressTests(LifecycleFixture, unittest.TestCase):
                     mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}), \
                     mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
                     mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
-                    mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True}), \
-                    mock.patch.object(lifecycle, "cleanup_appgw_egress_nsg_rules") as legacy_cleanup:
+                    mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True}):
                 lifecycle.deploy_phase(self.config, phase, secrets={})
-            legacy_cleanup.assert_not_called()
-        self.assertEqual(events, ["host-time", "backend-tls", "fixed-stage", "discover"])
+        self.assertEqual(events, ["host-time", "backend-tls", "verify-nsg", "discover"])
         self.host_time_gate.assert_called_once()
         self.appgw_tls_gate.assert_called_once()
         self.prepare_nsg.assert_called_once()

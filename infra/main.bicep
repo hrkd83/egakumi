@@ -139,14 +139,14 @@ resource maintGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = {
 }
 
 // 証明書参照用 ID を作成。Entra のアプリ登録とは独立して Azure 内で完結します。
-module identity 'modules/identity.bicep' = {
+module identity 'modules/certificates/public-tls-identity.bicep' = {
   name: '${stem}-identity'
   scope: idGroup
   params: { resourceStem: stem, location: location, tags: tags }
 }
 
 // 構築中の記録も保存できるよう、監視保存先と収集定義を最初に用意します。
-module monitoring 'modules/monitoring.bicep' = {
+module monitoring 'modules/monitoring/monitoring.bicep' = {
   name: '${stem}-monitoring'
   scope: monitorGroup
   params: {
@@ -171,7 +171,7 @@ module monitoring 'modules/monitoring.bicep' = {
 
 
 // VNet と固定規則を作成し、APIM と管理 VM の初回起動前に外向き経路を用意します。
-module network 'modules/network.bicep' = if (deployCore) {
+module network 'modules/network/network.bicep' = if (deployCore) {
   name: '${stem}-network'
   scope: nwGroup
   // The local loader validates product/environment length before ARM submission.
@@ -197,7 +197,7 @@ module network 'modules/network.bicep' = if (deployCore) {
 
 
 // FW 通過の証跡は、サービス構築の完了を待たず、FW と保護済み保存先が揃ったら収集します。
-module firewallDiagnostics 'modules/firewall-diagnostics.bicep' = if (deployCore) {
+module firewallDiagnostics 'modules/monitoring/firewall-diagnostics.bicep' = if (deployCore) {
   name: '${stem}-firewall-diagnostics'
   scope: nwGroup
   params: {
@@ -209,7 +209,7 @@ module firewallDiagnostics 'modules/firewall-diagnostics.bicep' = if (deployCore
 }
 
 // 固定ネットワークの完成後にサービス本体を作成。実 IP の確定後に追加規則を設定します。
-module services 'modules/services.bicep' = if (deployCore) {
+module services 'modules/services/services.bicep' = if (deployCore) {
   name: '${stem}-services'
   scope: svcGroup
   params: {
@@ -255,7 +255,7 @@ module entraSettings '../apps/apim/deploy/entra-named-values.bicep' = if (deploy
 }
 
 // サービス作成後に Private Endpoint と DNS の対応付けを作ります。
-module endpoints 'modules/services-private-endpoints.bicep' = if (deployCore) {
+module endpoints 'modules/network/services-private-endpoints.bicep' = if (deployCore) {
   name: '${stem}-private-endpoints'
   scope: nwGroup
   params: {
@@ -269,7 +269,7 @@ module endpoints 'modules/services-private-endpoints.bicep' = if (deployCore) {
 }
 
 // プライベートな管理 VM を作成。初期 SSH 公開鍵と監視エージェントを設定します。
-module management 'modules/management.bicep' = if (deployCore) {
+module management 'modules/management/management.bicep' = if (deployCore) {
   name: '${stem}-management'
   scope: maintGroup
   params: {
@@ -296,7 +296,7 @@ module management 'modules/management.bicep' = if (deployCore) {
 }
 
 // 監査Storage本体を再定義せず、構築済み保存先にBlob PEを常設します。
-module auditPrivateEndpoints 'modules/audit-storage-private-endpoints.bicep' = if (deployCore) {
+module auditPrivateEndpoints 'modules/monitoring/audit-storage-private-endpoints.bicep' = if (deployCore) {
   name: '${stem}-audit-private-endpoints'
   scope: nwGroup
   params: {
@@ -309,7 +309,7 @@ module auditPrivateEndpoints 'modules/audit-storage-private-endpoints.bicep' = i
 }
 
 // 実 IP を使って NSG・UDR を仕上げ、AppGW → Firewall → APIM と PE 接続を許可します。
-module networkBindings 'modules/network-bindings.bicep' = if (deployCore) {
+module networkBindings 'modules/network/network-bindings.bicep' = if (deployCore) {
   name: '${stem}-network-bindings'
   scope: nwGroup
   params: {
@@ -334,7 +334,7 @@ module networkBindings 'modules/network-bindings.bicep' = if (deployCore) {
 }
 
 // 対向NSGの完了後にzone groupを作り、実Aレコードを読むまでDNSリンクを作りません。
-module auditPrivateDns 'modules/audit-storage-private-dns.bicep' = if (deployCore) {
+module auditPrivateDns 'modules/monitoring/audit-storage-private-dns.bicep' = if (deployCore) {
   name: '${stem}-audit-private-dns'
   scope: nwGroup
   params: {
@@ -353,7 +353,7 @@ var auditDnsChecks = deployCore ? [
   length(intersection(auditPrivateDns!.outputs.recordPrivateIps.collectFoundry, auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps)) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps)
 ] : [false]
 var auditDnsReady = empty(filter(auditDnsChecks, ready => !ready))
-module auditPrivateDnsLink 'modules/audit-storage-private-dns-link.bicep' = if (deployCore) {
+module auditPrivateDnsLink 'modules/monitoring/audit-storage-private-dns-link.bicep' = if (deployCore) {
   name: '${stem}-audit-private-dns-link'
   scope: nwGroup
   params: {
@@ -367,12 +367,12 @@ module auditPrivateDnsLink 'modules/audit-storage-private-dns-link.bicep' = if (
 }
 
 // ロールを定義し、対象資源での担当者への割当は保守時に行います。
-module managementMaintenanceRoles 'modules/management-maintenance-roles.bicep' = if (deployCore) {
+module managementMaintenanceRoles 'modules/management/management-maintenance-roles.bicep' = if (deployCore) {
   name: '${stem}-management-maintenance-roles'
   params: { resourceStem: stem }
 }
 // 内部通信の準備後に、サービス ID へ用途別 Azure RBAC を付与します。
-module serviceBindings 'modules/service-bindings.bicep' = if (deployCore) {
+module serviceBindings 'modules/services/service-bindings.bicep' = if (deployCore) {
   name: '${stem}-service-bindings'
   scope: svcGroup
   params: {
@@ -392,17 +392,17 @@ module serviceBindings 'modules/service-bindings.bicep' = if (deployCore) {
 
 // 共通SQLサーバーとスキーマ管理IDだけをCoreが所有します。
 // Gatewayの接続台帳DB・実行ID・CM定義はアプリ配備工程で作成します。
-module credentialIdentities 'modules/shared-sql-identity.bicep' = if (deployCore) {
+module credentialIdentities 'modules/services/shared-sql-identity.bicep' = if (deployCore) {
   name: '${stem}-credential-identities'
   scope: idGroup
   params: { stem: stem, location: location, tags: tags }
 }
-module credentialSql 'modules/shared-sql.bicep' = if (deployCore) {
+module credentialSql 'modules/services/shared-sql.bicep' = if (deployCore) {
   name: '${stem}-credential-sql'
   scope: svcGroup
   params: { stem: stem, location: location, tags: tags, tenantId: configuration.azureTenantId, schemaIdentity: credentialIdentities!.outputs.schema }
 }
-module sharedEntraSecrets 'modules/shared-entra-secrets.bicep' = if (deployCore) {
+module sharedEntraSecrets 'modules/services/shared-entra-secrets.bicep' = if (deployCore) {
   name: '${stem}-shared-entra-secrets'
   scope: svcGroup
   params: { vaultName: serviceNames.keyVault, profiles: configuration.credentialProfiles, providerSecrets: credentialProviderSecrets }
@@ -410,7 +410,7 @@ module sharedEntraSecrets 'modules/shared-entra-secrets.bicep' = if (deployCore)
 }
 
 // 管理 VM を Azure ホスト PHC に同期し、認証ログを設定。証明書処理より先に完了します。
-module auditConfiguration 'modules/management-audit.bicep' = if (deployCore) {
+module auditConfiguration 'modules/management/management-audit.bicep' = if (deployCore) {
   name: '${stem}-management-audit'
   scope: maintGroup
   params: { vmName: management!.outputs.managementVm.name, location: location, tags: tags }
@@ -418,7 +418,7 @@ module auditConfiguration 'modules/management-audit.bicep' = if (deployCore) {
 }
 
 // 公開TLSとPortalの署名証明書はCoreの後段に起動する専用Jobが扱います。
-module certificateJobIdentities 'modules/certificate-identities.bicep' = if (deployCore) {
+module certificateJobIdentities 'modules/certificates/certificate-identities.bicep' = if (deployCore) {
   name: '${stem}-certificate-job-identities'
   scope: idGroup
   params: { stem: stem, location: location, tags: tags }
@@ -430,7 +430,7 @@ resource dnsJobIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-0
 }
 
 // 入口の共有値は証明書用VaultとJobへ渡しません。
-module ingressValues 'modules/ingress-values.bicep' = if (deployCore) {
+module ingressValues 'modules/ingress/ingress-values.bicep' = if (deployCore) {
   name: '${stem}-ingress-values'
   scope: svcGroup
   params: {
@@ -444,7 +444,7 @@ module ingressValues 'modules/ingress-values.bicep' = if (deployCore) {
 }
 
 // Portal用IDはID用RG、レジストリと実行基盤はサービスRGに配置します。
-module portalPullIdentity 'modules/portal-identity.bicep' = if (deployCore) {
+module portalPullIdentity 'modules/container-apps/portal-identity.bicep' = if (deployCore) {
   name: '${stem}-portal-identity'
   scope: idGroup
   params: { stem: stem, location: location, tags: tags }
@@ -461,7 +461,7 @@ module portalApiAuthIdentity '../apps/portal/deploy/auth-identity.bicep' = if (d
   scope: idGroup
   params: { stem: stem, location: location, tags: tags, purpose: 'portal-api-auth' }
 }
-module portalRegistry 'modules/portal-registry.bicep' = if (deployCore) {
+module portalRegistry 'modules/container-apps/portal-registry.bicep' = if (deployCore) {
   name: '${stem}-portal-registry'
   scope: svcGroup
   params: {
@@ -474,7 +474,7 @@ module portalRegistry 'modules/portal-registry.bicep' = if (deployCore) {
 }
 
 // PE・Private DNS・NSG・Firewall規則を準備してから、CAEを起動します。
-module portalNetwork 'modules/portal-network.bicep' = if (deployCore) {
+module portalNetwork 'modules/network/portal-network.bicep' = if (deployCore) {
   name: '${stem}-portal-network'
   scope: nwGroup
   dependsOn: [networkBindings]
@@ -497,7 +497,7 @@ module portalNetwork 'modules/portal-network.bicep' = if (deployCore) {
   }
 }
 
-module portal 'modules/portal-platform.bicep' = if (deployCore) {
+module portal 'modules/container-apps/portal-platform.bicep' = if (deployCore) {
   name: '${stem}-portal'
   scope: svcGroup
   dependsOn: [monitoring, portalNetwork]
@@ -513,7 +513,7 @@ module portal 'modules/portal-platform.bicep' = if (deployCore) {
   }
 }
 
-module brokerEnvironment 'modules/broker-platform.bicep' = if (deployCore) {
+module brokerEnvironment 'modules/container-apps/broker-platform.bicep' = if (deployCore) {
   name: '${stem}-broker-platform'
   scope: svcGroup
   params: {
@@ -526,7 +526,7 @@ module brokerEnvironment 'modules/broker-platform.bicep' = if (deployCore) {
   dependsOn: [monitoring, portalNetwork]
 }
 
-module brokerDns 'modules/portal-dns.bicep' = if (deployCore) {
+module brokerDns 'modules/container-apps/container-app-private-dns.bicep' = if (deployCore) {
   name: '${stem}-broker-dns'
   scope: nwGroup
   params: {
@@ -537,7 +537,7 @@ module brokerDns 'modules/portal-dns.bicep' = if (deployCore) {
   }
 }
 
-module portalNetworkBindings 'modules/portal-network-bindings.bicep' = if (deployCore) {
+module portalNetworkBindings 'modules/network/portal-network-bindings.bicep' = if (deployCore) {
   name: '${stem}-portal-network-bindings'
   scope: nwGroup
   dependsOn: [firewallDiagnostics]
@@ -558,7 +558,7 @@ module portalNetworkBindings 'modules/portal-network-bindings.bicep' = if (deplo
   }
 }
 
-module certificateStorage 'modules/certificate-storage.bicep' = if (deployCore) {
+module certificateStorage 'modules/certificates/certificate-storage.bicep' = if (deployCore) {
   name: '${stem}-certificate-storage'
   scope: svcGroup
   params: {
@@ -580,7 +580,7 @@ module certificateStorage 'modules/certificate-storage.bicep' = if (deployCore) 
   }
   dependsOn: [services]
 }
-module certificateNetwork 'modules/certificate-network.bicep' = if (deployCore) {
+module certificateNetwork 'modules/certificates/certificate-network.bicep' = if (deployCore) {
   name: '${stem}-certificate-network'
   scope: nwGroup
   params: {
@@ -602,14 +602,14 @@ module certificateNetwork 'modules/certificate-network.bicep' = if (deployCore) 
   }
   dependsOn: [portalNetworkBindings, credentialNetwork, auditPrivateDnsLink]
 }
-module certificateEnvironment 'modules/certificate-environment.bicep' = if (deployCore) {
+module certificateEnvironment 'modules/certificates/certificate-environment.bicep' = if (deployCore) {
   name: '${stem}-certificate-environment'
   scope: svcGroup
   params: { stem: stem, location: location, tags: tags, subnetId: network!.outputs.subnetIds.certificate, diagnosticSettingProperties: diagnosticSettingProperties }
   dependsOn: [certificateNetwork]
 }
 
-module credentialNetwork 'modules/credential-broker-network.bicep' = if (deployCore) {
+module credentialNetwork 'modules/network/credential-broker-network.bicep' = if (deployCore) {
   name: '${stem}-credential-network'
   scope: nwGroup
   params: {
@@ -639,7 +639,7 @@ module credentialNetwork 'modules/credential-broker-network.bicep' = if (deployC
 var auditRelayName = 'ca-${stem}-audit-relay'
 var auditWorkerName = 'ca-${stem}-audit-store'
 
-module auditEvidenceIdentities 'modules/audit-evidence-identities.bicep' = if (deployAuditEvidence) {
+module auditEvidenceIdentities 'modules/audit-evidence/audit-evidence-identities.bicep' = if (deployAuditEvidence) {
   name: '${stem}-audit-evidence-identities'
   scope: idGroup
   params: {
@@ -653,7 +653,7 @@ module auditEvidenceIdentities 'modules/audit-evidence-identities.bicep' = if (d
   dependsOn: [services]
 }
 
-module auditEvidenceData 'modules/audit-evidence-data.bicep' = if (deployAuditEvidence) {
+module auditEvidenceData 'modules/audit-evidence/audit-evidence-data.bicep' = if (deployAuditEvidence) {
   name: '${stem}-audit-evidence-data'
   scope: monitorGroup
   params: {
@@ -670,7 +670,7 @@ module auditEvidenceData 'modules/audit-evidence-data.bicep' = if (deployAuditEv
   }
 }
 
-module auditEvidenceNetwork 'modules/audit-evidence-network.bicep' = if (deployAuditEvidence) {
+module auditEvidenceNetwork 'modules/audit-evidence/audit-evidence-network.bicep' = if (deployAuditEvidence) {
   name: '${stem}-audit-evidence-network'
   scope: nwGroup
   params: {
@@ -693,7 +693,7 @@ module auditEvidenceNetwork 'modules/audit-evidence-network.bicep' = if (deployA
   dependsOn: [credentialNetwork, auditPrivateDnsLink, certificateNetwork]
 }
 
-module auditEvidenceEnvironment 'modules/audit-evidence-environment.bicep' = if (deployAuditEvidence) {
+module auditEvidenceEnvironment 'modules/audit-evidence/audit-evidence-environment.bicep' = if (deployAuditEvidence) {
   name: '${stem}-audit-evidence-environment'
   scope: svcGroup
   params: {
@@ -706,7 +706,7 @@ module auditEvidenceEnvironment 'modules/audit-evidence-environment.bicep' = if 
   dependsOn: [auditEvidenceNetwork]
 }
 
-module auditEvidenceIngress 'modules/audit-evidence-ingress.bicep' = if (deployAuditEvidence) {
+module auditEvidenceIngress 'modules/audit-evidence/audit-evidence-ingress.bicep' = if (deployAuditEvidence) {
   name: '${stem}-audit-evidence-ingress'
   scope: nwGroup
   params: {
@@ -739,7 +739,7 @@ var managementClientInventory = deployCore ? {
     containers: map(filter(monitoring.outputs.storage.containerIds, id => startsWith(toLower(id), '${toLower(monitoring.outputs.storage[collector].id)}/')), id => last(split(id, '/')))
   })
 } : {}
-module managementClient 'modules/management-maintenance-client.bicep' = if (deployCore) {
+module managementClient 'modules/management/management-maintenance-client.bicep' = if (deployCore) {
   name: '${stem}-management-client'
   scope: maintGroup
   params: {
@@ -874,7 +874,7 @@ output certificateBootstrap object = deployCore ? {
 // API・認証ポリシー・名前付きの値・CM・BrokerはGateway配備工程が所有します。
 
 // RG の外にある管理操作履歴も、今回の監査保存先へ接続します。
-module subscriptionMonitoring 'modules/monitoring-subscription.bicep' = if (deployCore) {
+module subscriptionMonitoring 'modules/monitoring/monitoring-subscription.bicep' = if (deployCore) {
   name: '${stem}-subscription-monitoring'
   params: {
     diagnosticSettingProperties: diagnosticSettingProperties

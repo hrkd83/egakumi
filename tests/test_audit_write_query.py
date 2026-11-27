@@ -58,7 +58,7 @@ class AuditWriteQueryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.fixtures = cases()
-        cls.compiled = compile_bicep('infra/modules/monitoring-bindings.bicep')
+        cls.compiled = compile_bicep('infra/modules/monitoring/monitoring-bindings.bicep')
 
     def test_fixture_golden_counts_cover_current_and_later_observations(self):
         for advance_ms, expectation in [(0, 'expected'), (5000, 'nextExpected')]:

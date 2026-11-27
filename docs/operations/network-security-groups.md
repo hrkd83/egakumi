@@ -17,9 +17,9 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 
 ## 正本とアドレス参照
 
-基本構成の正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のversion 5で、
+基本構成の正本は[infra/modules/network/nsg/core-rules.json](../../infra/modules/network/nsg/core-rules.json)のversion 5で、
 名称・方向・優先度・Allow/Deny・両ポート・プロトコル・アドレス参照・設計IDを定義する。
-以下の表は固定集合の用途を示す。本文監査の追加規則は[本文監査NSGの正本](../../infra/audit-evidence-nsg.json)で定義する。送信元ポートは全件Any。
+以下の表は固定集合の用途を示す。本文監査の追加規則は[本文監査NSGの正本](../../infra/modules/network/nsg/audit-evidence-rules.json)で定義する。送信元ポートは全件Any。
 
 サブネットCIDRは構築入力から、単IPは構築した資源の割当IPから、PEは構築したPE NICの全IPから
 動的に設定する。単IP・PE IPは/32とし、同じサブネットの他資源へ無条件に広げない。
@@ -34,11 +34,11 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 
 | Bicep | 定義区間 |
 | --- | --- |
-| [network.bicep](../../infra/modules/network.bicep) | 基本構成と本文監査用NSG、サブネット関連付け、静的基盤ルール |
-| [network-bindings.bicep](../../infra/modules/network-bindings.bicep) | AppGW／APIM／管理VM割当IP・Foundry／Key Vault全PE IP・終端拒否 |
-| [portal-network.bicep](../../infra/modules/portal-network.bicep)と[bindings](../../infra/modules/portal-network-bindings.bicep) | ACA VIP・ACR全PE IP |
-| [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) | 共有SQL全PE IP・APIMからPortal／Brokerそれぞれの内部VIPへの許可 |
-| [audit-evidence-network.bicep](../../infra/modules/audit-evidence-network.bicep)と[ingress](../../infra/modules/audit-evidence-ingress.bicep) | 本文監査ACAとPEの許可、APIMから中継の内部VIPへの許可 |
+| [network.bicep](../../infra/modules/network/network.bicep) | 基本構成と本文監査用NSG、サブネット関連付け、静的基盤ルール |
+| [network-bindings.bicep](../../infra/modules/network/network-bindings.bicep) | AppGW／APIM／管理VM割当IP・Foundry／Key Vault全PE IP・終端拒否 |
+| [portal-network.bicep](../../infra/modules/network/portal-network.bicep)と[bindings](../../infra/modules/network/portal-network-bindings.bicep) | ACA VIP・ACR全PE IP |
+| [credential-broker-network.bicep](../../infra/modules/network/credential-broker-network.bicep) | 共有SQL全PE IP・APIMからPortal／Brokerそれぞれの内部VIPへの許可 |
+| [audit-evidence-network.bicep](../../infra/modules/audit-evidence/audit-evidence-network.bicep)と[ingress](../../infra/modules/audit-evidence/audit-evidence-ingress.bicep) | 本文監査ACAとPEの許可、APIMから中継の内部VIPへの許可 |
 
 ## AppGW（agw）
 
@@ -159,18 +159,18 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 
 ### 管理VMのホスト時計へ先行移行する
 
-通常CoreではNSG／Firewall更新がguest監査設定より先に実行されます。既存管理VMは、[時刻専用module](../../infra/modules/management-host-time.bicep)でPHC同期を先に設定します。旧外部NTP許可を残したまま先行適用し、Coreを先に実行しません。時刻専用moduleは構築用guestと同じ時刻ロジックを使い、固定内部モードだけを変更してSSH／rsyslogの設定・再起動へ進まず終了します。公開params／configに時刻sourceの切替入力は追加しません。Windows側でAzure CLI認証と対象所有を確認し、同じ環境の操作ロックを保持して行います。
+通常CoreではNSG／Firewall更新がguest監査設定より先に実行されます。既存管理VMは、[時刻専用module](../../infra/modules/management/management-host-time.bicep)でPHC同期を先に設定します。旧外部NTP許可を残したまま先行適用し、Coreを先に実行しません。時刻専用moduleは構築用guestと同じ時刻ロジックを使い、固定内部モードだけを変更してSSH／rsyslogの設定・再起動へ進まず終了します。公開params／configに時刻sourceの切替入力は追加しません。Windows側でAzure CLI認証と対象所有を確認し、同じ環境の操作ロックを保持して行います。
 
 次の例は、チェックアウトルートから実行するためのプレースホルダーです。`vmName`、`location`、`tags`を含むARM形式のparameters JSONと実際の対象情報は、所有者限定の`.local/<environment>/generated/`等の保護ファイルで管理し、公開資材や実行出力へ転記しません。
 
 ```powershell
 az deployment group create `
   --resource-group "<MANAGEMENT_RESOURCE_GROUP>" `
-  --template-file infra/modules/management-host-time.bicep `
+  --template-file infra/modules/management/management-host-time.bicep `
   --parameters "@<PROTECTED_MANAGEMENT_AUDIT_PARAMETERS_JSON>"
 ```
 
-Core前の読取gateは、既存VMの所有と、Managed Run Commandのscript全文が現行資材に一致することを確認します。`configure-host-time`を優先し、provisioning／executionの`Succeeded`、整数の`exitCode: 0`、出力の`status: configured`、`timeSource: azure-host-phc`、`timeSynchronized: true`と`timeOnly: true`を要求します。新commandが正確に404の場合だけ、現行全文に一致する`configure-linux-audit`成功を代替証跡として読みます。新commandの失敗・進行中・未知sourceを過去の別成功で隠しません。VMの`timeCreated`とcommandの`startTime`／`endTime`をUTCで照合し、現在のVMより前の実行証跡を拒否します。旧guest結果、未適用、失敗、読取不能はCore変更前に停止します。新規VMが正確に404の場合は新規構築へ進めます。NSG限定移行も、旧管理NTP規則を削除する前に同じgateを確認します。
+Core前の読取gateは、既存VMの所有と、Managed Run Commandのscript全文が現行資材に一致することを確認します。`configure-host-time`を優先し、provisioning／executionの`Succeeded`、整数の`exitCode: 0`、出力の`status: configured`、`timeSource: azure-host-phc`、`timeSynchronized: true`と`timeOnly: true`を要求します。新commandが正確に404の場合だけ、現行全文に一致する`configure-linux-audit`成功を代替証跡として読みます。新commandの失敗・進行中・未知sourceを過去の別成功で隠しません。VMの`timeCreated`とcommandの`startTime`／`endTime`をUTCで照合し、現在のVMより前の実行証跡を拒否します。旧guest結果、未適用、失敗、読取不能はCore変更前に停止します。新規VMが正確に404の場合は新規構築へ進めます。
 
 この成功証跡は先行適用時の同期成立を示します。現在のPHC選択、`Normal`状態、offset／精度と保守復帰後の同期は実VMで別に確認します。同じVMの再イメージ・OS復元や時刻設定の変更後は、時刻専用moduleを再適用してPHC同期を確認します。実環境の結果は環境別の保護証跡で管理します。
 
@@ -271,7 +271,7 @@ Brokerの業務入口をAPIMのサブネットに限定する。専用環境の�
 | Private Endpoint | 6 | 本文監査ACAと上記5種類のPEの組を許可し、管理VMからは本文BlobのPEを追加で許可する。 |
 | 管理VM | 1 | 本文BlobのPEへTCP 443を許可する。閲覧には別途、対象コンテナーへの権限を付与する。 |
 
-本文監査ACAは専用の内部環境を使う。中継アプリの入口はAPIMサブネットと認証済みAPIMのIDに限定し、保存ワーカーには入口を作成しない。具体的な規則と構築後の確認は[本文監査NSGの正本](../../infra/audit-evidence-nsg.json)と[本文監査設計](../reference/request-body-audit.md)を参照する。
+本文監査ACAは専用の内部環境を使う。中継アプリの入口はAPIMサブネットと認証済みAPIMのIDに限定し、保存ワーカーには入口を作成しない。具体的な規則と構築後の確認は[本文監査NSGの正本](../../infra/modules/network/nsg/audit-evidence-rules.json)と[本文監査設計](../reference/request-body-audit.md)を参照する。
 
 ## 既定規則と末尾拒否の扱い
 
@@ -304,7 +304,7 @@ PEはサービス側から新規接続を開始しない。PEサブネットのN
 標準DNSはVNet DHCP・Firewall上流を空配列へ固定する。Azure提供DNS、VM IMDS、Agent host channel、
 DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と運用条件](../reference/platform-communications.md)を参照する。
 
-## 新規構築と既存環境の移行
+## 新規構築と構築の再開
 
 新規構築は同じ固定Bicepと[正式構築手順](../setup/08-provision-core.md)を使う。
 同じNSGの子ルールへの書込は、`batchSize(1)`と`dependsOn`で直列化する。
@@ -314,53 +314,4 @@ ACAの末尾Denyは、共有SQL向けNSG許可と所有Firewall規則が完了�
 既存NSGの親は再PUTせず、タグは専用Tags API、ルールは子リソースで更新する。
 この順序と固定ルールの全条件をコンパイル済み資材で確認し、新規構築と再適用で同じ定義を使う。
 
-次の限定適用は、選択した固定集合に対応するネットワークとACA環境を前提に、規則と関連付けを照合する。本文監査が有効なら専用環境とPEも先に揃える。稼働中BrokerのACA環境変更は別途計画する。
-
-旧HTTP後段や旧Firewall SKUを使う環境は、[HTTPS切替の計画](platform-settings.md#appgw後段のtls検査を検証する)を確認してから固定NSGの更新を行う。
-
-1. Windows側Azure CLIで認証し、入力・Core state・所有RG／VNet／NSG／内部資源・実ルールを読み取る。
-   WSLはローカル試験とBicepコンパイルに使用し、Entra認証にLinux側Azure CLIを使わない。
-2. [HTTPS切替計画](platform-settings.md#appgw後段のtls検査を検証する)を用意する。
-   対応image／revision、HTTPSプローブと検査用CAの信頼を確認してAppGW後段を切り替える。
-   [管理VMのホスト時計への先行移行](#管理vmのホスト時計へ先行移行する)は現行guest監査moduleを単独適用する。既知内容の照合と変更前保存を行い、PHCの実同期と現行scriptの成功証跡が成立してからCoreと旧外部NTP許可の撤去へ進む。
-3. `fixed_nsg.prepare_fixed_nsg_rules`は変更前に全NSGを監査し、完全一致した所有済み旧ルールだけを
-   一時優先度へ移す。旧Allowは1000番台、旧末尾Denyは4080とし、旧順序を維持する。
-   未知・手動変更・所有不明のルールがあれば変更前に停止する。各変更をETagと保護記録で限定する。
-   基盤監査Storageの旧名2件は、TCP／443・送受信元・既定優先度の完全一致を確認し、
-   同じ許可条件のまま優先度1500へ退避する。新名の227／229が確認できるまで旧名を削除せず、
-   中断後も退避済みのルールを確認して再開できる。保守資材の限定適用では元の優先度にある旧名も照合する。
-4. [NSG限定資材](../../infra/modules/nsg-fixed-upgrade.bicep)を単独what-ifで検証し、固定集合の子規則と
-   必要なACA NSGだけをIncremental配備する。既存NSGの親、UDR、VNet親、Firewall本体、Public IPは書かない。
-   その後、ACA subnetの直前ETagを使った限定PUTでNSG関連付けだけを追加する。
-   `complete_fixed_nsg_rules`が5関連付け・全77条件と既定規則を照合した後にだけ、完全一致する旧子を回収する。
-   catalog v2の旧管理325は既知legacy tupleとの完全一致と直前ETagで限定削除し、所有Firewall collectionから管理VM NTP規則を除いて読み戻す。APIMのUDP123許可、未知の企業規則を削除しない。
-   Incremental配備で省いた旧子が削除されたとは判断しない。
-5. APIMの通常L7保護を常設し、所有参照を照合した旧gRPC専用domainとAppGW L4設備を撤去する。
-   APIM標準名でのHTTPS保守を維持し、Server.Http2だけfalseへ固定する。他customPropertiesと他用途domainを保持する。
-6. 全ルール・割当IP・関連付け・非対象UDR／Firewall設定を読み戻し、新規接続で通常API・Portal・保守を確認する。
-   過去のPASSや既存接続の継続だけで今回の移行成功としない。
-
-工程は1トランザクションではなく、無停止を保証しない。応答不明・競合・未完了時は再送せず実状態を確認する。
-証跡は`.local/<environment>/`の保護領域へ保存する。作業ごとにUUIDと連番で記録し、再実行で初回snapshotを上書きしない。
-手動の企業向け追加ルールを、資材所有の旧規則として自動削除しない。
-今回のFIXで追加UDR・Peering改修は要求しない。Firewall Policy全体の棚卸しと未確定の運用許可は別工程として残す。
-
-### NSG限定配備の成立条件
-
-`fixed_nsg_upgrade_parameters`は保護した構築設定と実資源からCIDR、割当IP、全PE NIC IP、
-所有する既存NSG名を読み取る。新ACA parentのtagsは再構築と同じ構築tagsと固定3タグのunionとする。
-実VNetのDNSとFirewall上流DNSがAzure提供の空設定であり、Firewall DNS proxyが有効であることを
-NSG変更前に要求する。手動custom DNSがあればこの入口で切り替えず、規則の更新前に停止する。
-構築設定に対応する固定規則を生成し、本文監査が有効なら追加規則を生成する。
-`verify_fixed_nsg_upgrade_what_if`は対象子の全tupleを照合し、展開診断、対象子のIgnore、
-不足、削除、既存parentやNSG以外への書込を拒否する。what-ifのSucceededだけで判断しない。
-
-`associate_fixed_aca_nsg`は対象の固定子ルールが揃った後に、Portal用ACA subnetの既知writable設定を保持して
-NSG参照だけを変更する。現routeTable、delegations、標準送信設定等を保持し、API仕様の
-readOnly以外で未対応の項目があれば値を省略せず停止する。現在の関連付けが別NSGなら停止する。
-変更前記録・直前ETag・If-Match・一致readbackを必要とし、応答不明や未完了時はPUTを再送しない。
-
-単独ARM配備でも各子へ個別のIf-Matchを指定できないため、直前のNSG現物照合と保護した
-計画、配備後の全tuple確認を行う。作業中の別端末による編集を原子的に防ぐ仕組みとは扱わない。
-通常のnative hook／direct Coreにも既存規則の準備・完了確認はあるが、Core全体のwhat-ifで
-参照未解決のmoduleが省略された場合、このNSG限定検証を代替しない。
+構築を再開する場合、`azd up`のCore配備前に、作成済みNSGの規則名と条件を現行の定義と照合する。各規則の照合に必要な割当IPとPrivate Endpointだけを読み取るため、後続資源の未作成は許容する。現行定義にない規則や、優先度・ポート・アドレスが異なる規則を検知した場合は、規則に変更を加えず停止する。Core配備後は、全規則・関連付け・実IPを読み戻して一致を確認する。

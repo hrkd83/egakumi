@@ -28,7 +28,7 @@ ACAは`IDENTITY_ENDPOINT`と`IDENTITY_HEADER`を実行環境へ供給する。[�
 
 ### Azure提供DNS
 
-[ネットワーク資材](../../infra/modules/network.bicep)はVNet DHCPのDNSを空配列、Firewall Policyの上流DNSを空配列へ固定し、Firewall DNS proxyを維持する。DNSサーバーを変更する公開params／configは設けない。
+[ネットワーク資材](../../infra/modules/network/network.bicep)はVNet DHCPのDNSを空配列、Firewall Policyの上流DNSを空配列へ固定し、Firewall DNS proxyを維持する。DNSサーバーを変更する公開params／configは設けない。
 
 Azure提供DNSへの問い合わせは、通常のNSG規則では制限されず、`AzurePlatformDNS`を明示対象とする規則で制御できる。[Azure共通IPの仕様](https://learn.microsoft.com/en-us/azure/virtual-network/what-is-ip-address-168-63-129-16#scope-of-azure-platform-virtual-ip)を、カスタムDNSやあらゆる宛先の53番通信へ一般化しない。
 
@@ -69,7 +69,7 @@ PortalとCredential Brokerの共用ACAでは、必要な通信を明示してか
 
 Linux Agentの状態・構成取得とHostGAPluginのhostchannelは、[Azure共通IP](https://learn.microsoft.com/en-us/azure/virtual-network/what-is-ip-address-168-63-129-16)のTCP80／32526を使用する。これらは通常NSGによる制限とUDRの対象外であり、guest local Firewallでは妨げない。IPが同じでも、DNS53、DHCP、LB probeは別機能である。
 
-[VM資材](../../infra/modules/management.bicep)はVM Agent、Entra login拡張、AMA、DCR関連付けを構成し、[監査設定](../../infra/modules/management-audit.bicep)と[証明書設定](../../infra/modules/certificate.bicep)はManaged Run Commandを利用する。Run Commandを、AzureからVMへの通常のInbound TCP22接続としてNSGへ追加しない。
+[VM資材](../../infra/modules/management/management.bicep)はVM Agent、Entra login拡張、AMA、DCR関連付けを構成し、[監査設定](../../infra/modules/management/management-audit.bicep)はManaged Run Commandを利用する。証明書の初回発行と更新は[証明書用Container Apps Job](../../infra/modules/certificates/certificate-jobs.bicep)が実行する。Run Commandを、AzureからVMへの通常のInbound TCP22接続としてNSGへ追加しない。
 
 Agentの配布・状態送信は版や構成によりhostchannelと直接Storage／Webへのfallbackがある。[Linux Agent仕様](https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/agent-linux)、[Managed Run Command](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/run-command-managed)、公式実装の[WireServer](https://github.com/Azure/WALinuxAgent/blob/master/azurelinuxagent/common/protocol/wire.py)／[HostGAPlugin](https://github.com/Azure/WALinuxAgent/blob/master/azurelinuxagent/common/protocol/hostplugin.py)を参照する。実VM搭載版と実channelの確認を残し、公開masterの実装を実wireの証拠にしない。直接Storage／Web、スクリプトが行う外部接続、IMDSは対応する別要件を維持する。
 
@@ -77,7 +77,7 @@ Agentの配布・状態送信は版や構成によりhostchannelと直接Storage
 
 Azure DHCPはNSGの基本サービス例外として扱う。最初のIP取得前から必要になるため、取得後の管理VM `/32`だけで許可する通常NSG規則へ置き換えない。client68／server67の両方向を記録し、初回broadcast、更新時のunicast／rebind、server IDやpeer IPは実測なしに固定しない。[DHCPv4の仕様](https://www.rfc-editor.org/rfc/rfc2131)
 
-[NIC資材](../../infra/modules/management.bicep)のAzure private IP割当方式と、guestがDHCPでネットワーク構成を受け取る条件は区別する。運用確認にはguest DHCPの有効性、lease／更新、primary NIC／IP、経路、local Firewallを含める。DHCPが通る理由を、確立済みNSG接続へのstateful返信だけで説明しない。
+[NIC資材](../../infra/modules/management/management.bicep)のAzure private IP割当方式と、guestがDHCPでネットワーク構成を受け取る条件は区別する。運用確認にはguest DHCPの有効性、lease／更新、primary NIC／IP、経路、local Firewallを含める。DHCPが通る理由を、確立済みNSG接続へのstateful返信だけで説明しない。
 
 管理VMのDNSも、ACAと同じAzure提供DNSの例外を使用する。guest resolver、stub／cache、local Firewall、Private DNSの回答構成と実名前解決は個別に確認する。Firewall自身の上流DNSと、管理VMのDNS問い合わせは同じ通信として扱わない。[Private DNSのVNet link](https://learn.microsoft.com/en-us/azure/dns/private-dns-virtual-network-links)
 
@@ -99,7 +99,7 @@ Azure DHCPはNSGの基本サービス例外として扱う。最初のIP取得�
 
 ### Managed OS Disk
 
-[VM資材](../../infra/modules/management.bicep)の接続済みOS Diskの通常I/Oは、仮想block deviceを通る処理である。[Managed Diskの仕様](https://learn.microsoft.com/en-us/azure/virtual-machines/managed-disks-overview)に従い、`diskControllerType`、OS Disk SKU／容量、`encryptionAtHost`、VMサイズ・image互換性の入力を維持する。これらをNSG作成有無の入力へ転用しない。
+[VM資材](../../infra/modules/management/management.bicep)の接続済みOS Diskの通常I/Oは、仮想block deviceを通る処理である。[Managed Diskの仕様](https://learn.microsoft.com/en-us/azure/virtual-machines/managed-disks-overview)に従い、`diskControllerType`、OS Disk SKU／容量、`encryptionAtHost`、VMサイズ・image互換性の入力を維持する。これらをNSG作成有無の入力へ転用しない。
 
 guest Storage HTTPS443、ARMによる資源操作、Diskのimport／export、SASによるデータ転送、backup／restoreは通常のattached block I/Oとは別である。[Disk import／exportのPrivate Link仕様](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-enable-private-links-for-import-export-portal)をPE全体の適用有無へ一般化しない。[Linux仮想SCSI実装](https://github.com/torvalds/linux/blob/master/drivers/scsi/storvsc_drv.c)も現VMのSCSI／NVMe選択を実測した結果ではない。
 
@@ -107,7 +107,7 @@ guest Storage HTTPS443、ARMによる資源操作、Diskのimport／export、SAS
 
 ### Managed Boot Diagnostics
 
-[VM資材](../../infra/modules/management.bicep)は`bootDiagnostics.enabled: true`とし、`storageUri`を指定しないmanaged方式を使用する。記録対象はCompute基盤によるconsole output／screenshotの収集・保存である。[Boot Diagnostics仕様](https://learn.microsoft.com/en-us/azure/virtual-machines/boot-diagnostics)
+[VM資材](../../infra/modules/management/management.bicep)は`bootDiagnostics.enabled: true`とし、`storageUri`を指定しないmanaged方式を使用する。記録対象はCompute基盤によるconsole output／screenshotの収集・保存である。[Boot Diagnostics仕様](https://learn.microsoft.com/en-us/azure/virtual-machines/boot-diagnostics)
 
 診断データの取得・閲覧や対話Serial Consoleは別通信・認可・guest条件である。managed方式ではinstanceViewのBlob URIだけに依存せず、取得用APIの返却URIを扱う。[Compute API定義](https://github.com/Azure/azure-rest-api-specs/blob/main/specification/compute/resource-manager/Microsoft.Compute/Compute/stable/2024-11-01/ComputeRP.json)、[公式CLI実装](https://github.com/Azure/azure-cli/blob/dev/src/azure-cli/azure/cli/command_modules/vm/custom.py)、[Linux Serial Console要件](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/serial-console-linux)
 
@@ -123,7 +123,7 @@ guest Storage HTTPS443、ARMによる資源操作、Diskのimport／export、SAS
 
 `DESIGN-FIREWALL-SUBNET-NSG-001`として、`AzureFirewallSubnet`には顧客NSGを作成・関連付けしない。[公式FAQ](https://learn.microsoft.com/en-us/azure/firewall/firewall-faq)は、サービス中断を避けるためsubnet-level NSGを無効としている。[公式FAQソース](https://github.com/MicrosoftDocs/azure-docs/blob/main/articles/firewall/firewall-faq.yml)
 
-[ネットワーク資材](../../infra/modules/network.bicep)はFirewallサブネットに構築CIDRを配置し、NSGの関連付けを持たない。独自のNSG Inbound／Outbound規則・名前・優先度・作成switchを追加せず、この状態を再構築時にも維持する。[合成構築試験](../../tests/test_parameter_ip_ownership.py)は、5つの対象サブネットへのNSG関連付けとFirewallサブネットの非関連付けを確認する。
+[ネットワーク資材](../../infra/modules/network/network.bicep)はFirewallサブネットに構築CIDRを配置し、NSGの関連付けを持たない。独自のNSG Inbound／Outbound規則・名前・優先度・作成switchを追加せず、この状態を再構築時にも維持する。[合成構築試験](../../tests/test_parameter_ip_ownership.py)は、5つの対象サブネットへのNSG関連付けとFirewallサブネットの非関連付けを確認する。
 
 `network.subnetPrefixes.firewall`のCIDRと、Firewall自身のSKU／IDPS／Policyは既存の用途を維持する。利用者通信の制御と要件マッピングはFirewall Policy Network／Application ruleの別棚卸しで行う。Azureが管理する不可視NIC-level NSGを、顧客資材のルールとして採番しない。今回、Firewall管理サブネット、管理Public IP、強制トンネルや新しいUDRを追加する判断は行わない。
 

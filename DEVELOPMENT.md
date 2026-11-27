@@ -166,8 +166,8 @@ SQL統合試験は通常の `npm test` ではスキップします。[SQL統合�
 | 1 | [params](params/test.example.json)・[config](config/test.json) | 自社の値と標準値。JSONの説明はSchemaとREADMEに記載 |
 | 2 | [azure.yaml](azure.yaml) | Coreのup/downのhookと処理順序 |
 | 3 | [configuration.py](scripts/deployment/helpers/configuration.py)・[lifecycle.py](scripts/deployment/lifecycle.py) | 合成、入力・秘密参照検査、事前確認、構築後の設定 |
-| 4 | [main.bicep](infra/main.bicep)・[modules](infra/modules) | 5RG、ネットワーク、ID、サービスの依存関係 |
-| 5 | [certificate-bootstrap.sh](infra/guest/certificate-bootstrap.sh)・[certificate.ps1](infra/guest/certificate.ps1)・[configure-audit.sh](infra/guest/configure-audit.sh)・[prepare-management-client.sh](infra/guest/prepare-management-client.sh) | Ubuntu初期化、証明書取得・更新・復旧、OS監視、保守clientの準備 |
+| 4 | [main.bicep](infra/main.bicep)・[資材一覧](infra/README.md) | 5RG、ネットワーク、ID、サービスの依存関係 |
+| 5 | [certificate.ps1](infra/guest/certificate.ps1)・[configure-audit.sh](infra/guest/configure-audit.sh)・[prepare-management-client.sh](infra/guest/prepare-management-client.sh) | 証明書Jobのワーカー、管理VMのOS監視、保守クライアントの準備 |
 | 6 | [deploy_applications.py](scripts/deploy_applications.py) | 基盤構築後のGateway→Portalの順次実行と、途中失敗時の停止 |
 | 7 | [Gateway配備資材](apps/apim/deploy/README.md)・[deploy_gateway.py](scripts/deploy_gateway.py)・[deploy_portal.py](scripts/deploy_portal.py) | 各アプリのDB・実行用ID・ジョブ・イメージと、API・製品・検証用購読の配備 |
 | 8 | [cleanup.py](scripts/deployment/helpers/cleanup.py) | モデル・APIM先削除、削除保護と所有照合 |
@@ -177,7 +177,7 @@ Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshe
 
 `scripts/`には構築以外の手動コマンドや疎通試験クライアントも含まれます。基盤のhookは`deployment/lifecycle.py`、アプリの個別配備は`deploy_gateway.py`と`deploy_portal.py`が担当し、補助処理は`deployment/helpers/`にまとめています。[用途別の一覧](scripts/README.md)で、構築時に使う処理とAPI登録・試験・運用で使う処理を確認できます。
 
-`infra/`は共通基盤です。Gatewayは`apps/apim/`と`apps/credential-broker/`の資材を統合配備し、Portalは`apps/portal/`から配備します。管理VM内で動く共通の証明書・OS設定・保守clientは[infra/guest/](infra/guest/)に置き、BrokerとPortalのイメージ構築は各アプリの`deploy/build-image.sh`に置きます。初回の`azd up`はAPIM、共通SQLサーバー、ネットワーク、Private Endpoint、ACA環境、非公開ACRを用意します。`azd provision`も同じCore工程を実行し、`postprovision`で認証用公開証明書2枚と入口設定を確認します。証明書のEntra登録とPortalアプリの登録後にGatewayを配備し、APIと製品の登録が成功したらPortalを配備します。
+`infra/`は共通基盤です。Gatewayは`apps/apim/`と`apps/credential-broker/`の資材を統合配備し、Portalは`apps/portal/`から配備します。証明書Jobのワーカーと管理VMのOS設定・保守クライアントは[infra/guest/](infra/guest/)に置き、BrokerとPortalのイメージ構築は各アプリの`deploy/build-image.sh`に置きます。初回の`azd up`はAPIM、共通SQLサーバー、ネットワーク、Private Endpoint、ACA環境、非公開ACRを用意します。`azd provision`も同じCore工程を実行し、`postprovision`で認証用公開証明書2枚と入口設定を確認します。証明書のEntra登録とPortalアプリの登録後にGatewayを配備し、APIと製品の登録が成功したらPortalを配備します。
 
 初回構築では[空環境からの構築手順](docs/setup/08-provision-core.md)に沿って段階的に行います。標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は空配列やfalseでも拒否します。既存local paramsと非標準値を無断変換せず、[入力配置・移行条件](docs/setup/07-params.md#既存入力の移行を確認する)を確認します。基盤に必要なWAF・監査ログの情報も同じ正本から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
 

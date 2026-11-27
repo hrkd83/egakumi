@@ -158,14 +158,14 @@ class LogPrivacyTests(unittest.TestCase):
 
 class LogPrivacyTemplateTests(unittest.TestCase):
     def test_bicep_uses_the_same_transform_and_access_storage_export(self):
-        template = compile_bicep("infra/modules/monitoring.bicep")
+        template = compile_bicep("infra/modules/monitoring/monitoring.bicep")
         text = __import__("json").dumps(template)
         self.assertIn("WorkspaceTransforms", text)
         self.assertIn("Microsoft-Table-AGWAccessLogs", text)
         self.assertIn(privacy.PRIVACY["transformKql"], text)
         self.assertIn("AGWAccessLogs", text)
         self.assertIn("existingWorkspaceDataCollectionRuleResourceId", text)
-        gateway = compile_bicep("infra/modules/application-gateway.bicep")
+        gateway = compile_bicep("infra/modules/ingress/application-gateway.bicep")
         resources = gateway["resources"]
         logs = next(value for value in resources if value.get("name") == "[format('diag-{0}-agw', parameters('resourceStem'))]")["properties"]
         self.assertEqual(logs, "[parameters('diagnosticSettingProperties')['agw-logs']]")

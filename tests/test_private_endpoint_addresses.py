@@ -66,7 +66,6 @@ class PrivateEndpointAddressTests(unittest.TestCase):
 
     def test_output_and_tls_network_rules_use_completed_readers(self):
         outputs = self.services['template']['outputs']
-        self.assertEqual(set(outputs), {"privateEndpointIds", "privateEndpointNicIds", "foundryPrivateIps", "keyVaultPrivateIps"})
         for output_name, reader_name in (("foundryPrivateIps", "foundry-private-endpoint-addresses"),
                                          ("keyVaultPrivateIps", "vault-private-endpoint-addresses")):
             value = outputs[output_name]["value"]

@@ -187,7 +187,7 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
             elif isinstance(value, list):
                 for item in value:
                     yield from resource_types(item)
-        for template in (main, self.compile("infra/public-ingress.bicep")):
+        for template in (main, self.compile("infra/modules/ingress/public-ingress.bicep")):
             for resource_type in resource_types(template):
                 self.assertFalse(str(resource_type).startswith("Microsoft.ApiManagement/service/apis"))
                 self.assertNotEqual(resource_type, "Microsoft.ApiManagement/service/backends")

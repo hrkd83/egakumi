@@ -63,7 +63,7 @@ scripts/
 
 `predown`は配備記録と実資源の所有関係を照合し、モデル→APIM→Gateway／Portalのジョブ・認証窓口→PortalのCA→CAE→管理VM／NICの順で削除します。成功したアプリ出力がなくても現在の固定ID・所有タグ・接続先を検証し、全CA／ジョブの404とsubnet解放を待って本体・RG削除へ進みます。CAEのマネージドRGは実際のIDを削除前にstateへ保存し、`postdown`でAzureによる回収後の404を確認します。Portalの処理結果は`.local/<environment>/state/cleanup-predown.json`の`portal`、管理RGの確認結果は`cleanup-postdown.json`の`applicationInfrastructure`へ記録します。
 
-管理VM上で実行する共通の証明書・OS設定・保守clientの準備は[infra/guest/](../infra/guest/)にあり、Bicepから管理VMへ渡します。GatewayとPortalのイメージ構築も管理VM上で実行し、それぞれ[Gatewayの構築資材](../apps/credential-broker/deploy/build-image.sh)と[Portalの構築資材](../apps/portal/deploy/build-image.sh)を配備ヘルパーから渡します。
+証明書Jobのワーカーと管理VMのOS設定・保守クライアントの資材は[infra/guest/](../infra/guest/)にあります。BicepはOS設定と保守クライアントのスクリプトを管理VMへ渡します。GatewayとPortalのイメージ構築も管理VM上で実行し、それぞれ[Gatewayの構築資材](../apps/credential-broker/deploy/build-image.sh)と[Portalの構築資材](../apps/portal/deploy/build-image.sh)を配備ヘルパーから渡します。
 
 実設定は`.local/<environment>/params.local.json`、秘密は同じ環境の`secrets/`、配備・撤去記録は`state/`、一時生成入力は`generated/`、試験証跡は`evidence/`を使います。`.azure/`はazd専用です。
 

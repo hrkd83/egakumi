@@ -36,11 +36,11 @@ AUDIT_RULES = {
     'pep': ('allow-mgmt-vm-audit-storage-platform-https-ingress', 'allow-mgmt-vm-audit-storage-foundry-https-ingress'),
 }
 MODULES = {
-    'endpoints': ('audit-storage-private-endpoints.bicep', {'Microsoft.Network/privateEndpoints', 'Microsoft.Resources/deployments'}),
-    'dns': ('audit-storage-private-dns.bicep', {'Microsoft.Network/privateDnsZones', 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups', 'Microsoft.Resources/deployments'}),
-    'link': ('audit-storage-private-dns-link.bicep', {'Microsoft.Network/privateDnsZones/virtualNetworkLinks'}),
-    'roles': ('management-maintenance-roles.bicep', {'Microsoft.Authorization/roleDefinitions'}),
-    'client': ('management-maintenance-client.bicep', {'Microsoft.Compute/virtualMachines/runCommands'}),
+    'endpoints': ('monitoring/audit-storage-private-endpoints.bicep', {'Microsoft.Network/privateEndpoints', 'Microsoft.Resources/deployments'}),
+    'dns': ('monitoring/audit-storage-private-dns.bicep', {'Microsoft.Network/privateDnsZones', 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups', 'Microsoft.Resources/deployments'}),
+    'link': ('monitoring/audit-storage-private-dns-link.bicep', {'Microsoft.Network/privateDnsZones/virtualNetworkLinks'}),
+    'roles': ('management/management-maintenance-roles.bicep', {'Microsoft.Authorization/roleDefinitions'}),
+    'client': ('management/management-maintenance-client.bicep', {'Microsoft.Compute/virtualMachines/runCommands'}),
 }
 
 
@@ -48,9 +48,8 @@ def verify_existing_rules(config, transport):
     """追加前にも既存72件を全件照合し、手動変更や欠落があれば停止する。"""
     bindings = nsg.read_fixed_nsg_bindings(config, transport, permit_pending_audit_endpoints=True)
     parents = nsg._parents(config, transport)
-    if nsg._classify(parents, bindings, accept_previous_names=True):
-        raise OperationError('Complete the previous fixed NSG migration before this upgrade')
-    for group, definition in nsg._catalog('nsg-rule-priorities.json')['groups'].items():
+    nsg.verify_fixed_nsg_inventory(parents, bindings)
+    for group, definition in nsg._catalog('core-rules.json')['groups'].items():
         actual = nsg._inventory(parents[group])
         for name, rule in definition['rules'].items():
             if name in AUDIT_RULES.get(group, ()):
@@ -418,14 +417,13 @@ class MaintenanceUpgrade:
                               'tags': tags, 'pepSubnetId': vnet + '/subnets/snet-' + stem + '-pep', 'auditStorage': plan['auditStorage']})
         bindings = nsg.read_fixed_nsg_bindings(self.config, self.transport)
         parents = nsg._parents(self.config, self.transport)
-        catalog = nsg._catalog('nsg-rule-priorities.json')
+        catalog = nsg._catalog('core-rules.json')
         for group, names in AUDIT_RULES.items():
-            previous_names = nsg._PREVIOUS_RULE_NAMES.get(group, {})
             for name in names:
                 self._state_current()
                 rule = nsg._definition(catalog['groups'][group]['rules'][name], bindings)
                 inventory = nsg._inventory(parents[group])
-                actual = inventory.get(name) or inventory.get(previous_names.get(name))
+                actual = inventory.get(name)
                 if actual is not None:
                     if nsg._properties(actual) != rule:
                         raise OperationError('An audit NSG child changed outside this upgrade')
@@ -449,9 +447,7 @@ class MaintenanceUpgrade:
                     self.sleep(5)
                 else:
                     raise OperationError('Audit NSG readback remains pending')
-        if nsg._classify(nsg._parents(self.config, self.transport), bindings,
-                         require_complete=True, accept_previous_names=True):
-            raise OperationError('The full fixed NSG set is not complete')
+        nsg.verify_fixed_nsg_inventory(nsg._parents(self.config, self.transport), bindings, require_complete=True)
         dns = self.deploy('dns', 'nw', {'tags': tags, 'auditStorage': plan['auditStorage'], 'privateEndpoints': endpoints['privateEndpoints']})
         for collector, key in zip(COLLECTORS, ('auditStorageJapan', 'auditStorageFoundry')):
             expected, actual = bindings['ipSets'][key], dns['recordPrivateIps'][collector]

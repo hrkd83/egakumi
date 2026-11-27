@@ -59,17 +59,17 @@
 
 `OPS-04`は容量変更を実測の代表とする。追加モデルや版変更の全組合せを実行する項目ではない。実モデルとconfigの不一致検出は、`tests/test_publish_apis.py`の`PublicationTests.test_model_deployment_and_scoped_role_prerequisites_are_checked_before_firewall_changes`等の偽ARM応答でローカル確認する。Gの計画は実モデルを読み取らず、G実行のAPI公開検査までにBroker・SQL等も配備されるため、不一致入力を実環境へ渡して全書込0の試験にしない。
 
-### NSG初期集合と通常HTTP入口へ更新する場合の確認
+### NSGの初期構築と再開
 
-[NSGの初期仕様](../operations/network-security-groups.md)と、現在の構築資材から作成した限定移行計画を照合し、実施前後の結果を環境別の保護実施票へ記録します。以前の「AppGW受信6本・送信0本と既知3本の送信規則だけの回収」は旧仕様であり、今回の固定集合へ適用しません。下記は現在の受入条件で、各環境の実測前にPASSとはしません。
+[NSGの初期仕様](../operations/network-security-groups.md)と、構築後の実ルールを照合し、環境別の保護実施票へ結果を記録します。下記は現在の受入条件で、各環境の実測前にPASSとはしません。
 
 各規則の通信対応と採用判断は[通信要件](../reference/network-communication-requirements.md)・[NSG設計](../reference/network-security-design.md)・[Firewall設計](../reference/firewall-policy-design.md)、合成結果と実証原本の管理は[共通検証](../reference/network-security-validation.md)を参照します。
 
 - 各サブネットのカスタム規則を通信要件・名称・方向・優先度・送信元・宛先・ポート単位で比較する。AppGWとPEの送信で評価する既定規則と、ACA両方向の明示Denyを区別する。
-- 新規構築と既存環境への限定適用が同じ初期集合を再現することを確認する。未知の手動規則・競合・所有不一致は削除前に停止し、企業向けの変更を無条件に初期値へ戻さない。
+- 新規構築と中断後の再実行が同じ現行規則の集合を再現することを確認する。未知の規則・条件のずれ・所有不一致があればCoreのネットワーク配備前に停止する。
 - 廃止したNSG／標準DNS／NTP入力と`gateway.grpc`全体・gRPC API定義を、params・config・合成入力で拒否する。VNet／FirewallはAzure提供DNSを使い、APIMの外部NTP UDP123と管理VMのAzureホストPHC同期を区別する。
 - 管理VMはUbuntu24.04のChrony、`/dev/ptp_hyperv`のcharacter device、`clock_name=hyperv`を要求し、PHC／`AZUR`を唯一sourceとして時間を限定したwaitsync・選択・`Normal`同期を確認する。既知Ubuntu外部NTP経路と完全一致する旧管理ファイルだけを移行し、未知の企業時刻設定・変更済み旧ファイルは変更前に停止する。サービス・同期確認失敗時の元設定への復旧を合成条件で検証する。
-- 既存VMは時刻専用moduleを単独先行適用し、SSH／rsyslogを変更しない。所有・現行script全文一致・RunCommand成功と`configured`／`azure-host-phc`／`timeSynchronized: true`／`timeOnly: true`を読取gateで確認してからCoreへ進む。新commandが404の場合だけ現行full audit成功へfallbackし、新commandの失敗や進行中を隠さない。VM作成とcommand開始／終了のUTC時刻を照合し、前VMインスタンスの成功証跡を拒否する。未適用・旧結果・失敗はCore前停止、厳密な整数HTTP404だけが新規構築へ進むことを確認する。NSG限定移行でも旧管理NTP規則の削除前に同じgateを要求する。先行成功を現在精度の保証へ読み替えず、現在source／`Normal`／offsetを実VMで別に確認する。
+- 既存VMは時刻専用moduleを単独先行適用し、SSH／rsyslogを変更しない。所有・現行script全文一致・RunCommand成功と`configured`／`azure-host-phc`／`timeSynchronized: true`／`timeOnly: true`を読取gateで確認してからCoreへ進む。新commandが404の場合だけ現行full audit成功へfallbackし、新commandの失敗や進行中を隠さない。VM作成とcommand開始／終了のUTC時刻を照合し、前VMインスタンスの成功証跡を拒否する。未適用・旧結果・失敗はCore前停止、厳密な整数HTTP404だけが新規構築へ進むことを確認する。先行成功を現在精度の保証へ読み替えず、現在source／`Normal`／offsetを実VMで別に確認する。
 - 専用運用CLIのinspect原本・VM binding・入力/Core不変を確認し、旧CoreでvmIdが欠落していても最初の現世代を固定する。receiptの再開で追加PUTしないことと、新しい読取と過去結果の再確認の区別を検証する。旧NSG325または260の既知1件とFW管理NTP1件だけを撤去し、非対象・readonly size・未知条件・競合・応答不明を合成確認する。実環境の結果は保護証跡で管理する。
 - PHC同期成立後に旧管理NSG325の完全一致tupleをETag付きで限定削除し、所有FW collectionの旧管理NTPだけを撤去して読戻しする。NSG・Firewallの規則正本と、APIMのNSG328／UDP123維持を照合する。管理VMのVMBus／PHCへUDP123／319／320の許可を追加しない。旧102PASS／76 NSG／36 FWの記録は旧条件として保持し、今回の合格へ転用しない。今回のAzure反映・実VM同期は未実施である。
 - AppGWの専用L4入口・公開8443・gRPC許可を撤去し、通常APIM／ACA向けのHTTPS443と管理VMのHTTPS443保守を確認する。APIMの旧所有customProxyだけを除去し、native FQDN／Host／SNIでHTTPS保守できることを確認する。

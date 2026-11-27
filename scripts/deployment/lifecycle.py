@@ -117,9 +117,7 @@ from .helpers.capacity import verify_capacity
 from .helpers.powershell_runtime import locate_powershell, powershell_environment
 from .helpers.grpc_lifecycle import apim_name_matches, configure_endpoint as configure_grpc_endpoint, plan_secret_registration, prepare_secret as prepare_grpc_secret, remove_secret as remove_grpc_secret
 from .helpers.operator_access import OperatorAccessError, cleanup_disabled_operator
-from .helpers.dns_nsg import DnsNsgError, retire_dns_rules
-from .helpers.appgw_egress_nsg import AppgwEgressNsgError, retire_appgw_egress_rules
-from .helpers.fixed_nsg import FixedNsgError, prepare_fixed_nsg_rules, complete_fixed_nsg_rules
+from .helpers.fixed_nsg import FixedNsgError, verify_fixed_nsg_before_deployment, verify_fixed_nsg_after_deployment
 from .helpers.portal_gateway import gateway_id, require_appgw_backend_tls_ready
 from .helpers.management_host_time import ManagementHostTimeError, require_management_host_time_core_ready
 from .helpers import serial_initialization
@@ -145,33 +143,6 @@ PROVIDERS = (
 class DeploymentError(RuntimeError):
     """構築の停止理由を、秘密値を含めず呼出元へ返す例外。"""
     pass
-
-
-def cleanup_dns_nsg_rules(config: dict, transport) -> dict:
-    """通常構築でも不要な DNS 子規則を回収し、保護記録を残す。"""
-    def record(event, value):
-        path = (local_paths(config, ROOT).state / "dns-nsg-retirement"
-                / (str(time.time_ns()) + "-" + event + ".json"))
-        protected_json(path, value)
-    try:
-        return retire_dns_rules(config, transport, execute=True, record=record)
-    except DnsNsgError as error:
-        record("failed", {"status": "stopped", "responseMayBeUnknown": True})
-        raise DeploymentError(str(error)) from None
-
-
-def cleanup_appgw_egress_nsg_rules(config: dict, transport) -> dict:
-    """通常構築でも AppGW の不要な 3 子規則だけを保護記録付きで回収する。"""
-    def record(event, value):
-        path = (local_paths(config, ROOT).state / "appgw-egress-nsg-retirement"
-                / (str(time.time_ns()) + "-" + event + ".json"))
-        protected_json(path, value)
-    try:
-        return retire_appgw_egress_rules(
-            config, transport, execute=True, record=record)
-    except AppgwEgressNsgError as error:
-        record("failed", {"status": "stopped", "responseMayBeUnknown": True})
-        raise DeploymentError(str(error)) from None
 
 
 def upgrade_journal(config: dict, category: str):
@@ -257,25 +228,23 @@ def require_certificate_registry_ready(config, transport):
         raise DeploymentError(str(error)) from None
 
 
-def prepare_core_network_upgrade(config: dict, transport, *, execute=True) -> dict:
+def verify_core_network_before_deployment(config: dict, transport) -> None:
     """VMのPHC同期とApp GatewayのHTTPS構成を確認してからNSGを更新する。"""
     try:
         require_management_host_time_core_ready(config, transport)
     except ManagementHostTimeError as error:
         raise DeploymentError(str(error)) from None
     require_core_appgw_ready(config, transport)
-    record = upgrade_journal(config, "fixed-nsg-prepare")
     try:
-        return prepare_fixed_nsg_rules(config, transport, execute=execute, record=record)
+        verify_fixed_nsg_before_deployment(config, transport)
     except FixedNsgError as error:
         raise DeploymentError(str(error)) from None
 
 
-def complete_core_network_upgrade(config: dict, transport) -> dict:
-    """Bicepで設定したNSGを読み戻し、照合済み旧子規則だけを回収する。"""
-    record = upgrade_journal(config, "fixed-nsg-complete")
+def verify_core_network_after_deployment(config: dict, transport) -> None:
+    """NSGカタログの対象規則とサブネットの関連付けを読み戻す。"""
     try:
-        return complete_fixed_nsg_rules(config, transport, execute=True, record=record)
+        verify_fixed_nsg_after_deployment(config, transport)
     except FixedNsgError as error:
         raise DeploymentError(str(error)) from None
 
@@ -619,7 +588,7 @@ def _bind_management_serial_password(config: dict, outputs: dict, transport: Arm
             outputs.get("managementInitialSerialCreation"), protected_json)
         if not password:
             password = serial_initialization.saved_password(config, workspace, value)
-        template = run(["az", "bicep", "build", "--file", str(ROOT / "infra/modules/management-serial-initialization.bicep"), "--stdout"])
+        template = run(["az", "bicep", "build", "--file", str(ROOT / "infra/modules/management/management-serial-initialization.bicep"), "--stdout"])
         serial_initialization.initialize_guest(config, workspace, value, password, transport, template, protected_json)
         bind_initial_serial_password(config, workspace, response["body"], initial_password=password)
         serial_initialization.mark_complete(config, workspace, protected_json)
@@ -1452,7 +1421,7 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
         secrets = {**(secrets or {}), "ingressSecretRegistration": plan_secret_registration(config, ROOT, transport, secrets or {})}
     serial_password = _prepare_management_serial_password(config, transport) if phase == "core" else ""
     if phase == "core":
-        prepare_core_network_upgrade(config, transport)
+        verify_core_network_before_deployment(config, transport)
     # monitoring はネットワークを配備しない。core の直接呼出しでも native azd と
     # 同じ既存確認を行い、途中まで作成済みの場合にも残った動的規則を維持する。
     existing_nsg_names = discover_existing_network_security_groups(config, transport) if phase == "core" else []
@@ -1510,7 +1479,7 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
                 else:
                     _save_deployment_state(config, outputs)
                     _bind_management_serial_password(config, outputs, transport, serial_password)
-                    complete_core_network_upgrade(config, transport)
+                    verify_core_network_after_deployment(config, transport)
                     protected_json(local_paths(config, ROOT).state / "ingress-bootstrap.json",
                                    configure_grpc_endpoint(config, outputs, transport,
                                                            mutation_recorder=upgrade_journal(config, "ingress-endpoint")))
@@ -1944,7 +1913,7 @@ def _preprovision(config: dict) -> None:
     })
     # 第5段階: 最後にコア構築用のsecure入力を生成する。通常のazd provisionへ
     # 引き渡し、成功後またはhook失敗時にこの生成ファイルを回収する。
-    prepare_core_network_upgrade(config, transport)
+    verify_core_network_before_deployment(config, transport)
     existing_nsg_names = discover_existing_network_security_groups(config, transport)
     existing_routes = discover_existing_route_table_routes(config, transport)
     existing_apim_custom_properties = {}
@@ -2008,7 +1977,7 @@ def deploy_public_ingress(config, outputs, transport, l7_secret, firewall_root_c
     bootstrap = outputs["certificateBootstrap"]
     if gateway_plan.get("keyVaultCertificateSecretId") != bootstrap["certificateSecretUri"]:
         raise DeploymentError("The gateway plan has a different certificate reference")
-    template = run(["az", "bicep", "build", "--file", str(ROOT / "infra/public-ingress.bicep"), "--stdout"])
+    template = run(["az", "bicep", "build", "--file", str(ROOT / "infra/modules/ingress/public-ingress.bicep"), "--stdout"])
     resource = public_ingress_deployment_id(config)
     path = resource + "?api-version=2022-09-01"
     body = {"location": config["location"],
@@ -2125,7 +2094,7 @@ def finish_certificate_core(config, outputs, transport, serial_password, l7_secr
             dns_path = workspace.state / "public-dns.json"
             dns_path.unlink(missing_ok=True)
             _bind_management_serial_password(config, outputs, transport, serial_password)
-            complete_core_network_upgrade(config, transport)
+            verify_core_network_after_deployment(config, transport)
             issued = complete_initial_certificates(config, outputs, transport, protected_json,
                                                    workspace=workspace, repository=ROOT)
             store_initial_certificate(config, workspace, issued["portal"], protected_json)
@@ -2194,7 +2163,7 @@ def postprovision(config: dict) -> None:
             if serial_password and response.get("properties", {}).get("provisioningState") != "Succeeded":
                 raise DeploymentError("The initial Core deployment success could not be verified; retain its pending credential")
             _bind_management_serial_password(config, outputs, transport, serial_password)
-            complete_core_network_upgrade(config, transport)
+            verify_core_network_after_deployment(config, transport)
             ingress = configure_grpc_endpoint(config, outputs, transport,
                                               mutation_recorder=upgrade_journal(config, "ingress-endpoint"))
             if ingress["enabled"]:

@@ -1,39 +1,25 @@
-"""Migrate owned NSG children to the fixed Bicep set without a permit gap.
-
-Read-only discovery supplies every address. Legacy child priorities move in
-descending order, preserving their relative order and conditions; terminal
-denies remain ahead of Azure defaults. Only after all new tuples are verified
-may the exact legacy children be deleted. NSG parents are never PUT or flushed.
-"""
+"""Verify Core-owned NSG rules and their resource bindings during deployment."""
 from __future__ import annotations
 
 import copy
 import ipaddress
 import json
-import math
 from pathlib import Path
 import re
-import time
 from uuid import UUID
 
 from .aca_egress import validate_aca_route_snapshot
 from .apim_naming import apim_name
-from .management_host_time import ManagementHostTimeError, require_management_host_time_core_ready
 
 
 API = '2025-01-01'
 ROOT = Path(__file__).resolve().parents[3]
+CATALOG_DIRECTORY = ROOT / 'infra/modules/network/nsg'
 NSG_TYPE = 'Microsoft.Network/networkSecurityGroups'
 GROUPS = ('agw', 'apim', 'pep', 'management', 'aca', 'broker')
 SUFFIXES = {'agw': 'agw', 'apim': 'apim', 'pep': 'pep', 'management': 'vm', 'aca': 'aca', 'broker': 'broker', 'audit': 'audit'}
 _PAIRS = (('sourcePortRange', 'sourcePortRanges'), ('destinationPortRange', 'destinationPortRanges'),
           ('sourceAddressPrefix', 'sourceAddressPrefixes'), ('destinationAddressPrefix', 'destinationAddressPrefixes'))
-_PREVIOUS_RULE_NAMES = {
-    'management': {'allow-audit-storage-platform-https-egress': 'allow-audit-storage-japan-https-egress'},
-    'pep': {'allow-mgmt-vm-audit-storage-platform-https-ingress': 'allow-mgmt-vm-audit-storage-japan-https-ingress'},
-}
-# Keep the original legacy rules' staging priorities stable across retries.
-_RENAME_STAGING_PRIORITY = 1500
 
 
 class FixedNsgError(RuntimeError):
@@ -42,7 +28,7 @@ class FixedNsgError(RuntimeError):
 
 def _catalog(name):
     try:
-        value = json.loads((ROOT / 'infra' / name).read_text(encoding='utf-8'))
+        value = json.loads((CATALOG_DIRECTORY / name).read_text(encoding='utf-8'))
         if not isinstance(value, dict) or not isinstance(value.get('groups'), dict): raise ValueError()
         return value
     except (OSError, ValueError):
@@ -55,12 +41,12 @@ def _active_groups(config):
 
 
 def _fixed_catalog(audit, *, certificate=False):
-    groups = _catalog('nsg-rule-priorities.json')['groups']
+    groups = _catalog('core-rules.json')['groups']
     if audit:
-        for key, group in _catalog('audit-evidence-nsg.json')['groups'].items():
+        for key, group in _catalog('audit-evidence-rules.json')['groups'].items():
             groups.setdefault(key, {'rules': {}})['rules'].update(group['rules'])
     if certificate:
-        for key, rules in _catalog('certificate-nsg-rules.json')['groups'].items():
+        for key, rules in _catalog('certificate-rules.json')['groups'].items():
             if key not in groups or set(groups[key]['rules']) & set(rules):
                 raise FixedNsgError('The certificate NSG manifest overlaps the fixed rules')
             groups[key]['rules'].update(rules)
@@ -90,18 +76,16 @@ def _scope(config):
         apim_name(config)
         return expected, stem, prefixes
     except (AttributeError, KeyError, TypeError, ValueError):
-        raise FixedNsgError('Fixed NSG migration requires a verified deployment scope') from None
+        raise FixedNsgError('Fixed NSG validation requires a verified deployment scope') from None
 
 
-def _request(transport, method, identity, *, api=API, body=None, headers=None):
-    if method not in ('GET', 'PUT', 'DELETE'): raise FixedNsgError('Unexpected NSG migration method')
+def _request(transport, identity, *, api=API):
     try:
-        result = transport.request(method, identity + '?api-version=' + api, body=body, headers=headers)
+        result = transport.request('GET', identity + '?api-version=' + api)
     except Exception:
-        raise FixedNsgError('NSG migration response is unknown; inspect protected state before retrying') from None
-    allowed = (200, 404) if method == 'GET' else (200, 201, 202) if method == 'PUT' else (200, 202, 204, 404)
-    if not isinstance(result, dict) or type(result.get('statusCode')) is not int or result['statusCode'] not in allowed:
-        raise FixedNsgError('NSG migration could not verify the ARM response')
+        raise FixedNsgError('Could not read the owned NSG resource') from None
+    if not isinstance(result, dict) or type(result.get('statusCode')) is not int or result['statusCode'] not in (200, 404):
+        raise FixedNsgError('Could not verify the NSG resource response')
     return result
 
 
@@ -116,14 +100,14 @@ def _identity(body, identity, kind, config, *, location=None, tags=True, state=T
             or not isinstance(body.get('properties'), dict)
             or tags and (not isinstance(body.get('tags'), dict)
                          or any(body['tags'].get(k) != v for k, v in expected_tags.items()))):
-        raise FixedNsgError('NSG migration resource ownership, identity or location is unverified')
+        raise FixedNsgError('NSG validation resource ownership, identity or location is unverified')
     if state and body['properties'].get('provisioningState') not in (('Succeeded', 'Updating') if pending else ('Succeeded',)):
-        raise FixedNsgError('NSG migration resource has an unresolved operation')
+        raise FixedNsgError('NSG validation resource has an unresolved operation')
     return body
 
 
 def _read(config, transport, identity, kind, *, required=True, api=API, **options):
-    response = _request(transport, 'GET', identity, api=api)
+    response = _request(transport, identity, api=api)
     if response['statusCode'] == 404:
         if required: raise FixedNsgError('A required owned network resource is unavailable')
         return None
@@ -226,17 +210,17 @@ def _parents(config, transport, *, pending=False):
 
 
 def _verify_group(config, transport, identity):
-    response = _request(transport, 'GET', identity, api='2024-03-01'); body = response.get('body')
+    response = _request(transport, identity, api='2024-03-01'); body = response.get('body')
     if (response['statusCode'] != 200 or not isinstance(body, dict) or _ref(body) != identity.casefold()
             or not isinstance(body.get('tags'), dict)
             or any(body['tags'].get(k) != config[v] for k, v in (('product', 'productName'), ('environment', 'environmentName')))):
         raise FixedNsgError('Network resource group ownership is unverified')
 
 
-def _verify_aca_egress_path(config, transport, subnet, *, suffix='aca'):
+def _verify_certificate_egress_path(config, transport, subnet):
     groups, stem, prefixes = _scope(config)
     network = groups['nw'] + '/providers/Microsoft.Network/'
-    route_table_id = network + 'routeTables/rt-' + stem + '-' + suffix
+    route_table_id = network + 'routeTables/rt-' + stem + '-certificate'
     if (_ref(subnet.get('routeTable')) != route_table_id.casefold()
             or subnet.get('defaultOutboundAccess') is not False or subnet.get('natGateway')
             or subnet.get('serviceEndpoints') not in (None, [])
@@ -256,8 +240,7 @@ def _verify_aca_egress_path(config, transport, subnet, *, suffix='aca'):
     if table.get('disableBgpRoutePropagation') is not True:
         raise FixedNsgError('The ACA route table must disable BGP propagation')
     try:
-        if suffix == 'certificate' and (not isinstance(table.get('routes'), list)
-                                        or len(table['routes']) != 1):
+        if not isinstance(table.get('routes'), list) or len(table['routes']) != 1:
             raise ValueError()
         validate_aca_route_snapshot(table.get('routes'), prefixes['firewall'], prefixes['agw'],
                                     firewall_ip=firewall_ip, require_default=True)
@@ -266,7 +249,7 @@ def _verify_aca_egress_path(config, transport, subnet, *, suffix='aca'):
 
 
 def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False, permit_pending_audit_endpoints=False,
-                            _required_bindings=None, _require_aca_egress_path=False):
+                            _required_bindings=None):
     """Read and verify resource identities, subnet links, PE targets and all NIC IPs."""
     if type(permit_unassociated_aca) is not bool or type(permit_pending_audit_endpoints) is not bool:
         raise FixedNsgError('The internal ACA association phase is invalid')
@@ -319,10 +302,9 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False,
                 or p.get('defaultOutboundAccess') is not False):
             raise FixedNsgError('The dedicated certificate subnet does not match the deployment scope')
         if not permit_unassociated_aca:
-            _verify_aca_egress_path(config, transport, p, suffix='certificate')
+            _verify_certificate_egress_path(config, transport, p)
     else:
-        # The NSG-only maintenance entry may still inspect a known six-subnet
-        # Core. Once the new subnet exists every B2 rule is verified below.
+        # The certificate subnet can be absent during initial provisioning.
         prefixes.pop('certificate', None)
     subnet_ids = {}
     for key in (*subnet_groups, 'firewall'):
@@ -336,8 +318,6 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False,
         if address_prefixes != [prefixes[key]]: raise FixedNsgError('The owned subnet CIDR differs')
         if key == 'pep' and p.get('privateEndpointNetworkPolicies') != 'NetworkSecurityGroupEnabled':
             raise FixedNsgError('The initial Private Endpoint subnet NSG enforcement policy differs')
-        if key == 'aca' and _require_aca_egress_path:
-            _verify_aca_egress_path(config, transport, p)
         if key in ('broker', 'audit') and _ref(p.get('routeTable')) != (nw + 'routeTables/rt-' + stem + '-' + key).casefold():
             raise FixedNsgError('The dedicated ' + key.title() + ' subnet route table differs')
         associated = _ref(p.get('networkSecurityGroup'))
@@ -506,51 +486,17 @@ def _definition(rule, bindings):
         raise FixedNsgError('The fixed manifest cannot bind to owned resource addresses') from None
 
 
-def _temporary_priorities(group):
-    result = {}
-    for direction in ('Inbound', 'Outbound'):
-        rules = sorted(((name, r) for name, r in group['rules'].items() if r['direction'] == direction),
-                       key=lambda pair: (pair[1]['priority'], pair[0]))
-        for index, (name, rule) in enumerate(rules):
-            result[name] = 4080 if rule['priority'] == 4096 else 1000 + index
-    return result
-
-
-def _classify(parents, bindings, *, require_complete=False, accept_previous_names=False):
-    fixed = _fixed_catalog('audit' in parents, certificate='certificate' in bindings['subnets']); legacy = _catalog('nsg-legacy-rule-definitions.json')
-    plan = []
-    for key in parents:
-        current = _inventory(parents[key]); desired = fixed[key]['rules']
-        older = legacy['groups'].get(key, {'rules': {}}); temporary = _temporary_priorities(older)
-        renamed = {previous: name for name, previous in _PREVIOUS_RULE_NAMES.get(key, {}).items()}
-        matching = set()
-        for name, child in current.items():
-            actual = _properties(child)
-            if name in desired and actual == _definition(desired[name], bindings):
-                matching.add(name)
-                continue
-            if name in renamed:
-                target = renamed[name]
-                expected = _definition(desired[target], bindings)
-                if accept_previous_names and target not in current and actual == expected:
-                    matching.add(target)
-                    continue
-                if actual not in (expected, {**expected, 'priority': _RENAME_STAGING_PRIORITY}):
-                    raise FixedNsgError('An NSG child differs from the exact previous rule definition')
-                plan.append({'group': key, 'name': name, 'child': child, 'originalPriority': expected['priority'],
-                             'temporaryPriority': _RENAME_STAGING_PRIORITY, 'properties': actual})
-                continue
-            old = older['rules'].get(name)
-            if old is None: raise FixedNsgError('An NSG has an unknown, manually modified or conflicting child rule')
-            candidates = [old] + [{**old, **alternative} for alternative in old.get('alternatives', [])]
-            matched = next((r for r in candidates if actual in (_definition(r, bindings), {**_definition(r, bindings), 'priority': temporary[name]})), None)
-            if matched is None: raise FixedNsgError('An NSG child differs from the exact owned legacy definition')
-            plan.append({'group': key, 'name': name, 'child': child, 'originalPriority': old['priority'],
-                         'temporaryPriority': temporary[name], 'properties': actual})
-        if require_complete and (parents[key] is None or matching != desired.keys()):
+def verify_fixed_nsg_inventory(parents, bindings, *, require_complete=False):
+    """Accept only exact current rule tuples; completion also requires every rule."""
+    fixed = _fixed_catalog('audit' in parents, certificate='certificate' in bindings['subnets'])
+    for group, parent in parents.items():
+        current = _inventory(parent)
+        expected = fixed[group]['rules']
+        for name, rule in current.items():
+            if name not in expected or _properties(rule) != _definition(expected[name], bindings):
+                raise FixedNsgError('An NSG has an unknown, manually modified or conflicting child rule')
+        if require_complete and (parent is None or current.keys() != expected.keys()):
             raise FixedNsgError('The complete fixed NSG rule set has not been deployed and verified')
-    group_order = (*GROUPS, 'audit')
-    return sorted(plan, key=lambda row: (group_order.index(row['group']), row['properties']['direction'], -row['originalPriority'], row['name']))
 
 
 def _snapshot(parent):
@@ -574,21 +520,6 @@ def _etag(value):
     return tag
 
 
-def fixed_nsg_upgrade_parameters(config, transport):
-    """Supply the NSG-only Bicep from owned live addresses; no public switches."""
-    groups, stem, _ = _scope(config)
-    bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True,
-                                       _require_aca_egress_path=True)
-    parents = _parents(config, transport)
-    if any(parent is None for key, parent in parents.items() if key != 'aca'):
-        raise FixedNsgError('The NSG-only upgrade requires the existing dedicated network security groups')
-    _classify(parents, bindings)
-    return {'resourcePrefix': stem, 'location': config['location'],
-            'tags': _initial_nsg_tags(config),
-            'bindings': bindings, 'existingNetworkSecurityGroupNames': [
-                'nsg-' + stem + '-' + SUFFIXES[key] for key, parent in parents.items() if parent is not None]}
-
-
 def _initial_nsg_tags(config):
     extra = config.get('tags', {})
     if not isinstance(extra, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in extra.items()):
@@ -597,325 +528,44 @@ def _initial_nsg_tags(config):
             'azd-env-name': config['environmentName']}
 
 
-def verify_fixed_nsg_upgrade_what_if(config, document, bindings):
-    """Require every fixed child to expand and reject writes outside this set."""
-    groups, stem, _ = _scope(config)
-    # The REST operation result puts changes under properties; the CLI/SDK
-    # also exposes a flattened form. Never resolve conflicting result lists.
-    if isinstance(document, dict):
-        document = copy.deepcopy(document)
-        properties = document.get('properties')
-        if isinstance(properties, dict):
-            if (properties.get('error') is not None or properties.get('diagnostics') not in (None, [])
-                    or properties.get('potentialChanges') not in (None, [])):
-                raise FixedNsgError('NSG-only what-if contains nested expansion diagnostics')
-            if 'changes' in properties:
-                if 'changes' in document and document['changes'] != properties['changes']:
-                    raise FixedNsgError('NSG-only what-if contains conflicting change lists')
-                document['changes'] = properties['changes']
-        document.setdefault('diagnostics', [])
-    if (not isinstance(document, dict) or document.get('status') != 'Succeeded'
-            or document.get('error') is not None or document.get('diagnostics') != []
-            or document.get('potentialChanges') not in (None, []) or not isinstance(document.get('changes'), list)):
-        raise FixedNsgError('NSG-only what-if is incomplete or contains expansion diagnostics')
-    active_groups = _active_groups(config)
-    catalog = _fixed_catalog('audit' in active_groups)
-    expected = {groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-' + SUFFIXES[key]
-                + '/securityRules/' + name: _definition(rule, bindings)
-                for key in active_groups for name, rule in catalog[key]['rules'].items()}
-    expected = {identity.casefold(): value for identity, value in expected.items()}
-    aca = (groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-aca').casefold()
-    observed = set()
-    seen_resources = set()
-    for change in document['changes']:
-        if not isinstance(change, dict) or not isinstance(change.get('resourceId'), str):
-            raise FixedNsgError('NSG-only what-if resource identity is unavailable')
-        identity, action = change['resourceId'].casefold(), change.get('changeType')
-        if identity in seen_resources: raise FixedNsgError('NSG-only what-if resource identity is duplicated')
-        seen_resources.add(identity)
-        if identity in expected:
-            if identity in observed or action not in ('Create', 'Modify', 'NoChange'):
-                raise FixedNsgError('A fixed NSG child was duplicated, ignored or deleted by what-if')
-            body = change.get('after')
-            if action == 'NoChange' and body is None:
-                body = change.get('before')
-            if not isinstance(body, dict):
-                raise FixedNsgError('A fixed NSG child has no predicted post-deployment state')
-            if _properties(body) != expected[identity]:
-                raise FixedNsgError('NSG-only what-if differs from the exact fixed child tuple')
-            observed.add(identity)
-        elif identity == aca and action == 'Create':
-            after = change.get('after')
-            if (change.get('before') is not None or not isinstance(after, dict)
-                    or not isinstance(after.get('properties'), dict) or not isinstance(after.get('location'), str)
-                    or not isinstance(after.get('properties', {}).get('securityRules'), list)
-                    or set(after.get('properties', {})) - {'securityRules'}
-                    or after.get('location', '').replace(' ', '').casefold() != config['location'].replace(' ', '').casefold()
-                    or after.get('tags') != _initial_nsg_tags(config)):
-                raise FixedNsgError('The new ACA NSG parent is outside the fixed creation contract')
-            # FullResourcePayloads merges the separately declared ACA children
-            # into the new parent's predicted state. They must still be the
-            # exact fixed ACA set; the actual parent-create template is empty.
-            children = after['properties']['securityRules']
-            if children:
-                aca_expected = {name.casefold(): _definition(rule, bindings)
-                                for name, rule in catalog['aca']['rules'].items()}
-                if any(not isinstance(child, dict) or not isinstance(child.get('name'), str) for child in children):
-                    raise FixedNsgError('The predicted ACA parent child identities are invalid')
-                names = [child['name'].casefold() for child in children]
-                if (len(names) != len(children) or len(names) != len(set(names)) or set(names) != set(aca_expected)
-                        or any(_properties(child) != aca_expected[child['name'].casefold()] for child in children)):
-                    raise FixedNsgError('The predicted ACA parent children differ from the fixed set')
-        elif action not in ('Ignore', 'NoChange'):
-            raise FixedNsgError('NSG-only what-if would write an unrelated resource or an existing parent')
-    if observed != set(expected): raise FixedNsgError('NSG-only what-if did not expand all fixed children')
-    return {'fixedChildrenVerified': len(observed), 'expansionDiagnostics': 0, 'unrelatedWrites': 0}
-
-
-def _subnet_reference(value):
-    if (not isinstance(value, dict) or not isinstance(value.get('id'), str) or not value['id']
-            or set(value) - {'id', 'name', 'type', 'etag', 'resourceGroup'}):
-        raise FixedNsgError('A subnet reference contains unsupported writable values')
-    return {'id': value['id']}
-
-
-def _writable_aca_subnet(body, identity):
-    """2025-01-01 documented read-only fields only; unknown writable input stops."""
-    if (not isinstance(body, dict) or _ref(body) != identity.casefold()
-            or body.get('name') != identity.rsplit('/', 1)[-1]
-            or str(body.get('type', '')).casefold() != 'microsoft.network/virtualnetworks/subnets'
-            or not isinstance(body.get('properties'), dict)
-            or body['properties'].get('provisioningState') != 'Succeeded'):
-        raise FixedNsgError('The ACA subnet identity or state is unverified')
-    p = copy.deepcopy(body['properties'])
-    for field in ('privateEndpoints', 'ipConfigurations', 'ipConfigurationProfiles', 'resourceNavigationLinks',
-                  'serviceAssociationLinks', 'purpose', 'provisioningState'):
-        p.pop(field, None)
-    allowed = {'addressPrefix', 'addressPrefixes', 'networkSecurityGroup', 'routeTable', 'natGateway',
-               'serviceEndpoints', 'serviceEndpointPolicies', 'ipAllocations', 'delegations',
-               'privateEndpointNetworkPolicies', 'privateLinkServiceNetworkPolicies', 'sharingScope', 'defaultOutboundAccess'}
-    if set(p) - allowed:
-        raise FixedNsgError('ACA subnet contains an unsupported writable property; no value was omitted')
-    for field in ('networkSecurityGroup', 'routeTable', 'natGateway'):
-        if field in p and p[field] is not None: p[field] = _subnet_reference(p[field])
-    for field in ('serviceEndpointPolicies', 'ipAllocations'):
-        if field in p:
-            if not isinstance(p[field], list): raise FixedNsgError('ACA subnet reference inventory is invalid')
-            p[field] = [_subnet_reference(value) for value in p[field]]
-    for field in ('delegations', 'serviceEndpoints'):
-        if field not in p: continue
-        if not isinstance(p[field], list): raise FixedNsgError('ACA subnet service inventory is invalid')
-        cleaned = []
-        for value in p[field]:
-            if not isinstance(value, dict): raise FixedNsgError('ACA subnet service properties are invalid')
-            if field == 'delegations':
-                if set(value) - {'id', 'name', 'type', 'etag', 'properties'} or not isinstance(value.get('name'), str):
-                    raise FixedNsgError('ACA subnet delegation contains unsupported writable values')
-                properties = copy.deepcopy(value.get('properties', {}))
-                if not isinstance(properties, dict): raise FixedNsgError('ACA subnet delegation is invalid')
-                properties.pop('actions', None); properties.pop('provisioningState', None)
-                if set(properties) != {'serviceName'} or not isinstance(properties['serviceName'], str):
-                    raise FixedNsgError('ACA subnet delegation properties cannot be preserved')
-                cleaned.append({'name': value['name'], 'properties': properties})
-            else:
-                value.pop('provisioningState', None)
-                if set(value) - {'service', 'locations', 'networkIdentifier'}:
-                    raise FixedNsgError('ACA subnet service endpoint contains unsupported writable values')
-                if 'networkIdentifier' in value: value['networkIdentifier'] = _subnet_reference(value['networkIdentifier'])
-                cleaned.append(value)
-        p[field] = cleaned
-    return p
-
-
-def associate_fixed_aca_nsg(config, transport, *, bindings, execute=False, record=None,
-                            max_checks=30, wait_seconds=2, sleep=time.sleep):
-    """After all fixed children exist, change only the owned ACA subnet NSG link."""
-    if (execute and not callable(record)) or (record is not None and not callable(record)):
-        raise FixedNsgError('ACA NSG association requires a protected per-attempt journal')
-    _limits(max_checks, wait_seconds)
-    groups, stem, _ = _scope(config)
-    if read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True) != bindings:
-        raise FixedNsgError('Owned resource addresses changed before ACA NSG association')
-    _classify(_parents(config, transport), bindings, require_complete=True)
-    identity = groups['nw'] + '/providers/Microsoft.Network/virtualNetworks/vnet-' + stem + '/subnets/snet-' + stem + '-aca'
-    target = groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-aca'
-    before = _request(transport, 'GET', identity).get('body')
-    properties = _writable_aca_subnet(before, identity)
-    _verify_aca_egress_path(config, transport, properties)
-    existing = _ref(properties.get('networkSecurityGroup'))
-    if existing and existing != target.casefold(): raise FixedNsgError('ACA subnet has a different NSG owner')
-    if existing: return {'associationRequired': False, 'associationVerified': True}
-    desired = {**properties, 'networkSecurityGroup': {'id': target}}
-    plan = {'subnetId': identity, 'propertiesBefore': properties, 'propertiesAfter': desired,
-            'associationRequired': True, 'etag': _etag(before)}
-    if record: record('aca-association-planned', plan)
-    if not execute: return plan
-    fresh = _request(transport, 'GET', identity).get('body')
-    if _writable_aca_subnet(fresh, identity) != properties or _etag(fresh) != plan['etag']:
-        raise FixedNsgError('ACA subnet changed before its conditional association')
-    record('aca-association-attempt', plan)
-    _request(transport, 'PUT', identity, body={'properties': desired}, headers={'If-Match': plan['etag']})
-    for index in range(max_checks):
-        response = _request(transport, 'GET', identity); body = response.get('body')
-        state = body.get('properties', {}).get('provisioningState') if isinstance(body, dict) else None
-        if state == 'Succeeded':
-            if _writable_aca_subnet(body, identity) != desired:
-                raise FixedNsgError('ACA subnet readback differs from the exact planned association')
-            record('aca-association-verified', {'subnetId': identity, 'associationVerified': True})
-            return {'associationRequired': True, 'associationVerified': True}
-        if state not in ('Updating',) or index == max_checks - 1:
-            raise FixedNsgError('ACA subnet association is unresolved; no additional PUT was requested')
-        sleep(wait_seconds)
-
-
-def _limits(max_checks, wait_seconds):
-    if (type(max_checks) is not int or not 1 <= max_checks <= 120 or type(wait_seconds) not in (int, float)
-            or not math.isfinite(wait_seconds) or not 0 <= wait_seconds <= 60):
-        raise FixedNsgError('NSG migration polling limits are invalid')
-
-
-def _wait_change(config, transport, before, expected, child_id, target_properties, *, deleting, max_checks, wait_seconds, sleep):
-    for attempt in range(max_checks):
-        child = _request(transport, 'GET', child_id)
-        parent = _read(config, transport, before['id'], NSG_TYPE, pending=True)
-        if child['statusCode'] == 200:
-            body = child.get('body')
-            if (not isinstance(body, dict) or _ref(body) != child_id.casefold()
-                    or _properties(body) not in (_properties(next(r for r in before['properties']['securityRules'] if _ref(r) == child_id.casefold())), target_properties)):
-                raise FixedNsgError('The NSG child changed outside the requested migration')
-        if _snapshot(parent) == _snapshot(expected) and parent['properties']['provisioningState'] == 'Succeeded':
-            if deleting and child['statusCode'] == 404 or not deleting and child['statusCode'] == 200 and _properties(child['body']) == target_properties and child['body']['properties'].get('provisioningState') == 'Succeeded':
-                _inventory(parent); _defaults(parent); return parent
-        elif _snapshot(parent) not in (_snapshot(before), _snapshot(expected)):
-            raise FixedNsgError('NSG settings changed outside the requested child')
-        if attempt + 1 < max_checks: sleep(wait_seconds)
-    raise FixedNsgError('NSG migration remains pending; inspect current state before retrying')
-
-
-def _apply(config, transport, parents, plan, *, deleting, record, max_checks, wait_seconds, sleep):
-    if not callable(record):
-        raise FixedNsgError('NSG mutation requires a protected record callback')
-    writes = 0; emit = record
-    for item in plan:
-        key, name = item['group'], item['name']; parent = parents[key]
-        if not deleting and item['properties']['priority'] == item['temporaryPriority']: continue
-        fresh = _read(config, transport, parent['id'], NSG_TYPE)
-        if _snapshot(fresh) != _snapshot(parent) or _etag(fresh) != _etag(parent):
-            raise FixedNsgError('An NSG changed before the requested child migration')
-        child_id = parent['id'] + '/securityRules/' + name
-        response = _request(transport, 'GET', child_id); child = response.get('body')
-        if (response['statusCode'] != 200 or not isinstance(child, dict) or _ref(child) != child_id.casefold()
-                or str(child.get('name', '')).casefold() != name
-                or str(child.get('type', '')).casefold() != (NSG_TYPE+'/securityRules').casefold()
-                or child.get('properties', {}).get('provisioningState') != 'Succeeded'
-                or _properties(child) != item['properties']):
-            raise FixedNsgError('The NSG parent and child inventories differ')
-        matching = next(r for r in parent['properties']['securityRules'] if r['name'].casefold() == name)
-        if _etag(child) != _etag(matching): raise FixedNsgError('An NSG child changed before its conditional update')
-        expected = copy.deepcopy(parent)
-        expected['properties']['securityRules'] = [r for r in expected['properties']['securityRules'] if r['name'].casefold() != name]
-        target = {**item['properties'], 'priority': item['temporaryPriority']}
-        body = None
-        if not deleting:
-            moved = copy.deepcopy(child); moved['properties']['priority'] = item['temporaryPriority']
-            expected['properties']['securityRules'].append(moved)
-            writable = copy.deepcopy(child['properties']); writable.pop('provisioningState', None)
-            writable['priority'] = item['temporaryPriority']; body = {'properties': writable}
-        emit('attempt', {'child': child_id, 'method': 'DELETE' if deleting else 'PUT', 'ordinal': writes + 1})
-        _request(transport, 'DELETE' if deleting else 'PUT', child_id, body=body, headers={'If-Match': _etag(child)})
-        writes += 1
-        parents[key] = _wait_change(config, transport, parent, expected, child_id, target, deleting=deleting,
-                                   max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
-        emit('removed' if deleting else 'staged', {'child': child_id, 'azureWrites': writes})
-    fresh_parents = _parents(config, transport)
-    if any(_snapshot(fresh_parents[key]) != _snapshot(parents[key]) for key in parents):
-        raise FixedNsgError('An NSG changed outside the verified migration')
-    return writes
-
-
-def prepare_fixed_nsg_rules(config, transport, *, execute=False, record=None, max_checks=30, wait_seconds=2, sleep=time.sleep):
-    """Audit all subnets first, then preserve owned legacy children at temporary priorities."""
-    if execute and not callable(record):
-        raise FixedNsgError('NSG mutation requires a protected record callback')
-    _limits(max_checks, wait_seconds)
+def verify_fixed_nsg_before_deployment(config, transport):
+    """Use only resources already required by present rules when resuming Core."""
     parents = _parents(config, transport)
-    if all(not _inventory(parent) for parent in parents.values()):
-        return {'status': 'new-or-empty-build', 'plannedMoves': 0, 'azureWrites': 0}
-    # A first build can stop after static rules, before APIM/CAE/PE creation.
-    # Exact desired static children need no priority migration or live IP read.
     _, _, prefixes = _scope(config)
-    static_bindings = {'subnets': prefixes, 'ips': {}, 'ipSets': {}}
     fixed = _fixed_catalog('audit' in parents, certificate='certificate' in prefixes)
-    static_only = True
-    for key, parent in parents.items():
-        for name, child in _inventory(parent).items():
-            rule = fixed[key]['rules'].get(name)
-            if (rule is None or any(token.split(':', 1)[0] not in ('subnet', 'tag', 'literal')
-                                    for token in rule['source'] + rule['destination'])
-                    or _properties(child) != _definition(rule, static_bindings)):
-                static_only = False; break
-    if static_only:
-        return {'status': 'fixed-static-build', 'plannedMoves': 0, 'azureWrites': 0}
-    # Initial construction can also stop after dynamic children, before the
-    # later ACA/SQL/ACR stages exist. Validate every existing child's actual
-    # dependencies; completion and legacy migration still require the full set.
-    required_bindings = set(); fixed_names_only = True
-    for key, parent in parents.items():
+    required_bindings = set()
+    for group, parent in parents.items():
         for name in _inventory(parent):
-            rule = fixed[key]['rules'].get(name)
+            rule = fixed[group]['rules'].get(name)
             if rule is None:
-                fixed_names_only = False; break
+                raise FixedNsgError('An NSG has an unknown, manually modified or conflicting child rule')
             for token in rule['source'] + rule['destination']:
                 kind, value = token.split(':', 1)
-                if kind in ('ip', 'address'): required_bindings.add(('ips', value))
-                elif kind in ('ips', 'addresses'): required_bindings.add(('ipSets', value))
-    required_bindings = frozenset(required_bindings) if fixed_names_only else None
-    bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True,
-                                      permit_pending_audit_endpoints=True, _required_bindings=required_bindings)
-    if required_bindings is not None and any(
-            _properties(child) != _definition(fixed[key]['rules'][name], bindings)
-            for key, parent in parents.items() for name, child in _inventory(parent).items()):
-        # A matching name alone never bypasses the legacy/modified-rule audit.
-        required_bindings = None
-        bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True,
-                                          permit_pending_audit_endpoints=True)
-    plan = _classify(parents, bindings)
-    emit = record if callable(record) else (lambda event, value: None)
-    emit('plan', {'operation': 'stage', 'parents': parents, 'bindings': bindings, 'targets': plan, 'execute': execute})
-    writes = _apply(config, transport, parents, plan, deleting=False, record=record, max_checks=max_checks,
-                    wait_seconds=wait_seconds, sleep=sleep) if execute else 0
-    if execute:
-        current_bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True,
-                                                  permit_pending_audit_endpoints=True, _required_bindings=required_bindings)
-        if current_bindings != bindings: raise FixedNsgError('Resource addresses changed during NSG migration')
-        remaining = _classify(_parents(config, transport), bindings)
-        if any(r['properties']['priority'] != r['temporaryPriority'] for r in remaining):
-            raise FixedNsgError('Legacy NSG priorities were not fully staged')
-    result = {'status': 'staged' if execute else 'planned', 'plannedMoves': sum(r['properties']['priority'] != r['temporaryPriority'] for r in plan), 'azureWrites': writes}
-    emit('result', result); return result
+                if kind in ('ip', 'address'):
+                    required_bindings.add(('ips', value))
+                elif kind in ('ips', 'addresses'):
+                    required_bindings.add(('ipSets', value))
+
+    if not required_bindings:
+        verify_fixed_nsg_inventory(parents, {'subnets': prefixes, 'ips': {}, 'ipSets': {}})
+        return
+
+    options = {'permit_unassociated_aca': True, 'permit_pending_audit_endpoints': True,
+               '_required_bindings': frozenset(required_bindings)}
+    bindings = read_fixed_nsg_bindings(config, transport, **options)
+    verify_fixed_nsg_inventory(parents, bindings)
+    if bindings != read_fixed_nsg_bindings(config, transport, **options):
+        raise FixedNsgError('Resource addresses changed before Core deployment')
+    verify_fixed_nsg_inventory(_parents(config, transport), bindings)
 
 
-def complete_fixed_nsg_rules(config, transport, *, execute=False, record=None, max_checks=30, wait_seconds=2, sleep=time.sleep):
-    """Verify all fixed desired tuples before deleting any exact owned legacy child."""
-    if execute and not callable(record):
-        raise FixedNsgError('NSG mutation requires a protected record callback')
-    _limits(max_checks, wait_seconds)
-    parents = _parents(config, transport); bindings = read_fixed_nsg_bindings(config, transport)
-    plan = _classify(parents, bindings, require_complete=True)
-    # The NSG-only migration can be called without the Core wrapper. Preserve
-    # legacy NTP egress until the existing VM's PHC preparation is verified.
-    if execute and any(row['group'] == 'management' and row['name'] in ('allow-time-sync-egress', 'allow-time-sync')
-                       for row in plan):
-        try:
-            require_management_host_time_core_ready(config, transport)
-        except ManagementHostTimeError as error:
-            raise FixedNsgError(str(error)) from None
-    emit = record if callable(record) else (lambda event, value: None)
-    emit('plan', {'operation': 'complete', 'parents': parents, 'bindings': bindings, 'targets': plan, 'execute': execute})
-    writes = _apply(config, transport, parents, plan, deleting=True, record=record, max_checks=max_checks,
-                    wait_seconds=wait_seconds, sleep=sleep) if execute else 0
-    if execute:
-        if read_fixed_nsg_bindings(config, transport) != bindings: raise FixedNsgError('Resource addresses changed during NSG completion')
-        if _classify(_parents(config, transport), bindings, require_complete=True): raise FixedNsgError('Owned legacy NSG children remain after completion')
-    result = {'status': 'completed' if execute else 'planned', 'plannedDeletes': len(plan), 'azureWrites': writes}
-    emit('result', result); return result
+def verify_fixed_nsg_after_deployment(config, transport):
+    """Confirm the complete NSG catalog and its live bindings after Core deployment."""
+    parents = _parents(config, transport)
+    bindings = read_fixed_nsg_bindings(config, transport)
+    if 'certificate' in config['network']['subnetPrefixes'] and 'certificate' not in bindings['subnets']:
+        raise FixedNsgError('The dedicated certificate subnet is missing after Core deployment')
+    verify_fixed_nsg_inventory(parents, bindings, require_complete=True)
+    if bindings != read_fixed_nsg_bindings(config, transport):
+        raise FixedNsgError('Resource addresses changed during NSG verification')
+    verify_fixed_nsg_inventory(_parents(config, transport), bindings, require_complete=True)

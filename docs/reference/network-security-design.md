@@ -2,7 +2,7 @@
 
 [通信要件](network-communication-requirements.md) · [Firewall設計](firewall-policy-design.md) · [実証方法と検証結果の管理](network-security-validation.md) · [NSG運用一覧](../operations/network-security-groups.md) · [NSGにしない基盤通信](platform-communications.md)
 
-本書は初期構築に採用したNSGの通信対応と判断を記録する。定義の正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のcatalog v5である。本文監査の規則は有効時に別の正本から作成し、証明書用ACAの規則は専用資材で定める。`AzureFirewallSubnet`にはNSGを関連付けない。
+本書は初期構築に採用したNSGの通信対応と判断を記録する。定義の正本は[infra/modules/network/nsg/core-rules.json](../../infra/modules/network/nsg/core-rules.json)のcatalog v5である。本文監査の規則は有効時に別の正本から作成し、証明書用ACAの規則は専用資材で定める。`AzureFirewallSubnet`にはNSGを関連付けない。
 
 `FLOW-...`は通信要件の識別子、`POLICY-...`は拒否・既定規則の設計判断の識別子、規則の設計IDは資材の`designRecordId`である。同じ接続の送信・受信に同じFLOW IDを付ける。拒否規則や既定規則は通信の件数として加算しない。
 
@@ -34,7 +34,7 @@
 | `tag:...` | Azureサービスタグ | 名称・プロトコル・ポートは資材固定。タグのIP集合を公開入力で上書きしない。 |
 | `literal:*`／`literal:0.0.0.0/0` | Any／初期IPv4公開範囲 | 資材固定。企業環境に合わせた変更は初期構築後の運用とする。 |
 
-公開TLS用Vaultと証明書Jobの結果Blobは、[証明書用の追加NSG規則](../../infra/certificate-nsg-rules.json)で扱う。AppGWから公開TLS用Vault（`ips:certificateVault`）への送受信、専用JobからVault・Blob・ACRへの受信、管理VMと結果Blob（`ips:certificateBlob`）の送受信を、各Private EndpointのIPに限定する。Jobサブネット自身の許可と末尾拒否は[証明書用ネットワーク資材](../../infra/modules/certificate-network.bicep)を参照する。
+公開TLS用Vaultと証明書Jobの結果Blobは、[証明書用の追加NSG規則](../../infra/modules/network/nsg/certificate-rules.json)で扱う。AppGWから公開TLS用Vault（`ips:certificateVault`）への送受信、専用JobからVault・Blob・ACRへの受信、管理VMと結果Blob（`ips:certificateBlob`）の送受信を、各Private EndpointのIPに限定する。Jobサブネット自身の許可と末尾拒否は[証明書用ネットワーク資材](../../infra/modules/certificates/certificate-network.bicep)を参照する。
 
 規則表の依存欄には、各規則へ入る構築情報を列挙する。基本構成の規則集合は固定であり、依存欄の値が作成スイッチを意味することはない。PEや資源の作成後に動的規則を設定し、終端Denyは必要なAllowが揃った後に設定する。
 
@@ -259,14 +259,14 @@ Azure提供DNS、VM IMDS、DHCP、Agent host channel、ホスト時刻提供、l
 
 | 正本・実装 | 役割 |
 | --- | --- |
-| [NSG JSON正本](../../infra/nsg-rule-priorities.json) | catalog v5の規則tupleと設計ID。固定規則の照合基準。 |
-| [network.bicep](../../infra/modules/network.bicep) | 基本構成のNSG、サブネット関連付け、静的基盤規則、標準DNS。 |
-| [network-bindings.bicep](../../infra/modules/network-bindings.bicep) | 割当IP・PE全IPを使う動的規則、監査Blobの4規則、終端Deny。 |
-| [portal-network.bicep](../../infra/modules/portal-network.bicep)／[bindings](../../infra/modules/portal-network-bindings.bicep) | ACR PE全IP、ACA VIP、ACAの終端拒否、AppGW→バックエンドのTLS検査規則。 |
-| [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) | 共有SQL PE全IP、APIM→ACAと管理VM→SQL。 |
-| [nsg-fixed-upgrade.bicep](../../infra/modules/nsg-fixed-upgrade.bicep)／[fixed_nsg.py](../../scripts/deployment/helpers/fixed_nsg.py) | 既存環境の固定集合への限定移行と条件照合。新規構築用規則と別設計にはしない。 |
+| [NSG JSON正本](../../infra/modules/network/nsg/core-rules.json) | catalog v5の規則tupleと設計ID。固定規則の照合基準。 |
+| [network.bicep](../../infra/modules/network/network.bicep) | 基本構成のNSG、サブネット関連付け、静的基盤規則、標準DNS。 |
+| [network-bindings.bicep](../../infra/modules/network/network-bindings.bicep) | 割当IP・PE全IPを使う動的規則、監査Blobの4規則、終端Deny。 |
+| [portal-network.bicep](../../infra/modules/network/portal-network.bicep)／[bindings](../../infra/modules/network/portal-network-bindings.bicep) | ACR PE全IP、ACA VIP、ACAの終端拒否、AppGW→バックエンドのTLS検査規則。 |
+| [credential-broker-network.bicep](../../infra/modules/network/credential-broker-network.bicep) | 共有SQL PE全IP、APIM→ACAと管理VM→SQL。 |
+| [fixed_nsg.py](../../scripts/deployment/helpers/fixed_nsg.py) | 配備前に作成済みの規則を照合し、配備後に全規則と関連付けを検証。 |
 
-既存移行では親NSGの規則を一括消去せず、所有・条件の照合、旧子規則の安全な順位移動、新固定tupleの設定と読戻し、旧子規則の削除を順に行う。管理VM時刻はPHCの実同期が成立してから、catalog v2の管理325と完全一致するlegacy tupleを直前ETag付きで限定削除し、所有Firewall collectionから旧管理NTP規則を除いて読み戻す。未知の企業ルール・時刻設定を自動削除しない。未解決の応答や競合がある場合は、保護stateを確認せずに再送しない。構築完了後の企業手動変更は運用責任として扱い、ハブ＆スポークの設定を公開パラメターへ逆輸入しない。
+構築再開時は作成済みの現行規則と必要なアドレスだけを照合する。未知の規則や通信条件のずれを検知するとCoreのネットワーク配備に進む前に停止する。
 
 ## 実証方法・判定・結果の管理
 
@@ -274,8 +274,8 @@ Azure提供DNS、VM IMDS、DHCP、Agent host channel、ホスト時刻提供、l
 
 | 検証 | 確認対象・合格条件 | 公開根拠・実環境での確認方法 |
 | --- | --- | --- |
-| `VERIFY-NSG-CATALOG` | catalog v5の規則の名前・方向・優先度・Allow/Deny・プロトコル・両ポート・アドレス参照・設計IDが正本と一致。 | [優先度試験](../../tests/test_nsg_rule_priorities.py)、[IP所有境界](../../tests/test_parameter_ip_ownership.py)、[固定upgrade](../../tests/test_fixed_nsg_upgrade.py)。合成試験結果は[共通検証記録](network-security-validation.md)を参照する。 |
-| `VERIFY-NSG-MIGRATION` | 未所有規則、tuple違い、版変更、競合、未知応答を検出し、安全確認前に旧Allowを消さない。 | [固定移行試験](../../tests/test_fixed_nsg_migration.py)、[配備順序](../../tests/test_nsg_deployment_order.py)、[既存NW維持](../../tests/test_network_preservation.py)。 |
+| `VERIFY-NSG-CATALOG` | catalog v5の規則の名前・方向・優先度・Allow/Deny・プロトコル・両ポート・アドレス参照・設計IDが正本と一致。 | [優先度試験](../../tests/test_nsg_rule_priorities.py)、[IP所有境界](../../tests/test_parameter_ip_ownership.py)。合成試験結果は[共通検証記録](network-security-validation.md)を参照する。 |
+| `VERIFY-NSG-READBACK` | 作成済みの現行規則は中断後も照合でき、未知の規則や条件のずれは停止する。構築完了には全規則が必要。 | [読戻し試験](../../tests/test_fixed_nsg_validation.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
 | `VERIFY-NSG-AUDIT` | 監査Blob PE全IPの送受信4規則、DNS、担当者本人の対象コンテナーへの一時認可で読取が成立する。 | [監査Storage合成試験](../../tests/test_audit_storage_network.py)。実環境で到達・認可・Blob読取と権限回収後の拒否を確認する。 |
 | `VERIFY-NSG-READBACK` | 構築IPで展開した77tuple、NSG関連付け、PE policy、既定規則、終端Denyの有無をAzure GETで完全照合する。 | 保護stateに対象所有・展開条件・応答・照合判定を保存する。親NSGの更新成功だけで合格にしない。 |
 | `VERIFY-NSG-FLOWS` | AppGW→APIM／Portal、APIM→Foundry／Broker、ACA／管理VM→PE、各保守clientのTLS／認可／操作が成立する。 | 名前解決、new connection、経路、Firewall、TLS、token、RBACを独立に確認する。利用していないサービス依存の規則まで全実通信を生成したとは扱わない。 |

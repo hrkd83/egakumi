@@ -210,7 +210,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 self.assertEqual(state, original)
 
     def test_sql_is_private_and_separate_from_runtime_admin(self):
-        sql = (ROOT/'infra/modules/shared-sql.bicep').read_text(encoding='utf-8')
+        sql = (ROOT/'infra/modules/services/shared-sql.bicep').read_text(encoding='utf-8')
         self.assertIn("publicNetworkAccess: 'Disabled'", sql)
         self.assertIn('azureADOnlyAuthentication: true', sql)
         self.assertIn('sid: schemaIdentity.principalId', sql)
