@@ -5,7 +5,7 @@ import { modelSelectionScope, resolveInitialModel } from "../lib/model-selection
 import { resolveTextModelVariant, resolveTextPanelInput } from "../lib/text-model-choices.ts";
 import { createPortalStore } from "../lib/portal-store.ts";
 
-test("初回は公開カタログの最新世代を選び、古い固定nanoや名前の辞書順で決めない", () => {
+test("初回は公開カタログ順でモデルを選び、対応する既定の方式を使う", () => {
   const text = getTextGenerationModels().filter((model) => model.providerId === "openai");
   const initial = resolveTextModelVariant(text, resolveTextPanelInput(text, undefined, createPortalStore().getState().textInput));
   assert.equal(initial?.id, "gpt-6.1-sol");
@@ -29,7 +29,7 @@ test("明示選択はカテゴリ・提供元別のメモリーに保持し、�
   const selection = { id: "gpt-image-2" };
   store.getState().rememberModelSelection(scope, selection);
   selection.id = "external-mutation";
-  store.getState().rememberModelSelection(modelSelectionScope("text", "openai"), { id: "gpt-5.4-nano", operationId: "chat-completions" });
+  store.getState().rememberModelSelection(modelSelectionScope("text", "openai"), { id: "synthetic-text-selection", operationId: "chat-completions" });
   const models = getImageGenerationModels().filter((model) => model.providerId === "openai");
   assert.equal(resolveInitialModel(models, store.getState().modelSelections[scope])?.id, "gpt-image-2");
   assert.equal(resolveInitialModel(models, { id: "removed-model" })?.id, "gpt-image-2.5-flare");
@@ -37,11 +37,9 @@ test("明示選択はカテゴリ・提供元別のメモリーに保持し、�
   assert.equal(resolveInitialModel([], { id: "missing" }), undefined);
 });
 
-test("廃止した5.4系・5.5の選択を引き継いでも現在の先頭モデルと対応方式へ戻す", () => {
+test("カタログにないテキストモデルの選択は先頭モデルと既定の方式へ戻す", () => {
   const models = getTextGenerationModels().filter((model) => model.providerId === "openai");
-  for (const modelId of ["gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.4-pro", "gpt-5.5"]) {
-    const selected = resolveTextModelVariant(models, { modelId, operationId: "chat-completions" });
-    assert.equal(selected?.id, "gpt-6.1-sol");
-    assert.equal(selected?.operationId, "responses-create");
-  }
+  const selected = resolveTextModelVariant(models, { modelId: "synthetic-unavailable-text-model", operationId: "chat-completions" });
+  assert.equal(selected?.id, models[0].id);
+  assert.equal(selected?.operationId, "responses-create");
 });
