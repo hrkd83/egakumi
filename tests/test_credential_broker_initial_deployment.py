@@ -14,7 +14,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-sys.path.insert(0, str(ROOT / 'apps/gateway/deploy'))
+sys.path.insert(0, str(ROOT / 'apps/apim/deploy'))
+sys.path.insert(0, str(ROOT / 'apps/credential-broker/deploy'))
 import broker_deployment as deploy
 from deployment.helpers import credential_image as image
 from deployment.helpers import cleanup
@@ -92,7 +93,7 @@ class InitialDeploymentTests(unittest.TestCase):
     def test_source_bundle_excludes_local_secrets_and_is_stable_across_line_endings(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            app = root / 'apps/gateway/credential-broker'
+            app = root / 'apps/credential-broker'
             (app / 'credential_broker').mkdir(parents=True)
             (app / 'sql').mkdir()
             for name in ('Dockerfile', 'requirements.txt', 'credential_broker/app.py', 'sql/001.sql'):
@@ -111,7 +112,7 @@ class InitialDeploymentTests(unittest.TestCase):
             path = 'sql/003_idle_connection_cleanup.sql'
             self.assertIn(path, archive.getnames())
             self.assertEqual(archive.extractfile(path).read(),
-                             (ROOT / 'apps/gateway/credential-broker' / path).read_bytes().replace(b'\r\n', b'\n'))
+                             (ROOT / 'apps/credential-broker' / path).read_bytes().replace(b'\r\n', b'\n'))
             self.assertIn(b"Version=3", archive.extractfile(path).read())
 
     def test_user_caller_contract_and_schema_ship_together_without_test_sources(self):
@@ -120,7 +121,7 @@ class InitialDeploymentTests(unittest.TestCase):
             for path in ('credential_broker/caller.py', 'sql/004_verified_user_caller.sql'):
                 self.assertIn(path, archive.getnames())
                 self.assertEqual(archive.extractfile(path).read(),
-                                 (ROOT / 'apps/gateway/credential-broker' / path).read_bytes().replace(b'\r\n', b'\n'))
+                                 (ROOT / 'apps/credential-broker' / path).read_bytes().replace(b'\r\n', b'\n'))
             self.assertNotIn('tests/test_verified_user_caller.py', archive.getnames())
             self.assertIn(b'Version=4', archive.extractfile('sql/004_verified_user_caller.sql').read())
 

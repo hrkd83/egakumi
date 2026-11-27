@@ -103,7 +103,7 @@ def embedding_cases(apis):
 class EmbeddingConfigurationTests(unittest.TestCase):
     def test_shipped_contract_and_editor_schemas_use_one_dimension_map(self):
         for name, operation in (("openai-embeddings-v1", "embeddings"), ("cohere-inference-v1", "cohere-embeddings")):
-            api = json.loads((CORE / f"apps/gateway/apim/apis/{name}.json").read_text())
+            api = json.loads((CORE / f"apps/apim/apis/{name}.json").read_text())
             constraint = api["authorization"]["operationConstraints"][operation]
             self.assertEqual(constraint["kind"], "textEmbeddings")
             self.assertEqual(set(constraint["allowedModels"]), set(constraint["embeddingDimensionsByModel"]))
@@ -258,7 +258,7 @@ class EmbeddingExpressionTests(unittest.TestCase):
                 self.assertEqual(self.observed[name]["targetBodyReads"], 1)
 
     def test_compiled_publication_preserves_dimension_map_without_llm_token_counting(self):
-        template = compile_bicep("apps/gateway/apim/api-publication.bicep")
+        template = compile_bicep("apps/apim/api-publication.bicep")
         apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")["apiDefinitions"]
         for api in apis:
             if api["name"] not in ("openai-embeddings-v1", "cohere-inference-v1"):
@@ -273,7 +273,7 @@ class EmbeddingExpressionTests(unittest.TestCase):
             self.assertEqual(controls["tokenLimitOperationIds"], [])
 
     def test_compiled_embedding_policies_publish_the_guard_without_rewriting_native_queries(self):
-        template = compile_bicep("apps/gateway/apim/api-publication.bicep")
+        template = compile_bicep("apps/apim/api-publication.bicep")
         apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")["apiDefinitions"]
         source_guard = ET.fromstring(render_input_validation_fragment())
         resources = template["resources"]

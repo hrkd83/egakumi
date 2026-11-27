@@ -210,14 +210,14 @@ class GeneratedSourceTests(unittest.TestCase):
         from deployment.helpers.apim_authentication import render_service_policy
         if not PWSH:self.skipTest('PowerShell Roslyn is required; Azure routing is not tested')
         core=Path(__file__).resolve().parents[1]
-        canonical=(core/'apps/gateway/apim/policies/snippets/request/mcp-metadata-guard/mcp-metadata-guard.xml').read_text(encoding='utf-8')
+        canonical=(core/'apps/apim/policies/snippets/request/mcp-metadata-guard/mcp-metadata-guard.xml').read_text(encoding='utf-8')
         self.assertEqual(publication.PRM_GUARD,canonical)
         expected=publication._structure(ET.fromstring(canonical))
         config=configuration.normalize_configuration(bound_external_coverage(),base_directory=core/'config')
         definitions=[api for api in config['apiDefinitions'] if api['apiType']=='mcp' or 'mcp' in api]
         self.assertTrue(any(api['apiType']=='mcp' for api in definitions))
         self.assertTrue(any('mcp' in api for api in definitions))
-        template=compile_bicep('apps/gateway/apim/api-publication.bicep')
+        template=compile_bicep('apps/apim/api-publication.bicep')
         common_methods,common_inbound=compile_inbound(ET.fromstring(render_service_policy()),trace_messages=True)
         methods=[common_methods];selectors=[];cases=[];expectations={}
         for index,api in enumerate(definitions):
@@ -333,7 +333,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
             for operation in api["operations"]:
                 if "backendOverride" in operation:
                     operation["backendOverride"].setdefault("backendUrl", "https://provider.example.com")
-        template = compile_bicep("apps/gateway/apim/api-publication.bicep")
+        template = compile_bicep("apps/apim/api-publication.bicep")
         parameters = {"apiDefinitions": definitions, "names": {"apim": "apim-test-fixture"}, "publishApis": True,
                       "rateLimits": config["gateway"]["rateLimits"], "credentialLogin": credential_login.settings(config)}
         expanded = expand(template, parameters)
@@ -365,7 +365,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
         source_policies = {entry["suffix"]: entry["value"] for entry in source["policies"]}
         common_fragments = {**render_audit_fragments(), "core-trusted-ingress": render_trusted_ingress_fragment(),
                             "core-credential-browser-exception": render_browser_exception_fragment(parameters["credentialLogin"]),
-                            "core-gateway-telemetry": render_audit_policy(policy_fixture_path(core / "apps/gateway/apim/policies", "core-gateway-telemetry.xml").read_text(encoding="utf-8"))}
+                            "core-gateway-telemetry": render_audit_policy(policy_fixture_path(core / "apps/apim/policies", "core-gateway-telemetry.xml").read_text(encoding="utf-8"))}
         for identifier, expected in common_fragments.items():
             suffix = "/policyFragments/" + identifier
             self.assertEqual(actual[suffix]["value"].replace("\r\n", "\n"), expected, identifier)
@@ -377,7 +377,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
                                      ("core-audit-authenticated-subject", "core-audit-authenticated-subject.cs"),
                                      ("core-credential-browser-exception", "core-credential-browser-exception.cs"),
                                      ("core-gateway-telemetry", "core-gateway-telemetry.cs")):
-            expression_source = policy_fixture_path(core / "apps/gateway/apim/policies", filename).read_text(encoding="utf-8")
+            expression_source = policy_fixture_path(core / "apps/apim/policies", filename).read_text(encoding="utf-8")
             comments = ["/*" + line.lstrip()[2:].replace("*/", "* /") + " */"
                         for line in expression_source.splitlines() if line.lstrip().startswith("//")]
             root = ET.fromstring(actual["/policyFragments/" + identifier]["value"])

@@ -13,7 +13,7 @@ import unittest
 from unittest import mock
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1] / 'scripts'),
-               str(Path(__file__).resolve().parents[1] / 'apps/gateway/deploy')]
+               str(Path(__file__).resolve().parents[1] / 'apps/apim/deploy')]
 import test_historical_publication as historical
 import test_publication_source_generation as generation
 from test_publish_apis import ok

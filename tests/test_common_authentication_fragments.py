@@ -30,7 +30,7 @@ from test_entra_publication import APIM, GLOBAL, source_fixture
 import entra_publication as publication
 
 
-POLICIES = Path(__file__).resolve().parents[1] / "apps/gateway/apim/policies"
+POLICIES = Path(__file__).resolve().parents[1] / "apps/apim/policies"
 AUTH = "core-common-authentication"
 ERROR = "core-entra-authentication-error"
 TOKENS = re.compile(
@@ -646,7 +646,7 @@ class CommonAuthenticationCompiledSourceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from bicep_helpers import compile_bicep
-        cls.template = compile_bicep("apps/gateway/apim/api-publication.bicep")
+        cls.template = compile_bicep("apps/apim/api-publication.bicep")
 
     def test_real_bicep_assignments_manifest_and_python_sources_are_identical(self):
         from test_api_publication_size import SizeExpression, expand

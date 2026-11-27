@@ -104,9 +104,9 @@ class FreshCloneReadinessTests(unittest.TestCase):
         patterns = ("scripts/**/*.py", "config/test.json", "config/production.json",
                     "params/*.example.json", "schemas/*.schema.json", "infra/log-privacy.json",
                     "infra/nsg-rule-priorities.json",
-                    "apps/gateway/waf-input-contracts.json", "apps/gateway/waf-data-exclusions.json",
-                    "apps/gateway/apim/apis/*.json", "apps/gateway/apim/schemas/*.json", "apps/gateway/apim/model-capabilities.json",
-                    "apps/gateway/apim/public-bindings.json")
+                    "apps/apim/waf-input-contracts.json", "apps/apim/waf-data-exclusions.json",
+                    "apps/apim/apis/*.json", "apps/apim/schemas/*.json", "apps/apim/model-capabilities.json",
+                    "apps/apim/public-bindings.json")
         for pattern in patterns:
             for source in CORE.glob(pattern):
                 target = self.root / source.relative_to(CORE)
@@ -215,7 +215,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
             "from standard_apis import load_api_definitions; "
             "print(json.dumps({'apiDefinitions': [api for name in "
             "('openai-inference-v1', 'pii-v1', 'graph-profile-v1') for api in "
-            "load_api_definitions(Path('apps/gateway/apim/apis') / (name + '.json'))]}))"],
+            "load_api_definitions(Path('apps/apim/apis') / (name + '.json'))]}))"],
             cwd=self.root, text=True, capture_output=True, timeout=30, check=True)
         template = json.loads(prepare.stdout)
         replacements = {"TENANT_ID": TENANT, "CM_CLIENT_ID": GATEWAY,

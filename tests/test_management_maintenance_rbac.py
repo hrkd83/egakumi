@@ -61,8 +61,8 @@ class ManagementMaintenanceRbacTests(unittest.TestCase):
         cls.aca = compile_bicep('infra/modules/management-aca-bindings.bicep')
         cls.monitoring = compile_bicep('infra/modules/management-monitoring-bindings.bicep')
         cls.audit = compile_bicep('infra/modules/audit-reader-bindings.bicep')
-        cls.broker = compile_bicep('apps/gateway/deploy/broker.bicep')
-        cls.gateway = compile_bicep('apps/gateway/deploy/main.bicep')
+        cls.broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
+        cls.gateway = compile_bicep('apps/apim/deploy/main.bicep')
         cls.portal = compile_bicep('apps/portal/deploy/main.bicep')
 
     def test_custom_roles_have_exact_approved_control_and_data_permissions(self):

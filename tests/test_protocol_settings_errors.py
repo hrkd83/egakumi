@@ -31,7 +31,7 @@ def generated_protocols():
     }
     selected['dynamic-single']=copy.deepcopy(selected['dynamic'])
     selected['dynamic-single']['websocket']['allowedModels']=[selected['dynamic-single']['websocket']['defaultModel']]
-    template=compile_bicep('apps/gateway/apim/api-publication.bicep')
+    template=compile_bicep('apps/apim/api-publication.bicep')
     result={}
     for label,api in selected.items():
         api.setdefault('backendUrl','https://provider.example.com'+api.get('backendPath',''))

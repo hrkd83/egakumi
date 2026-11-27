@@ -11,7 +11,7 @@ from deployment.helpers.apim_audit import CORE_QUERY_OBSERVATION_MARKER, SOURCE_
 from deployment.helpers.apim_query_observation import QUERY_OBSERVATION_FRAGMENT_ID, render_query_observation_fragment
 
 
-POLICIES = Path(__file__).resolve().parents[1] / "apps/gateway/apim/policies"
+POLICIES = Path(__file__).resolve().parents[1] / "apps/apim/policies"
 DIRECTORY = POLICIES / "fragments/request" / QUERY_OBSERVATION_FRAGMENT_ID
 
 

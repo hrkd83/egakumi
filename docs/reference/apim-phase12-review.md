@@ -63,8 +63,8 @@ Azureの既存部品名は維持し、責務別の正本・日本語説明・生
 ## 関連する正本
 
 - [APIMポリシー一覧](apim-policy-catalog.md)
-- [ポリシーの管理構成](../../apps/gateway/apim/policies/README.md)
-- [APIポリシーテンプレート](../../apps/gateway/apim/policies/api-templates/README.md)
-- [Responses／Hostedの入力・ツール条件](../../apps/gateway/apim/policies/fragments/request/core-api-target-validation/README.md)
+- [ポリシーの管理構成](../../apps/apim/policies/README.md)
+- [APIポリシーテンプレート](../../apps/apim/policies/api-templates/README.md)
+- [Responses／Hostedの入力・ツール条件](../../apps/apim/policies/fragments/request/core-api-target-validation/README.md)
 - [Entra分離とOBOの工程計画](entra-app-rollout-plan.md)
 - [APIまとめ反映](../../scripts/operations/apim_phase12.md)・[REST受入](../../scripts/operations/apim_phase12_acceptance.md)・[WebSocket／MCP受入](../../scripts/operations/apim_phase12_transports.md)

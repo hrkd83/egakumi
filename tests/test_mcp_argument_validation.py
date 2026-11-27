@@ -16,14 +16,14 @@ from test_common_authentication import compile_inbound, csharp_expression
 def generated_pii_policy():
     """厳格な合成設定から、実配備と同じMCPポリシーと制御seedを取得する。"""
     root=Path(__file__).resolve().parents[1]
-    api=json.loads((root/'apps/gateway/apim/apis/pii-v1.json').read_text(encoding='utf-8'))
+    api=json.loads((root/'apps/apim/apis/pii-v1.json').read_text(encoding='utf-8'))
     # Exercise configured restrictions, rather than mistaking the canonical
     # unrestricted language set and 1 MB default for these strict limits.
     api['authorization']['operationConstraints']['pii_redact_text'].update(
         maxRequestBytes=32768, allowedLanguages=['en', 'ja'])
     api.update(apiType='http', backendUrl='https://backend.example.com',
                backendAuthentication={'mode':'none'}, backendHeaders={})
-    template=compile_bicep('apps/gateway/apim/api-publication.bicep')
+    template=compile_bicep('apps/apim/api-publication.bicep')
     parameters={'apiDefinitions':[api]}
     policy=ET.fromstring(compiled_policy_value(template, parameters, resource_name='mcpPolicies'))
     seed=base64.b64decode(policy.find("./inbound/set-variable[@name='gatewayApiSettingsSource']").get('value'),validate=True).decode('utf-8').split('\n')
@@ -53,7 +53,7 @@ def mcp_error_pipeline(policy, template, parameters):
                    ('core-gateway-telemetry','gatewayTelemetryFragment'),
                    ('core-query-telemetry','queryTelemetryFragment'),
                    ('core-entra-authentication-error','entraAuthenticationErrorFragment'))}
-    service=ET.fromstring((root/'apps/gateway/apim/policies/service.xml').read_text(encoding='utf-8'))
+    service=ET.fromstring((root/'apps/apim/policies/service.xml').read_text(encoding='utf-8'))
     adapted=ET.Element('policies');inbound=ET.SubElement(adapted,'inbound')
     for node in policy.find('on-error'):
         if node.tag=='base':

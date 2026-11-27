@@ -15,7 +15,7 @@ API_SETTINGS_ID = "core-api-settings"
 API_SETTINGS_SOURCE_VARIABLE = "gatewayApiSettingsSource"
 API_SETTINGS_VARIABLES = ("gatewayApiSettings", "gatewayAuditSettings", "gatewayControlSettings")
 _INCLUDE = {"id": API_SETTINGS_ID, "fragment-id": API_SETTINGS_ID}
-_DIRECTORY = REPOSITORY / "apps/gateway/apim/policies/fragments/settings" / API_SETTINGS_ID
+_DIRECTORY = REPOSITORY / "apps/apim/policies/fragments/settings" / API_SETTINGS_ID
 
 
 def _xml(value: str) -> ET.Element:

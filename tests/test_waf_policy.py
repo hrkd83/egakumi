@@ -306,7 +306,7 @@ class DataWafTests(unittest.TestCase):
 
     def test_plan_displays_the_exact_source_url_rules_for_responses(self):
         config = configuration()
-        config['apiDefinitions'] = [json.loads((ROOT / 'apps/gateway/apim/apis/openai-inference-v1.json').read_text())]
+        config['apiDefinitions'] = [json.loads((ROOT / 'apps/apim/apis/openai-inference-v1.json').read_text())]
         planned = plan(config, scopes=('gateway',))['profiles']
         declared = {item['name']: item for item in load_manifest()['profiles']}
         self.assertTrue(any(item['name'] == 'g-responses' for item in planned))
@@ -1255,7 +1255,7 @@ class DataWafTests(unittest.TestCase):
                     selected_profiles(configuration(), manifest=value)
 
     def test_ai_group_policy_uses_only_approved_fields_across_supported_profiles(self):
-        current = load_manifest(ROOT / 'apps/gateway/waf-data-exclusions.json')
+        current = load_manifest(ROOT / 'apps/apim/waf-data-exclusions.json')
         self.assertEqual(current['version'], 2)
         profiles = {p['name']: p for p in current['profiles']}
         expected_groups = {
@@ -1721,7 +1721,7 @@ class DataWafTests(unittest.TestCase):
         from bicep_helpers import compile_bicep
         from arm_helpers import PolicyExpression
 
-        current = load_manifest(ROOT / 'apps/gateway/waf-data-exclusions.json')
+        current = load_manifest(ROOT / 'apps/apim/waf-data-exclusions.json')
         compiled = compile_bicep(str(ROOT / 'infra/modules/application-gateway.bicep'))
         expanded = PolicyExpression("[variables('dataManifest')]", compiled['variables'],
                                     functions=compiled.get('functions', [])).evaluate({})
@@ -1770,16 +1770,16 @@ class DataWafTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             folder = Path(folder)
             source = (ROOT / 'infra/modules/application-gateway.bicep').read_text(encoding='utf-8')
-            source = source.replace("loadJsonContent('../../apps/gateway/waf-data-exclusions.json')", "loadJsonContent('./manifest.json')")
-            source = source.replace("loadJsonContent('../../apps/gateway/waf-raw-body-controls.json')", "loadJsonContent('./raw-controls.json')")
-            source = source.replace("loadJsonContent('../../apps/gateway/waf-json-content-controls.json')", "loadJsonContent('./json-controls.json')")
-            source = source.replace("loadJsonContent('../../apps/gateway/waf-source-url-exclusions.json')", "loadJsonContent('./source-urls.json')")
+            source = source.replace("loadJsonContent('../../apps/apim/waf-data-exclusions.json')", "loadJsonContent('./manifest.json')")
+            source = source.replace("loadJsonContent('../../apps/apim/waf-raw-body-controls.json')", "loadJsonContent('./raw-controls.json')")
+            source = source.replace("loadJsonContent('../../apps/apim/waf-json-content-controls.json')", "loadJsonContent('./json-controls.json')")
+            source = source.replace("loadJsonContent('../../apps/apim/waf-source-url-exclusions.json')", "loadJsonContent('./source-urls.json')")
             source = source.replace("loadJsonContent('../../apps/portal/waf-session-exclusions.json')", "loadJsonContent('./portal-session.json')")
             (folder / 'gateway.bicep').write_text(source, encoding='utf-8')
             (folder / 'manifest.json').write_text(json.dumps(sample), encoding='utf-8')
-            (folder / 'raw-controls.json').write_text((ROOT / 'apps/gateway/waf-raw-body-controls.json').read_text(encoding='utf-8'), encoding='utf-8')
-            (folder / 'json-controls.json').write_text((ROOT / 'apps/gateway/waf-json-content-controls.json').read_text(encoding='utf-8'), encoding='utf-8')
-            (folder / 'source-urls.json').write_text((ROOT / 'apps/gateway/waf-source-url-exclusions.json').read_text(encoding='utf-8'), encoding='utf-8')
+            (folder / 'raw-controls.json').write_text((ROOT / 'apps/apim/waf-raw-body-controls.json').read_text(encoding='utf-8'), encoding='utf-8')
+            (folder / 'json-controls.json').write_text((ROOT / 'apps/apim/waf-json-content-controls.json').read_text(encoding='utf-8'), encoding='utf-8')
+            (folder / 'source-urls.json').write_text((ROOT / 'apps/apim/waf-source-url-exclusions.json').read_text(encoding='utf-8'), encoding='utf-8')
             (folder / 'portal-session.json').write_text(json.dumps(portal_session_exclusions()), encoding='utf-8')
             built = subprocess.run([bicep_executable(), 'build', str(folder / 'gateway.bicep'), '--stdout', '--no-restore'],
                                    env={**os.environ, 'DOTNET_BUNDLE_EXTRACT_BASE_DIR': str(folder)},

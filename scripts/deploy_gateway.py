@@ -38,7 +38,8 @@ from standard_apis import resolve_publication_configuration
 from waf_policy import reconcile as configure_data_waf, selected_profiles as data_waf_profiles
 
 # ハイフンを含むアプリフォルダーの配備実装は、この入口からだけ読み込みます。
-sys.path.insert(0, str(REPOSITORY / 'apps/gateway/deploy'))
+sys.path.insert(0, str(REPOSITORY / 'apps/apim/deploy'))
+sys.path.insert(0, str(REPOSITORY / 'apps/credential-broker/deploy'))
 import api_publication
 from broker_deployment import wait_for_application, wait_for_schema
 from gateway_ingress import (
@@ -48,7 +49,7 @@ from gateway_ingress import (
 
 APP_API = '2025-01-01'
 ARM_API = '2022-09-01'
-MODULE = REPOSITORY / 'apps/gateway/deploy/main.bicep'
+MODULE = REPOSITORY / 'apps/apim/deploy/main.bicep'
 
 
 def group_scope(config):

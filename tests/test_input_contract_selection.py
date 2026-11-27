@@ -87,7 +87,7 @@ class InputContractSelectionTests(unittest.TestCase):
         api['operations'][0]['urlTemplate'] = '/synthetic/messages/{messageId}'
         api['operations'][0]['templateParameters'] = [{'name': 'messageId', 'type': 'string', 'required': True}]
         api = next(api for api in self.normalize(raw)['apiDefinitions'] if api['name'] == 'sample-rest-v1')
-        template = compile_bicep('apps/gateway/apim/api-publication.bicep')
+        template = compile_bicep('apps/apim/api-publication.bicep')
         parameters = {name: copy.deepcopy(value['defaultValue']) for name, value in template['parameters'].items() if 'defaultValue' in value}
         parameters['apiDefinitions'] = [api]
         root = ET.fromstring(compiled_policy_value(template, parameters))

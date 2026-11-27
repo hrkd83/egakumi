@@ -7,8 +7,8 @@ from bicep_helpers import compile_bicep
 class SqlManagementGrantInfrastructureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.broker = compile_bicep('apps/gateway/deploy/broker.bicep')
-        cls.gateway = compile_bicep('apps/gateway/deploy/main.bicep')
+        cls.broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
+        cls.gateway = compile_bicep('apps/apim/deploy/main.bicep')
         cls.portal = compile_bicep('apps/portal/deploy/main.bicep')
         cls.portal_schema = compile_bicep('apps/portal/deploy/schema-job.bicep')
 

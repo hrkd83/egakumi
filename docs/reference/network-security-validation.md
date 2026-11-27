@@ -54,8 +54,8 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | 機能 | 公開実装・試験根拠 |
 | --- | --- |
 | 固定NSGの限定移行 | [nsg-fixed-upgrade.bicep](../../infra/modules/nsg-fixed-upgrade.bicep)、[fixed migration](../../tests/test_fixed_nsg_migration.py)、[upgrade](../../tests/test_fixed_nsg_upgrade.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
-| Broker常設 | [Broker配備資材](../../apps/gateway/deploy/main.bicep)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py)の`test_broker_resources_are_always_selected_independently_of_business_profiles` |
-| L7入口保護 | [AppGW資材](../../infra/modules/application-gateway.bicep)、[APIM共通policy](../../apps/gateway/apim/policies/service.xml)、[trusted ingress](../../tests/test_trusted_ingress.py) |
+| Broker常設 | [Broker配備資材](../../apps/apim/deploy/main.bicep)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py)の`test_broker_resources_are_always_selected_independently_of_business_profiles` |
+| L7入口保護 | [AppGW資材](../../infra/modules/application-gateway.bicep)、[APIM共通policy](../../apps/apim/policies/service.xml)、[trusted ingress](../../tests/test_trusted_ingress.py) |
 | 監査Blob閲覧 | [audit-reader-bindings](../../infra/modules/audit-reader-bindings.bicep)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py) |
 | ACA/保存ログの認可 | [maintenance roles](../../infra/modules/management-maintenance-roles.bicep)、[ACA bindings](../../infra/modules/management-aca-bindings.bicep)、[Workspace bindings](../../infra/modules/management-monitoring-bindings.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py) |
 | 保守clientと導入 | [management_client.py](../../scripts/management_client.py)、[client試験](../../tests/test_management_client.py)、[導入試験](../../tests/test_management_client_install.py) |

@@ -21,7 +21,7 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
             'bindings': compile_bicep('infra/modules/service-bindings.bicep'),
             'main': compile_bicep('infra/main.bicep'),
             'services': compile_bicep('infra/modules/services.bicep'),
-            'gateway': compile_bicep('apps/gateway/deploy/main.bicep'),
+            'gateway': compile_bicep('apps/apim/deploy/main.bicep'),
         }
 
     def test_pii_uses_builtin_language_reader_at_exact_foundry_account_for_apim(self):

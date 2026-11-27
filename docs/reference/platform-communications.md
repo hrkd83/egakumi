@@ -20,7 +20,7 @@ NSGは状態を保持するため、許可された接続への応答だけを�
 
 ACAは`IDENTITY_ENDPOINT`と`IDENTITY_HEADER`を実行環境へ供給する。[管理IDのREST仕様](https://learn.microsoft.com/en-us/azure/container-apps/managed-identity#rest-endpoint-reference)に従い、Azure Identity SDKで用途別の構築済み管理IDを選ぶ。URL・ヘッダーの実値をparams／configへ追加したり、VM用IMDSの固定IPをACAへ流用したりしない。具体的なloopback IP・固定ポート・全処理のNSG非適用を一律に保証する公開契約としても扱わない。
 
-資材上の対応は、[Portal SQL接続](../../apps/portal/lib/auth-database.ts)、[Portal APIM操作](../../apps/portal/lib/api-keys/apim.ts)、[Broker SQL接続](../../apps/gateway/credential-broker/credential_broker/store.py)、[Broker CM操作](../../apps/gateway/credential-broker/credential_broker/cm.py)の`ManagedIdentityCredential`と、アプリ／Jobの管理ID割当である。`AZURE_CLIENT_ID`等の用途別ID選択は維持する。
+資材上の対応は、[Portal SQL接続](../../apps/portal/lib/auth-database.ts)、[Portal APIM操作](../../apps/portal/lib/api-keys/apim.ts)、[Broker SQL接続](../../apps/credential-broker/credential_broker/store.py)、[Broker CM操作](../../apps/credential-broker/credential_broker/cm.py)の`ManagedIdentityCredential`と、アプリ／Jobの管理ID割当である。`AZURE_CLIENT_ID`等の用途別ID選択は維持する。
 
 トークン要求の対象URIは、ローカル取得時の接続先ではない。取得後のSQL、ARM、Entra、Graph等への要求は、それぞれの接続要件・NSG／Firewall・RBACで扱う。対象機能の設定は後続処理を変え得るが、ローカル管理ID取得用のNSG作成フラグにはしない。
 

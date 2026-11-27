@@ -9,7 +9,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-sys.path.insert(0, str(ROOT / 'apps/gateway/deploy'))
+sys.path.insert(0, str(ROOT / 'apps/apim/deploy'))
+sys.path.insert(0, str(ROOT / 'apps/credential-broker/deploy'))
 from deployment.helpers.credential_pools import broker_session_settings, physical_providers, logical_profiles, resource_names
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration, ConfigurationError, load_configuration_source
@@ -68,7 +69,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         self.assertGreater(public['credentialBroker']['minReplicas'], 0)
 
     def test_compiled_broker_resource_graph_is_always_present_and_keeps_sql_phase_gate(self):
-        gateway = compile_bicep('apps/gateway/deploy/main.bicep')
+        gateway = compile_bicep('apps/apim/deploy/main.bicep')
         for suffix in ('identity', 'database', 'access', 'broker', 'management-access'):
             with self.subTest(module=suffix):
                 module, = [item for item in gateway['resources']
@@ -78,7 +79,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                      if 'credentialBrokerUrl' in item.get('properties', {}).get('parameters', {})]
         self.assertEqual(settings['condition'], '[parameters(\'deployApplication\')]')
         self.assertEqual(settings['properties']['parameters']['credentialBrokerUrl']['value'], "[variables('brokerUrl')]")
-        broker = compile_bicep('apps/gateway/deploy/broker.bicep')
+        broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
         app, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/containerapps']
         self.assertEqual(app['condition'], '[parameters(\'deployApplication\')]')
         migration, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/jobs'
@@ -87,7 +88,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         reconciliation, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/jobs'
                            and item['properties']['configuration']['triggerType'] == 'Schedule']
         self.assertEqual(reconciliation['condition'], '[parameters(\'deployApplication\')]')
-        apim = compile_bicep('apps/gateway/deploy/apim-settings.bicep')
+        apim = compile_bicep('apps/apim/deploy/apim-settings.bicep')
         for resource in apim['resources']:
             if 'credential-broker' in resource['name']:
                 self.assertNotIn('condition', resource)
@@ -174,17 +175,17 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         self.assertIn("publicNetworkAccess: 'Disabled'", sql)
         self.assertIn('azureADOnlyAuthentication: true', sql)
         self.assertIn('sid: schemaIdentity.principalId', sql)
-        database = (ROOT/'apps/gateway/deploy/database.bicep').read_text(encoding='utf-8')
+        database = (ROOT/'apps/credential-broker/deploy/database.bicep').read_text(encoding='utf-8')
         self.assertIn('retentionDays: settings.backupRetentionDays', database)
         self.assertNotIn("resource database ", sql)
-        app = (ROOT/'apps/gateway/deploy/broker.bicep').read_text(encoding='utf-8')
+        app = (ROOT/'apps/credential-broker/deploy/broker.bicep').read_text(encoding='utf-8')
         self.assertIn('SQL_RUNTIME_CLIENT_ID: runtimeIdentity.clientId', app)
         self.assertIn('AZURE_CLIENT_ID: schemaIdentity.clientId', app)
         self.assertIn('if (deployApplication)', app)
         self.assertIn('BROKER_LOGIN_CALLS_PER_MINUTE: string(loginCallsPerMinute)',app)
 
     def test_compiled_job_names_match_runtime_and_fit_the_supported_stem_limit(self):
-        template = compile_bicep('apps/gateway/deploy/broker.bicep')
+        template = compile_bicep('apps/credential-broker/deploy/broker.bicep')
         jobs = [item for item in template['resources'] if item['type'].lower() == 'microsoft.app/jobs']
         self.assertEqual(len(jobs), 2)
         scheduled = [item for item in jobs if item['properties']['configuration']['triggerType'] == 'Schedule']
@@ -206,7 +207,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 self.assertNotIn('--', name)
 
     def test_broker_probes_require_verified_user_ledger_capability(self):
-        template = compile_bicep('apps/gateway/deploy/broker.bicep')
+        template = compile_bicep('apps/credential-broker/deploy/broker.bicep')
         app, = [item for item in template['resources']
                 if item['type'].lower() == 'microsoft.app/containerapps']
         container, = app['properties']['template']['containers']
@@ -218,8 +219,8 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
 
     def test_broker_application_and_apim_url_match_with_the_longest_supported_stem(self):
         """有効な最大長入力を短縮せず、ACA作成・出力・参照先・Pythonの名前を照合する。"""
-        broker = compile_bicep('apps/gateway/deploy/broker.bicep')
-        gateway = compile_bicep('apps/gateway/deploy/main.bicep')
+        broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
+        gateway = compile_bicep('apps/apim/deploy/main.bicep')
         app, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/containerapps']
         settings, = [item for item in gateway['resources']
                      if 'credentialBrokerUrl' in item.get('properties', {}).get('parameters', {})]

@@ -1400,9 +1400,9 @@ class ProfilePolicyTests(unittest.TestCase):
                             ("ws-fixed-other-model", {"model": "other-synthetic-model"}),
                             ("ws-fixed-duplicate", {"model": ["fixed-synthetic-model", "fixed-synthetic-model"]})):
             cases.append(case(name, mode="ws", query=query, websocket={"queryParameters": {"model": "fixed-synthetic-model"}}))
-        selection_source = (CORE / "apps/gateway/apim/policies/fragments/request/core-api-operation-settings/core-api-operation-settings.cs").read_text(encoding="utf-8")
+        selection_source = (CORE / "apps/apim/policies/fragments/request/core-api-operation-settings/core-api-operation-settings.cs").read_text(encoding="utf-8")
         source = SOURCE.replace("__PROFILE__", selection_source)
-        policy = ET.ElementTree(ET.fromstring(render_audit_policy((CORE / "apps/gateway/apim/policies/api-templates/gateway.xml").read_text(encoding="utf-8"))))
+        policy = ET.ElementTree(ET.fromstring(render_audit_policy((CORE / "apps/apim/policies/api-templates/gateway.xml").read_text(encoding="utf-8"))))
         rejection = next(node for node in policy.findall('./inbound/choose/when')
                          if 'gatewayOperationSelection' in node.get('condition', ''))
         for marker, value in (
@@ -1462,7 +1462,7 @@ class ProfilePolicyTests(unittest.TestCase):
         else:
             raise AssertionError('Expected the actual Speech guard selection expression')
         source = source.replace('__SPEECH_REQUIRED__', speech_body)
-        source = source.replace('__SPEECH_GUARD__', (CORE / 'apps/gateway/apim/policies/fragments/request/core-speech-ssml-guard/core-speech-ssml-guard.cs').read_text(encoding='utf-8'))
+        source = source.replace('__SPEECH_GUARD__', (CORE / 'apps/apim/policies/fragments/request/core-speech-ssml-guard/core-speech-ssml-guard.cs').read_text(encoding='utf-8'))
         source = source.replace("__AUTH__", actual_expression("gateway.xml", "gatewayDecision")).replace("__LIMITS__", LIMIT_EXPRESSION).replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetDecision"))
         cls.target_rejection = next(node for node in policy.findall('./inbound/choose/when')
                                     if 'gatewayTargetDecision' in node.get('condition', ''))
@@ -1687,7 +1687,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 self.assertEqual(json.loads(result['bodyAfter']),original)
 
     def test_chat_body_processing_follows_limits_and_quota_and_precedes_backend_and_acceptance(self):
-        source=(CORE/'apps/gateway/apim/policies/api-templates/gateway.xml').read_text(encoding='utf-8')
+        source=(CORE/'apps/apim/policies/api-templates/gateway.xml').read_text(encoding='utf-8')
         inbound=ET.fromstring(source).find('inbound')
         nodes=list(inbound)
         chat=inbound.find("choose[@id='core-chat-store-disabled']")
@@ -1779,7 +1779,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 else:
                     self.assertNotIn('statelessBodyReads', result)
                     self.assertEqual(json.loads(result['bodyAfter']), expected)
-        inbound = ET.parse(CORE / 'apps/gateway/apim/policies/api-templates/gateway.xml').find('inbound')
+        inbound = ET.parse(CORE / 'apps/apim/policies/api-templates/gateway.xml').find('inbound')
         nodes = list(inbound)
         target = inbound.find("include-fragment[@fragment-id='core-api-target-validation']")
         self.assertLess(nodes.index(inbound.find("include-fragment[@fragment-id='core-model-limits']")), nodes.index(target))
@@ -1922,7 +1922,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                     self.assertEqual('metadata' in actual, 'metadata' in original)
 
     def test_hosted_rewrite_follows_target_rejection_and_precedes_rate_limit_counting(self):
-        inbound = ET.parse(CORE / 'apps/gateway/apim/policies/api-templates/gateway.xml').find('inbound')
+        inbound = ET.parse(CORE / 'apps/apim/policies/api-templates/gateway.xml').find('inbound')
         nodes = list(inbound)
         target = inbound.find("include-fragment[@fragment-id='core-api-target-validation']")
         failure = next(node for node in inbound.findall('choose')
@@ -1976,7 +1976,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                     self.assertEqual(result["bodyBeforeNormalization"], result["bodyAfter"])
 
     def test_alias_normalization_order_preserves_original_byte_and_token_checks(self):
-        inbound = ET.parse(CORE / "apps/gateway/apim/policies/api-templates/gateway.xml").getroot().find("inbound")
+        inbound = ET.parse(CORE / "apps/apim/policies/api-templates/gateway.xml").getroot().find("inbound")
         nodes = list(inbound)
         normalize = inbound.find("choose[@id='core-model-alias']")
         self.assertLess(nodes.index(inbound.find("include-fragment[@fragment-id='core-model-limits']")), nodes.index(normalize))
@@ -2157,14 +2157,14 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 self.assertEqual(json.loads(result['bodyAfter']), original)
 
     def test_compiled_flux_operations_use_the_model_selected_profile_after_api_inheritance(self):
-        template = compile_bicep('apps/gateway/apim/api-publication.bicep')
+        template = compile_bicep('apps/apim/api-publication.bicep')
         apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / 'config')['apiDefinitions']
         api = next(item for item in apis if item['name'] == 'blackforest-images-v1')
         # 正式な配備入力の組立てが補う接続元を、独立した試験用URLで渡します。
         api['backendUrl'] = 'https://provider.example.com'
         parameters = {'apiDefinitions': [api], 'publicHostName': 'gateway.example.com', 'names': {'apim': 'apim-fixture'}}
         policy = ET.fromstring(compiled_policy_value(template, parameters))
-        source = ET.parse(CORE / 'apps/gateway/apim/policies/api-templates/gateway.xml')
+        source = ET.parse(CORE / 'apps/apim/policies/api-templates/gateway.xml')
         self.assertEqual(policy.find("inbound/include-fragment[@fragment-id='core-api-operation-settings']").attrib,
                          source.find("inbound/include-fragment[@fragment-id='core-api-operation-settings']").attrib)
         # Azureへ登録する部品にも、同名XML/C#から展開した説明と実行コードが入ることを確認します。
@@ -2175,7 +2175,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         rendered = PolicyExpression(fragment['properties']['value'], template['variables'], functions=template['functions']).evaluate(parameters)
         self.assertEqual(ET.tostring(ET.fromstring(rendered)), ET.tostring(ET.fromstring(render_operation_settings_fragment())))
         # 旧ヘッダーは選択処理で参照せず、旧クライアントの申告を下流へも渡しません。
-        self.assertNotIn('X-Egakumi-Profile', (CORE / 'apps/gateway/apim/policies/fragments/request/core-api-operation-settings/core-api-operation-settings.cs').read_text(encoding='utf-8'))
+        self.assertNotIn('X-Egakumi-Profile', (CORE / 'apps/apim/policies/fragments/request/core-api-operation-settings/core-api-operation-settings.cs').read_text(encoding='utf-8'))
         self.assertEqual(policy.find("inbound/set-header[@name='X-Egakumi-Profile']").get('exists-action'), 'delete')
         for index, operation in enumerate(api['operations']):
             actual = ET.fromstring(compiled_policy_value(template, parameters, index=index, resource_name='operationPolicies'))
@@ -2196,7 +2196,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                                   'copy-unmatched-params': 'false'})
 
     def test_profile_rejection_preserves_audit_order_and_request_id_without_a_response_body(self):
-        root = ET.parse(CORE / "apps/gateway/apim/policies/api-templates/gateway.xml").getroot()
+        root = ET.parse(CORE / "apps/apim/policies/api-templates/gateway.xml").getroot()
         rejection = next(node for node in root.findall('inbound/choose/when')
                          if 'gatewayOperationSelection' in node.get('condition', ''))
         nodes = list(rejection)
@@ -2257,7 +2257,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                                  else json.dumps(self.responses_call_id_body, separators=(",", ":")))
 
     def test_content_type_header_rejection_uses_the_fragment_result_and_is_audited(self):
-        root = ET.parse(CORE / "apps/gateway/apim/policies/api-templates/gateway.xml").getroot()
+        root = ET.parse(CORE / "apps/apim/policies/api-templates/gateway.xml").getroot()
         inbound = list(root.find("inbound"))
         guard = next(node for node in inbound if node.tag == "include-fragment" and node.get("fragment-id") == "core-api-input-validation")
         profile = next(node for node in inbound if node.tag == "include-fragment" and node.get("fragment-id") == "core-api-operation-settings")
@@ -2654,7 +2654,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertTrue(accepted["limits"]["allowed"])
         self.assertEqual(self.results["flux-byte-limit-1"]["profile"]["status"], 413)
         for name in ("blackforest-images-v1", "openai-inference-v1"):
-            definition = json.loads((CORE / "apps/gateway/apim/apis" / (name + ".json")).read_text())
+            definition = json.loads((CORE / "apps/apim/apis" / (name + ".json")).read_text())
             def inspect(value):
                 if isinstance(value, dict):
                     if value.get("maxRequestBytes", 0) > 32768:

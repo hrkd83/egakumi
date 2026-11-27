@@ -369,7 +369,7 @@ class BrowserControlTests(unittest.TestCase):
     """画面の実際の JavaScript を偽 DOM で実行し、製品別の取消を確認する。"""
     def test_public_webrtc_output_budget_is_explicit_without_changing_session_vad(self):
         """WebRTC例の枠だけ512にし、server VADの動作は変えない。"""
-        api = json.loads((Path(__file__).resolve().parents[1] / "apps/gateway/apim/apis/openai-realtime-control-v1.json").read_text())
+        api = json.loads((Path(__file__).resolve().parents[1] / "apps/apim/apis/openai-realtime-control-v1.json").read_text())
         self.assertEqual(api["authorization"]["operationConstraints"]["realtime-create"]["initialOutputTokens"], 512)
         self.assertNotIn("create_response", browser.Settings().voice_session["turn_detection"])
 

@@ -7,7 +7,7 @@ import json
 from .paths import REPOSITORY
 
 
-SOURCE_URL_EXCLUSIONS = REPOSITORY / "apps/gateway/waf-source-url-exclusions.json"
+SOURCE_URL_EXCLUSIONS = REPOSITORY / "apps/apim/waf-source-url-exclusions.json"
 
 
 def source_url_exclusions(profile):

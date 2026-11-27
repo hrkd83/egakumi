@@ -21,7 +21,7 @@ SOURCE_URL_EXCLUSION = exclusion('urlSource', 'REQUEST-931-APPLICATION-ATTACK-RF
 
 def configuration():
     """標準の文書APIと、既存の合成Gateway構成を組み合わせます。"""
-    return {**copy.deepcopy(CONFIG), 'apiDefinitions': [json.loads((ROOT/'apps/gateway/apim/apis/document-analysis-v1.json').read_text(encoding='utf-8'))]}
+    return {**copy.deepcopy(CONFIG), 'apiDefinitions': [json.loads((ROOT/'apps/apim/apis/document-analysis-v1.json').read_text(encoding='utf-8'))]}
 
 
 class GatewayDocumentWafTests(unittest.TestCase):

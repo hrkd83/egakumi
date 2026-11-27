@@ -48,7 +48,7 @@ class WafProbeTests(unittest.TestCase):
         expected = {(route.target, route.method, route.path) for route in self.routes}
         actual = {(case.target, case.method, case.path) for case in self.cases if case.category == "baseline"}
         self.assertEqual(actual, expected)
-        for path in (ROOT / "apps/gateway/apim/apis").glob("*.json"):
+        for path in (ROOT / "apps/apim/apis").glob("*.json"):
             contract = json.loads(path.read_text(encoding="utf-8"))
             for operation in contract["operations"]:
                 self.assertIn(contract["name"] + ":" + operation["name"], {route.operation for route in self.routes})
@@ -223,7 +223,7 @@ class WafProbeTests(unittest.TestCase):
                 self.assertEqual(offset, len(content))
 
     def test_all_manifest_selectors_have_actual_offline_field_coverage_separate_from_waf_extraction(self):
-        manifest = json.loads((ROOT / "apps/gateway/waf-data-exclusions.json").read_text())
+        manifest = json.loads((ROOT / "apps/apim/waf-data-exclusions.json").read_text())
         cases = self.cases + probe.ai_coding_probes(self.routes) + probe.jndi_field_probes(self.routes)
         coverage = probe.exclusion_coverage(cases, manifest)
         self.assertEqual(len(coverage), sum(len(profile["exclusions"]) for profile in manifest["profiles"]))
@@ -281,7 +281,7 @@ class WafProbeTests(unittest.TestCase):
                 self.assertTrue("sibling" in case.case_id or "header" in case.case_id or "neighbor" in case.case_id)
 
     def test_deployment_routes_use_every_model_in_the_canonical_allowlist(self):
-        for path in (ROOT / "apps/gateway/apim/apis").glob("*.json"):
+        for path in (ROOT / "apps/apim/apis").glob("*.json"):
             api = json.loads(path.read_text(encoding="utf-8"))
             for operation in api["operations"]:
                 if "{deployment}" not in operation["urlTemplate"]:
@@ -1603,7 +1603,7 @@ class WafProbeTests(unittest.TestCase):
     def test_published_model_acceptance_plan_is_dynamic_and_does_not_send_inference(self):
         matrix = probe.published_model_matrix()
         actual = {(row["api"], row["operation"], row["profile"], row["model"]) for row in matrix}
-        for path in (ROOT / "apps/gateway/apim/apis").glob("*.json"):
+        for path in (ROOT / "apps/apim/apis").glob("*.json"):
             api = json.loads(path.read_text(encoding="utf-8"))
             if not api.get("released"):
                 continue
@@ -1617,7 +1617,7 @@ class WafProbeTests(unittest.TestCase):
         self.assertFalse(any(isinstance(row["model"], str) and row["model"].startswith("__") for row in matrix))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            path = root / "apps/gateway/apim/apis/synthetic.json"
+            path = root / "apps/apim/apis/synthetic.json"
             path.parent.mkdir(parents=True)
             api = {"released": True, "name": "synthetic", "path": "models/synthetic", "operations": [
                 {"name": "create", "method": "POST", "urlTemplate": "/create"}], "authorization": {

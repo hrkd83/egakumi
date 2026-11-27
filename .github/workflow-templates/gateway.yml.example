@@ -34,8 +34,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m venv .venv-broker
-          .venv-broker/bin/pip install -r apps/gateway/credential-broker/requirements.txt
-          PYTHONPATH=apps/gateway/credential-broker .venv-broker/bin/python -m unittest discover -s apps/gateway/credential-broker/tests -v
+          .venv-broker/bin/pip install -r apps/credential-broker/requirements.txt
+          PYTHONPATH=apps/credential-broker .venv-broker/bin/python -m unittest discover -s apps/credential-broker/tests -v
       - name: Review Gateway deployment plan
         shell: bash
         run: |

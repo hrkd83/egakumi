@@ -21,7 +21,7 @@ from deployment.helpers.apim_audit import expand_audit_fragments, render_audit_p
 from deployment.helpers.apim_ingress import expand_trusted_ingress_fragment
 from policy_fixture_paths import policy_fixture_path
 
-POLICIES = CORE / "apps/gateway/apim/policies"
+POLICIES = CORE / "apps/apim/policies"
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 if not PWSH:
     candidate = CORE / ".tools/powershell/7.6.7/pwsh"
@@ -452,7 +452,7 @@ for _id, _api, _operation, _body in (
     ("native-flux-dimensions", "blackforest-images-v1", "flux2-generate", {"model": "FLUX.2-flex", "width": 2048, "height": 1024}),
     ("native-flux-multiple-output", "blackforest-images-v1", "flux2-generate", {"model": "FLUX.2-flex", "n": 2, "num_images": 2, "output_format": "synthetic"}),
 ):
-    _constraint = json.loads((CORE / "apps/gateway/apim/apis" / (_api + ".json")).read_text())["authorization"]["operationConstraints"][_operation]
+    _constraint = json.loads((CORE / "apps/apim/apis" / (_api + ".json")).read_text())["authorization"]["operationConstraints"][_operation]
     _constraint = dict(_constraint)
     if "outputTokenParameter" in _constraint:
         _constraint["maxOutputTokens"] = 2000000
@@ -530,7 +530,7 @@ NATIVE_UPLOAD_OPERATIONS = (
     ("document-analysis-v1", "analyze_document", "declared"),
 )
 for _api, _operation, _mode in NATIVE_UPLOAD_OPERATIONS:
-    _constraint = json.loads((CORE / "apps/gateway/apim/apis" / (_api + ".json")).read_text())["authorization"]["operationConstraints"][_operation]
+    _constraint = json.loads((CORE / "apps/apim/apis" / (_api + ".json")).read_text())["authorization"]["operationConstraints"][_operation]
     # 標準操作の形式・検査方法を使い、500 MiBの本文を作らずに小さなサイズ境界で実式を確認します。
     CASES.append(limit_case("native-upload-" + _api + "-" + _operation, "a" * 1025,
                            {**_constraint, "maxRequestBytes": 1024}))
@@ -764,7 +764,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
     def test_native_upload_size_check_matches_standard_operation_settings(self):
         declared = set()
-        for path in (CORE / "apps/gateway/apim/apis").glob("*.json"):
+        for path in (CORE / "apps/apim/apis").glob("*.json"):
             definition = json.loads(path.read_text())
             for operation, constraint in definition.get("authorization", {}).get("operationConstraints", {}).items():
                 if constraint.get("requestBodySizeCheck") == "declared":

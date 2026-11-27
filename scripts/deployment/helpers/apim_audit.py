@@ -262,7 +262,7 @@ def _without_telemetry_explanation_lines(xml: str) -> str:
 
 def portal_source_explanation_blocks() -> dict[str, tuple[str, ...]]:
     """移行照合が認識できる、現在の正本から生成した既知の説明ブロックだけを返す。"""
-    directory = REPOSITORY / "apps/gateway/apim/policies"
+    directory = REPOSITORY / "apps/apim/policies"
     blocks = {}
     for marker, filename in SOURCE_EXPRESSION_FILES.items():
         source = (directory / filename).read_text(encoding="utf-8")
@@ -309,7 +309,7 @@ def _render_policy_source_sections(xml: str, source_comments: str) -> str:
             continue
         if any(xml.count(marker) != 1 for marker in markers.values()):
             raise ValueError("Each policy source section needs exactly one XML insertion point")
-        source = (REPOSITORY / "apps/gateway/apim/policies" / filename).read_text(encoding="utf-8")
+        source = (REPOSITORY / "apps/apim/policies" / filename).read_text(encoding="utf-8")
         sections = extract_policy_source_sections(source, tuple(markers))
         mode = "omit" if source_comments == "omit" else "full"
         for name, marker in markers.items():
@@ -358,7 +358,7 @@ def _render_query_telemetry_sections(xml: str, source_comments: str) -> str:
         return xml
     if any(xml.count(marker) != 1 for marker in QUERY_TELEMETRY_SECTIONS.values()):
         raise ValueError("Each query telemetry section needs exactly one XML insertion point")
-    directory = REPOSITORY / "apps/gateway/apim/policies"
+    directory = REPOSITORY / "apps/apim/policies"
     source = (directory / SOURCE_EXPRESSION_FILES[CORE_QUERY_TELEMETRY_MARKER]).read_text(encoding="utf-8")
     sections = extract_query_telemetry_sections(source)
     if any(SUBJECT_OBSERVATION_MARKER in body for body in sections.values()):
@@ -379,7 +379,7 @@ def _render_realtime_owner_context(xml: str) -> str:
     """確認済みownerの受取りを生成時にinlineし、Azure fragmentの入れ子を増やさない。"""
     if REALTIME_OWNER_CONTEXT_XML_MARKER not in xml:
         return xml
-    path = REPOSITORY / "apps/gateway/apim/policies/snippets/authentication/realtime-owner-context/realtime-owner-context.xml"
+    path = REPOSITORY / "apps/apim/policies/snippets/authentication/realtime-owner-context/realtime-owner-context.xml"
     body = path.read_text(encoding="utf-8").replace("<fragment>", "").replace("</fragment>", "")
     # snippetの2文字の外側字下げを除き、親XMLの挿入位置へ揃えます。
     body = "\n".join(line[2:] if line.startswith("  ") else line for line in body.splitlines()).strip()
@@ -396,7 +396,7 @@ def render_audit_policy(xml: str, *, source_comments: str = "full") -> str:
         raise ValueError("Audit source comments require full, compact or legacy omit mode")
     marker = "__AUDIT_BODY_MODEL_ERROR_XML__"
     if marker in xml:
-        source = (REPOSITORY / "apps/gateway/apim/policies/snippets/audit/audit-body-model-error/audit-body-model-error.xml").read_text(encoding="utf-8").strip()
+        source = (REPOSITORY / "apps/apim/policies/snippets/audit/audit-body-model-error/audit-body-model-error.xml").read_text(encoding="utf-8").strip()
         root = _policy_xml(source)
         children = [node for node in root if isinstance(node.tag, str)]
         if root.tag != "fragment" or root.attrib or len(children) != 1 or children[0].tag != "choose" or children[0].get("id") != "core-audit-body-model-error":
@@ -426,14 +426,14 @@ def render_audit_policy(xml: str, *, source_comments: str = "full") -> str:
         if marker in indented_markers:
             continue
         if marker in xml:
-            source = (REPOSITORY / "apps/gateway/apim/policies" / filename).read_text(encoding="utf-8")
+            source = (REPOSITORY / "apps/apim/policies" / filename).read_text(encoding="utf-8")
             mode = "full" if source_comments == "compact" and marker not in observation_markers else source_comments
             xml = xml.replace(marker, escape(_source_expression(source, mode), {'"': "&quot;", "'": "&apos;"}))
     for marker in indented_markers:
         if marker not in xml:
             continue
         mode = source_comments if marker in {CORE_GATEWAY_TELEMETRY_MARKER, CREDENTIAL_TELEMETRY_MARKER, CORE_CREDENTIAL_CONNECTION_OUTBOUND_MARKER} else "omit" if source_comments == "omit" else "full"
-        source = _source_expression((REPOSITORY / "apps/gateway/apim/policies" / SOURCE_EXPRESSION_FILES[marker]).read_text(encoding="utf-8"), mode).rstrip("\n")
+        source = _source_expression((REPOSITORY / "apps/apim/policies" / SOURCE_EXPRESSION_FILES[marker]).read_text(encoding="utf-8"), mode).rstrip("\n")
         # These markers are XML text; quote entities add bytes without
         # changing the decoded C# and are only needed for attribute markers.
         encoded = (escape(source) if marker in {CORE_GATEWAY_TELEMETRY_MARKER, CREDENTIAL_TELEMETRY_MARKER, CORE_CREDENTIAL_CONNECTION_OUTBOUND_MARKER}
@@ -451,7 +451,7 @@ def render_audit_fragments(*, source_comments: str = "full") -> dict[str, str]:
     """監査2部品の説明を保持する。omit指定は既知の旧生成元照合だけに使う。"""
     fragments = {}
     for identifier, (filename, _) in AUDIT_FRAGMENT_FILES.items():
-        rendered = render_audit_policy((REPOSITORY / "apps/gateway/apim/policies" / filename).read_text(encoding="utf-8"),
+        rendered = render_audit_policy((REPOSITORY / "apps/apim/policies" / filename).read_text(encoding="utf-8"),
                                       source_comments=source_comments)
         _fragment_node(identifier, rendered)
         fragments[identifier] = rendered

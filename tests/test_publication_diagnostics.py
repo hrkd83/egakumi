@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/gateway/deploy"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/apim/deploy"))
 import api_publication as publish
 import test_publish_apis as publication_cases
 from test_standard_apis import standard_fixture

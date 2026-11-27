@@ -11,7 +11,7 @@ from deployment.helpers.apim_audit import (
 )
 
 
-POLICIES = Path(__file__).resolve().parents[1] / "apps/gateway/apim/policies"
+POLICIES = Path(__file__).resolve().parents[1] / "apps/apim/policies"
 DIRECTORY = POLICIES / "fragments/audit/core-query-telemetry"
 
 

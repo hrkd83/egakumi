@@ -186,7 +186,7 @@ logout／disconnect後に戻ったコード交換・refresh応答は破棄する
 | Realtime WebSocket | realtime/live/transcription/voice-liveのWS API／`realtime-relay.ts`、`realtime-gateway.ts` | ブラウザーはPortal Cookie＋Originで接続。上流Bearerはサーバーrelayが付け、認証失効・token期限で終了 |
 | Realtime WebRTC | realtime/live/voice-liveの制御API／`realtime-webrtc.ts` | SDP受付、control/observer、call ticket、停止、媒体終了の確認 |
 
-API JSON正本は[公開API一覧](../../apps/gateway/apim/apis/)、Gatewayの認証契約は[共通認証](../../apps/gateway/apim/policies/fragments/authentication/core-common-authentication/README.md)を参照する。`tid/oid`のBearer本人とキーの購読主体を区別する。APIのClient ID許可リストを新設しない。最新Gateway資材の統合・Azureでの代表受入が残っていることを、工程4の成功として読み替えない。
+API JSON正本は[公開API一覧](../../apps/apim/apis/)、Gatewayの認証契約は[共通認証](../../apps/apim/policies/fragments/authentication/core-common-authentication/README.md)を参照する。`tid/oid`のBearer本人とキーの購読主体を区別する。APIのClient ID許可リストを新設しない。最新Gateway資材の統合・Azureでの代表受入が残っていることを、工程4の成功として読み替えない。
 
 実装前に各公開operationと実行可能なPortal routeを対応表へ落とす。カタログだけのAgent/A2Aデモや未提供transportを成功対象へ追加せず、廃止transportを復活させない。
 

@@ -30,7 +30,7 @@ SESSION_POLICY_BOUNDS = {
     "rotationHandoffSeconds": (60, 3600), "rotationCandidateTtlSeconds": (60, 3600),
 }
 MAX_TRANSACTION_LIFETIME_SECONDS = 600
-POLICY_DIRECTORY = REPOSITORY / "apps/gateway/apim/policies"
+POLICY_DIRECTORY = REPOSITORY / "apps/apim/policies"
 OPERATION_POLICY_DIRECTORY = POLICY_DIRECTORY / "operation-policies/credential-login"
 
 

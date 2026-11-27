@@ -1,6 +1,6 @@
 # Core API・Operation定義
 
-初期配備28モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../apps/gateway/apim/apis/)と [モデル設定](../../config/test.json)。`azd up`は共通基盤の完了後、GatewayのAPI公開とPortal配備まで実行する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
+初期配備28モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../apps/apim/apis/)と [モデル設定](../../config/test.json)。`azd up`は共通基盤の完了後、GatewayのAPI公開とPortal配備まで実行する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
 
 入口認可と本人接続の分担は[Gatewayの購読キー認証](gateway-key-auth-plan.md)を参照する。現行の標準19 APIでは、共通入口の購読キー検証と、個人向けAPIの本人OAuth接続を分けて設計する。
 
@@ -143,7 +143,7 @@ ChatとResponsesの2つのOperationを使い、それぞれに基本設定を持
 | chat-completions | router | Model Router | 振り分け先で変わるため自動値 |
 | responses-create | response | OpenAIモデル | max_output_tokens、128,000 |
 
-上限と確認元は [model-capabilities.json](../../apps/gateway/apim/model-capabilities.json) で一元管理し、API配備とPortalカタログの双方へ展開する。要求の初期値とモデル上限は別の値であり、初期値を最大値まで増やすものではない。実際に出力できる量は入力とコンテキスト残量によっても変わる。
+上限と確認元は [model-capabilities.json](../../apps/apim/model-capabilities.json) で一元管理し、API配備とPortalカタログの双方へ展開する。要求の初期値とモデル上限は別の値であり、初期値を最大値まで増やすものではない。実際に出力できる量は入力とコンテキスト残量によっても変わる。
 
 モデルごとに受け付ける推論設定・出力token項目・ストリーミング形式を確認して登録する。compatible内に追加の差がある場合も、同じOperation内のmodelSettings差分へ分ける。現行のAzureカタログでChat対応を確認したモデルをChatに、Responses対応を確認したモデルをResponsesに対応付ける。
 
@@ -223,10 +223,10 @@ Graph等の本人接続APIは、セッション未指定・期限切れ・CM再�
 | 順序 | 対象 | 内容 |
 |---|---|---|
 | 1 | Azure／提供元の接続仕様 | 固定上流と音声契約を公式資料に照合。実環境のURL・権限・到達を確認 |
-| 2 | `apps/gateway/apim/apis/<API名>.json` | 対象APIの許可モデル・モデル別設定・固定上流を変更する。新規APIは1ファイルを追加する |
+| 2 | `apps/apim/apis/<API名>.json` | 対象APIの許可モデル・モデル別設定・固定上流を変更する。新規APIは1ファイルを追加する |
 | 3 | `schemas/`・`scripts/deployment/helpers/configuration.py` | モデル別ルーティングとLive系入力・WSS設定の検査を追加 |
 | 4 | `scripts/configure_trial.py`・`prepare_coverage.py`・`deploy_gateway.py` | 新しい接続定義の合成・検査・登録計画を生成 |
-| 5 | `apps/gateway/apim/api-publication.bicep`・`apps/gateway/apim/policies/` | FLUXモデル別の固定上流選択、Liveセッション制御、文字起こしWSSの登録・ポリシー生成を実装 |
+| 5 | `apps/apim/api-publication.bicep`・`apps/apim/policies/` | FLUXモデル別の固定上流選択、Liveセッション制御、文字起こしWSSの登録・ポリシー生成を実装 |
 | 6 | 接続クライアントの確認 | profileヘッダーなしのモデル選択と新しい音声イベントを扱うクライアントから受入 |
 | 7 | ローカル試験・Azureでの受入 | 件数・モデル対応・権限・通常／SSE／音声の正常終端を確認し、APIMへ公開 |
 
@@ -243,9 +243,9 @@ PII MCPは`pii-v1`の`pii_redact_text`から生成し、RESTと同じProductの�
 ## 現行資材の参照先
 
 - 初期配備28モデル：`config/test.json`・`config/production.json`と[モデル一覧](foundry-model-catalog.md)。
-- 標準19 APIの配備定義：[apps/gateway/apim/apis/](../../apps/gateway/apim/apis/)。1 API 1ファイルで、APIの名前とファイル名を一致させる。
+- 標準19 APIの配備定義：[apps/apim/apis/](../../apps/apim/apis/)。1 API 1ファイルで、APIの名前とファイル名を一致させる。
 - 現行の登録・検査・移行：`scripts/deploy_gateway.py`・`scripts/deployment/helpers/configuration.py`・`scripts/api_migration.py`。
-- 公開の実装：`apps/gateway/apim/api-publication.bicep`・`apps/gateway/apim/policies/`。
+- 公開の実装：`apps/apim/api-publication.bicep`・`apps/apim/policies/`。
 - 本文の19 API一覧と28モデル対応表：登録内容の確認と受入試験に使用する。
 - ポリシーの適用順・検査内容：[APIMポリシー一覧](apim-policy-catalog.md)。
 

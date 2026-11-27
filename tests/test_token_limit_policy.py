@@ -19,7 +19,7 @@ CORE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CORE / "scripts"))
 from deployment.helpers.apim_audit import render_audit_policy
 
-POLICY = policy_fixture_path(CORE / "apps/gateway/apim/policies", "token-limit.xml")
+POLICY = policy_fixture_path(CORE / "apps/apim/policies", "token-limit.xml")
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 PERIODS = ("Hourly", "Daily", "Weekly", "Monthly", "Yearly")
 
@@ -125,7 +125,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
 class SubscriptionProfileFetchExpressionTests(unittest.TestCase):
     """取得した不正値を整数へ丸めず拒否し、正規の無制限と区別する。"""
 
-    POLICY = policy_fixture_path(CORE / "apps/gateway/apim/policies", "subscription-profile.xml")
+    POLICY = policy_fixture_path(CORE / "apps/apim/policies", "subscription-profile.xml")
 
     @classmethod
     def setUpClass(cls):

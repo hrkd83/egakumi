@@ -34,7 +34,7 @@ from standard_apis import load_api_definitions
 from deployment.helpers.paths import private_parent
 
 CORE = Path(__file__).resolve().parents[1]
-STANDARD_OVERLAY_DIRECTORY = CORE / "apps/gateway/apim/apis"
+STANDARD_OVERLAY_DIRECTORY = CORE / "apps/apim/apis"
 PLACEHOLDER = re.compile(r"__([A-Z][A-Z0-9_]+)__")
 
 

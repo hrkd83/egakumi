@@ -22,8 +22,8 @@ CORE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CORE / "scripts"))
 from deployment.helpers.apim_audit import SOURCE_EXPRESSION_FILES, render_audit_policy
 
-POLICIES = CORE / "apps/gateway/apim/policies"
-SERVICE_POLICY = CORE / "apps/gateway/apim/policies/service.xml"
+POLICIES = CORE / "apps/apim/policies"
+SERVICE_POLICY = CORE / "apps/apim/policies/service.xml"
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 if not PWSH:
     candidate = CORE / ".tools/powershell/7.6.7/pwsh"

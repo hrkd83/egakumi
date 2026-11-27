@@ -11,4 +11,4 @@
 
 Bicepはこれらの本文を埋め込み、Azure Managed Run CommandがLinux管理VM上でrootとして実行します。証明書workerは初回設定後も同じソースを使って更新します。保守clientはCoreの初期構築と、Gateway／Portalが構築した対象のinventory更新で同じBicepから準備します。認可と実際のデータ取得は、準備後に[管理VMの保守手順](../../docs/operations.md#管理vmから保守データを取得する)で確認します。
 
-操作端末で使うCLIと配備の制御は[scripts/](../../scripts/README.md)にあります。管理VM上で行うアプリ専用のイメージ構築は、[Gateway](../../apps/gateway/deploy/build-image.sh)・[Portal](../../apps/portal/deploy/build-image.sh)それぞれの配備資材に置きます。
+操作端末で使うCLIと配備の制御は[scripts/](../../scripts/README.md)にあります。管理VM上で行うアプリ専用のイメージ構築は、[Gateway](../../apps/credential-broker/deploy/build-image.sh)・[Portal](../../apps/portal/deploy/build-image.sh)それぞれの配備資材に置きます。

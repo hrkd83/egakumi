@@ -14,7 +14,7 @@ from test_entra_publication import APIM, GLOBAL, fixture, response, source_fixtu
 import entra_publication as publication
 
 
-POLICIES = Path(__file__).resolve().parents[1] / "apps/gateway/apim/policies"
+POLICIES = Path(__file__).resolve().parents[1] / "apps/apim/policies"
 FRAGMENT = APIM + "/policyFragments/" + API_SETTINGS_ID
 SETTINGS = {"apiType": "http", "audit": '{"backendService":"synthetic","operationBackends":{}}',
             "control": '{"operationConstraints":{},"tokenLimitOperationIds":[]}'}

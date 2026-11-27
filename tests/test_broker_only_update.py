@@ -7,7 +7,8 @@ import unittest
 from unittest import mock
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1] / 'scripts'),
-               str(Path(__file__).resolve().parents[1] / 'apps/gateway/deploy')]
+               str(Path(__file__).resolve().parents[1] / 'apps/apim/deploy'),
+               str(Path(__file__).resolve().parents[1] / 'apps/credential-broker/deploy')]
 import broker_deployment as release
 from bicep_helpers import compile_bicep
 from deployment.helpers.credential_pools import broker_session_settings, logical_profiles, resource_names
@@ -169,7 +170,7 @@ def broker_fixture(*, business_login=True):
 class BrokerOnlyUpdateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep('apps/gateway/deploy/broker.bicep')
+        cls.template = compile_bicep('apps/credential-broker/deploy/broker.bicep')
 
     def setUp(self):
         # Use the real compiled source; do not run another compiler per fault.
@@ -203,7 +204,7 @@ class BrokerOnlyUpdateTests(unittest.TestCase):
                 raise ValueError('Synthetic observation unavailable')
             return observation if observation is not None else copy.deepcopy(SCHEMA_OBSERVATION)
         result = release.execute_broker_only_update(config, state, plan,
-            template if template is not None else compile_bicep('apps/gateway/deploy/broker.bicep'),
+            template if template is not None else compile_bicep('apps/credential-broker/deploy/broker.bicep'),
             transport, DIGEST, backup=backup, record=record, read_schema_observation=observe, sleep=lambda _: None)
         self.assertEqual(transport.connection_rows, before)
         return result, transport, plan, backups, records
@@ -283,7 +284,7 @@ class BrokerOnlyUpdateTests(unittest.TestCase):
                 transport.failure = failure
                 records = []
                 with self.assertRaisesRegex(ValueError, 'SQL schema job failed'):
-                    release.execute_broker_only_update(config, state, plan, compile_bicep('apps/gateway/deploy/broker.bicep'),
+                    release.execute_broker_only_update(config, state, plan, compile_bicep('apps/credential-broker/deploy/broker.bicep'),
                         transport, DIGEST, backup=lambda _: None, record=lambda stage, value: records.append((stage, value)),
                         read_schema_observation=lambda *_: copy.deepcopy(SCHEMA_OBSERVATION), sleep=lambda _: None)
                 self.assertEqual(transport.schema_version, schema_version)
@@ -320,7 +321,7 @@ class BrokerOnlyUpdateTests(unittest.TestCase):
                 else: transport.inventory[transport.application_id]['body']['properties']['syntheticExternalSetting'] = True
                 backups = []
                 with self.assertRaisesRegex(ValueError, 'changed after preparation'):
-                    release.execute_broker_only_update(config, state, plan, compile_bicep('apps/gateway/deploy/broker.bicep'),
+                    release.execute_broker_only_update(config, state, plan, compile_bicep('apps/credential-broker/deploy/broker.bicep'),
                         transport, DIGEST, backup=backups.append, record=lambda *_: None, read_schema_observation=lambda *_: {})
                 self.assertEqual(backups, [])
                 self.assertTrue(all(method == 'GET' for method, *_ in transport.calls))
@@ -341,7 +342,7 @@ class BrokerOnlyUpdateTests(unittest.TestCase):
             self.assertTrue(all(method == 'GET' for method, *_ in transport.calls))
 
     def test_template_rejects_extra_resources_and_foreign_targets_before_any_writes(self):
-        original = compile_bicep('apps/gateway/deploy/broker.bicep')
+        original = compile_bicep('apps/credential-broker/deploy/broker.bicep')
         for kind in ('extra-type', 'foreign-app', 'nested', 'scope', 'unconditional-app'):
             template = copy.deepcopy(original)
             resources = template['resources']
