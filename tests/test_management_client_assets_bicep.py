@@ -10,7 +10,7 @@ from unittest import mock
 from bicep_helpers import compile_bicep
 from test_management_maintenance_rbac import MaintenanceExpression, SUBSCRIPTION
 from test_nsg_deployment_order import ancestors, dependency_graph, same_template
-from test_fixed_nsg_migration import fixture_config
+from test_fixed_nsg_validation import fixture_config
 from deployment.helpers import management_client_assets as assets
 from operations.maintenance import MaintenanceUpgrade
 
@@ -34,10 +34,10 @@ def resolve(template, value, parameters):
 class ManagementClientBicepTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.client = compile_bicep('infra/modules/management-maintenance-client.bicep')
+        cls.client = compile_bicep('infra/modules/management/management-maintenance-client.bicep')
         cls.core = compile_bicep('infra/main.bicep')
-        cls.network = compile_bicep('infra/modules/network.bicep')
-        cls.credential_network = compile_bicep('infra/modules/credential-broker-network.bicep')
+        cls.network = compile_bicep('infra/modules/network/network.bicep')
+        cls.credential_network = compile_bicep('infra/modules/network/credential-broker-network.bicep')
 
     def test_aca_dev_firewall_and_environment_use_the_same_constructed_region(self):
         _, nodes = dependency_graph(self.core)

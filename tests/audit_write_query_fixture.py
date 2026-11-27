@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-QUERY = ROOT / 'infra/modules/audit-write-failures.kql'
+QUERY = ROOT / 'infra/modules/monitoring/audit-write-failures.kql'
 EVALUATION_TIME = datetime(2030, 1, 1, tzinfo=timezone.utc)
 ACCOUNTS = ['fixturecollecteast', 'fixturecollectwest', '']
 FIELDS = ['TimeGenerated', '_ResourceId', 'AccountName', 'OperationName', 'StatusCode', 'StatusText', 'Uri']

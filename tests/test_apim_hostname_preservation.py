@@ -260,7 +260,7 @@ class ApimHostnameBicepTests(unittest.TestCase):
         gateway_plan = template["outputs"]["gatewayPlan"]["value"]
         self.assertIn("'apimHostName'", gateway_plan)
         self.assertIn(".outputs.apimGatewayHost.value", gateway_plan)
-        ingress = compile_bicep('infra/public-ingress.bicep')
+        ingress = compile_bicep('infra/modules/ingress/public-ingress.bicep')
         deferred = ingress["resources"]
         deferred_resources = deferred.values() if isinstance(deferred, dict) else deferred
         gateway = next(resource for resource in deferred_resources

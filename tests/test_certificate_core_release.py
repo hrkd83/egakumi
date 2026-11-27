@@ -54,7 +54,7 @@ class CertificateCoreReleaseTests(unittest.TestCase):
              mock.patch.object(lifecycle, '_save_deployment_state', side_effect=checkpoint), \
              mock.patch.object(lifecycle, 'require_certificate_job_cutover'), \
              mock.patch.object(lifecycle, '_bind_management_serial_password'), \
-             mock.patch.object(lifecycle, 'complete_core_network_upgrade'), \
+             mock.patch.object(lifecycle, 'verify_core_network_after_deployment'), \
              mock.patch('deployment.helpers.certificate_jobs.complete_initial_certificates', side_effect=issue), \
              mock.patch('deployment.helpers.portal_auth_certificate.store_initial_certificate',
                         side_effect=lambda *args: events.append('portal-public-certificate')), \

@@ -40,9 +40,10 @@ class SplitCliTests(unittest.TestCase):
         shutil.copytree(SCRIPTS, self.root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copytree(CORE / "apps/apim", self.root / "apps/apim",
                         ignore=shutil.ignore_patterns("__pycache__"))
-        (self.root / "infra").mkdir()
-        shutil.copyfile(CORE / "infra/log-privacy.json", self.root / "infra/log-privacy.json")
-        shutil.copyfile(CORE / "infra/nsg-rule-priorities.json", self.root / "infra/nsg-rule-priorities.json")
+        for relative in ("infra/modules/monitoring/log-privacy.json", "infra/modules/network/nsg/core-rules.json"):
+            target = self.root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(CORE / relative, target)
         self.options = json.loads((CORE / "config/test.json").read_text())
         self.parameters = json.loads((CORE / "params/test.example.json").read_text())
         bind_credential_fixture_id(self.parameters)

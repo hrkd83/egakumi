@@ -74,7 +74,7 @@ class EvidenceBoundaryTests(unittest.TestCase):
         base = fixed_nsg._fixed_catalog(False)
         enabled = fixed_nsg._fixed_catalog(True)
         self.assertNotIn("audit", base)
-        manifest = json.loads((ROOT / "infra/audit-evidence-nsg.json").read_text())["groups"]
+        manifest = json.loads((ROOT / "infra/modules/network/nsg/audit-evidence-rules.json").read_text())["groups"]
         for group in manifest:
             rules = enabled[group]["rules"]
             priorities = {(rule["direction"], rule["priority"]) for rule in rules.values()}
@@ -85,7 +85,7 @@ class EvidenceBoundaryTests(unittest.TestCase):
                          {"Inbound", "Outbound"})
 
     def test_transport_and_storage_disable_local_auth_and_separate_checkpoint_privilege(self):
-        template = compile_bicep("infra/modules/audit-evidence-data.bicep")
+        template = compile_bicep("infra/modules/audit-evidence/audit-evidence-data.bicep")
         resources = template["resources"]
         namespace = next(r for r in resources if r["type"] == "Microsoft.EventHub/namespaces")
         self.assertTrue(namespace["properties"]["disableLocalAuth"])
@@ -103,7 +103,7 @@ class EvidenceBoundaryTests(unittest.TestCase):
         ])
 
     def test_payload_lifecycle_and_worm_are_exclusive_and_locked_reapply_skips_put(self):
-        template = compile_bicep("infra/modules/audit-evidence-data.bicep")
+        template = compile_bicep("infra/modules/audit-evidence/audit-evidence-data.bicep")
         resources = template["resources"]
         expiry = next(r for r in resources if r["type"].endswith("/managementPolicies"))
         worm = next(r for r in resources if r["type"].endswith("/immutabilityPolicies"))

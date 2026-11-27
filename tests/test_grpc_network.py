@@ -665,7 +665,7 @@ class GrpcBootstrapTests(unittest.TestCase):
         with mock.patch.object(lifecycle, "run", side_effect=[{"CORE_DEPLOYMENT_NAME": "owned"}, response]), \
              mock.patch.object(lifecycle, "ROOT", self.root), \
              mock.patch.object(lifecycle, "ArmTransport"), \
-             mock.patch.object(lifecycle, "complete_core_network_upgrade"), \
+             mock.patch.object(lifecycle, "verify_core_network_after_deployment"), \
              mock.patch("deployment.helpers.portal_auth_certificate.collect_initial_certificate"), \
              mock.patch.object(lifecycle, "configure_grpc_endpoint", side_effect=ValueError("Still pending")):
             with self.assertRaisesRegex(ValueError, "Still pending"):
@@ -685,9 +685,9 @@ class GrpcInfrastructureSourceTests(unittest.TestCase):
         self.assertIn("@secure()\nparam realtimeTicketKey", source)
         self.assertNotIn("output grpc ", source)
         self.assertIn("l7IngressEnabled: useIngressSecrets", source)
-        services = (core / "infra/modules/services.bicep").read_text()
+        services = (core / "infra/modules/services/services.bicep").read_text()
         self.assertIn("'Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2': 'false'", services)
-        gateway = (core / "infra/modules/application-gateway.bicep").read_text()
+        gateway = (core / "infra/modules/ingress/application-gateway.bicep").read_text()
         self.assertIn("headerName: 'X-Core-L7-Ingress', headerValue: l7IngressSecret", gateway)
         self.assertIn("enableHttp2: true", gateway)
 

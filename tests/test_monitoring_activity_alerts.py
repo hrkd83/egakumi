@@ -18,7 +18,7 @@ class MonitoringActivityAlertTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep('infra/modules/monitoring-bindings.bicep')
+        cls.template = compile_bicep('infra/modules/monitoring/monitoring-bindings.bicep')
         cls.variables = cls.template["variables"]
         cls.pipeline = next(item for item in cls.variables["copy"]
                             if item["name"] == "pipelineActivityDefinitions")

@@ -24,12 +24,12 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.templates = {
-            'bindings': compile_bicep('infra/modules/service-bindings.bicep'),
+            'bindings': compile_bicep('infra/modules/services/service-bindings.bicep'),
             'main': compile_bicep('infra/main.bicep'),
-            'services': compile_bicep('infra/modules/services.bicep'),
-            'public_ingress': compile_bicep('infra/public-ingress.bicep'),
-            'certificate_storage': compile_bicep('infra/modules/certificate-storage.bicep'),
-            'registry': compile_bicep('infra/modules/portal-registry.bicep'),
+            'services': compile_bicep('infra/modules/services/services.bicep'),
+            'public_ingress': compile_bicep('infra/modules/ingress/public-ingress.bicep'),
+            'certificate_storage': compile_bicep('infra/modules/certificates/certificate-storage.bicep'),
+            'registry': compile_bicep('infra/modules/container-apps/portal-registry.bicep'),
             'gateway': compile_bicep('apps/apim/deploy/main.bicep'),
         }
 

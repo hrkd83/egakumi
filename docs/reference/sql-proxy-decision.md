@@ -15,7 +15,7 @@ Azure SQLのProxyは、接続中のSQL通信をAzure SQL Gateway経由で転送�
 
 Private EndpointのRedirect要件は、公開endpointで使うTCP1433とTCP11000–11999の要件とは異なる。[MicrosoftのPrivate Endpoint仕様](https://learn.microsoft.com/en-us/azure/azure-sql/database/private-endpoint-overview?view=azuresql#use-redirect-connection-policy-with-private-endpoints)を基準にする。Proxyの選択はPrivate Endpoint、SQL接続時のTLS検証、EntraのManaged Identity認証と両立する。
 
-実装の正本は[共有SQLのconnection policy](../../infra/modules/shared-sql.bicep)、[SQL向けNSG](../../infra/modules/credential-broker-network.bicep)、[管理clientの前提照合](../../scripts/deployment/helpers/management_client_assets.py)である。通信の対応は[ACAからSQL](network-communication-requirements.md#flow-aca-sql)と[管理VMからSQL](network-communication-requirements.md#flow-mgmt-sql)を参照する。
+実装の正本は[共有SQLのconnection policy](../../infra/modules/services/shared-sql.bicep)、[SQL向けNSG](../../infra/modules/network/credential-broker-network.bicep)、[管理clientの前提照合](../../scripts/deployment/helpers/management_client_assets.py)である。通信の対応は[ACAからSQL](network-communication-requirements.md#flow-aca-sql)と[管理VMからSQL](network-communication-requirements.md#flow-mgmt-sql)を参照する。
 
 ## Portalが同じ物理接続を保持する理由
 

@@ -29,7 +29,7 @@ class PortalSessionWafTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep("infra/modules/application-gateway.bicep")
+        cls.template = compile_bicep("infra/modules/ingress/application-gateway.bicep")
         resources = cls.template["resources"]
         cls.resources = list(resources.values() if isinstance(resources, dict) else resources)
 

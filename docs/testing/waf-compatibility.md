@@ -224,7 +224,7 @@ SSMLのDTD/ENTITY宣言は、WAF本文カスタム規則のMIME対応に依存�
 
 このTTS集約と呼出位置の変更はAzure反映・読戻しを完了しました。キー／BearerのTTS正常WAV応答、DTD宣言の400と対応する監査照合を確認しました。実サイズ超過413と残る異常系は未実施です。従来の試験結果や匿名401を、新しい構成の未確認条件の受入完了へ読み替えません。
 
-`infra/modules/application-gateway.bicep`と`scripts/waf_policy.py`は同じ正本を使用します。個別Gateway／Portal配備も照合するため、Azure上だけの手動例外が次回配備で消える構成を避けます。専用ポリシーは親を継承しないため、Prevention・本文検査・ログのマスク・customRulesと、manifestのデータ欄除外・上記のAI専用サイズ設定を合成します。企業管理の外部WAFは変更しません。既存の固有保護を表現できない場合は停止します。
+`infra/modules/ingress/application-gateway.bicep`と`scripts/waf_policy.py`は同じ正本を使用します。個別Gateway／Portal配備も照合するため、Azure上だけの手動例外が次回配備で消える構成を避けます。専用ポリシーは親を継承しないため、Prevention・本文検査・ログのマスク・customRulesと、manifestのデータ欄除外・上記のAI専用サイズ設定を合成します。企業管理の外部WAFは変更しません。既存の固有保護を表現できない場合は停止します。
 
 通常の配備と同じparamsを指定して、まずローカル計画を確認できます。計画ではAzureに接続しません。適用時は対象環境とETagを照合し、不要なPUTを行いません。
 

@@ -429,9 +429,9 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.templates = {
-            'network': compile_bicep('infra/modules/network.bicep'),
-            'network-bindings': compile_bicep('infra/modules/network-bindings.bicep'),
-            'portal-network-bindings': compile_bicep('infra/modules/portal-network-bindings.bicep'),
+            'network': compile_bicep('infra/modules/network/network.bicep'),
+            'network-bindings': compile_bicep('infra/modules/network/network-bindings.bicep'),
+            'portal-network-bindings': compile_bicep('infra/modules/network/portal-network-bindings.bicep'),
         }
 
     def configuration(self):

@@ -177,7 +177,7 @@ def update_shared_cm_secrets(ctx, scope, receipt, receipt_path, values, label, v
         ctx.run_cli(['az', 'deployment', 'group', 'create', '--subscription', ctx.config['subscriptionId'],
             '--resource-group', ctx.config['resourceGroupNames']['svc'],
             '--name', 'entra-rotation-' + receipt['operationId'], '--mode', 'Incremental',
-            '--template-file', str(ROOT / 'infra/modules/shared-entra-secrets.bicep'),
+            '--template-file', str(ROOT / 'infra/modules/services/shared-entra-secrets.bicep'),
             '--parameters', '@' + str(parameter_file), '--only-show-errors', '--output', 'none'])
     finally:
         parameter_file.unlink(missing_ok=True)

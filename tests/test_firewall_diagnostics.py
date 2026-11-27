@@ -21,8 +21,8 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.templates = {
-            'diagnostics': compile_bicep('infra/modules/firewall-diagnostics.bicep'),
-            'network': compile_bicep('infra/modules/network.bicep'),
+            'diagnostics': compile_bicep('infra/modules/monitoring/firewall-diagnostics.bicep'),
+            'network': compile_bicep('infra/modules/network/network.bicep'),
             'main': compile_bicep('infra/main.bicep'),
         }
 

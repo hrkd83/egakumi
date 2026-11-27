@@ -72,7 +72,7 @@ ID用RGへ、新しいユーザー割り当てIDを作成します。移行後�
 az deployment group create \
   --subscription "$SUBSCRIPTION_ID" --resource-group "$ID_RG" \
   --name "${RESOURCE_STEM}-portal-identity-migration" \
-  --template-file infra/modules/portal-identity.bicep \
+  --template-file infra/modules/container-apps/portal-identity.bicep \
   --parameters stem="$RESOURCE_STEM" location="$LOCATION" \
   --output none
 
@@ -88,7 +88,7 @@ PULL_PRINCIPAL_ID=$(az identity show --subscription "$SUBSCRIPTION_ID" \
 az deployment group create \
   --subscription "$SUBSCRIPTION_ID" --resource-group "$SVC_RG" \
   --name "${RESOURCE_STEM}-portal-registry-migration" \
-  --template-file infra/modules/portal-registry.bicep \
+  --template-file infra/modules/container-apps/portal-registry.bicep \
   --parameters stem="$RESOURCE_STEM" location="$LOCATION" \
     pullIdentityId="$PULL_ID" pullIdentityPrincipalId="$PULL_PRINCIPAL_ID" \
   --output none

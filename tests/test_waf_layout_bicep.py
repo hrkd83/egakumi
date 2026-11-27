@@ -56,7 +56,7 @@ class LayoutExpression(GatewayExpression):
 class WafLayoutBicepTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep("infra/modules/application-gateway.bicep")
+        cls.template = compile_bicep("infra/modules/ingress/application-gateway.bicep")
         cls.main = compile_bicep("infra/main.bicep")
         items = cls.template["resources"]
         cls.resources = list(items.values()) if isinstance(items, dict) else items

@@ -22,7 +22,7 @@ class ApplicationResourceNameTests(unittest.TestCase):
         cls.broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
         cls.portal_sql = compile_bicep('apps/portal/deploy/schema-job.bicep')
         cls.portal_sync = compile_bicep('apps/portal/deploy/group-reconciliation-job.bicep')
-        cls.portal = compile_bicep('infra/modules/portal-platform.bicep')
+        cls.portal = compile_bicep('infra/modules/container-apps/portal-platform.bicep')
 
     def configurations(self):
         for product, environment, length in (('sample', 'dev', 10), ('sample', 'staging', 14),

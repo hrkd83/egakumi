@@ -6,7 +6,7 @@ Application Gatewayのアクセスログでは、URLのqueryを含み得る`Requ
 
 ## Coreの保存経路
 
-`infra/log-privacy.json`をBicepと既存環境更新スクリプトで共用します。`AGWAccessLogs`に対する変換は次のとおりです。path、status、TransactionId、backend、時刻等の調査項目は保持します。
+`infra/modules/monitoring/log-privacy.json`をBicepと既存環境更新スクリプトで共用します。`AGWAccessLogs`に対する変換は次のとおりです。path、status、TransactionId、backend、時刻等の調査項目は保持します。
 
 ```kusto
 source

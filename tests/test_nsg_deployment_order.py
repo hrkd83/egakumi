@@ -73,7 +73,7 @@ def same_template(left, right):
 class NsgDeploymentOrderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.templates = {name: compile_bicep('infra/modules/' + name + '.bicep')
+        cls.templates = {name: compile_bicep(f'infra/modules/network/{name}.bicep')
                          for name in MODULES}
         cls.main = compile_bicep('infra/main.bicep')
 

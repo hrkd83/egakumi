@@ -14,10 +14,10 @@ class RetiredGrpcInfrastructureTests(unittest.TestCase):
     def setUpClass(cls):
         cls.templates = {
             "main": compile_bicep("infra/main.bicep"),
-            "gateway": compile_bicep("infra/modules/application-gateway.bicep"),
-            "network": compile_bicep("infra/modules/network-bindings.bicep"),
-            "initial_network": compile_bicep("infra/modules/network.bicep"),
-            "services": compile_bicep("infra/modules/services.bicep"),
+            "gateway": compile_bicep("infra/modules/ingress/application-gateway.bicep"),
+            "network": compile_bicep("infra/modules/network/network-bindings.bicep"),
+            "initial_network": compile_bicep("infra/modules/network/network.bicep"),
+            "services": compile_bicep("infra/modules/services/services.bicep"),
         }
 
     def main_value(self, value, config):

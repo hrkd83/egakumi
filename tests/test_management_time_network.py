@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from deployment.helpers import management_time_network as network
 from operations import management_time_network as cli
 from operations.common import OperationError
-from test_fixed_nsg_migration import MemoryTransport, fixture_config
+from test_fixed_nsg_validation import MemoryTransport, fixture_config
 
 
 class TwoTargetTransport(MemoryTransport):

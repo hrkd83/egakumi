@@ -130,7 +130,7 @@ def deploy_jobs(target, digest, transport, *, account_email, repository=REPOSITO
                 sleep=time.sleep, monotonic=time.monotonic, timeout=1500):
     if not isinstance(digest, str) or not DIGEST.fullmatch(digest):
         raise ValueError('Certificate jobs require the immutable image digest')
-    compiled = (compile_template or _compile)(Path(repository) / 'infra/certificate-jobs.bicep')
+    compiled = (compile_template or _compile)(Path(repository) / 'infra/modules/certificates/certificate-jobs.bicep')
     # Separate digest-specific deployments allow a running deployment to be read back
     # rather than start another PUT after loss of its response.
     label = 'certificate-jobs-' + hashlib.sha256(json.dumps(

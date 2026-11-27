@@ -201,7 +201,7 @@ def _client_template():
     # The common runner selects the native Bicep executable on Windows and
     # keeps Azure authentication on the Windows CLI without relying on az.cmd.
     from ..lifecycle import run
-    return run(['az', 'bicep', 'build', '--file', str(REPOSITORY / 'infra/modules/management-maintenance-client.bicep'), '--stdout'])
+    return run(['az', 'bicep', 'build', '--file', str(REPOSITORY / 'infra/modules/management/management-maintenance-client.bicep'), '--stdout'])
 
 
 def update_management_client_assets(config, state, outputs, transport, *, component, template=None,

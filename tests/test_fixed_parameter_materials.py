@@ -45,10 +45,10 @@ class FixedParameterMaterialsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.templates = {name: compile_bicep(path) for name, path in {
-            "network": "infra/modules/network.bicep",
-            "monitoring": "infra/modules/monitoring.bicep",
-            "gateway": "infra/modules/application-gateway.bicep",
-            "bindings": "infra/modules/service-bindings.bicep",
+            "network": "infra/modules/network/network.bicep",
+            "monitoring": "infra/modules/monitoring/monitoring.bicep",
+            "gateway": "infra/modules/ingress/application-gateway.bicep",
+            "bindings": "infra/modules/services/service-bindings.bicep",
             "main": "infra/main.bicep",
         }.items()}
 

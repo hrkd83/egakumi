@@ -153,16 +153,14 @@ class ManagementHostTimeReadinessTests(unittest.TestCase):
             with self.subTest(output=text), self.assertRaises(host_time.ManagementHostTimeError):
                 self.check(command=command)
 
-    def test_gate_runs_before_portal_checks_journal_and_any_nsg_mutation(self):
+    def test_gate_runs_before_app_gateway_and_nsg_checks(self):
         with patch.object(lifecycle, "require_management_host_time_core_ready",
                           side_effect=host_time.ManagementHostTimeError("PHC preparation required")), \
              patch.object(lifecycle, "require_appgw_backend_tls_ready") as portal, \
-             patch.object(lifecycle, "upgrade_journal") as journal, \
-             patch.object(lifecycle, "prepare_fixed_nsg_rules") as nsg:
+             patch.object(lifecycle, "verify_fixed_nsg_before_deployment") as nsg:
             with self.assertRaises(lifecycle.DeploymentError):
-                lifecycle.prepare_core_network_upgrade(self.config, ReadOnlyTransport(self.vm, self.command))
+                lifecycle.verify_core_network_before_deployment(self.config, ReadOnlyTransport(self.vm, self.command))
             portal.assert_not_called()
-            journal.assert_not_called()
             nsg.assert_not_called()
 
 

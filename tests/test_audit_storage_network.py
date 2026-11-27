@@ -28,10 +28,10 @@ class AuditExpression(NetworkArmExpression):
 class AuditStorageNetworkTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.pe = compile_bicep('infra/modules/audit-storage-private-endpoints.bicep')
-        cls.dns = compile_bicep('infra/modules/audit-storage-private-dns.bicep')
-        cls.records = compile_bicep('infra/modules/audit-storage-private-dns-records.bicep')
-        cls.link = compile_bicep('infra/modules/audit-storage-private-dns-link.bicep')
+        cls.pe = compile_bicep('infra/modules/monitoring/audit-storage-private-endpoints.bicep')
+        cls.dns = compile_bicep('infra/modules/monitoring/audit-storage-private-dns.bicep')
+        cls.records = compile_bicep('infra/modules/monitoring/audit-storage-private-dns-records.bicep')
+        cls.link = compile_bicep('infra/modules/monitoring/audit-storage-private-dns-link.bicep')
 
     def parameters(self):
         return {'resourcePrefix': 'fixture-resources', 'location': 'japaneast', 'tags': {},

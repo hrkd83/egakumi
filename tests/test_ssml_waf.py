@@ -100,7 +100,7 @@ class SsmlWafTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.main = compile_bicep('infra/main.bicep')
-        cls.template = compile_bicep('infra/modules/application-gateway.bicep')
+        cls.template = compile_bicep('infra/modules/ingress/application-gateway.bicep')
         resources = cls.template["resources"]
         cls.resources = list(resources.values() if isinstance(resources, dict) else resources)
 

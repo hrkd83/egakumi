@@ -61,7 +61,7 @@ class ResourceNamingTests(unittest.TestCase):
         for name in ("monitoring", "management"):
             with self.subTest(module=name):
                 self.assertEqual(self.module(name)["parameters"]["resourceStem"]["defaultValue"], expected)
-        gateway = compile_bicep('infra/modules/application-gateway.bicep')
+        gateway = compile_bicep('infra/modules/ingress/application-gateway.bicep')
         self.assertEqual(gateway["parameters"]["resourceStem"]["defaultValue"], expected)
 
     def test_broker_core_outputs_and_dns_share_the_dedicated_platform(self):

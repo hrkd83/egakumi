@@ -332,9 +332,9 @@ class DnsNsgTests(unittest.TestCase):
 
 
 class LifecycleDnsNsgTests(LifecycleFixture, unittest.TestCase):
-    def test_core_uses_fixed_migration_and_monitoring_does_not_change_dns_rules(self):
+    def test_core_checks_nsg_before_inventory_discovery_and_monitoring_skips_both(self):
         events = []
-        self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("fixed-stage") or {"azureWrites": 0}
+        self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("verify-nsg")
         outputs = self.outputs()
         for phase in ("core", "monitoring"):
             registry_absent = [{"statusCode": 404, "body": None}] if phase == "core" else []
@@ -349,11 +349,9 @@ class LifecycleDnsNsgTests(LifecycleFixture, unittest.TestCase):
                     mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}), \
                     mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
                     mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
-                    mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True}), \
-                    mock.patch.object(lifecycle, "cleanup_dns_nsg_rules") as legacy_cleanup:
+                    mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True}):
                 lifecycle.deploy_phase(self.config, phase, secrets={})
-            legacy_cleanup.assert_not_called()
-        self.assertEqual(events, ["fixed-stage", "discover"])
+        self.assertEqual(events, ["verify-nsg", "discover"])
         self.prepare_nsg.assert_called_once()
 
     def test_core_stops_before_deployment_when_custom_dns_rule_is_unverified(self):
