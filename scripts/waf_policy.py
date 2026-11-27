@@ -32,7 +32,7 @@ from deployment.helpers.waf_body import (ai_body_settings, portal_document_profi
 from deployment.helpers.waf_source_urls import source_url_exclusions
 
 
-MANIFEST = REPOSITORY / 'apps/gateway/waf-data-exclusions.json'
+MANIFEST = REPOSITORY / 'apps/apim/waf-data-exclusions.json'
 PROTOCOL_POLICY_KEYS = {
     'gateway': ('g-base', 'g-auth', 'g-speech', 'g-document-upload'),
     'portal': ('p-base', 'p-auth'),

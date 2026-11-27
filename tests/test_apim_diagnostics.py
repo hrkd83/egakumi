@@ -18,7 +18,7 @@ class ApiPublicationPrerequisiteTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep('apps/gateway/apim/api-publication.bicep')
+        cls.template = compile_bicep('apps/apim/api-publication.bicep')
         # Lambdaを使うこのモジュールはsymbolic name付きARMを生成する。
         # 依存先を同じ資源名で比較することで、別APIMを文字列で参照する誤りも見つける。
         cls.resources = cls.template["resources"]

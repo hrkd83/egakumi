@@ -17,7 +17,7 @@ class ToolAuthorizationErrorTests(unittest.TestCase):
             self.skipTest("PowerShell Roslyn is required")
         expressions = {}
         for file, variable in (("pii.xml", "gatewayAuditStatus"), ("document-analysis.xml", "documentPolicyErrorStatus")):
-            policies = ROOT / "apps/gateway/apim/policies"
+            policies = ROOT / "apps/apim/policies"
             source = "operation-policies/document-analysis/document-analysis.xml" if file == "document-analysis.xml" else file
             root = ET.fromstring(render_audit_policy(policy_fixture_path(policies, source).read_text(encoding="utf-8")))
             value = root.find("./on-error/set-variable[@name='" + variable + "']").get("value")

@@ -60,9 +60,9 @@ class WafLayoutBicepTests(unittest.TestCase):
         cls.main = compile_bicep("infra/main.bicep")
         items = cls.template["resources"]
         cls.resources = list(items.values()) if isinstance(items, dict) else items
-        cls.profiles = json.loads((ROOT / "apps/gateway/waf-data-exclusions.json").read_text())["profiles"]
+        cls.profiles = json.loads((ROOT / "apps/apim/waf-data-exclusions.json").read_text())["profiles"]
         cls.cookie = json.loads((ROOT / "apps/portal/waf-session-exclusions.json").read_text())[0]
-        cls.json_controls = json.loads((ROOT / "apps/gateway/waf-json-content-controls.json").read_text())
+        cls.json_controls = json.loads((ROOT / "apps/apim/waf-json-content-controls.json").read_text())
         cls.content_profiles = {p["name"]: p for p in cls.json_controls["profiles"]}
 
     def parameters(self, **changes):

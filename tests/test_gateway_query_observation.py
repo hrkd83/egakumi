@@ -22,7 +22,7 @@ from policy_fixture_paths import policy_fixture_path
 
 
 CORE = Path(__file__).resolve().parents[1]
-POLICIES = CORE / "apps/gateway/apim/policies"
+POLICIES = CORE / "apps/apim/policies"
 API_TEMPLATES = POLICIES / "api-templates"
 PRIVATE = "SYNTHETIC_PRIVATE_QUERY_MARKER"
 CONSTRAINTS = {

@@ -26,7 +26,7 @@ PIIの`maxRequestBytes=1000000`は、`text`・`language`をコンパクトJSON�
 
 上記のPII入力エラー形式はAPIMまで到達した要求に適用します。壊れたJSONはApplication GatewayのWAFで先にHTTP 403となる場合があり、この場合はAPIMの`requestId`がないため、WAFの診断記録で拒否を確認します。
 
-APIMのnative REST-backed MCPは、REST側の上流エラーを`content[].text`へ包み、HTTP 200・`isError:false`とする場合があります。クライアントはHTTP状態、JSON-RPCの`error`、`isError`だけで成功を確定せず、`structuredContent`または各`content[].text`のJSONが[PII成功スキーマ](../../apps/gateway/apim/schemas/pii.json)に一致することも検証してください。複数の結果が食い違う場合も失敗にします。Portalはこのスキーマ検証を行い、上流エラーをマスキング成功として表示しません。生成されたMCP応答ストリームを書き換える構成は採用していません。
+APIMのnative REST-backed MCPは、REST側の上流エラーを`content[].text`へ包み、HTTP 200・`isError:false`とする場合があります。クライアントはHTTP状態、JSON-RPCの`error`、`isError`だけで成功を確定せず、`structuredContent`または各`content[].text`のJSONが[PII成功スキーマ](../../apps/apim/schemas/pii.json)に一致することも検証してください。複数の結果が食い違う場合も失敗にします。Portalはこのスキーマ検証を行い、上流エラーをマスキング成功として表示しません。生成されたMCP応答ストリームを書き換える構成は採用していません。
 
 外部MCP proxyで個人の下流認証が必要なら、`credentialConnection.mode=personal`を指定し、CM共通窓口で取得した接続セッションを追加します。MCPのtransport・セッションID・再接続規則と、Gatewayの本人接続セッションは区別します。[CM共通接続手順](../setup/credential-manager-login.md)
 
@@ -57,7 +57,7 @@ Coreの汎用中継は`tests/fixtures/external-api-definitions.json`で回帰検
 
 現行資材のCore管理ログは、Application GatewayのアクセスURIからWorkspace取り込み変換でqueryを除去し、変換後のLAWと監査Storageへ保存する構成です。既存環境は配備記録・変換後ログ・exportと診断経路を照合して反映状況を確認します。WAFのlogScrubbingは別に維持します。企業Policy等が別Workspaceへ送るコピーは別の管理境界として記録し、Coreから設定変更・収集除外を行いません。[設定と既存環境の段階更新](../testing/log-privacy.md)を参照してください。
 
-APIMの`core-gateway`は検証済み購読ID、要求ID、API／操作、結果code／status、許可したmodelを記録します。下流の応答IDは固定3ヘッダーの検査済み値だけを退避し、SSE本文を読み取ったり全量bufferしたりしません。親要求IDは相関の候補であり、要求者の本人・利用許可・購読の課金帰属を上書きしません。相関処理の正本は [監査context](../../apps/gateway/apim/policies/audit-context.xml)と [Gateway転送](../../apps/gateway/apim/policies/api-templates/gateway.xml)です。
+APIMの`core-gateway`は検証済み購読ID、要求ID、API／操作、結果code／status、許可したmodelを記録します。下流の応答IDは固定3ヘッダーの検査済み値だけを退避し、SSE本文を読み取ったり全量bufferしたりしません。親要求IDは相関の候補であり、要求者の本人・利用許可・購読の課金帰属を上書きしません。相関処理の正本は [監査context](../../apps/apim/policies/fragments/audit/core-audit-context/core-audit-context.xml)と [Gateway転送](../../apps/apim/policies/api-templates/gateway.xml)です。
 
 数値usageの初期対象は、`foundryOpenAi`のHTTP Chat Completions操作だけです。既存Developer/classicを含む[AI gatewayの適用tier](https://learn.microsoft.com/en-us/azure/api-management/genai-gateway-capabilities)と、[managed Chat Completionsの標準ログ手順](https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-llm-logs)を採用します。APIM診断を`2025-09-01-preview`へ揃えて`largeLanguageModel.logs`を有効化しますが、任意の`requests/responses`メッセージ設定は指定せず、既存のfrontend/backend本文取得は0 byteを維持します。[診断の公開定義](https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement/2025-09-01-preview/service/apis/diagnostics)
 
@@ -142,7 +142,7 @@ Voice Liveは通常WSS・WebRTCとも`gpt-6.1-sol`を選びます。これはVoi
 初期例を選んだ後も JSON を編集できますが、最終的な許可モデルと上限は APIM が検査します。
 
 API定義内の通常の会話例は出力512 tokenです。Portalの出力トークン初期値は、選択したモデルの公開最大値を使用します。
-公開するモデル別上限は [model-capabilities.json](../../apps/gateway/apim/model-capabilities.json) で管理し、APIとPortalへ同じ値を展開します。例の初期値をモデル上限として扱いません。推論に使う token も上限に含まれるため、
+公開するモデル別上限は [model-capabilities.json](../../apps/apim/model-capabilities.json) で管理し、APIとPortalへ同じ値を展開します。例の初期値をモデル上限として扱いません。推論に使う token も上限に含まれるため、
 `status:incomplete` の場合は結果を成功した回答と扱わず、返却された終了理由を確認します。
 推論設定はモデル別の短い疎通用初期値です。GPT-5.6 Sol/Terra/Lunaには`none`、
 GPT-6.1 SolとGPT-6 Astraには`low`を設定します。Chatでは`reasoning_effort`、

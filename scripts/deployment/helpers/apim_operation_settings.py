@@ -6,7 +6,7 @@ from .paths import REPOSITORY
 
 
 OPERATION_SETTINGS_FRAGMENT_ID = "core-api-operation-settings"
-_DIRECTORY = REPOSITORY / "apps/gateway/apim/policies/fragments/request" / OPERATION_SETTINGS_FRAGMENT_ID
+_DIRECTORY = REPOSITORY / "apps/apim/policies/fragments/request" / OPERATION_SETTINGS_FRAGMENT_ID
 
 
 def render_operation_settings_fragment() -> str:

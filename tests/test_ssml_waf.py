@@ -186,10 +186,10 @@ class SsmlWafTests(unittest.TestCase):
         self.assertEqual(len(baseline["policySettings"]["logScrubbing"]["scrubbingRules"]), 6)
 
     def test_chat_and_responses_keep_media_exclusions_in_their_manifest_profiles(self):
-        manifest = json.loads((CORE / "apps/gateway/waf-data-exclusions.json").read_text())["profiles"]
+        manifest = json.loads((CORE / "apps/apim/waf-data-exclusions.json").read_text())["profiles"]
         source_url_profiles = {profile["name"]: profile["exclusions"] for profile in
-                               json.loads((CORE / "apps/gateway/waf-source-url-exclusions.json").read_text(encoding="utf-8"))["profiles"]}
-        content_controls = json.loads((CORE / "apps/gateway/waf-json-content-controls.json").read_text())
+                               json.loads((CORE / "apps/apim/waf-source-url-exclusions.json").read_text(encoding="utf-8"))["profiles"]}
+        content_controls = json.loads((CORE / "apps/apim/waf-json-content-controls.json").read_text())
         json_pattern = next(item["pattern"] for item in content_controls["formats"] if item["name"] == "json")
         selected = {profile["name"]: profile for profile in manifest
                     if profile["name"] in ("g-chat-completions", "g-responses")}
@@ -360,7 +360,7 @@ class SsmlWafTests(unittest.TestCase):
 
     def test_main_derives_speech_paths_only_from_the_canonical_api_contract(self):
         from standard_apis import infrastructure_api_definitions
-        original = json.loads((CORE / "apps/gateway/apim/apis/azure-speech-v1.json").read_text())
+        original = json.loads((CORE / "apps/apim/apis/azure-speech-v1.json").read_text())
         expression = GatewayExpression(self.main["variables"]["speechRawBodyPaths"], self.main["variables"])
         def paths(api):
             configuration = {"apiDefinitions": [], "infrastructureApiDefinitions": infrastructure_api_definitions([api])}

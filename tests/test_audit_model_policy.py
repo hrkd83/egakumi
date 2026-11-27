@@ -19,7 +19,7 @@ from deployment.helpers.apim_audit import render_audit_policy
 
 
 CORE = Path(__file__).resolve().parents[1]
-POLICIES = CORE / "apps/gateway/apim/policies"
+POLICIES = CORE / "apps/apim/policies"
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 
 

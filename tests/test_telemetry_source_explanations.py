@@ -10,7 +10,7 @@ from deployment.helpers.apim_audit import (
 from policy_fixture_paths import policy_fixture_path
 
 
-POLICIES = Path(__file__).resolve().parents[1] / "apps/gateway/apim/policies"
+POLICIES = Path(__file__).resolve().parents[1] / "apps/apim/policies"
 _TOKENS = re.compile(r'@"(?:""|[^"])*"|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\r\n]*|/\*[\s\S]*?\*/|[^\s]')
 
 

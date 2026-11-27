@@ -63,7 +63,7 @@ scripts/
 
 `predown`は配備記録と実資源の所有関係を照合し、モデル→APIM→Gateway／Portalのジョブ・認証窓口→PortalのCA→CAE→管理VM／NICの順で削除します。成功したアプリ出力がなくても現在の固定ID・所有タグ・接続先を検証し、全CA／ジョブの404とsubnet解放を待って本体・RG削除へ進みます。CAEのマネージドRGは実際のIDを削除前にstateへ保存し、`postdown`でAzureによる回収後の404を確認します。Portalの処理結果は`.local/<environment>/state/cleanup-predown.json`の`portal`、管理RGの確認結果は`cleanup-postdown.json`の`applicationInfrastructure`へ記録します。
 
-管理VM上で実行する共通の証明書・OS設定・保守clientの準備は[infra/guest/](../infra/guest/)にあり、Bicepから管理VMへ渡します。GatewayとPortalのイメージ構築も管理VM上で実行し、それぞれ[Gatewayの構築資材](../apps/gateway/deploy/build-image.sh)と[Portalの構築資材](../apps/portal/deploy/build-image.sh)を配備ヘルパーから渡します。
+管理VM上で実行する共通の証明書・OS設定・保守clientの準備は[infra/guest/](../infra/guest/)にあり、Bicepから管理VMへ渡します。GatewayとPortalのイメージ構築も管理VM上で実行し、それぞれ[Gatewayの構築資材](../apps/credential-broker/deploy/build-image.sh)と[Portalの構築資材](../apps/portal/deploy/build-image.sh)を配備ヘルパーから渡します。
 
 実設定は`.local/<environment>/params.local.json`、秘密は同じ環境の`secrets/`、配備・撤去記録は`state/`、一時生成入力は`generated/`、試験証跡は`evidence/`を使います。`.azure/`はazd専用です。
 
@@ -90,7 +90,7 @@ Gateway・Portalの配備コマンドは`azd up`からも呼ばれ、個別の�
 | 構築入力・試験定義の準備 | `configure_trial.py`、`prepare_coverage.py`、`prepare_registration.py` | 設定・公開IDやURLの差込み・登録情報をローカルファイルへ保存。Entraアプリの自動作成ではない |
 | 前提条件の一覧確認 | `preparation_inventory.py` | ローカル設定の一覧化、指定した場合のみAzure情報の読取 |
 | Gatewayの初期配備・更新（`postup`でも使用） | `deploy_gateway.py`（[手順](../docs/setup/credential-sql.md)） | 同じparamsから計画を作成。`--execute`で管理VM上のイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、認証窓口・照合ジョブ、API・バックエンド・製品・購読・ポリシーを順に配備。PCのDocker・Actionsは不要 |
-| API定義の準備・移行 | `standard_apis.py`、`catalog_publication.py`、`api_migration.py` | `apps/gateway/apim/apis/`で1 API 1ファイルに分けた標準19 APIの展開、カタログ文書、明示したAPI定義の変換を支援する。統合配備の内部処理は`apps/gateway/deploy/`にある |
+| API定義の準備・移行 | `standard_apis.py`、`catalog_publication.py`、`api_migration.py` | `apps/apim/apis/`で1 API 1ファイルに分けた標準19 APIの展開、カタログ文書、明示したAPI定義の変換を支援する。統合配備の内部処理は`apps/apim/deploy/`にある |
 | Portalの初期配備・更新（`postup`でも使用） | `deploy_portal.py`（[手順](../docs/setup/portal.md)） | 同じparamsから計画を作成。`--execute`で管理VM上のイメージ作成・非公開ACR登録、Portal専用DB作成、手動ジョブでのテーブル・実行用権限の設定、既存Container Appの更新・公開ヘルス確認を実行。構築済みの共通基盤を使うため`azd up`再実行とPCのDockerは不要 |
 | Portalのローカル起動 | `run_portal_local.py`（[手順](../docs/testing/portal-local-auth.md)） | 環境別の保護設定を子プロセスだけへ読み込み、`apps/portal`でコマンドを実行。SQL管理作業だけ`--admin`を指定 |
 | Portalのローカル認証設定 | `prepare_portal_local_auth.py`（[手順](../docs/testing/portal-local-auth.md)） | 既定は計画のみ。明示実行で環境別の`portal/runtime.env`と`secrets/portal-local-sql-admin.env`を保護保存。Azure設定を変更せず、Azure SQLのデータも取得しない |

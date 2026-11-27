@@ -2,7 +2,7 @@
 
 [基盤仕様](platform.md) · [NSG設計](network-security-design.md) · [Firewall Policy設計](firewall-policy-design.md) · [検証と実証結果の管理](network-security-validation.md)
 
-本書は、現在の構築資材が必要とする業務・保守・Azure基盤通信の参照元である。同一の接続を複数のAPIが使う場合は通信を共通化し、APIごとにNSGのポートを追加しない。HTTP、SSE、WebSocket、MCPのAPI契約と公開範囲は、[API定義](../../apps/gateway/apim/apis/)と[API設計](api-design-proposal.md)を参照する。
+本書は、現在の構築資材が必要とする業務・保守・Azure基盤通信の参照元である。同一の接続を複数のAPIが使う場合は通信を共通化し、APIごとにNSGのポートを追加しない。HTTP、SSE、WebSocket、MCPのAPI契約と公開範囲は、[API定義](../../apps/apim/apis/)と[API設計](api-design-proposal.md)を参照する。
 
 `FLOW-...`は通信要件のIDであり、Azureのルール名ではない。NSG設計の各レコードとFirewall設計の各レコードから同じIDを参照する。終端Denyと既定規則は通信そのものではなく制御方針であるため、NSG側の`POLICY-...`で記録する。通信IDの行にある「FW」は現在の構築経路でFirewallを通過する区間だけを示す。
 

@@ -8,9 +8,9 @@
 
 - 実施時には、この公開コードのrevisionと対象環境の設定を固定します。過去の非公開実行結果を合格の根拠に使いません。
 - 対象: 構築済み環境の経路・証明書・監視、APIM認可、CM本人接続、Azure SQL、Entraグループに基づくAPIキー管理、Model Gateway、Tool Gateway、監査・運用。
-- 正式な提供元: [API定義](../../apps/gateway/apim/apis/)、[構築入力](../../params/)、[モデル・API設定](../../config/)、[Gateway資材](../../apps/gateway/)、[Portal](../../apps/portal/)。構築用のexample設定を実環境の設定値と取り違えません。
+- 正式な提供元: [API定義](../../apps/apim/apis/)、[構築入力](../../params/)、[モデル・API設定](../../config/)、[Gateway資材](../../apps/apim/deploy/)、[Portal](../../apps/portal/)。構築用のexample設定を実環境の設定値と取り違えません。
 - 画面の準備中機能: Hosted Agent APIとA2A。準備中表示・誤操作防止を試験し、未実装の実行成功を受入条件にしません。
-- WAFは[データ欄の個別除外](../../apps/gateway/waf-data-exclusions.json)、[raw本文の限定調整と補完保護](../../apps/gateway/waf-raw-body-controls.json)、[SSML本文検査](../../apps/gateway/apim/policies/fragments/request/core-speech-ssml-guard/README.md)を仕様基準とします。正規データの通過と制御欄・隣接経路の遮断を別々に確認し、匿名401をAPI機能成功と数えません。TTSの本文読取り集約と呼出位置の変更はAzure反映・読戻しを完了しました。キー／BearerのTTS正常WAV応答、DTD宣言の400と対応する監査照合を確認しました。実サイズ超過413など残る異常系は未実施であり、既存のPASSを新構成の未確認条件の結果へ読み替えません。
+- WAFは[データ欄の個別除外](../../apps/apim/waf-data-exclusions.json)、[raw本文の限定調整と補完保護](../../apps/apim/waf-raw-body-controls.json)、[SSML本文検査](../../apps/apim/policies/fragments/request/core-speech-ssml-guard/README.md)を仕様基準とします。正規データの通過と制御欄・隣接経路の遮断を別々に確認し、匿名401をAPI機能成功と数えません。TTSの本文読取り集約と呼出位置の変更はAzure反映・読戻しを完了しました。キー／BearerのTTS正常WAV応答、DTD宣言の400と対応する監査照合を確認しました。実サイズ超過413など残る異常系は未実施であり、既存のPASSを新構成の未確認条件の結果へ読み替えません。
 - API数・モデル数の一致だけでは合格としません。実施時の設定からAPI、operation、モデル、選択後の操作・モデル設定、接続方式を列挙し、該当行を対象ごとに展開します。モデルAPIのprofileヘッダーは使いません。購読利用枠やCM接続のprofileは別の設定として確認します。
 
 ### 1.1 公開APIの対象一覧
@@ -253,7 +253,7 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 
 期限試験は標準値の確認と境界試験を分ける。境界試験を短時間で行う場合は、専用の隔離環境に `idleTimeoutSeconds=600`、`absoluteLifetimeSeconds=1800`、`rotationIntervalSeconds=300`、`rotationGraceSeconds=60`、`rotationHandoffSeconds=120`、`rotationCandidateTtlSeconds=120` を設定し、新規認証した専用セッションを使う。既存の業務セッションや本番DBの時刻・期限を直接変更しない。変更・削除・失効・障害注入の行は専用環境限定で、対象IDと復旧方法を事前に記録する。
 
-根拠：`apps/portal/lib/auth-{options,identity,schema,session,routes}.ts`、`apps/gateway/credential-broker/credential_broker/{settings,service,store}.py`、`apps/gateway/apim/policies/credential-{connection,session-use}.xml`、`docs/setup/credential-manager-login.md`、`apps/portal/lib/connection-session/`、`apps/portal/lib/api-keys/`、`apps/portal/lib/{api-key-administration,company-administration,subscription-sync}/`、各アプリの`sql/`をHEADから確認した。HTTPの失敗は対象層の契約で判定し、Gatewayの状態コードをPortal BFFの状態コードと混同しない。Gatewayの接続セッションはbearer資格情報であり、提示者のPortalログイン本人をGateway単体で再確認するものではない。
+根拠：`apps/portal/lib/auth-{options,identity,schema,session,routes}.ts`、`apps/credential-broker/credential_broker/{settings,service,store}.py`、`apps/apim/policies/credential-{connection,session-use}.xml`、`docs/setup/credential-manager-login.md`、`apps/portal/lib/connection-session/`、`apps/portal/lib/api-keys/`、`apps/portal/lib/{api-key-administration,company-administration,subscription-sync}/`、各アプリの`sql/`をHEADから確認した。HTTPの失敗は対象層の契約で判定し、Gatewayの状態コードをPortal BFFの状態コードと混同しない。Gatewayの接続セッションはbearer資格情報であり、提示者のPortalログイン本人をGateway単体で再確認するものではない。
 
 #### Portal認証
 
@@ -437,7 +437,7 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 
 #### 操作定義による入力検査の受入
 
-以下は入力検査の対象選択・部品構成の整理と、query制限・HTTPメソッド再確認・入口MIME一覧比較の撤去の実環境受入項目です。Azure反映・読戻しと、空本文・Content-Type未指定の400、キー／BearerのResponses JSON・SSEおよび対応する監査照合を確認しました。Content-Typeの追加異常系、他モデル・transportは未実施です。ローカル資材の生成・検証と、まとめ反映・読戻し・実接続の受入を区別します。Content-Type宣言の存在・1値・非空MIME部分の確認と、操作のmethod・URL登録を維持します。後段のMIME制御・Speech転送・WAFは未変更で、関連受入を分けて確認します。C#がメソッドを見ないローカル検証を、実APIMの未知メソッド拒否の証明には使いません。[入力検査の使い方と13操作の範囲](../../apps/gateway/apim/policies/fragments/request/core-api-input-validation/README.md)を参照してください。
+以下は入力検査の対象選択・部品構成の整理と、query制限・HTTPメソッド再確認・入口MIME一覧比較の撤去の実環境受入項目です。Azure反映・読戻しと、空本文・Content-Type未指定の400、キー／BearerのResponses JSON・SSEおよび対応する監査照合を確認しました。Content-Typeの追加異常系、他モデル・transportは未実施です。ローカル資材の生成・検証と、まとめ反映・読戻し・実接続の受入を区別します。Content-Type宣言の存在・1値・非空MIME部分の確認と、操作のmethod・URL登録を維持します。後段のMIME制御・Speech転送・WAFは未変更で、関連受入を分けて確認します。C#がメソッドを見ないローカル検証を、実APIMの未知メソッド拒否の証明には使いません。[入力検査の使い方と13操作の範囲](../../apps/apim/policies/fragments/request/core-api-input-validation/README.md)を参照してください。
 
 | ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
 | --- | --- | --- | --- | --- | --- |
@@ -475,7 +475,7 @@ HTTP APIの共有サイズ確認で返る内部設定不備500・`LIMITS_NOT_CON
 
 一般Limits失敗応答の理由文を500は`Gateway processing failed`、413は`Request too large`とし、同じ`return-response`内に`Cache-Control: no-store`を追加する整理もローカル実装・関連検証を完了し、Azure未反映である。公開JSONのcodeとrequestId、`apim-request-id`、HTTP status、監査分類とPII専用413は維持する。この段階ではSpeech SSML等の別枝を変更していない。現在のSpeech実本文超過413の理由文はMOD-30に従う。ローカルの理由文・XMLヘッダー指定確認と、Azure反映後の実応答を分ける。
 
-HTTPの後段判定は、同名XML・C#の`core-api-target-validation`へ分離し、準備済み操作設定`gatewayOperationConstraint`を直接読む構成へ整理する。Base64復元・変数存在確認による操作定義fallback・直後のnull確認を省き、モデル・本文・tools・操作の既存条件は維持する。単独判定のローカルfixtureも準備済み操作JSONと新C#正本を使い、生成したフラグメントと呼出し順を確認する。この分離と読取り集約はローカル実装・関連検証完了、Azure未反映である。protocol・MCPのBase64生成と既存判定は今回変更しない。[後段判定部品の現在の契約](../../apps/gateway/apim/policies/fragments/request/core-api-target-validation/README.md)を参照する。
+HTTPの後段判定は、同名XML・C#の`core-api-target-validation`へ分離し、準備済み操作設定`gatewayOperationConstraint`を直接読む構成へ整理する。Base64復元・変数存在確認による操作定義fallback・直後のnull確認を省き、モデル・本文・tools・操作の既存条件は維持する。単独判定のローカルfixtureも準備済み操作JSONと新C#正本を使い、生成したフラグメントと呼出し順を確認する。この分離と読取り集約はローカル実装・関連検証完了、Azure未反映である。protocol・MCPのBase64生成と既存判定は今回変更しない。[後段判定部品の現在の契約](../../apps/apim/policies/fragments/request/core-api-target-validation/README.md)を参照する。
 
 続く内部操作設定JSONの取得・解析失敗だけの500分類を承認し、ローカル実装・関連検証完了、Azure未反映である。部品は`gatewayTargetDecision`へallowed・status・codeの内部JSONを保存し、読取り失敗は500／`OPERATION_SETTINGS_INVALID`、この分類整理の時点では残る本文条件の拒否やHosted／A2A等の本文例外は403／`AUTHORIZATION_DENIED`、正常は200／`TARGET_ALLOWED`を返した。Responsesの読取り失敗は続く棚卸で400へ分け、現在のHosted読取り不備400はMOD-37に従う。API側は結果を監査・応答へ使い、500は`policy-error`と`Gateway processing failed`、403は`rejected`と既存の`API target is not authorized`へ分ける。本文なし・`apim-request-id`を維持し、結果形式の再検査は追加しない。本文・model型・toolsの別条件と、その他の設定項目やクライアント本文の403分類は続く棚卸対象である。ローカル判定・引渡しの検証と、実Azureの応答・監査照合は分ける。
 
@@ -504,7 +504,7 @@ MOD-34～36の最終検証は、一つの結合選択104件がすべて成功し
 
 | ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
 | --- | --- | --- | --- | --- | --- |
-| MOD-01 | 全 API・全モデルの実施一覧 | `apps/gateway/apim/apis/*.json` の Model API、`model-capabilities.json`、`public-bindings.json`、Portal の生成済み定義と `model-catalog.ts` を照合し、上記全件展開一覧を作る。各 API が利用製品に関連付いていることも確認する。 | 定義された operation/profile/model/transport の漏れ・重複・未解決置換値がない。Portal 対象外と Gateway 直接試験の対象を明示でき、候補にない方式へ暗黙に置換しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
+| MOD-01 | 全 API・全モデルの実施一覧 | `apps/apim/apis/*.json` の Model API、`model-capabilities.json`、`public-bindings.json`、Portal の生成済み定義と `model-catalog.ts` を照合し、上記全件展開一覧を作る。各 API が利用製品に関連付いていることも確認する。 | 定義された operation/profile/model/transport の漏れ・重複・未解決置換値がない。Portal 対象外と Gateway 直接試験の対象を明示でき、候補にない方式へ暗黙に置換しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | MOD-02 | 初期モデル・提供元／シリーズ別の選択 | 各Modelカテゴリーと提供元・音声シリーズの詳細を初めて開き初期選択を確認する。モデル／方式を切り替え、同じPortal表示内で別の詳細へ進んでから再訪する。ページを読み直した初回状態も確認する。 | 初回は公開カタログ順の先頭モデル。同世代は定義順で、名前の辞書順や未配備の最新モデルを推測しない。埋め込み・画像はOpenAIを先頭とし、リアルタイム音声のカード順序はRT-01に従う。同じPortal表示内の再訪では公開中の明示選択を保持し、カテゴリー／提供元／音声シリーズをまたいで混線しない。ページ再読込等で新しい表示状態になれば先頭から開始し、Cookie等による永続化は要求しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | MOD-03 | 出力上限の既定値・切替 | 全 Portal モデルで初期値を `O/P` と照合する。テキストの API 方式、モデル、リアルタイムのモデル/接続方式を変え、編集済み設定も再確認する。 | 数値最大が定義された対象は最大値で開始・切替。Voice Live の最大指定は `model-max` から `inf` へ変換。dynamic/unverified/unsupported の対象へ架空の最大数を出さない。画像の寸法等は許可値、埋め込みはモデル既定次元を採用し、トークン非対応 API にトークン欄を足さない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | MOD-04 | 自由入力・コード例・仕様の一致 | 全カテゴリーで日本語、改行、引用符を含む独自の合成入力へ変更し、対応するオプションも変える。ガイド、リクエスト例、部分スキーマ、実行時の本文/ヘッダーを比較する。表示される TypeScript/Python/PHP/C#/cURL の例をそれぞれ検証環境で実行する。 | 固定サンプルへ戻らず、選択値が実送信と各言語例へ反映される。multipart/XML/SSE 等の形式を区別し、部分スキーマを全機能定義と誤表示しない。例はバックエンド環境変数からキーを取得し、他 origin への自動転送でキーを渡さない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
@@ -683,8 +683,8 @@ MOD-40～42の本人再照合と、MOD-43までのgatewayDecision直後の不許
 
 #### 仕様照合に用いたファイル
 
-- `apps/gateway/apim/apis/openai-inference-v1.json`、`openai-embeddings-v1.json`、`cohere-inference-v1.json`、`openai-images-v1.json`、`blackforest-images-v1.json`、`openai-audio-v1.json`、`azure-speech-v1.json`、`microsoft-decision-v1.json` と realtime/live/transcription/voice-live/observer/control API 定義。
-- `apps/gateway/apim/model-capabilities.json`、`public-bindings.json`、`policies/api-templates/gateway.xml`。
+- `apps/apim/apis/openai-inference-v1.json`、`openai-embeddings-v1.json`、`cohere-inference-v1.json`、`openai-images-v1.json`、`blackforest-images-v1.json`、`openai-audio-v1.json`、`azure-speech-v1.json`、`microsoft-decision-v1.json` と realtime/live/transcription/voice-live/observer/control API 定義。
+- `apps/apim/model-capabilities.json`、`public-bindings.json`、`policies/api-templates/gateway.xml`。
 - `apps/portal/lib/model-catalog.ts`、`model-selection.ts`、`text-model-choices.ts`、`model-request.ts`、`model-integration.ts`、`model-gateway.ts`、`model-stream.ts`、`model-response.ts`。
 - `apps/portal/lib/embedding-*`、`image-*`、`speech-*`、`rerank-*`、`decision-*`、`realtime-*`、`apps/portal/components/realtime-audio-panel.tsx`。
 

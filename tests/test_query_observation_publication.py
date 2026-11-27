@@ -41,7 +41,7 @@ class QueryObservationPublicationPlanTests(unittest.TestCase):
 class GeneratedQueryObservationPublicationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep("apps/gateway/apim/api-publication.bicep")
+        cls.template = compile_bicep("apps/apim/api-publication.bicep")
         cls.config = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")
 
     def parameters(self, config=None):

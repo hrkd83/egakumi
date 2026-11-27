@@ -9,7 +9,7 @@ from .paths import REPOSITORY
 
 
 QUERY_OBSERVATION_FRAGMENT_ID = "core-query-observation"
-_DIRECTORY = REPOSITORY / "apps/gateway/apim/policies/fragments/request" / QUERY_OBSERVATION_FRAGMENT_ID
+_DIRECTORY = REPOSITORY / "apps/apim/policies/fragments/request" / QUERY_OBSERVATION_FRAGMENT_ID
 
 
 def render_query_observation_fragment() -> str:

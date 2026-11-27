@@ -1,18 +1,18 @@
 # APIMのAPI定義・ポリシーを変更する
 
-[共通確認](common.md) · [API定義](../../apps/gateway/apim/apis/openai-inference-v1.json)
+[共通確認](common.md) · [API定義](../../apps/apim/apis/openai-inference-v1.json)
 
 構築済みの隔離環境で、既存Chat APIの本文上限を変更し、正常要求・上限超過の拒否・元への復旧を確認する。新APIやバックエンドの追加、初期構築のやり直しは不要。以下は操作例であり、記載だけで試験済みにはしない。
 
 | 変更内容 | 正本 |
 | --- | --- |
-| API・operation、許可モデル、入力制約 | `apps/gateway/apim/apis/<API名>.json`。制約から操作ごとのポリシーも生成される |
+| API・operation、許可モデル、入力制約 | `apps/apim/apis/<API名>.json`。制約から操作ごとのポリシーも生成される |
 
 API別制約はJSON定義を変更してGで反映する。XMLは定義から生成するため、この手順でXMLを手編集する必要はない。共通認証・監査等の処理自体を変更する場合は、[開発者向けの共通ポリシー改修](../../DEVELOPMENT.md#apim共通ポリシーを改修する)として扱う。以下はAPI別制約の変更例である。
 
 ## 操作・MCP受付のURLクエリ観測
 
-棚卸⑦で、URLクエリの部品を観測専用にする方針を承認した。正本は[core-query-observationの専用フォルダ](../../apps/gateway/apim/policies/fragments/request/core-query-observation/README.md)にあり、同名XMLが式の実行、同名C#が対象選択とクエリ概要の組立てを担当する。C#の日本語説明も生成時にXMLへ埋め込み、反映後はAPIM → Policy fragments → `core-query-observation`で確認する。ローカル改修・検証とAzureへのまとめ反映・読戻しは完了した。[限定受入](../../apps/gateway/apim/policies/README.md)ではResponses JSON・SSE、認証・入力拒否、TTS WAV・DTD拒否と対応する監査照合を確認した。旧query fragment・Named Valueは参照不在を確認して退役し、読戻しで不在を確認した。現行生成元・構築入力・正本checkpoint・通常配備の期待値にも旧資材を含まない。query観測・転送を含む残る受入は未完である。
+棚卸⑦で、URLクエリの部品を観測専用にする方針を承認した。正本は[core-query-observationの専用フォルダ](../../apps/apim/policies/fragments/request/core-query-observation/README.md)にあり、同名XMLが式の実行、同名C#が対象選択とクエリ概要の組立てを担当する。C#の日本語説明も生成時にXMLへ埋め込み、反映後はAPIM → Policy fragments → `core-query-observation`で確認する。ローカル改修・検証とAzureへのまとめ反映・読戻しは完了した。[限定受入](../../apps/apim/policies/README.md)ではResponses JSON・SSE、認証・入力拒否、TTS WAV・DTD拒否と対応する監査照合を確認した。旧query fragment・Named Valueは参照不在を確認して退役し、読戻しで不在を確認した。現行生成元・構築入力・正本checkpoint・通常配備の期待値にも旧資材を含まない。query観測・転送を含む残る受入は未完である。
 
 | 標準の観測ラベル | API定義が明示する対象 |
 | --- | --- |
@@ -47,7 +47,7 @@ HTTP操作定義の合成例は次のとおり。既存APIの`operations`に記�
 
 共通認証の完了後に観測する。HTTPは操作・モデル設定の選択や本文読取りより前、生成MCPは認可後の本文引数検査より前、外部MCPは要求準備の直後に実行する。認証完了の確認は先行する`core-api-request-preparation`が担当し、ここで重複確認しない。WebSocketにはqueryフローを追加せず、本文なしのGET/SSE・DELETEにもMIME条件を追加しない。
 
-観測部品はmode・許可判定・応答statusを作らず、その結果を理由とする400／500も返さない。取得に失敗した情報は`unknown`として扱い、正常な「queryなし」に置き換えない。後続の[入力検査](../../apps/gateway/apim/policies/fragments/request/core-api-input-validation/README.md)ではquery制限・メソッド再確認・入口MIME一覧比較の撤去を承認し、対象操作のContent-Type宣言が1値・非空MIME部分であることだけを判定する。メソッドとURLはAPIMの操作登録で照合する。URL資格情報拒否を維持し、後段のMIME制御・Speech転送、URI変換、モデル本文検査、WAFは別棚卸とする。未知メソッドの実APIM照合と下流非到達は受入で確認し、ローカルC#検証だけでは成功としない。入口整理だけで任意形式の下流受付、query転送、各モデル・ツールの互換性を確認したとは扱わない。
+観測部品はmode・許可判定・応答statusを作らず、その結果を理由とする400／500も返さない。取得に失敗した情報は`unknown`として扱い、正常な「queryなし」に置き換えない。後続の[入力検査](../../apps/apim/policies/fragments/request/core-api-input-validation/README.md)ではquery制限・メソッド再確認・入口MIME一覧比較の撤去を承認し、対象操作のContent-Type宣言が1値・非空MIME部分であることだけを判定する。メソッドとURLはAPIMの操作登録で照合する。URL資格情報拒否を維持し、後段のMIME制御・Speech転送、URI変換、モデル本文検査、WAFは別棚卸とする。未知メソッドの実APIM照合と下流非到達は受入で確認し、ローカルC#検証だけでは成功としない。入口整理だけで任意形式の下流受付、query転送、各モデル・ツールの互換性を確認したとは扱わない。
 
 監査は独立した`query-guard`イベントへ記録する。⑥で承認した有無・複数値の取得を維持し、件数区分`countBucket`の計算・出力を削除する。`schemaVersion: 2`と`auditSchemaVersion: 2`は維持する。要求ID・API／操作ID・共通要求context・認証済み主体に、上記4項目と`phase`・`statusClass`を合わせる。新規出力は`received`・`backend-response`・`policy-error`の3段階で、mode・`query-rejected`・`guard-error`は出力しない。移行前のログは旧phase・modeを持つ記録として区別し、旧query/schema 1のKQL読取り互換を維持する方針である。
 
@@ -63,13 +63,13 @@ HTTP操作定義の合成例は次のとおり。既存APIの`operations`に記�
 
 ## Document解析の入力棚卸
 
-Document解析は[専用入力部品](../../apps/gateway/apim/policies/fragments/request/core-document-input-validation/README.md)で残るmodelの条件を、利用回数制限・下流接続準備・`accepted`監査より前に確認する。操作設定`requestBodySizeCheck=declared`で申告サイズ500,000,000 bytes超の共有413を残し、共有／個別のサイズ確認だけの全量読取りを撤去する。Document独自のMIME一覧・先頭形式・空本文・Content-Encodingの拒否は撤去し、共通Content-Type宣言検査には追加しない。原本または提供元JSONの`urlSource`／`base64Source`を変換せず転送し、入力の適否は提供元へ任せる。[公開契約](../reference/document-analysis.md)に送信本文と復号後・URL先文書の上限の違いをまとめる。
+Document解析は[専用入力部品](../../apps/apim/policies/fragments/request/core-document-input-validation/README.md)で残るmodelの条件を、利用回数制限・下流接続準備・`accepted`監査より前に確認する。操作設定`requestBodySizeCheck=declared`で申告サイズ500,000,000 bytes超の共有413を残し、共有／個別のサイズ確認だけの全量読取りを撤去する。Document独自のMIME一覧・先頭形式・空本文・Content-Encodingの拒否は撤去し、共通Content-Type宣言検査には追加しない。原本または提供元JSONの`urlSource`／`base64Source`を変換せず転送し、入力の適否は提供元へ任せる。[公開契約](../reference/document-analysis.md)に送信本文と復号後・URL先文書の上限の違いをまとめる。
 
 棚卸①〜㉝の変更はローカルの資材へ反映済みであり、Azure反映・読戻し・実経路受入は未実施である。反映時はfragmentとHTTP API・開始／状態取得操作を同じ生成元で揃え、[追加受入](../testing/integration-tests.md#document入力棚卸の追加受入)を確認する。modelの必須・単一値・非空と`.`／`..`の400を維持し、2モデル一覧による拒否と、そのためだけの内部設定JSON再読取りは撤去する。利用可否は提供元が判定し、固定接続先・チケット・返却URIとのモデル照合・応答の構造条件は維持する。内部変数のモデル引渡し失敗は停止を維持して500・`OPERATION_SETTINGS_INVALID`／`DocumentAnalysisUnavailable`とし、model入力不備の400・`DocumentInvalidInput`と分ける。他クエリの有無による一律400を撤去し、開始POSTではmodelをクエリから削除した後、pathだけの標準URI書換えと`copy-unmatched-params=true`でpages・featuresなどを転送した後、標準`set-query-parameter`でapi-versionは対応版へ上書きし、stringIndexTypeは`exists-action=skip`で指定値を保持して未指定時だけ`unicodeCodePoint`を補完する。API版は公開Schemaの単一値（現在`2024-11-30`）を正本として両操作へ正規化で補完する。明示不一致は配備前に拒否し、同じ版をBicepのAPI版markerと共通API設定・Portalの既存生成物へ渡す。baseURL markerの生成も維持する。⑱ではStatusの結果照合が準備済み`gatewayOperationConstraint`から`apiVersion`・`maxResponseBytes`を既存outbound try内で直接読み、専用設定の埋込みBase64復元とBicep展開を撤去する。上限・版・チケット・結果の条件は維持する。⑲ではStatusの操作設定`gatewayOperationConstraint`の取得・JSON解析失敗だけを500へ分類し、応答前に`core-gateway-telemetry`で`policy-error`・`OPERATION_SETTINGS_INVALID`・500を1回記録する。㉙では開始・状態取得の認証結果`gatewayDecision`の取得・JSON解析と認証方式・owner引渡し不備だけを500・`policy-error`／`AUTHENTICATION_PROCESSING_ERROR`へ分け、⑲の操作設定不備と区別する。㉜でGETのチケット・認証結果確認の403・410・500を単一`document-operation-rejection`へ集約し、応答前に既存telemetryを1回呼ぶ。403は`rejected`／`DOCUMENT_OPERATION_DENIED`（文書チケット段階の拒否）、410は`rejected`／`DOCUMENT_OPERATION_EXPIRED`（期限切れ）、500は`policy-error`／`AUTHENTICATION_PROCESSING_ERROR`を記録する。旧GET500専用chooseを統合し、POST500専用、既存拒否条件・公開応答・要求ID・no-storeを維持する。理由は既存の汎用文字列・KQLで読み取り、監査schemaは追加しない。生チケット・JSON・例外を出力しない。捕捉済みの例外は`on-error`へ進まないため明示監査する。先行する共通`<base />`の`BACKEND_RESPONSE`は維持し、提供元200と後段Gateway500を別段階として記録する。提供元本文・版・容量などの既存502、公開`DocumentAnalysisUnavailable`・要求ID・no-storeは維持する。網羅的な再検査は追加しない。実行時の追加検査は行わず、公開仕様とチケット形式を維持する。⑭で文字位置の単位の指定を受け付け、不正値・複数値の適否は提供元へ任せる形へ整理する。㉑では状態取得GETの追加クエリを無視して同じジョブを取得し、クエリの有無だけで403にしない。チケット・UUID・本人・期限の照合、固定URI・対応版とURLへのAPIキー指定の共通拒否は維持する。㉒では`copy-unmatched-params=false`による未使用クエリの非転送を維持し、目的コメントを整える。対応版の結果取得GETはapi-versionのみを使う。将来正式なGET追加クエリが必要になれば、公開結果契約と合わせて見直す。WAF設定とクエリ名・値の監査出力は追加しない。先行する設定検査は維持し、URI・チケット・応答変換・`on-error`の詳細条件は続く棚卸で扱う。Portalの原本アップロード・2モデル選択・BFF制約は今回変更しない。
 
 ## 変更する箇所
 
-paramsの`apiDefinitions`が空配列の場合は、標準の `apps/gateway/apim/apis/openai-inference-v1.json` の次の1箇所を変更する。明示した定義を使う環境では、実際に読まれる同じAPI定義を対象とし、標準ファイルを変えただけで反映されると考えない。
+paramsの`apiDefinitions`が空配列の場合は、標準の `apps/apim/apis/openai-inference-v1.json` の次の1箇所を変更する。明示した定義を使う環境では、実際に読まれる同じAPI定義を対象とし、標準ファイルを変えただけで反映されると考えない。
 
 ```text
 authorization.operationConstraints["chat-completions"]

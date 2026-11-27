@@ -15,7 +15,7 @@
 - 完了時に全policy graph、正確な社員Product所属、browser source、入力・Core stateの不変を照合する。実接続の受入は別工程である。
 - 失敗時は停止して証跡を確認する。変更要求を自動再送しない。
 
-更新の実体は[通常API公開処理](../../apps/gateway/deploy/api_publication.py)と[API公開Bicep](../../apps/gateway/apim/api-publication.bicep)で確認する。共通認証・Productの切替と復旧は[Entra公開処理](../../apps/gateway/deploy/entra_publication.py)へ引き継ぐ。生成専用のARM配備は、最終API反映とは別の変更要求として記録する。
+更新の実体は[通常API公開処理](../../apps/apim/deploy/api_publication.py)と[API公開Bicep](../../apps/apim/api-publication.bicep)で確認する。共通認証・Productの切替と復旧は[Entra公開処理](../../apps/apim/deploy/entra_publication.py)へ引き継ぐ。生成専用のARM配備は、最終API反映とは別の変更要求として記録する。
 
 ## 計画確認と反映の区切り
 
@@ -62,7 +62,7 @@ Azure上では、同じ所有者の終了済みFailed配備、全操作の既知
 
 既存のMCP toolが1件だけ欠落している場合も、通常の不存在・全件一覧の検査は拒否を維持する。別の明示指定`--restore-recorded-mcp-tool`を併用した場合だけ、旧・失敗要求・修正済みsourceの同じtoolと親APIの完全一致、記録済みの親API更新成功、tool操作の未実行、現在の完全な空一覧と対象toolへの直接404を確認する。その他のtool、schema、操作の欠落や未知の要素は許可しない。初回の閉鎖段階の実読取りだけがこの既知の欠落を記録し、成功した応答を仮定しない。修正済みの増分配備後は通常の全件一覧・tool本体の検査へ戻り、toolが実在して一致するまでcheckpointや再公開へ進まない。欠落した理由を、未確認のままAPI更新や依存関係の挙動へ断定しない。
 
-`--apply`なしでは、復旧記録のローカル照合までで停止し、Azureの記録や実資源の一致を確認済みとは扱わない。[記録済み要求の読取り](../../apps/gateway/deploy/api_publication.py)と[既知の途中資材の読取り](../../apps/gateway/deploy/entra_publication.py)は、GET・exportだけで実行でき、Azure更新やcheckpoint保存を行わない。
+`--apply`なしでは、復旧記録のローカル照合までで停止し、Azureの記録や実資源の一致を確認済みとは扱わない。[記録済み要求の読取り](../../apps/apim/deploy/api_publication.py)と[既知の途中資材の読取り](../../apps/apim/deploy/entra_publication.py)は、GET・exportだけで実行でき、Azure更新やcheckpoint保存を行わない。
 
 ## 過去ポリシーとPIIの500応答定義を移行する順序
 

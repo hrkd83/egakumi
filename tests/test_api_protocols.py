@@ -19,8 +19,8 @@ import standard_apis
 from api_definition_helpers import catalog_overlay, configured_base
 from deployment.helpers.apim_api_request import expand_api_request_preparation_fragment
 
-POLICIES = CORE / "apps/gateway/apim/policies"
-SERVICE_POLICY = CORE / "apps/gateway/apim/policies/service.xml"
+POLICIES = CORE / "apps/apim/policies"
+SERVICE_POLICY = CORE / "apps/apim/policies/service.xml"
 
 
 def _test_bindings(value, raw):

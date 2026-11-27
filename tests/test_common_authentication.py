@@ -16,7 +16,7 @@ from deployment.helpers.apim_common_authentication import render_common_authenti
 from deployment.helpers.apim_api_request import expand_api_request_preparation_fragment
 from test_gateway_limits_telemetry import PWSH
 
-SERVICE_POLICY = CORE / "apps/gateway/apim/policies/service.xml"
+SERVICE_POLICY = CORE / "apps/apim/policies/service.xml"
 
 class CommonAuthenticationConfigurationTests(unittest.TestCase):
     def test_key_settings_do_not_require_a_gateway_audience(self):
@@ -209,7 +209,7 @@ class CommonAuthenticationPolicyTests(unittest.TestCase):
         guards=[]
         for filename in ("gateway.xml","protocol.xml","mcp.xml"):
             policy=ET.fromstring(expand_api_request_preparation_fragment(
-                (policy_fixture_path(CORE / "apps/gateway/apim/policies", filename)).read_text(encoding="utf-8")))
+                (policy_fixture_path(CORE / "apps/apim/policies", filename)).read_text(encoding="utf-8")))
             condition=next(node.get("condition") for node in policy.findall("./inbound/choose/when") if "gatewayCommonAuthenticationValidated" in node.get("condition",""))
             guards.append('if (name == '+json.dumps(filename.split(".")[0])+') { '+csharp_expression(condition)+' }')
         methods+='\nstatic bool Guard(Context context,string name) { '+''.join(guards)+' throw new Exception("Unknown policy"); }'
@@ -420,17 +420,17 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
         self.assertEqual(global_root.findall(".//validate-azure-ad-token"),[])
         self.assertEqual(global_root.findall(".//validate-jwt"),[])
         for filename in ("gateway.xml","protocol.xml","mcp.xml"):
-            policy=ET.parse(policy_fixture_path(CORE / "apps/gateway/apim/policies", filename)).getroot()
+            policy=ET.parse(policy_fixture_path(CORE / "apps/apim/policies", filename)).getroot()
             with self.subTest(policy=filename):
                 if filename == "gateway.xml":
                     # HTTPの認証情報引渡しは同名フラグメントのC#正本にあります。
                     fragment=policy.find("./inbound/include-fragment[@id='core-api-authentication-result']")
                     self.assertIsNotNone(fragment)
                     self.assertEqual(fragment.get("fragment-id"),"core-api-authentication-result")
-                    decision=(CORE / "apps/gateway/apim/policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.cs").read_text(encoding="utf-8")
+                    decision=(CORE / "apps/apim/policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.cs").read_text(encoding="utf-8")
                 else:
                     from deployment.helpers.apim_audit import render_audit_policy
-                    raw=policy_fixture_path(CORE / "apps/gateway/apim/policies", filename).read_text(encoding="utf-8")
+                    raw=policy_fixture_path(CORE / "apps/apim/policies", filename).read_text(encoding="utf-8")
                     decision=ET.fromstring(render_audit_policy(raw)).find("./inbound/set-variable[@name='gatewayDecision']").get("value")
                 self.assertIn("context.Subscription",decision)
                 self.assertIn("subscription:",decision)
@@ -438,7 +438,7 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
 
     def test_api_decisions_follow_the_inherited_common_key_authorization(self):
         for filename in ("gateway.xml", "protocol.xml", "mcp.xml"):
-            inbound=ET.parse(policy_fixture_path(CORE / "apps/gateway/apim/policies", filename)).getroot().find("inbound")
+            inbound=ET.parse(policy_fixture_path(CORE / "apps/apim/policies", filename)).getroot().find("inbound")
             with self.subTest(policy=filename):
                 decision=inbound.find("include-fragment[@id='core-api-authentication-result'][@fragment-id='core-api-authentication-result']"
                                       if filename == "gateway.xml" else "set-variable[@name='gatewayDecision']")

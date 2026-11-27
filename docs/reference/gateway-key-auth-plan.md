@@ -1,6 +1,6 @@
 # Gatewayの購読キー認証
 
-本書は現行のGateway認可とPortal・本人接続の分担を説明します。APIの正本は [登録定義](../../apps/gateway/apim/apis/)、共通認可は [service.xml](../../apps/gateway/apim/policies/service.xml)、配備は [Gateway配備コマンド](../../scripts/deploy_gateway.py)です。実環境への反映状況は配備記録と試験結果で確認します。
+本書は現行のGateway認可とPortal・本人接続の分担を説明します。APIの正本は [登録定義](../../apps/apim/apis/)、共通認可は [service.xml](../../apps/apim/policies/service.xml)、配備は [Gateway配備コマンド](../../scripts/deploy_gateway.py)です。実環境への反映状況は配備記録と試験結果で確認します。
 
 社員のGateway OAuthに必要な設定・JWT検証・専用open Product生成と、共通Inbound STEP1～5の部品化を実装しています。各API・操作のInbound、およびbackend・outbound・on-error全体の棚卸は未完です。コードの実装、棚卸完了、特定環境の配備・実接続受入は分けて管理し、個別のキー接続やCodexの成功を全APIの受入へ流用しません。残る作業と5つのEntraアプリへの分離は[全体計画](entra-app-rollout-plan.md)を参照してください。
 

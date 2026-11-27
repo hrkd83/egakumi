@@ -16,7 +16,7 @@ class BackendRewriteDeploymentTests(unittest.TestCase):
     """公開APIのURLを、承認済みの下流URLへ書き換える条件を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     @classmethod
     def setUpClass(cls):
-        cls.template = compile_bicep('apps/gateway/apim/api-publication.bicep')
+        cls.template = compile_bicep('apps/apim/api-publication.bicep')
 
     def test_compiled_operation_policy_keeps_auth_and_fixed_query_contract(self):
         resources = self.template["resources"]

@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import { getDecisionModels, getEmbeddingModels, getExecutableModelTargets, getImageGenerationModels, getModelCatalog, getRealtimeModels, getRerankModels, getSpeechModels, getTextGenerationModels } from "../lib/model-catalog.ts";
 
-const definitionDirectory = new URL("../../gateway/apim/apis/", import.meta.url);
+const definitionDirectory = new URL("../../apim/apis/", import.meta.url);
 
 /** テストも正本を独立に読み、追加・削除したAPIがカタログから取り残されないことを確認します。 */
 function sourceDefinitions() {
@@ -46,7 +46,7 @@ test("テキスト一覧は正本の許可モデルを網羅し、各モデル�
   for (const model of models) {
     const constraint = constraints[model.operationId];
     const settings = { ...constraint, ...constraint.modelSettings?.[model.id] };
-    const capabilities = JSON.parse(readFileSync(new URL("../../gateway/apim/model-capabilities.json", import.meta.url), "utf8"));
+    const capabilities = JSON.parse(readFileSync(new URL("../../apim/model-capabilities.json", import.meta.url), "utf8"));
     const capability = capabilities.entries.find((entry: { modelId: string; apiIds: string[]; operationIds: string[] }) => entry.modelId === model.id && entry.apiIds.includes(model.apiId) && entry.operationIds.includes(model.operationId));
     assert.equal(model.maxOutputTokens, capability.maxOutputTokens);
     assert.equal(model.outputTokenParameter, settings.outputTokenParameter);

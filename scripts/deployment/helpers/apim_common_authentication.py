@@ -231,7 +231,7 @@ def _fragment(identifier: str, value: str) -> ET.Element:
 
 
 def _telemetry() -> str:
-    directory = REPOSITORY / "apps/gateway/apim/policies"
+    directory = REPOSITORY / "apps/apim/policies"
     value = (directory / "fragments/audit/core-gateway-telemetry/core-gateway-telemetry.xml").read_text(encoding="utf-8")
     return key_only_gateway_telemetry(value.replace("<fragment>", "").replace("</fragment>", ""), source_comments="compact")
 
@@ -253,7 +253,7 @@ def render_common_authentication_fragment(*, entra_enabled: bool, source_comment
     """同名XMLへ同名CSの5区画を差し込み、現在と同じ共通認証を生成する。"""
     if type(entra_enabled) is not bool or source_comments not in ("full", "omit"):
         raise ValueError("Authentication fragment rendering requires an explicit state and comment mode")
-    directory = REPOSITORY / "apps/gateway/apim/policies"
+    directory = REPOSITORY / "apps/apim/policies"
     value = (directory / AUTHENTICATION_FRAGMENT_FILES[COMMON_AUTHENTICATION_FRAGMENT_ID]).read_text(encoding="utf-8")
     sections = extract_common_authentication_sections((directory / COMMON_AUTHENTICATION_SOURCE).read_text(encoding="utf-8"))
     for section, body in sections.items():
@@ -288,7 +288,7 @@ def render_entra_authentication_error_fragment(*, source_comments: str = "full")
     """標準Entra検証の失敗だけを、現行の監査と401応答へつなげる。"""
     if source_comments not in ("full", "omit"):
         raise ValueError("Authentication fragment comments require a known mode")
-    directory = REPOSITORY / "apps/gateway/apim/policies"
+    directory = REPOSITORY / "apps/apim/policies"
     value = _render_telemetry((directory / AUTHENTICATION_FRAGMENT_FILES[ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID]).read_text(encoding="utf-8"))
     _fragment(ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID, value)
     return value

@@ -35,8 +35,8 @@ class InitialModelTests(unittest.TestCase):
                 self.assertGreater(model["capacity"], 0)
 
     def test_retired_text_families_are_absent_from_deployments_and_api_contracts(self):
-        definition = json.loads((CORE / "apps/gateway/apim/apis/openai-inference-v1.json").read_text(encoding="utf-8"))
-        capabilities = json.loads((CORE / "apps/gateway/apim/model-capabilities.json").read_text(encoding="utf-8"))
+        definition = json.loads((CORE / "apps/apim/apis/openai-inference-v1.json").read_text(encoding="utf-8"))
+        capabilities = json.loads((CORE / "apps/apim/model-capabilities.json").read_text(encoding="utf-8"))
         api_models = set()
         for operation in definition["authorization"]["operationConstraints"].values():
             for constraint in (operation, *operation.get("profiles", [])):

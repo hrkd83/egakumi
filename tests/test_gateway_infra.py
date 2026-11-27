@@ -25,7 +25,7 @@ class GatewayInfrastructureTests(unittest.TestCase):
     def setUpClass(cls):
         cls.templates = {
             'core': compile_bicep('infra/main.bicep'),
-            'gateway': compile_bicep('apps/gateway/deploy/main.bicep'),
+            'gateway': compile_bicep('apps/apim/deploy/main.bicep'),
         }
 
     def module(self, suffix):

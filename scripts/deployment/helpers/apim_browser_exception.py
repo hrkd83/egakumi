@@ -48,7 +48,7 @@ def _structure(element: ET.Element):
 
 def render_browser_exception_fragment(login: dict | None = None) -> str:
     """CM設定の有無を内部の真偽値へ展開する。本人確認やAPIの利用許可は行わない。"""
-    directory = REPOSITORY / "apps/gateway/apim/policies/fragments/authentication" / BROWSER_EXCEPTION_ID
+    directory = REPOSITORY / "apps/apim/policies/fragments/authentication" / BROWSER_EXCEPTION_ID
     template = (directory / (BROWSER_EXCEPTION_ID + ".xml")).read_text(encoding="utf-8")
     rendered = render_audit_policy(template).replace("__CREDENTIAL_BROWSER_CONFIGURED__", "true" if login else "false")
     _fragment_node(rendered)

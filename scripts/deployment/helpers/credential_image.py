@@ -24,7 +24,7 @@ MARKER = 'CORE_CREDENTIAL_IMAGE_RESULT='
 
 def source_bundle(root=REPOSITORY):
     """実行に必要な公開資材だけを梱包。params/secrets/ローカル状態は含めない。"""
-    source = Path(root) / 'apps/gateway/credential-broker'
+    source = Path(root) / 'apps/credential-broker'
     if source.is_symlink() or any((source / name).is_symlink() for name in ('credential_broker', 'sql')):
         raise ValueError('Credential broker source directories must not be symbolic links')
     files = [source / name for name in ('Dockerfile', 'requirements.txt')]
@@ -57,7 +57,7 @@ def render_build_script(config, targets, data, source_hash, build_tag, root=REPO
             or not re.fullmatch(r'[0-9a-f]{64}', source_hash)
             or not re.fullmatch(r'build-[0-9a-f]{32}', build_tag)):
         raise ValueError('Invalid credential image build inputs')
-    script = (Path(root) / 'apps/gateway/deploy/build-image.sh').read_text(encoding='utf-8').replace('\r\n', '\n')
+    script = (Path(root) / 'apps/credential-broker/deploy/build-image.sh').read_text(encoding='utf-8').replace('\r\n', '\n')
     for key, value in {'__REGISTRY__': targets['registryServer'], '__TENANT__': config['azureTenantId'],
                        '__SOURCE_BASE64__': base64.b64encode(data).decode(), '__SOURCE_SHA256__': source_hash,
                        '__BUILD_TAG__': build_tag}.items():

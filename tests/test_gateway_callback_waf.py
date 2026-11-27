@@ -6,7 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-sys.path.insert(0, str(ROOT / 'apps/gateway/deploy'))
+sys.path.insert(0, str(ROOT / 'apps/apim/deploy'))
 from gateway_ingress import (
     CALLBACK_PATH, CALLBACK_RULE_NAME, configure_gateway_identity_callback_waf,
     gateway_id, _callback_gateway, _callback_policy, _writable, _writable_policy,

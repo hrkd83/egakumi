@@ -85,7 +85,7 @@ API登録は手順4に含まれるため、別の登録コマンドは不要。�
 
 [本人接続の手順](credential-manager-login.md)に沿って、購読キーを付けたGraph APIの呼び出しから始める。セッションがないときの409に含まれる認証URLを利用者へ案内し、アプリのバックエンドで完了確認・本人セッションの保存・元要求の再実行まで確認する。
 
-共通ポリシーの反映先は、APIMの「API」→「すべてのAPI」のポリシー。定義は`apps/gateway/apim/policies/service.xml`、適用処理は`apps/gateway/deploy/api_publication.py`、認証関連の生成処理は`scripts/deployment/helpers/apim_authentication.py`にある。
+共通ポリシーの反映先は、APIMの「API」→「すべてのAPI」のポリシー。定義は`apps/apim/policies/service.xml`、適用処理は`apps/apim/deploy/api_publication.py`、認証関連の生成処理は`scripts/deployment/helpers/apim_authentication.py`にある。
 
 - 有効な本人セッションでは認証画面を挟まずGraphを実行できること。
 - セッション未指定・期限切れ・CM再認証時には、同じGraph APIの応答から認証を開始できること。

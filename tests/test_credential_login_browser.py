@@ -19,7 +19,7 @@ from test_credential_login import settings, TENANT
 from policy_fixture_paths import policy_fixture_path
 
 
-POLICY = policy_fixture_path(Path(__file__).resolve().parents[1] / "apps/gateway/apim/policies", "credential-login/launch.xml")
+POLICY = policy_fixture_path(Path(__file__).resolve().parents[1] / "apps/apim/policies", "credential-login/launch.xml")
 TRANSACTION = "a" * 64
 LAUNCH = "c" * 64
 HARNESS = r"""

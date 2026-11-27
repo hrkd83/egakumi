@@ -1295,8 +1295,8 @@ class PolicySourceTests(unittest.TestCase):
     def setUp(self):
         from deployment.helpers.apim_audit import render_audit_policy
         self.root = ET.fromstring(render_audit_policy(
-            (CORE / "apps/gateway/apim/policies/api-templates/gateway.xml").read_text(encoding="utf-8")))
-        self.guard = (CORE / "apps/gateway/apim/policies/fragments/request/core-api-target-validation/core-api-target-validation.cs").read_text(encoding="utf-8")
+            (CORE / "apps/apim/policies/api-templates/gateway.xml").read_text(encoding="utf-8")))
+        self.guard = (CORE / "apps/apim/policies/fragments/request/core-api-target-validation/core-api-target-validation.cs").read_text(encoding="utf-8")
 
     def test_stateless_route_matching_is_delegated_without_model_revalidation(self):
         branch = self.guard.split('if (kind == "statelessResponses") {', 1)[1].split('if (kind == "hostedAgentPost")', 1)[0]

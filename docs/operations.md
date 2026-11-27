@@ -66,7 +66,7 @@ Gatewayは、採用時のBrokerイメージ作成・DB／CM配備・SQL初期化
 
 ### API・ポリシー・購読を変更する
 
-資材で管理するAPIは [登録定義](../apps/gateway/apim/apis/)を変更し、Gatewayを再配備します。標準定義を常用で解決し、公開paramsによるAPI一覧の置換と`publishApis`切替は廃止しました。旧入力は空やfalseでも拒否します。解決したAPIや環境固有URLを元のparamsへ書き戻しません。
+資材で管理するAPIは [登録定義](../apps/apim/apis/)を変更し、Gatewayを再配備します。標準定義を常用で解決し、公開paramsによるAPI一覧の置換と`publishApis`切替は廃止しました。旧入力は空やfalseでも拒否します。解決したAPIや環境固有URLを元のparamsへ書き戻しません。
 
 APIだけの公開処理はFoundryモデルを配備せず、GUI等で変更した現在のcapacity／TPM割当を保持します。モデルの配備ID・名前・版・形式・SKU名・`Succeeded`状態、APIMのRBACとFoundryのローカル認証無効化を照合し、capacityと初期設定値の一致は要求しません。初期基盤構築の`infra/modules/services.bicep`は`services.modelDeployments`のcapacityをモデル配備へ反映するため、構築後の容量維持を目的に基盤構築を再実行せず、Gatewayの公開処理と区別します。
 

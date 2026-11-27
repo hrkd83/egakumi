@@ -19,7 +19,7 @@ from deployment.helpers.portal_resources import resource_names as portal_names
 class ApplicationResourceNameTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.broker = compile_bicep('apps/gateway/deploy/broker.bicep')
+        cls.broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
         cls.portal_sql = compile_bicep('apps/portal/deploy/schema-job.bicep')
         cls.portal_sync = compile_bicep('apps/portal/deploy/group-reconciliation-job.bicep')
         cls.portal = compile_bicep('infra/modules/portal-platform.bicep')

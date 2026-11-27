@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(os.environ['GW_PHASE12_SOURCE_ROOT']).resolve()
 RUNTIME_ROOT = Path(os.environ['GW_PHASE12_RUNTIME_ROOT']).resolve()
 sys.path.insert(0, str(ROOT / 'scripts'))
-sys.path.insert(0, str(ROOT / 'apps/gateway/deploy'))
+sys.path.insert(0, str(ROOT / 'apps/apim/deploy'))
 import argparse, copy, hashlib, json, re, subprocess, threading, time, uuid
 from operations.common import OperationContext
 from deployment.helpers.configuration import load_configuration_source

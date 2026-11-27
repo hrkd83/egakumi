@@ -64,8 +64,8 @@ ETagが返れば条件付き要求を使い、直前の比較も行う。API側�
 
 | 確認するもの | 正本・確認先 |
 | --- | --- |
-| 許可する配備名・操作・モダリティ | `apps/gateway/apim/apis/`の対象API・profile |
-| モデル別上限・契約の根拠 | `apps/gateway/apim/model-capabilities.json` |
+| 許可する配備名・操作・モダリティ | `apps/apim/apis/`の対象API・profile |
+| モデル別上限・契約の根拠 | `apps/apim/model-capabilities.json` |
 | Portalの表示・ガイド・試用 | API定義からの生成カタログと`apps/portal/lib/model-catalog.ts`等 |
 
 新しいAPI方式や表示実装が必要なモデルは、その改修の検証を先に行う。モデル全種・全版を

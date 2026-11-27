@@ -21,11 +21,11 @@ from deployment.helpers.apim_audit import render_audit_policy
 from test_credential_login import operation_error_methods,operation_error_cases,assert_shared_operation_error
 
 ROOT = Path(__file__).resolve().parents[1]
-GATEWAY = ROOT / 'apps/gateway/apim/policies/api-templates/gateway.xml'
-START = ROOT / 'apps/gateway/apim/policies/operation-policies/document-analysis/document-analysis.xml'
-STATUS = ROOT / 'apps/gateway/apim/policies/operation-policies/document-analysis/document-analysis-status.xml'
-AUTHENTICATION_RESULT = ROOT / 'apps/gateway/apim/policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.xml'
-API = json.loads((ROOT / 'apps/gateway/apim/apis/document-analysis-v1.json').read_text(encoding='utf-8'))
+GATEWAY = ROOT / 'apps/apim/policies/api-templates/gateway.xml'
+START = ROOT / 'apps/apim/policies/operation-policies/document-analysis/document-analysis.xml'
+STATUS = ROOT / 'apps/apim/policies/operation-policies/document-analysis/document-analysis-status.xml'
+AUTHENTICATION_RESULT = ROOT / 'apps/apim/policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.xml'
+API = json.loads((ROOT / 'apps/apim/apis/document-analysis-v1.json').read_text(encoding='utf-8'))
 SETTINGS = {**API['authorization']['operationConstraints']['analyze_document'],
             'apiVersion': DOCUMENT_API_VERSION, 'maxRequestBytes': 2 * 1024 * 1024, 'maxResponseBytes': 32768}
 BASE = 'https://documents.example.com'
@@ -918,7 +918,7 @@ class DocumentAnalysisPublicationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from bicep_helpers import compile_bicep
-        cls.template = compile_bicep('apps/gateway/apim/api-publication.bicep')
+        cls.template = compile_bicep('apps/apim/api-publication.bicep')
         resources = cls.template['resources']
         cls.resources = list(resources.values() if isinstance(resources, dict) else resources)
         cls.policy = next(item for item in cls.resources if item.get('copy', {}).get('name') == 'operationPolicies')

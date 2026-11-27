@@ -6,7 +6,7 @@ from .paths import REPOSITORY
 
 
 TARGET_VALIDATION_FRAGMENT_ID = "core-api-target-validation"
-_DIRECTORY = REPOSITORY / "apps/gateway/apim/policies/fragments/request" / TARGET_VALIDATION_FRAGMENT_ID
+_DIRECTORY = REPOSITORY / "apps/apim/policies/fragments/request" / TARGET_VALIDATION_FRAGMENT_ID
 
 
 def render_target_validation_fragment() -> str:

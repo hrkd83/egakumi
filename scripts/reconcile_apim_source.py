@@ -24,7 +24,7 @@ from deployment.helpers.paths import REPOSITORY, local_paths
 from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, run as run_json
 from standard_apis import resolve_publication_configuration
 
-sys.path.insert(0, str(REPOSITORY / "apps/gateway/deploy"))
+sys.path.insert(0, str(REPOSITORY / "apps/apim/deploy"))
 import api_publication
 
 
