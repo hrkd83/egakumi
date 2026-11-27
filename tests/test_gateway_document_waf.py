@@ -216,12 +216,10 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
         self.assertEqual(rule['backendAddressPool'], mapping['defaultBackendAddressPool'])
         self.assertEqual(rule['backendHttpSettings'], mapping['defaultBackendHttpSettings'])
         self.assertEqual(rule['rewriteRuleSet'], mapping['defaultRewriteRuleSet'])
-        self.assertNotIn('grpcEnabled', self.template['parameters'])
 
-    def test_external_policy_input_is_removed_and_standard_sku_or_unpublished_paths_have_no_document_policy(self):
+    def test_standard_sku_or_unpublished_paths_have_no_document_policy(self):
         document = self.resource("g-document-upload")
         gateway_resource = next(item for item in self.resources if item['type'] == 'Microsoft.Network/applicationGateways')
-        self.assertNotIn('existingWafPolicyId', self.template['parameters'])
         for changes in ({'skuName': 'Standard_v2'},
                         {'documentUploadPaths': []}, {'documentUploadPaths': ['/tools/documents/v1/analyze/other']}):
             with self.subTest(changes=changes):

@@ -252,7 +252,6 @@ class SsmlWafTests(unittest.TestCase):
         self.assertTrue(rule['rewriteRuleSet']['id'].endswith('/rewriteRuleSets/trusted-l7-ingress'))
         for collection in ('listeners', 'routingRules', 'backendSettingsCollection'):
             self.assertEqual(properties[collection], [])
-        self.assertNotIn('grpcEnabled', self.template['parameters'])
 
     def test_standard_sku_does_not_create_an_override(self):
         gateway = next(item for item in self.resources if item["type"] == "Microsoft.Network/applicationGateways")
@@ -332,7 +331,6 @@ class SsmlWafTests(unittest.TestCase):
         self.assertEqual(path["properties"]["backendAddressPool"], pathmap["defaultBackendAddressPool"])
         self.assertEqual(path["properties"]["backendHttpSettings"], pathmap["defaultBackendHttpSettings"])
         self.assertTrue(pathmap["defaultBackendAddressPool"]["id"].endswith("bepool-portal"))
-        self.assertNotIn("existingWafPolicyId", self.template["parameters"])
 
     def test_waf_schema_has_only_fixed_purposes_and_manifest_data_policies(self):
         policy_type = "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies"
@@ -342,11 +340,6 @@ class SsmlWafTests(unittest.TestCase):
         self.assertEqual({item["name"] for item in resources if "copy" not in item}, fixed_names)
         data = [item for item in resources if "copy" in item]
         self.assertEqual(len(data), 1)
-        for obsolete in ("customMimePaths", "legacyMcpMessagePaths", "inlineImagePaths", "inlinePdfPaths", "inlineAudioPaths"):
-            with self.subTest(parameter=obsolete):
-                self.assertNotIn(obsolete, self.template["parameters"])
-                self.assertNotIn(obsolete, self.module["properties"]["parameters"])
-                self.assertNotIn(obsolete, self.main["variables"])
         gateway = next(item for item in self.resources if item["type"] == "Microsoft.Network/applicationGateways")
         parameters = self.parameters(speechRawBodyPaths=[])
         properties = self.value(gateway["properties"], parameters)

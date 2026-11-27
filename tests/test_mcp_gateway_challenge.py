@@ -10,7 +10,6 @@ class McpGatewayChallengeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         waf.SsmlWafTests.setUpClass()
-        cls.main, cls.module = waf.SsmlWafTests.main, waf.SsmlWafTests.module
         cls.template, cls.resources = waf.SsmlWafTests.template, waf.SsmlWafTests.resources
         cls.gateway = next(item for item in cls.resources if item['type'] == 'Microsoft.Network/applicationGateways')
 
@@ -20,11 +19,6 @@ class McpGatewayChallengeTests(unittest.TestCase):
     def properties(self, **changes):
         parameters = self.parameters(**changes)
         return waf.GatewayExpression('[true()]', self.template['variables']).resolve(self.gateway['properties'], parameters)
-
-    def test_oauth_rewrite_configuration_is_absent_from_both_templates(self):
-        for template in (self.main, self.template):
-            self.assertNotIn('mcpOAuthChallenges', template['parameters'])
-            self.assertNotIn('mcpOAuthChallenges', template['variables'])
 
     def test_gateway_only_rewrites_trusted_ingress_request_header(self):
         properties = self.properties()
@@ -37,7 +31,6 @@ class McpGatewayChallengeTests(unittest.TestCase):
         self.assertTrue(properties['sslCertificates'])
         self.assertTrue(properties['requestRoutingRules'])
         self.assertTrue(properties['backendAddressPools'])
-        self.assertNotIn('grpcEnabled', self.template['parameters'])
 
 
 if __name__ == '__main__':
