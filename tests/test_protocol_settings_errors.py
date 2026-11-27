@@ -41,7 +41,7 @@ def generated_protocols():
     return result
 
 
-def query_pipeline(policy, fault=None):
+def query_pipeline(policy, template, parameters, fault=None):
     """実setter・拒否分岐・固定query writerを抽出し、標準query上書きだけを模擬する。"""
     root=ET.Element('policies');inbound=ET.SubElement(root,'inbound')
     writers={}
@@ -58,7 +58,19 @@ def query_pipeline(policy, fault=None):
     section=policy.find('inbound');children=list(section)
     rejection=next(node for node in children if node.tag=='choose' and
                    'gatewayProtocolQueryAllowed' in (node.find('when').get('condition','') if node.find('when') is not None else ''))
-    inbound.append(copy.deepcopy(rejection))
+    audit_context=section.find("include-fragment[@fragment-id='core-audit-context']")
+    if children.index(rejection)>=children.index(audit_context):
+        raise AssertionError('Audit context must follow protocol query validation')
+    rejection_value=copy.deepcopy(rejection)
+    when=rejection_value.find('when')
+    audit=when.find("include-fragment[@fragment-id='core-gateway-telemetry']")
+    if audit is not None:
+        fragment=ET.fromstring(compiled_policy_value(template,parameters,resource_name='gatewayTelemetryFragment'))
+        position=list(when).index(audit)
+        when.remove(audit)
+        for offset,node in enumerate(fragment):
+            when.insert(position+offset,node)
+    inbound.append(rejection_value)
     for node in children[children.index(rejection)+1:]:
         if node.tag!='set-query-parameter':break
         if node.get('exists-action')!='override':raise AssertionError('Unexpected protocol query writer')
@@ -67,7 +79,7 @@ def query_pipeline(policy, fault=None):
     def after_variable(name):
         if name not in writers:return ''
         return 'context.Request.Url.Query['+json.dumps(writers[name])+']=new [] {(string)context.Variables['+json.dumps(name)+']};'
-    return compile_inbound(root,after_variable=after_variable)
+    return compile_inbound(root,after_variable=after_variable,trace_messages=True)
 
 
 FIXTURE=ERROR_CSHARP.split('public static class McpFixture {',1)[0].replace(
@@ -125,7 +137,8 @@ def run_cases(protocols, pipelines, cases):
         # アダプターのExpression番号だけを変え、RegularExpressions等の実式を保持します。
         return re.sub(r'\bExpression(\d+)\b',lambda match:prefix+match[1],value)
     for index,(name,protocol,fault) in enumerate(pipelines):
-        actual,body=query_pipeline(protocols[protocol][1],fault)
+        _,policy,template,parameters=protocols[protocol]
+        actual,body=query_pipeline(policy,template,parameters,fault)
         prefix='Protocol'+str(index)+'Expression'
         methods.append(rename(actual,prefix))
         selectors.append('if(name=='+json.dumps(name)+') {'+rename(body,prefix)+' return 200;}')
@@ -191,8 +204,15 @@ class ProtocolSettingsErrorTests(unittest.TestCase):
                 value=values[identifier];self.assertFalse(value['propagated'])
                 self.assertEqual((value['model'],value['status']),(model,status))
                 self.assertEqual(value['queryAllowed'],status==200);self.assertEqual(value['queryAfter'],query_after)
-                self.assertEqual(value['bodyReads'],0);self.assertEqual(value['audits'],[])
-                if status==403:self.assertEqual(value['headers'],{'apim-request-id':value['requestId']})
+                self.assertEqual(value['bodyReads'],0)
+                if status==403:
+                    self.assertEqual(value['headers'],{'apim-request-id':value['requestId']})
+                    audit,=value['audits']
+                    self.assertEqual((audit['phase'],audit['code'],audit['status']),('rejected','INVALID_PROTOCOL_QUERY',403))
+                    self.assertEqual(audit['requestId'],value['requestId'])
+                    self.assertNotIn('targetModel',audit)
+                else:
+                    self.assertEqual(value['audits'],[])
 
     def test_internal_base64_json_errors_and_only_two_policy_ids_use_safe_500(self):
         if not PWSH:self.skipTest('PowerShell Roslyn is required')

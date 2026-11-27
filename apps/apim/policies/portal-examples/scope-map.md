@@ -9,7 +9,7 @@
 | HTTP API | [rest.xml](../api-templates/rest/rest.xml)とAPI定義JSON | **APIs → 対象API → All operations**。操作設定・回数制限・固定転送・監査 |
 | WebSocket | [ws.xml](../api-templates/ws/ws.xml)とAPI定義JSON | **APIs → 対象API → onHandshake**。接続時の認可と転送先 |
 | 生成MCP | [generated.xml](../api-templates/mcp/generated.xml)と元RESTの`mcp`設定 | **APIs → MCP server → All operations**。公開ツールから元のREST操作へ接続 |
-| 外部MCP | [external.xml](../api-templates/mcp/external.xml)とAPIの`mcpProxy`設定 | **APIs → 対象API → All operations**。登録した外部サーバー、転送方式、クエリ・セッションを確認 |
+| 外部MCP（追加時） | [external.xml](../api-templates/mcp/external.xml)とAPIの`mcpProxy`設定 | **APIs → 対象API → All operations**。初期API一覧には含まれず、追加した外部サーバーの転送方式、クエリ・セッションを確認 |
 | WebSocket・外部MCPの共通処理 | [stream.xml](../api-templates/shared/stream.xml) | 上記の実効ポリシーで、入口処理・固定転送・監査の組み合わせを確認 |
 | 個別操作 | [api-publication.bicep](../../api-publication.bicep)の`operationPolicyValue`とAPI定義JSON。固有の処理は[operation-policies](../operation-policies/)のXMLとC# | **APIs → 対象API → 対象Operation**。全HTTP操作で`base`を継承し、宣言に応じてURIや固定応答を構成。固有のテンプレートは下表 |
 | 差し込み | [snippets](../snippets/) | 個別のポータル登録はありません。対応するAPI・操作の実効ポリシーで確認 |
@@ -41,7 +41,14 @@ HTTP行はAll operationsに、WebSocket行はonHandshakeに共通テンプレー
 | REST API | [pii-v1](../../apis/pii-v1.json) | `tools/pii/v1` | `pii_redact_text` | HTTP。`pii_redact_text`は[PIIの個別操作XML](../operation-policies/pii/pii.xml) |
 | MCP | `pii-v1-mcp` | `tools/pii-v1-mcp` | `pii_redact_text` | [PII正本](../../apis/pii-v1.json)から生成。`pii_redact_text`を公開 |
 
-本人接続用の`credential-manager-login`と`credential-manager-browser`はCM設定から生成します。[認証の個別操作](../operation-policies/credential-login/)と[生成資材](../../api-publication.bicep)で対象スコープを確認できます。標準19 APIのJSONと生成MCPの一覧とは別です。
+## Credential本人接続の操作
+
+以下の2 APIはCM設定から生成します。各操作のポリシーは[認証の個別操作](../operation-policies/credential-login/)に同じ操作名で置き、[API公開資材](../../api-publication.bicep)が操作スコープへ展開します。
+
+| API ID | 公開prefix | 操作ID | 継承と認証 |
+| --- | --- | --- | --- |
+| `credential-manager-login` | `auth/connections` | `start`、`status`、`session-commit`、`logout`、`logout-all`、`disconnect` | APIポリシーは全sectionで共通処理を継承。各操作は共通の入口・応答処理と、本人確認・固定転送・エラー処理を組み合わせる |
+| `credential-manager-browser` | `auth/connections/browser` | `launch`、`launch-post`、`identity-callback`、`callback` | APIスコープのポリシーは不要。各操作のInbound・Outboundで共通処理を継承し、起動・戻り先は取引ごとのstateやCookie等を照合 |
 
 ## 追加APIへ流用する範囲
 
