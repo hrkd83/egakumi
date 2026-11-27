@@ -198,7 +198,7 @@ class AuditPublicationTests(unittest.TestCase):
      name:{'kind':kind,'bodyFormat':'json','maxRequestBytes':2048}
      for name,kind in (('hosted-first','hostedAgentPost'),('hosted-override','hostedAgentPost'),
                        ('neighbor','registeredOperation'))}
-    api=configuration.normalize_configuration(raw,base_directory=CORE/'config')['apiDefinitions'][0]
+    api=configuration.normalize_configuration(raw,base_directory=CORE/'infra/config')['apiDefinitions'][0]
     self.parameters['apiDefinitions']=[api]
     deployed=ET.fromstring(compiled_policy_value(self.template,self.parameters))
     _,audit,controls=self.api_settings(deployed)
@@ -246,7 +246,7 @@ class AuditPublicationTests(unittest.TestCase):
     if kind=='chat':
      operation['urlTemplate']='/chat/completions'
      constraint.update(kind='bodyModel',outputTokenParameter='max_completion_tokens')
-    api=configuration.normalize_configuration(raw,base_directory=CORE/'config')['apiDefinitions'][0]
+    api=configuration.normalize_configuration(raw,base_directory=CORE/'infra/config')['apiDefinitions'][0]
     # 公開fixtureと同じく、Core接続先だけ独立した合成URLへ解決します。
     api.setdefault('backendUrl','https://backend.example.invalid')
     api['operations'][0]['backendOverride'].setdefault('backendUrl','https://backend.example.invalid')
@@ -275,7 +275,7 @@ class AuditPublicationTests(unittest.TestCase):
   raw=api_fixture()
   raw['apiDefinitions'][0]['operations'][0]['backendOverride']=copy.deepcopy(external)
   with self.assertRaisesRegex(configuration.ConfigurationError,'statelessResponses permits only'):
-   configuration.normalize_configuration(raw,base_directory=CORE/'config')
+   configuration.normalize_configuration(raw,base_directory=CORE/'infra/config')
   with self.subTest(case='mixed-chat-backends'):
    raw=api_fixture()
    api=raw['apiDefinitions'][0]
@@ -288,7 +288,7 @@ class AuditPublicationTests(unittest.TestCase):
                              backendUrlTemplate='/chat/completions',backendOverride=copy.deepcopy(external))
    api['operations'].append(external_operation)
    api['authorization']['operationConstraints'][external_operation['name']]=copy.deepcopy(constraint)
-   api=configuration.normalize_configuration(raw,base_directory=CORE/'config')['apiDefinitions'][0]
+   api=configuration.normalize_configuration(raw,base_directory=CORE/'infra/config')['apiDefinitions'][0]
    api.setdefault('backendUrl','https://backend.example.invalid')
    self.parameters['apiDefinitions']=[api]
    root=ET.fromstring(compiled_policy_value(self.template,self.parameters))
@@ -456,7 +456,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
    self.assertEqual(json.loads(result.stdout),expected)
  def test_effective_cm_authentication_metadata_does_not_change_the_authentication_or_route(self):
   # 実Bicepから生成したXMLを比較し、CMの監査表示だけが変わることを確認します。
-  config=configuration.normalize_configuration(connection_fixture(),base_directory=CORE/'config')
+  config=configuration.normalize_configuration(connection_fixture(),base_directory=CORE/'infra/config')
   api=config['apiDefinitions'][0]
   self.parameters['apiDefinitions'].append(api)
   index=len(self.parameters['apiDefinitions'])-1
@@ -503,7 +503,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
      api['authorization']['operationConstraints']={
       'invoke':{'kind':'registeredOperation','maxRequestBytes':32768}}
      api['mcpProxy']={'transport':'streamable','endpoints':[{'name':'message','uriTemplate':'/mcp'}]}
-    config=configuration.normalize_configuration(raw,base_directory=CORE/'config')
+    config=configuration.normalize_configuration(raw,base_directory=CORE/'infra/config')
     api=config['apiDefinitions'][0]
     login=credential_login.settings(config)
     self.parameters.update(apiDefinitions=[api],credentialLogin=login,publishApis=True)
@@ -638,7 +638,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
  def test_generated_mcp_preserves_existing_cm_unsupported_boundary(self):
   """生成MCPは既存PII契約だけで、今回のCM改修から受付を広げない。"""
   raw=pii_fixture()
-  config=configuration.normalize_configuration(raw,base_directory=CORE/'config')
+  config=configuration.normalize_configuration(raw,base_directory=CORE/'infra/config')
   api=config['apiDefinitions'][0]
   api.setdefault('backendUrl','https://backend.example.invalid')
   self.parameters.update(apiDefinitions=[api],publishApis=True)
@@ -658,7 +658,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
   unsupported=copy.deepcopy(raw)
   unsupported['apiDefinitions'][0]['credentialConnection']=connection_fixture()['apiDefinitions'][0]['credentialConnection']
   with self.assertRaisesRegex(ValueError,'credentialConnection'):
-   configuration.normalize_configuration(unsupported,base_directory=CORE/'config')
+   configuration.normalize_configuration(unsupported,base_directory=CORE/'infra/config')
  def test_credential_management_api_inherits_without_model_api_settings(self):
   raw=self.template['resources']['credentialLoginApiPolicy']['properties']['value']
   value=self.evaluate(raw) if raw.startswith('[') else raw
@@ -866,7 +866,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
     for phase in ('request','response'): self.assertEqual(actual[direction][phase]['body']['bytes'],0)
   for resource in ('globalDiagnostic','mcpDiagnostics'):
    self.assertEqual(self.template['resources'][resource]['properties']['largeLanguageModel'],{'logs':'disabled'})
-  config=configuration.normalize_configuration(connection_fixture(),base_directory=CORE/'config')
+  config=configuration.normalize_configuration(connection_fixture(),base_directory=CORE/'infra/config')
   properties=canonical_settings(config,'core')['apim-logs']['properties']
   self.assertIn({'category':'GatewayLlmLogs','enabled':True},properties['logs'])
   self.assertEqual(properties['logAnalyticsDestinationType'],'Dedicated')

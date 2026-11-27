@@ -9,7 +9,7 @@ class SharedMcpConfigurationTests(unittest.TestCase):
         self.original = next(api for api in self.raw["apiDefinitions"] if api.get("apiType") == "mcp")
 
     def normalize(self):
-        return configuration.normalize_configuration(self.raw, base_directory=CORE / "config")
+        return configuration.normalize_configuration(self.raw, base_directory=CORE / "infra/config")
 
     def append_mcp(self):
         added = copy.deepcopy(self.original)

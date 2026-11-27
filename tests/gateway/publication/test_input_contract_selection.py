@@ -24,7 +24,7 @@ STANDARD_OPERATIONS = {
 
 class InputContractSelectionTests(unittest.TestCase):
     def normalize(self, raw):
-        return configuration.normalize_configuration(raw, base_directory=CORE / 'config')
+        return configuration.normalize_configuration(raw, base_directory=CORE / 'infra/config')
 
     def external(self):
         raw = bound_external_coverage()

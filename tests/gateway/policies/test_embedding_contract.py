@@ -109,7 +109,7 @@ class EmbeddingConfigurationTests(unittest.TestCase):
             c = a['authorization']['operationConstraints']['embeddings']
             mutate(c)
             try:
-                configuration.normalize_configuration(v, base_directory=CORE / 'config')
+                configuration.normalize_configuration(v, base_directory=CORE / 'infra/config')
             except configuration.ConfigurationError:
                 pass
             else:
@@ -118,7 +118,7 @@ class EmbeddingConfigurationTests(unittest.TestCase):
         a = next((x for x in v['apiDefinitions'] if x['name'] == 'cohere-inference-v1'))
         a['authorization']['operationConstraints']['cohere-embeddings']['embeddingDimensionsByModel']['embed-v-4-0'].pop('allowed')
         try:
-            configuration.normalize_configuration(v, base_directory=CORE / 'config')
+            configuration.normalize_configuration(v, base_directory=CORE / 'infra/config')
         except configuration.ConfigurationError:
             pass
         else:
@@ -129,7 +129,7 @@ class EmbeddingExpressionTests(unittest.TestCase):
     def setUpClass(cls):
         if not PWSH:
             raise unittest.SkipTest("PowerShell is required for actual APIM C# expressions")
-        apis = {api["name"]: api for api in configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")["apiDefinitions"]}
+        apis = {api["name"]: api for api in configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "infra/config")["apiDefinitions"]}
         cases = embedding_cases(apis)
         base = CSHARP.split('public static class ExpandedPolicyFixture', 1)[0]
         body_start = base.index('public class Body {')
@@ -231,7 +231,7 @@ class EmbeddingExpressionTests(unittest.TestCase):
 
     def test_compiled_publication_preserves_dimension_map_without_llm_token_counting(self):
         template = compile_bicep("apps/api-gateway/api-publication.bicep")
-        apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")["apiDefinitions"]
+        apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "infra/config")["apiDefinitions"]
         for api in apis:
             if api["name"] not in ("openai-embeddings-v1", "cohere-inference-v1"):
                 continue
@@ -246,7 +246,7 @@ class EmbeddingExpressionTests(unittest.TestCase):
 
     def test_compiled_embedding_policies_publish_the_guard_without_rewriting_native_queries(self):
         template = compile_bicep("apps/api-gateway/api-publication.bicep")
-        apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")["apiDefinitions"]
+        apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "infra/config")["apiDefinitions"]
         source_guard = ET.fromstring(render_input_validation_fragment())
         resources = template["resources"]
         resources = list(resources.values()) if isinstance(resources, dict) else resources

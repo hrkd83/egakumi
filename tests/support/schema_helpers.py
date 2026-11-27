@@ -4,13 +4,27 @@ import inspect
 from tests import REPOSITORY
 
 ROOT = REPOSITORY
+SCHEMA_PATHS = {
+    'params': 'params/params.schema.json',
+    'options': 'infra/config/options.schema.json',
+    'configuration': 'infra/config/configuration.schema.json',
+}
+
+
+def schema_path(name):
+    return ROOT / SCHEMA_PATHS[name]
+
+
+def read_schema(name):
+    return json.loads(schema_path(name).read_text(encoding='utf-8'))
 
 
 def _local_schemas():
     """リポジトリのschemaだけを読み、取得を必要としないaliasを登録する。"""
     store = {}
-    for path in (ROOT / 'schemas').glob('*.schema.json'):
-        document = json.loads(path.read_text(encoding='utf-8'))
+    for name in SCHEMA_PATHS:
+        path = schema_path(name)
+        document = read_schema(name)
         aliases = [path.name, path.resolve().as_uri()]
         if document.get('$id'):
             aliases.append(document['$id'])

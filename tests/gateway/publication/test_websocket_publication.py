@@ -40,7 +40,7 @@ class WebSocketPublicationTests(unittest.TestCase):
 
     def test_compiled_protocol_policies_select_the_registered_backend(self):
         """WebSocketはWSSのserviceUrlを使い、HTTPは登録済みのbackendを選ぶ。"""
-        config = configuration.normalize_configuration(bound_external_coverage(), base_directory=CORE / "config")
+        config = configuration.normalize_configuration(bound_external_coverage(), base_directory=CORE / "infra/config")
         definitions = config["apiDefinitions"]
         parameters = {"apiDefinitions": definitions, "publicHostName": "gateway.example.com"}
         policies = [compiled_policy_value(self.template, parameters, index) for index in range(len(definitions))]

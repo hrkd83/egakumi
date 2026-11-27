@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "AI Workforce 標準設定・任意オプション",
-  "description": "企業固有情報を含まない標準動作設定です。config/test.jsonまたはproduction.jsonを正本として使い、コピーは不要です。",
+  "description": "企業固有情報を含まない標準動作設定です。infra/configのtest.jsonまたはproduction.jsonを正本として使い、コピーは不要です。",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "$schema": {
       "type": "string",
-      "default": "../schemas/options.schema.json",
+      "default": "./options.schema.json",
       "description": "エディター参照のみ。実行時に外部取得せずAzureへの入力から除外します。"
     },
     "$comment": {

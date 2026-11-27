@@ -21,7 +21,7 @@ class ApiCenterRecoveryTests(unittest.TestCase):
     """今回のexact IDだけを復元し、曖昧な状態は成功にしない。"""
 
     def setUp(self):
-        self.config = normalize_configuration(fixture(), base_directory=Path(__file__).resolve().parents[2] / "config")
+        self.config = normalize_configuration(fixture(), base_directory=Path(__file__).resolve().parents[2] / "infra/config")
         self.name = "apic-" + self.config["resourceStem"]
         self.outputs = {"names": {"apiCenter": self.name}}
         self.scope = (f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/"

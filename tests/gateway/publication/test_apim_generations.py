@@ -20,7 +20,7 @@ class ApimGenerationTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve()
         self.config = fixture()
-        self.config['configFile'] = '../../config/test.json'
+        self.config['configFile'] = '../../infra/config/test.json'
         self.paths = LocalPaths(self.root, self.config['environmentName'])
         self.paths.ensure()
         stem = self.config['environmentName'] + '-' + self.config['productName']

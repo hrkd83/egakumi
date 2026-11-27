@@ -28,7 +28,7 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
 
     def test_normal_logs_are_resource_specific_and_idps_is_premium_only(self):
         """分類正本を一元化し、実FW診断は検証済みpropertiesをそのまま使用する。"""
-        config = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "config"))
+        config = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "infra/config"))
         config["network"]["firewall"]["sku"] = "Premium"
         definitions = diagnostics.canonical_settings(config, "core")
         definition = definitions["fw-logs"]["properties"]
@@ -56,7 +56,7 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
 
     def test_audit_storage_is_canonical_only_for_logs_and_existing_metrics_sink_can_be_retained(self):
         """既定メトリクスはLAWのみで、所有確認済みの既存追加sinkはmergeが保持する。"""
-        config = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "config"))
+        config = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "infra/config"))
         definitions = diagnostics.canonical_settings(config, "core")
         logs, metrics = definitions["fw-logs"]["properties"], definitions["fw-metrics"]["properties"]
         self.assertIn("storageAccountId", logs)
@@ -84,7 +84,7 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
     def test_apim_azure_monitor_event_hubs_dependency_is_allowed_through_nsg_and_firewall(self):
         """Monitor 本体と別の Event Hubs 転送先も、APIM 発の必要 TCP だけを許可する。"""
         network = self.templates["network"]
-        configuration = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "config"))
+        configuration = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "infra/config"))
         parameters = {"config": configuration["network"], "resourcePrefix": configuration["resourceStem"]}
         resolver = NetworkArmExpression("[createObject()]", network)
         groups = resolver.resolve(network["variables"]["nsgDefinitions"], parameters)
@@ -114,7 +114,7 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
 
     def test_apim_keeps_ntp_while_management_host_phc_needs_no_network_time_allow(self):
         """APIMのUDP123境界を保持し、管理VMにはNTP/PTPのネットワーク許可を作らない。"""
-        configuration = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "config"))
+        configuration = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "infra/config"))
         template = self.templates["network"]
         parameters = {"config": configuration["network"], "resourcePrefix": configuration["resourceStem"]}
         expression = NetworkArmExpression("[createObject()]", template)
@@ -153,7 +153,7 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         """実ARMのループを展開し、同じNSGの二重宣言と既存本体へのPUTを防ぐ。"""
         template = self.templates["network"]
         resources = template["resources"]
-        configuration = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "config"))
+        configuration = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "infra/config"))
         prefix = configuration["resourceStem"]
         expected = {f"nsg-{prefix}-{suffix}" for suffix in ("agw", "apim", "pep", "vm", "aca", "broker", "certificate")}
 

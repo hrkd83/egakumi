@@ -446,7 +446,7 @@ class ProfilePolicyTests(unittest.TestCase):
             cls.inheritance_cases[identifier] = constraint
             cases.append(case(identifier, controlConstraints={'chat-completions': constraint}, body=body, profileOnly=True))
         # 実際の登録例から、モデルと出力項目の組を実行検査します。
-        apis = {a["name"]: a for a in configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")["apiDefinitions"]}
+        apis = {a["name"]: a for a in configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "infra/config")["apiDefinitions"]}
         INPUT_TABLES.clear()
         INPUT_TABLES.update({name: input_contracts(api) for name, api in apis.items()})
         CHAT_APIS.clear()
@@ -2160,7 +2160,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
     def test_compiled_flux_operations_use_the_model_selected_profile_after_api_inheritance(self):
         template = compile_bicep('apps/api-gateway/api-publication.bicep')
-        apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / 'config')['apiDefinitions']
+        apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / 'infra/config')['apiDefinitions']
         api = next(item for item in apis if item['name'] == 'blackforest-images-v1')
         # 正式な配備入力の組立てが補う接続元を、独立した試験用URLで渡します。
         api['backendUrl'] = 'https://provider.example.com'

@@ -1,13 +1,13 @@
 # 環境別paramsの入力項目
 
-[第07章](../../setup/07-params.md)で準備する環境別の設定を扱います。型・必須条件は[params schema](../../../schemas/params.schema.json)で確認します。標準のSKUと機能設定は[標準config](config-options.md)を参照してください。
+[第07章](../../setup/07-params.md)で準備する環境別の設定を扱います。型・必須条件は[params schema](../../../params/params.schema.json)で確認します。標準のSKUと機能設定は[標準config](config-options.md)を参照してください。
 
 ## 企業・環境ごとに確認する値（params）
 
 | 項目 | 公開例・制約 | 用途 |
 | --- | --- | --- |
 | `schemaVersion` | `1` | 入力形式の版 |
-| `configFile` | `../../config/test.json`または`../../config/production.json` | 共通config選択 |
+| `configFile` | `../../infra/config/test.json`または`../../infra/config/production.json` | 準備コマンドがprofileに合わせて設定する共通config参照 |
 | `productName` | 公開例`egakumi` | 資源名の製品接頭辞 |
 | `environmentName` | 公開例`test`／`production` | 環境名。SKU選択と独立 |
 | `subscriptionId` | 非ゼロGUID | Azure構築先 |

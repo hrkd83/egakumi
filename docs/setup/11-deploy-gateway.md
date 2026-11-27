@@ -33,7 +33,7 @@ CoreのAPIM、共通SQL、非公開ACR、ACA環境を使い、BrokerとCredentia
 python3 scripts/deployment/lifecycle.py validate --config "$DEPLOY_PARAMS_FILE"
 ```
 
-SQLの容量・バックアップ・ゾーン冗長化は`config/test.json`または`config/production.json`の`credentialBroker`で管理する。
+SQLの容量・バックアップ・ゾーン冗長化は`infra/config/test.json`または`infra/config/production.json`の`credentialBroker`で管理する。
 
 ## 3. Coreと証明書の準備完了を確認する
 

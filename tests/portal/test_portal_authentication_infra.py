@@ -1,4 +1,5 @@
 """Portal配備がDBを所有し、共通基盤を変更しないことを確認する。"""
+from tests.support.schema_helpers import read_schema
 from tests.support.bicep_helpers import compile_bicep
 from tests.network.test_parameter_ip_ownership import NetworkArmExpression
 from tests.waf.test_ssml_waf import GatewayExpression
@@ -47,22 +48,22 @@ class PortalAuthenticationOptionsTests(unittest.TestCase):
                     normalize_configuration(raw)
 
     def test_test_and_production_settings_do_not_contain_tenant_specific_inputs(self):
-        schemas = [json.loads((ROOT / "schemas" / name).read_text(encoding="utf-8"))
+        schemas = [read_schema(name.removesuffix(".schema.json"))
                    for name in ("options.schema.json", "configuration.schema.json")]
         self.assertEqual(schemas[0]["properties"]["portalAuthentication"],
                          schemas[1]["properties"]["portalAuthentication"])
         self.validator = Draft202012Validator(schemas[0]["properties"]["portalAuthentication"])
         for profile, tier in (("test", "Basic"), ("production", "GeneralPurpose")):
-            settings = json.loads((ROOT / "config" / (profile + ".json")).read_text(encoding="utf-8"))["portalAuthentication"]
+            settings = json.loads((ROOT / "infra/config" / (profile + ".json")).read_text(encoding="utf-8"))["portalAuthentication"]
             self.assertEqual(list(self.validator.iter_errors(settings)), [])
             self.assertEqual(settings["sqlTier"], tier)
             self.assertTrue(set(settings) <= {"sqlSkuName", "sqlTier", "sqlCapacity",
                                              "sqlMaxSizeGB", "backupRetentionDays", "zoneRedundant", "backupRedundancy"})
 
     def test_basic_configuration_rejects_unavailable_size_retention_and_zone_features(self):
-        schema = json.loads((ROOT / "schemas/options.schema.json").read_text(encoding="utf-8"))["properties"]["portalAuthentication"]
+        schema = json.loads((ROOT / "infra/config/options.schema.json").read_text(encoding="utf-8"))["properties"]["portalAuthentication"]
         validator = Draft202012Validator(schema)
-        basic = json.loads((ROOT / "config/test.json").read_text(encoding="utf-8"))["portalAuthentication"]
+        basic = json.loads((ROOT / "infra/config/test.json").read_text(encoding="utf-8"))["portalAuthentication"]
         for key, value in (("sqlSkuName", "GP_Gen5_2"), ("sqlCapacity", 2), ("sqlMaxSizeGB", 3),
                            ("backupRetentionDays", 8), ("zoneRedundant", True)):
             with self.subTest(key=key):

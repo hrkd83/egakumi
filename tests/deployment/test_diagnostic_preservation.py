@@ -11,7 +11,7 @@ from deployment import lifecycle
 
 def configuration():
     """実ファイルの秘密を開かず、公開fixtureを通常の検証・構築変換へ通す。"""
-    return build_bicep_configuration(normalize_configuration(fixture(), base_directory=Path("config")))
+    return build_bicep_configuration(normalize_configuration(fixture(), base_directory=Path("infra/config")))
 
 
 class Directory:

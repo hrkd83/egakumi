@@ -1,6 +1,6 @@
 # Core API・Operation定義
 
-初期配備28モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../../apps/api-gateway/apis/)と [モデル設定](../../../config/test.json)。初回は`azd up`で共通基盤を構築し、Entra登録後にGatewayとPortalを個別に配備する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
+初期配備28モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../../apps/api-gateway/apis/)と [モデル設定](../../../infra/config/test.json)。初回は`azd up`で共通基盤を構築し、Entra登録後にGatewayとPortalを個別に配備する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
 
 入口認可と本人接続の分担は[Gatewayの認証と購読キー](../identity/gateway-authentication.md)を参照する。現行の標準19 APIでは、共通入口の購読キー検証と、個人向けAPIの本人OAuth接続を分けて設計する。
 
@@ -238,7 +238,7 @@ APIMのnative REST-backed MCPは、REST側の上流エラーを`content[].text`�
 |---|---|---|
 | 1 | Azure／提供元の接続仕様 | 固定上流と音声契約を公式資料に照合。実環境のURL・権限・到達を確認 |
 | 2 | `apps/api-gateway/apis/<API名>.json` | 対象APIの許可モデル・モデル別設定・固定上流を変更する。新規APIは1ファイルを追加する |
-| 3 | `schemas/`・`scripts/deployment/helpers/configuration.py` | モデル別ルーティングとLive系入力・WSS設定の検査を追加 |
+| 3 | `infra/config/configuration.schema.json`・`scripts/deployment/helpers/configuration.py` | モデル別ルーティングとLive系入力・WSS設定の検査を追加 |
 | 4 | `scripts/deployment/deploy_gateway.py` | 新しい接続定義の合成・検査・登録計画を生成 |
 | 5 | `apps/api-gateway/api-publication.bicep`・`apps/api-gateway/policies/` | FLUXモデル別の固定上流選択、Liveセッション制御、文字起こしWSSの登録・ポリシー生成を実装 |
 | 6 | 接続クライアントの確認 | profileヘッダーなしのモデル選択と新しい音声イベントを扱うクライアントから受入 |
@@ -256,7 +256,7 @@ PII MCPは`pii-v1`の`pii_redact_text` から生成し、同じREST操作へ接�
 
 ## 現行資材の参照先
 
-- 初期配備28モデル：`config/test.json`・`config/production.json`と[モデル一覧](foundry-model-catalog.md)。
+- 初期配備28モデル：`infra/config/test.json`・`infra/config/production.json`と[モデル一覧](foundry-model-catalog.md)。
 - 標準19 APIの配備定義：[apps/api-gateway/apis/](../../../apps/api-gateway/apis/)。1 API 1ファイルで、APIの名前とファイル名を一致させる。
 - 現行の登録は `scripts/deployment/deploy_gateway.py`、設定検査は `scripts/deployment/helpers/configuration.py` を使用する。
 - 公開の実装：`apps/api-gateway/api-publication.bicep`・`apps/api-gateway/policies/`。

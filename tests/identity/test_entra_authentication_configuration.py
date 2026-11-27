@@ -48,13 +48,13 @@ class EntraConfigurationTests(unittest.TestCase):
     def normalize(self, settings, raw=None):
         raw = api_fixture() if raw is None else raw
         raw["gateway"]["authentication"]["entra"] = copy.deepcopy(settings)
-        return configuration.normalize_configuration(raw, base_directory=CORE / "config")
+        return configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
 
     def test_omission_preserves_legacy_configuration_without_inserting_a_toggle(self):
         raw = api_fixture()
         raw["gateway"]["authentication"].pop("entra", None)
         original = copy.deepcopy(raw)
-        legacy = configuration.normalize_configuration(raw, base_directory=CORE / "config")
+        legacy = configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
         self.assertEqual(raw, original)
         self.assertNotIn("entra", legacy["gateway"]["authentication"])
         self.assertEqual(entra_authentication_settings(legacy), {"enabled": False})
@@ -315,9 +315,9 @@ class EntraConfigurationTests(unittest.TestCase):
 
 class EntraSchemaTests(unittest.TestCase):
     def test_public_registration_and_shared_limits_are_split_from_complete_internal_authentication(self):
-        params = json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8"))
-        combined = json.loads((CORE / "schemas/configuration.schema.json").read_text(encoding="utf-8"))
-        options = json.loads((CORE / "schemas/options.schema.json").read_text(encoding="utf-8"))
+        params = json.loads((CORE / "params/params.schema.json").read_text(encoding="utf-8"))
+        combined = json.loads((CORE / "infra/config/configuration.schema.json").read_text(encoding="utf-8"))
+        options = json.loads((CORE / "infra/config/options.schema.json").read_text(encoding="utf-8"))
         auth = lambda schema: schema["properties"]["gateway"]["properties"]["authentication"]
         self.assertEqual(auth(params)["properties"]["entra"], {"$ref": "#/$defs/entraAuthentication"})
         self.assertEqual(auth(combined)["properties"]["entra"], {"$ref": "#/$defs/entraAuthentication"})
@@ -331,7 +331,7 @@ class EntraSchemaTests(unittest.TestCase):
         self.assertIn("entra", configuration.PARAMETER_GATEWAY_NESTED_KEYS["authentication"])
 
     def test_internal_schema_requires_complete_definition_without_a_public_toggle(self):
-        params = json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8"))
+        params = json.loads((CORE / "params/params.schema.json").read_text(encoding="utf-8"))
         schema = {"$schema": params["$schema"], "$ref": "configuration.schema.json#/$defs/entraAuthentication"}
         try:
             validator = local_schema_validator(schema)
@@ -356,8 +356,8 @@ class EntraSchemaTests(unittest.TestCase):
                 self.assertTrue(list(validator.iter_errors({**entra_fixture(), field: value})))
 
     def test_public_schemas_accept_only_the_authentication_fields_owned_by_each_source(self):
-        params = json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8"))
-        options = json.loads((CORE / "schemas/options.schema.json").read_text(encoding="utf-8"))
+        params = json.loads((CORE / "params/params.schema.json").read_text(encoding="utf-8"))
+        options = json.loads((CORE / "infra/config/options.schema.json").read_text(encoding="utf-8"))
         config_definition = options["properties"]["gateway"]["properties"]["authentication"]["properties"]["entra"]
         try:
             registration = local_schema_validator({"$schema": params["$schema"],
@@ -379,9 +379,9 @@ class EntraSchemaTests(unittest.TestCase):
         self.assertTrue(list(shared.iter_errors({})))
 
     def test_config_and_combined_schema_accept_each_null_and_reject_incomplete_or_invalid_limits(self):
-        params = json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8"))
-        combined = json.loads((CORE / "schemas/configuration.schema.json").read_text(encoding="utf-8"))
-        options = json.loads((CORE / "schemas/options.schema.json").read_text(encoding="utf-8"))
+        params = json.loads((CORE / "params/params.schema.json").read_text(encoding="utf-8"))
+        combined = json.loads((CORE / "infra/config/configuration.schema.json").read_text(encoding="utf-8"))
+        options = json.loads((CORE / "infra/config/options.schema.json").read_text(encoding="utf-8"))
         references = {
             "config": {"$defs": options["$defs"],
                        **options["properties"]["gateway"]["properties"]["authentication"]["properties"]["entra"]},
@@ -457,7 +457,7 @@ class EntraPublicationBoundaryTests(unittest.TestCase):
             "tokensPerMinute": None, "tokenQuota": None,
         }
         approved = configuration.normalize_configuration(
-            api_fixture(), base_directory=CORE / "config")["apiDefinitions"][0]
+            api_fixture(), base_directory=CORE / "infra/config")["apiDefinitions"][0]
         approved["name"] = "model"
         config["apiDefinitions"][0] = approved
         original = copy.deepcopy(config)
@@ -485,7 +485,7 @@ class EntraPublicationBoundaryTests(unittest.TestCase):
             raw["gateway"]["authentication"]["entra"] = entra_fixture()
             raw["gateway"]["authentication"]["entra"][field] = value
             with self.subTest(field=field, value=value), self.assertRaisesRegex(configuration.ConfigurationError, "unsupported field"):
-                configuration.normalize_configuration(raw, base_directory=CORE / "config")
+                configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
 
     def test_key_only_common_authentication_verifies_installed_policy_without_writes(self):
         fixture_test = publication_tests.PublicationTests()

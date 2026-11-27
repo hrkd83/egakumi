@@ -1,12 +1,12 @@
 # Foundryの初期配備モデル
 
-初回配備の正本は `config/test.json`・`config/production.json` の `services.modelDeployments` です。配備先でモデルの版・リージョン・SKU・利用枠を確認してから構築します。 [モデルの変更・追加](../../operations/foundry.md)
+初回配備の正本は `infra/config/test.json`・`infra/config/production.json` の `services.modelDeployments` です。配備先でモデルの版・リージョン・SKU・利用枠を確認してから構築します。 [モデルの変更・追加](../../operations/foundry.md)
 
 ## 初回配備する28モデル
 
 テスト用・本番用の`config`とAPI例は、次の28モデルを共通の初回配備対象とする。
 下記の67モデルの調査一覧は採用検討用のカタログであり、初回配備の正本は
-`config/test.json`・`config/production.json`の`services.modelDeployments`である。
+`infra/config/test.json`・`infra/config/production.json`の`services.modelDeployments`である。
 
 | 分類 | プロバイダー | 初回配備モデル | 件数 |
 |---|---|---|---:|

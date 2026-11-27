@@ -1,11 +1,11 @@
 {
-  "$schema": "../schemas/options.schema.json",
+  "$schema": "./options.schema.json",
   "$comment": "標準動作設定の正本です。コピー不要です。企業固有の入力はparamsへ記載し、任意の動作変更だけこのファイルで管理します。",
   "auditEvidence": {
     "enabled": true,
-    "eventHubsSku": "Standard",
-    "payloadImmutabilityMode": "Disabled",
-    "payloadRetentionDays": 30
+    "eventHubsSku": "Premium",
+    "payloadImmutabilityMode": "Locked",
+    "payloadRetentionDays": 2557
   },
   "network": {
     "bgpRoutePropagation": {
@@ -13,25 +13,29 @@
       "apim": true,
       "management": true
     },
-    "appGatewayZones": [],
+    "appGatewayZones": [
+      "1",
+      "2",
+      "3"
+    ],
     "firewall": {
       "sku": "Premium",
+      "idpsMode": "Deny",
       "threatIntelMode": "Alert",
       "zones": [],
-      "idpsMode": "Deny",
       "signatureOverrides": []
     },
     "dnsTtl": 300
   },
   "services": {
-    "apimSkuName": "Developer",
+    "apimSkuName": "Premium",
     "apiCenterSkuName": "Free",
     "apimCapacity": 1,
     "vaultSkuName": "standard",
-    "vaultRetentionDays": 7,
-    "vaultPurgeProtection": false,
+    "vaultRetentionDays": 90,
+    "vaultPurgeProtection": true,
     "enableApiCenterIntegration": true,
-    "grantApimSecretAccess": true,
+    "grantApimSecretAccess": false,
     "modelDeployments": [
       {
         "name": "gpt-6.1-sol",
@@ -314,8 +318,8 @@
         "versionUpgradeOption": "NoAutoUpgrade"
       }
     ],
-    "catalogEnvironmentKind": "testing",
-    "catalogLifecycleStage": "testing",
+    "catalogEnvironmentKind": "production",
+    "catalogLifecycleStage": "production",
     "projectDisplayName": "core-platform",
     "projectDescription": "Core platform project for shared model, agent, and tool capabilities.",
     "speechEnabled": true,
@@ -323,9 +327,13 @@
   },
   "gateway": {
     "skuName": "WAF_v2",
-    "autoscaleMinCapacity": 0,
-    "autoscaleMaxCapacity": 2,
-    "zones": [],
+    "autoscaleMinCapacity": 2,
+    "autoscaleMaxCapacity": 5,
+    "zones": [
+      "1",
+      "2",
+      "3"
+    ],
     "wafMode": "Prevention",
     "backendRequestTimeoutSeconds": 600,
     "wafCustomRules": [],
@@ -373,17 +381,17 @@
     "osDiskSku": "StandardSSD_LRS",
     "enableAcceleratedNetworking": true,
     "encryptionAtHost": true,
-    "patchAssessmentMode": "ImageDefault",
-    "patchMode": "ImageDefault"
+    "patchAssessmentMode": "AutomaticByPlatform",
+    "patchMode": "AutomaticByPlatform"
   },
   "monitoring": {
     "retentionInDays": 90,
     "workspaceDailyQuotaGb": -1,
-    "auditStorageSku": "Standard_LRS",
-    "auditImmutabilityMode": "Disabled",
+    "auditStorageSku": "Standard_GRS",
+    "auditImmutabilityMode": "Locked",
     "auditRetentionDays": 2557,
     "appInsightsIngestionWarningGb": 80,
-    "enableLogAlerts": true
+    "enableLogAlerts": false
   },
   "certificate": {
     "mode": "dnsPlugin",
@@ -401,20 +409,20 @@
     "sqlTier": "GeneralPurpose",
     "sqlCapacity": 2,
     "sqlMaxSizeGB": 32,
-    "backupRetentionDays": 14,
-    "zoneRedundant": false,
+    "backupRetentionDays": 35,
+    "zoneRedundant": true,
     "backupRedundancy": "Geo",
     "minReplicas": 2,
     "maxReplicas": 4
   },
   "portalAuthentication": {
-    "sqlSkuName": "Basic",
-    "sqlTier": "Basic",
-    "sqlCapacity": 5,
-    "sqlMaxSizeGB": 2,
-    "backupRetentionDays": 7,
+    "sqlSkuName": "GP_Gen5_2",
+    "sqlTier": "GeneralPurpose",
+    "sqlCapacity": 2,
+    "sqlMaxSizeGB": 32,
+    "backupRetentionDays": 14,
     "zoneRedundant": false,
-    "backupRedundancy": "Local"
+    "backupRedundancy": "Geo"
   },
   "credentialProviders": {
     "graphDelegated": {

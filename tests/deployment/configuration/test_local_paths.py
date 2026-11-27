@@ -14,7 +14,7 @@ from unittest import mock
 from deployment import lifecycle
 from deployment.helpers.azd_parameters import complete_arm_parameters
 from deployment.helpers.paths import LocalPaths, configuration_path, local_paths, private_output, private_parent
-from deployment.helpers.configuration import normalize_configuration
+from deployment.helpers.configuration import load_configuration_source, normalize_configuration
 from tests.support.configuration_fixtures import fixture
 from setup import prepare_local_environment
 
@@ -120,8 +120,7 @@ class LocalPreparationTests(unittest.TestCase):
         self.addCleanup(environment.stop)
         source = Path(__file__).resolve().parents[3]
         shutil.copytree(source / "params", self.root / "params")
-        shutil.copytree(source / "config", self.root / "config")
-        shutil.copytree(source / "schemas", self.root / "schemas")
+        shutil.copytree(source / "infra/config", self.root / "infra/config")
 
     def test_prepare_rebases_references_and_preserves_subsequent_user_edits(self):
         before = {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
@@ -131,18 +130,28 @@ class LocalPreparationTests(unittest.TestCase):
         self.assertEqual(result["status"], "created")
         paths = LocalPaths(self.root, "alpha")
         raw = json.loads(paths.params.read_text())
-        self.assertEqual(raw["configFile"], "../../config/test.json")
+        self.assertEqual(raw["configFile"], "../../infra/config/test.json")
+        self.assertEqual((paths.params.parent / raw["$schema"]).resolve(),
+                         self.root / "params/params.schema.json")
         self.assertEqual(raw["environmentName"], "alpha")
         self.assertEqual(raw["services"]["apimInstanceId"], "m8q3r2")
         self.assertEqual(raw["management"]["sshPublicKeyFile"], "./secrets/management-ssh.pub")
         self.assertEqual(stat.S_IMODE(paths.params.stat().st_mode), 0o600)
         raw["productName"] = "synthetic-product"
+        standard_reference = raw["configFile"]
         paths.params.write_text(json.dumps(raw))
-        content = paths.params.read_bytes()
-        with mock.patch.object(prepare_local_environment, "generate_apim_instance_id") as generate:
-            self.assertEqual(prepare_local_environment.prepare("alpha", "test", self.root)["status"], "existing-input-preserved")
-        generate.assert_not_called()
-        self.assertEqual(paths.params.read_bytes(), content)
+        expected = load_configuration_source(paths.params)
+        for reference in (standard_reference, "../../config/test.json"):
+            with self.subTest(reference=reference), mock.patch.object(
+                    prepare_local_environment, "generate_apim_instance_id") as generate:
+                raw["configFile"] = reference
+                paths.params.write_text(json.dumps(raw))
+                content = paths.params.read_bytes()
+                self.assertEqual(load_configuration_source(paths.params), expected)
+                repeated = prepare_local_environment.prepare("alpha", "test", self.root)
+                self.assertEqual(repeated["status"], "existing-input-preserved")
+                generate.assert_not_called()
+                self.assertEqual(paths.params.read_bytes(), content)
         for relative, value in before.items():
             self.assertEqual((self.root / relative).read_bytes(), value)
         self.assertEqual(list(paths.secrets.iterdir()), [])
@@ -181,7 +190,7 @@ class LocalPreparationTests(unittest.TestCase):
         self.assertEqual(paths.params.read_bytes(), before)
 
     def test_parameter_bridge_check_cleans_generated_input_on_success_and_failure(self):
-        config = normalize_configuration(fixture(), base_directory=self.root / "config")
+        config = normalize_configuration(fixture(), base_directory=self.root / "infra/config")
         target = local_paths(config, self.root).parameters
         expected = complete_arm_parameters(lifecycle.parameters(config, "core"))
         with mock.patch.object(lifecycle, "ROOT", self.root), mock.patch.dict(os.environ, {"BICEP_CLI": sys.executable}):

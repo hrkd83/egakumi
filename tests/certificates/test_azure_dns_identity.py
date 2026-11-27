@@ -1,5 +1,4 @@
 """Azure DNSの公開ID入力を、秘密ファイルやAzureへ接続せず検査する。"""
-import json
 import os
 import re
 from pathlib import Path
@@ -9,6 +8,7 @@ import unittest
 from unittest import mock
 
 from deployment.helpers import configuration
+from tests.support.schema_helpers import read_schema
 from tests import REPOSITORY
 
 SUBSCRIPTION = '11111111-1111-4111-8111-111111111111'
@@ -41,9 +41,8 @@ class AzureDnsIdentityTests(unittest.TestCase):
         identity = IDENTITY.replace('/resourceGroups/', '/resourcegroups/')
         configuration.validate_azure_dns_identity({'azureDnsSubscriptionId': SUBSCRIPTION,
                                                    'azureDnsManagedIdentityResourceId': identity})
-        root = Path(__file__).resolve().parents[2]
         for name in ('params', 'configuration'):
-            schema = json.loads((root / 'schemas' / (name + '.schema.json')).read_text(encoding='utf-8'))
+            schema = read_schema(name)
             pattern = schema['properties']['certificate']['properties']['azureDnsManagedIdentityResourceId']['pattern']
             self.assertIsNotNone(re.fullmatch(pattern, identity))
 

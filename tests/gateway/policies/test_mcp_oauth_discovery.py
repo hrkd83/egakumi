@@ -29,7 +29,7 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
         cls.template = compile_bicep("apps/api-gateway/api-publication.bicep")
         # Explicit external fixtures exercise native MCP alongside the standard PII facade.
         raw = bound_external_coverage()
-        cls.config = configuration.normalize_configuration(raw, base_directory=CORE / "config")
+        cls.config = configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
         cls.definitions = cls.config["apiDefinitions"]
 
     @classmethod

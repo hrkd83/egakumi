@@ -22,7 +22,7 @@ CORE = REPOSITORY
 
 class LiveConfigurationTests(unittest.TestCase):
     def test_session_contracts_pin_endpoint_and_separate_event_model_selection(self):
-        config = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / 'config')
+        config = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / 'infra/config')
         apis = {a['name']: a for a in config['apiDefinitions']}
         for name, kind, models, query in (
             ('openai-live-ws-v1', 'live', ['gpt-live-1'], {}),
@@ -43,7 +43,7 @@ class LiveConfigurationTests(unittest.TestCase):
             if mutation == 'queryModelSelection': api['websocket']['allowedModels'] = ['gpt-live-transcribe']
             if mutation == 'keyAuthentication': api['authorization']['mode'] = 'keyOrEntra'
             with self.subTest(mutation=mutation), self.assertRaises(configuration.ConfigurationError):
-                configuration.normalize_configuration(raw, base_directory=CORE / 'config')
+                configuration.normalize_configuration(raw, base_directory=CORE / 'infra/config')
 
     def test_model_routing_is_a_complete_fixed_table(self):
         for mutation in ('foreignHost', 'policyExpression', 'credentialQuery', 'partialTable', 'operationAndModelRoute'):
@@ -57,7 +57,7 @@ class LiveConfigurationTests(unittest.TestCase):
             if mutation == 'partialTable': setting.pop('backendUrlTemplate')
             if mutation == 'operationAndModelRoute': api['operations'][0]['backendUrlTemplate'] = '/providers/other'
             with self.subTest(mutation=mutation), self.assertRaises(configuration.ConfigurationError):
-                configuration.normalize_configuration(raw, base_directory=CORE / 'config')
+                configuration.normalize_configuration(raw, base_directory=CORE / 'infra/config')
 
     def test_live_control_is_fixed_model_key_authorized_and_bounded_json(self):
         for mutation in ('undeployed', 'keyAuthentication', 'wrongRoute', 'unbounded', 'upstreamOverride'):
@@ -71,7 +71,7 @@ class LiveConfigurationTests(unittest.TestCase):
             if mutation == 'unbounded': c['maxRequestBytes'] = 524288001
             if mutation == 'upstreamOverride': api['operations'][0]['backendUrlTemplate'] = '/other'
             with self.subTest(mutation=mutation), self.assertRaises(configuration.ConfigurationError):
-                configuration.normalize_configuration(raw, base_directory=CORE / 'config')
+                configuration.normalize_configuration(raw, base_directory=CORE / 'infra/config')
 
 
 LIVE_PREFIX = REALTIME_SOURCE.split('public static class TicketFixture')[0]

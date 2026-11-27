@@ -46,7 +46,7 @@ def bound_external_coverage():
 class ProtocolConfigurationTests(unittest.TestCase):
     """モデル・音声・ファイル・WebSocket/MCPのAPI設定とAPIM式を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def normalize(self, raw):
-        return configuration.normalize_configuration(raw, base_directory=CORE / "config")
+        return configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
 
     def test_bound_example_has_only_formal_apis_and_stays_unpublished(self):
         actual = self.normalize(bound_coverage())

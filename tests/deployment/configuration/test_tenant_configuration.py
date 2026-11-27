@@ -1,8 +1,7 @@
 """Azure管理と入口認証のテナント境界を、架空のIDとオフライン応答で検証する。"""
 import copy
-import json
 import unittest
-from tests.support.schema_helpers import local_schema_validator
+from tests.support.schema_helpers import local_schema_validator, read_schema
 from unittest import mock
 
 from tests.support.configuration_fixtures import CORE, fixture, connection_fixture, pii_fixture, public_fixture
@@ -131,7 +130,7 @@ class TenantConfigurationTests(unittest.TestCase):
             self.skipTest('jsonschema is available in the integration venv')
         for name in ('params', 'configuration'):
             with self.subTest(schema=name):
-                schema = json.loads((CORE / f'schemas/{name}.schema.json').read_text())
+                schema = read_schema(name)
                 self.assertIn('azureTenantId', schema['required'])
                 self.assertNotIn('entraTenantId', schema['required'])
                 self.assertNotIn('tenantId', schema['properties'])

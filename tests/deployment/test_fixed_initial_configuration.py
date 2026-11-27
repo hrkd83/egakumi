@@ -45,7 +45,7 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         self.options_file.parent.mkdir()
         self.parameters = json.loads((CORE / "params/test.example.json").read_text(encoding="utf-8"))
         self.parameters["gateway"]["authentication"].pop("credentialLogin")
-        self.options = json.loads((CORE / "config/test.json").read_text(encoding="utf-8"))
+        self.options = json.loads((CORE / "infra/config/test.json").read_text(encoding="utf-8"))
         self.parameters["configFile"] = "../shared-options/options.json"
         self.parameters["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
         self.parameters["azureTenantId"] = "22222222-2222-4222-8222-222222222222"

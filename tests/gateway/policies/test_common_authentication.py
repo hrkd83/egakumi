@@ -1,4 +1,5 @@
 """共通キー検証を実XMLのC#式で確認する。APIM標準の状態・範囲検証は実Azureで別途受入する。"""
+from tests.support.schema_helpers import read_schema
 from tests.support.policy_fixture_paths import policy_fixture_path
 import json
 from pathlib import Path
@@ -32,7 +33,7 @@ class CommonAuthenticationConfigurationTests(unittest.TestCase):
             raw["gateway"]["authentication"]["subscriptionKeyHeader"]=header
             raw["apiDefinitions"][0]["subscriptionKeyHeader"]=header.lower()
             with self.subTest(header=header):
-                actual=configuration.normalize_configuration(raw,base_directory=CORE/"config")
+                actual=configuration.normalize_configuration(raw,base_directory=CORE/"infra/config")
                 self.assertEqual(actual["apiDefinitions"][0]["subscriptionKeyHeader"],header)
                 self.assertEqual(common_authentication_settings(actual),{"core-subscription-key-header":header})
 
@@ -46,7 +47,7 @@ class CommonAuthenticationConfigurationTests(unittest.TestCase):
 
     def test_common_key_header_is_fixed_in_public_schemas_and_retained_in_internal_schema(self):
         for name in ("params","options","configuration"):
-            schema=json.loads((CORE/f"schemas/{name}.schema.json").read_text(encoding="utf-8"))
+            schema=read_schema(name)
             settings=schema["properties"]["gateway"]["properties"]["authentication"]
             with self.subTest(schema=name):
                 if name == "configuration":

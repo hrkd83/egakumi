@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from tests.support.arm_helpers import PolicyExpression, compiled_policy_value
 from tests.support.bicep_helpers import compile_bicep
 from tests.support.configuration_fixtures import CORE, api_fixture, configuration
-from tests.support.schema_helpers import local_schema_validator
+from tests.support.schema_helpers import local_schema_validator, read_schema
 from tests.support.powershell import PWSH
 from tests.gateway.publication.test_api_protocols import CSHARP, actual_expression
 
@@ -36,7 +36,7 @@ def rerank_fixture():
 
 class RerankConfigurationTests(unittest.TestCase):
     def normalize(self, raw):
-        return configuration.normalize_configuration(raw, base_directory=CORE / "config")
+        return configuration.normalize_configuration(raw, base_directory=CORE / "infra/config")
 
     def test_shipped_rerank_and_embedding_keep_distinct_semantic_contracts(self):
         source = json.loads((CORE / "apps/api-gateway/apis/cohere-inference-v1.json").read_text())
@@ -49,7 +49,7 @@ class RerankConfigurationTests(unittest.TestCase):
 
     def test_both_editor_schemas_accept_only_the_registered_kind(self):
         for name in ("configuration", "params"):
-            schema = json.loads((CORE / f"schemas/{name}.schema.json").read_text())
+            schema = read_schema(name)
             validator = local_schema_validator({"$ref": f"{name}.schema.json#/$defs/operationConstraint"})
             constraint = rerank_fixture()["apiDefinitions"][0]["authorization"]["operationConstraints"]["rerank"]
             with self.subTest(schema=name):
@@ -168,7 +168,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 class RerankPublicationTests(unittest.TestCase):
     def test_compiled_policy_preserves_semantic_limits_routing_and_audit_without_llm_counting(self):
         template = compile_bicep("apps/api-gateway/api-publication.bicep")
-        api = configuration.normalize_configuration(rerank_fixture(), base_directory=CORE / "config")["apiDefinitions"][0]
+        api = configuration.normalize_configuration(rerank_fixture(), base_directory=CORE / "infra/config")["apiDefinitions"][0]
         # The deployment stage resolves Foundry's owned endpoint before Bicep.
         api["backendUrl"] = "https://provider.example.com"
         parameters = {name: definition["defaultValue"] for name, definition in template["parameters"].items()

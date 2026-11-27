@@ -40,7 +40,7 @@ FIREWALL_INPUTS = {
 
 def public_documents(name="test"):
     """公開例だけを読み、実在する組織や秘密ファイルを使わない。"""
-    options = json.loads((CORE / f"config/{name}.json").read_text(encoding="utf-8"))
+    options = json.loads((CORE / f"infra/config/{name}.json").read_text(encoding="utf-8"))
     parameters = json.loads((CORE / f"params/{name}.example.json").read_text(encoding="utf-8"))
     bind_credential_fixture_id(parameters)
     parameters["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
@@ -242,7 +242,7 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         except ImportError:
             self.skipTest("jsonschema is available in the integration venv")
         schemas = {kind: json.loads((CORE / path).read_text()) for kind, path in (
-            ("params", "schemas/params.schema.json"), ("config", "schemas/options.schema.json"))}
+            ("params", "params/params.schema.json"), ("config", "infra/config/options.schema.json"))}
         options, parameters = custom_documents()
         for schema in schemas.values():
             jsonschema.Draft202012Validator.check_schema(schema)

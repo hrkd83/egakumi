@@ -12,7 +12,7 @@ from catalog import standard_apis
 
 
 def foundation_configuration():
-    return configuration.normalize_configuration(fixture(), base_directory=CORE / 'config')
+    return configuration.normalize_configuration(fixture(), base_directory=CORE / 'infra/config')
 
 
 class ApiFoundationProjectionTests(unittest.TestCase):
@@ -73,7 +73,7 @@ class ApiFoundationProjectionTests(unittest.TestCase):
             'mcpProxy': {'transport': 'sse', 'endpoints': [{'name': 'sse', 'uriTemplate': '/events'},
                                                        {'name': 'message', 'uriTemplate': '/messages/'}]},
         }]
-        normalized = configuration.normalize_configuration(raw, base_directory=CORE / 'config')
+        normalized = configuration.normalize_configuration(raw, base_directory=CORE / 'infra/config')
         built = configuration.build_bicep_configuration(normalized)
         projected, = built['infrastructureApiDefinitions']
         self.assertEqual(projected['mcpProxy'], raw['apiDefinitions'][0]['mcpProxy'])

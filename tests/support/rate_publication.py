@@ -9,7 +9,7 @@ from tests.support.configuration_fixtures import CORE, configuration
 
 def rate_publication_fixture():
     template = compile_bicep("apps/api-gateway/api-publication.bicep")
-    config = configuration.normalize_configuration(bound_external_coverage(), base_directory=CORE / "config")
+    config = configuration.normalize_configuration(bound_external_coverage(), base_directory=CORE / "infra/config")
     api_definitions = copy.deepcopy(config["apiDefinitions"])
     # Publication uses resolved Core URLs. Keep explicit external endpoints.
     for api in api_definitions:

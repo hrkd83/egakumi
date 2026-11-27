@@ -6,7 +6,7 @@ import unittest
 from tests.support.bicep_helpers import compile_bicep
 from tests.support.configuration_fixtures import configuration, fixture
 from deployment.helpers import fixed_nsg
-from tests.support.schema_helpers import local_schema_validator
+from tests.support.schema_helpers import local_schema_validator, read_schema
 from tests.network.test_parameter_ip_ownership import NetworkArmExpression
 from tests import REPOSITORY
 
@@ -38,7 +38,7 @@ class EvidenceConfigurationTests(unittest.TestCase):
             configuration.normalize_configuration(raw)
 
     def test_retention_validation_accepts_worm_period_without_widening_test_expiry(self):
-        schemas = [local_schema_validator(json.loads((ROOT / f"schemas/{name}.schema.json").read_text())
+        schemas = [local_schema_validator(read_schema(name)
                                           ["properties"]["auditEvidence"])
                    for name in ("configuration", "options")]
         for mode, accepted in (("Locked", True), ("Disabled", False)):

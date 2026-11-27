@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from tests.support.schema_helpers import local_schema_validator
+from tests.support.schema_helpers import local_schema_validator, read_schema, schema_path
 from tests.support.configuration_fixtures import bind_credential_fixture_id, fixture
 from tests import REPOSITORY
 
@@ -224,7 +224,7 @@ class SplitConfigurationTests(unittest.TestCase):
                 self.sources(**{owner: {"monitoring": {"auditAllowedIpAddresses": []}}})
 
     def test_complete_split_configuration_requires_environment_cidrs(self):
-        options = json.loads((CORE / "config/test.json").read_text())
+        options = json.loads((CORE / "infra/config/test.json").read_text())
         parameters = json.loads((CORE / "params/test.example.json").read_text())
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"): parameters[key] = "11111111-1111-4111-8111-111111111111"
         adopt_azure_dns_references(parameters)
@@ -249,7 +249,7 @@ class SplitConfigurationTests(unittest.TestCase):
         self.assertEqual(normalized["monitoring"]["auditAllowedIpAddresses"], [])
 
     def test_appgw_rule_inputs_are_rejected_in_split_files_even_with_fixed_values(self):
-        options = json.loads((CORE / "config/test.json").read_text())
+        options = json.loads((CORE / "infra/config/test.json").read_text())
         parameters = json.loads((CORE / "params/test.example.json").read_text())
         parameters.pop("configFile")
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"):
@@ -292,7 +292,7 @@ class SplitConfigurationTests(unittest.TestCase):
     def test_public_environment_cidrs_stay_in_params_and_fixed_ranges_are_absent(self):
         for name in ("test", "production"):
             parameters = json.loads((CORE / "params" / (name + ".example.json")).read_text())
-            options = json.loads((CORE / "config" / (name + ".json")).read_text())
+            options = json.loads((CORE / "infra/config" / (name + ".json")).read_text())
             with self.subTest(sample=name):
                 self.assertLessEqual(set(NETWORK_IP_KEYS), parameters["network"].keys())
                 self.assertNotIn("firewall", parameters["network"])
@@ -361,7 +361,11 @@ class SplitConfigurationTests(unittest.TestCase):
 
     def test_canonical_config_has_no_local_or_example_variants(self):
         # 実行時の派生設定と導入先入力は.local、config正本は2個だけです。
-        self.assertEqual({p.name for p in (CORE / "config").glob("*.json")}, {"test.json", "production.json"})
+        self.assertEqual(
+            {path.name for path in (CORE / "infra/config").glob("*.json")
+             if not path.name.endswith(".schema.json")},
+            {"test.json", "production.json"},
+        )
 
 
 class SplitSchemaTests(unittest.TestCase):
@@ -373,14 +377,14 @@ class SplitSchemaTests(unittest.TestCase):
         except ImportError:
             self.skipTest("jsonschema is available in the integration venv")
         for name in ("params", "options", "configuration"):
-            schema = json.loads((CORE / "schemas" / (name + ".schema.json")).read_text())
+            schema = read_schema(name)
             if name == "params":
                 document = json.loads((CORE / "params/test.example.json").read_text())
                 for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
                     document[key] = fixture()[key]
                 adopt_azure_dns_references(document)
             elif name == "options":
-                document = json.loads((CORE / "config/test.json").read_text())
+                document = json.loads((CORE / "infra/config/test.json").read_text())
             else:
                 document = fixture()
             validator = local_schema_validator(schema)
@@ -410,11 +414,19 @@ class SplitSchemaTests(unittest.TestCase):
 
     def test_schema_editor_defaults_match_the_files_that_use_them(self):
         # エディターが挿入するschema既定値も、JSON利用元から新配置へ解決します。
-        for filename, directory in (("params", "params"), ("options", "config")):
-            schema = json.loads((CORE / "schemas" / (filename + ".schema.json")).read_text())
-            reference = schema["properties"]["$schema"]["default"]
-            self.assertEqual((CORE / directory / reference).resolve(), CORE / "schemas" / (filename + ".schema.json"))
-        combined = json.loads((CORE / "schemas/configuration.schema.json").read_text())
+        for name, example_paths in (
+            ("params", ("params/test.example.json", "params/production.example.json")),
+            ("options", ("infra/config/test.json", "infra/config/production.json")),
+        ):
+            default = read_schema(name)["properties"]["$schema"]["default"]
+            for relative in example_paths:
+                document_path = CORE / relative
+                document = json.loads(document_path.read_text(encoding="utf-8"))
+                with self.subTest(document=relative):
+                    self.assertEqual(schema_path(name).parent, document_path.parent)
+                    for reference in (default, document["$schema"]):
+                        self.assertEqual((document_path.parent / reference).resolve(), schema_path(name))
+        combined = read_schema("configuration")
         # 合成出力先はCLIで変更できるため、不正確な固定相対パスを勧めません。
         self.assertNotIn("default", combined["properties"]["$schema"])
 
@@ -424,8 +436,8 @@ class SplitSchemaTests(unittest.TestCase):
             import jsonschema
         except ImportError:
             self.skipTest("jsonschema is available in the integration venv")
-        for filename in ("options.schema.json", "configuration.schema.json"):
-            schema = json.loads((CORE / "schemas" / filename).read_text())
+        for name in ("options", "configuration"):
+            schema = read_schema(name)
             service = schema["properties"]["services"]
             self.assertFalse(service.get("additionalProperties", True))
             validator = jsonschema.Draft202012Validator(service)
@@ -438,7 +450,7 @@ class SplitSchemaTests(unittest.TestCase):
             self.skipTest("jsonschema is available in the integration venv")
         for name in ("test", "production"):
             for kind in ("params", "config"):
-                path = CORE / (f"params/{name}.example.json" if kind == "params" else f"config/{name}.json")
+                path = CORE / (f"params/{name}.example.json" if kind == "params" else f"infra/config/{name}.json")
                 value = json.loads(path.read_text())
                 if kind == "params":
                     for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
@@ -452,14 +464,14 @@ class SplitSchemaTests(unittest.TestCase):
             for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
                 merged[key] = "11111111-1111-4111-8111-111111111111"
             adopt_azure_dns_references(merged)
-            schema = json.loads((CORE / "schemas/configuration.schema.json").read_text())
+            schema = json.loads((CORE / "infra/config/configuration.schema.json").read_text())
             with self.subTest(name=name, kind="merged"):
                 local_schema_validator(schema).validate(merged)
 
     def test_params_network_cidrs_are_required_and_firewall_inputs_are_removed(self):
         try: import jsonschema
         except ImportError: self.skipTest("jsonschema is available in the integration venv")
-        schema = json.loads((CORE / "schemas/params.schema.json").read_text())
+        schema = json.loads((CORE / "params/params.schema.json").read_text())
         sample = json.loads((CORE / "params/test.example.json").read_text())
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"): sample[key] = "11111111-1111-4111-8111-111111111111"
         adopt_azure_dns_references(sample)
@@ -480,7 +492,7 @@ class SplitSchemaTests(unittest.TestCase):
             import jsonschema
         except ImportError:
             self.skipTest("jsonschema is available in the integration venv")
-        schema = json.loads((CORE / "schemas/options.schema.json").read_text())
+        schema = json.loads((CORE / "infra/config/options.schema.json").read_text())
         validator = jsonschema.Draft202012Validator(schema)
         for path in PARAMETER_OWNED_PATHS:
             for empty in ([], {}, ""):
@@ -497,7 +509,7 @@ class SplitSchemaTests(unittest.TestCase):
             import jsonschema
         except ImportError:
             self.skipTest("jsonschema is available in the integration venv")
-        schema = json.loads((CORE / "schemas/params.schema.json").read_text())
+        schema = json.loads((CORE / "params/params.schema.json").read_text())
         sample = json.loads((CORE / "params/test.example.json").read_text())
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"):
             sample[key] = "11111111-1111-4111-8111-111111111111"
@@ -511,7 +523,7 @@ class SplitSchemaTests(unittest.TestCase):
     def test_options_schema_rejects_ip_fields_and_merged_schema_keeps_sku_conditions(self):
         try: import jsonschema
         except ImportError: self.skipTest("jsonschema is available in the integration venv")
-        options = json.loads((CORE / "schemas/options.schema.json").read_text())
+        options = json.loads((CORE / "infra/config/options.schema.json").read_text())
         for key in NETWORK_IP_KEYS:
             with self.subTest(network=key), self.assertRaises(jsonschema.ValidationError):
                 jsonschema.validate({"network": {key: []}}, options)
@@ -519,7 +531,7 @@ class SplitSchemaTests(unittest.TestCase):
             with self.subTest(firewall=key), self.assertRaises(jsonschema.ValidationError):
                 jsonschema.validate({"network": {"firewall": {key: []}}}, options)
         with self.assertRaises(jsonschema.ValidationError): jsonschema.validate({"monitoring": {"auditAllowedIpAddresses": []}}, options)
-        internal = json.loads((CORE / "schemas/configuration.schema.json").read_text())
+        internal = json.loads((CORE / "infra/config/configuration.schema.json").read_text())
         firewall = internal["properties"]["network"]["properties"]["firewall"]
         for key, nonempty in (("bypassTrafficSettings", [{}]), ("idpsPrivateRanges", ["10.0.0.0/8"]), ("signatureOverrides", [{}])):
             with self.subTest(key=key):
