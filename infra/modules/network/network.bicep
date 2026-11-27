@@ -120,10 +120,8 @@ var nsgDefinitions = [
     suffix: 'aca'
     rules: [
       allowRule('allow-firewall-https-ingress', nsgPriorities.groups.aca.rules['allow-firewall-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.firewall], [subnetPrefixes.aca], ['443', '31443'])
-      allowRule('allow-apim-https-ingress', nsgPriorities.groups.aca.rules['allow-apim-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.apim], [subnetPrefixes.aca], ['443', '31443'])
       allowRule('allow-azure-load-balancer-ingress', nsgPriorities.groups.aca.rules['allow-azure-load-balancer-ingress'].priority, 'Inbound', 'Tcp', ['AzureLoadBalancer'], [subnetPrefixes.aca], ['30000-32767'])
       allowRule('allow-aca-internal-ingress', nsgPriorities.groups.aca.rules['allow-aca-internal-ingress'].priority, 'Inbound', '*', [subnetPrefixes.aca], [subnetPrefixes.aca], ['*'])
-      allowRule('allow-arm-https-egress', nsgPriorities.groups.aca.rules['allow-arm-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureResourceManager'], ['443'])
       allowRule('allow-aca-internal-egress', nsgPriorities.groups.aca.rules['allow-aca-internal-egress'].priority, 'Outbound', '*', [subnetPrefixes.aca], [subnetPrefixes.aca], ['*'])
       allowRule('allow-entra-egress', nsgPriorities.groups.aca.rules['allow-entra-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureActiveDirectory'], ['443'])
       allowRule('allow-monitor-egress', nsgPriorities.groups.aca.rules['allow-monitor-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureMonitor'], ['443'])

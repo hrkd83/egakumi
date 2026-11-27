@@ -41,13 +41,11 @@ test("モデル変更時は現在の接続方式を維持し、非対応のmini�
   assert.equal(chooseRealtimeVariant(choices[0], "webrtc").id, entries[0].id);
 });
 
-test("初回・モデル・方式の変更で最大値を選び、実APIが変わればキー選択を更新する", () => {
+test("初回・モデル・方式の変更で最大出力値を選ぶ", () => {
   const previous = entries[1], next = { ...entries[2], maxOutputTokens: 192 };
-  const current = { input: { modelId: previous.id, maxOutputTokens: 400 }, apiKeyId: "chosen-key" };
-  assert.deepEqual(updateRealtimeModelSelection(current, previous, next), { input: { modelId: next.id, maxOutputTokens: 192 }, apiKeyId: "" });
-  assert.equal(updateRealtimeModelSelection(current, previous, entries[0]).apiKeyId, "chosen-key");
+  const current = { input: { modelId: previous.id, maxOutputTokens: 400 } };
+  assert.deepEqual(updateRealtimeModelSelection(current, previous, next), { input: { modelId: next.id, maxOutputTokens: 192 } });
   assert.equal(updateRealtimeModelSelection({ ...current, input: { ...current.input, maxOutputTokens: Number.NaN } }, previous, next).input.maxOutputTokens, 192);
-  assert.equal(updateRealtimeModelSelection(current, undefined, next).apiKeyId, "");
   const larger = { ...next, maxOutputTokens: 16_384 };
   assert.equal(updateRealtimeModelSelection({ ...current, input: { ...current.input, maxOutputTokens: 8_192 } }, previous, larger).input.maxOutputTokens, 16_384);
   assert.equal(updateRealtimeModelSelection({ ...current, input: { ...current.input, maxOutputTokens: 1 } }, previous, larger).input.maxOutputTokens, 16_384);
@@ -56,7 +54,7 @@ test("初回・モデル・方式の変更で最大値を選び、実APIが変�
 });
 
 test("Voice Liveは初回からモデル最大を選び、数値指定へ戻しても別方式では再びモデル最大にする", () => {
-  const current = { input: { modelId: entries[5].id, maxOutputTokens: "model-max" as const }, apiKeyId: "key" };
+  const current = { input: { modelId: entries[5].id, maxOutputTokens: "model-max" as const } };
   assert.equal(defaultRealtimeInput(entries[5]).maxOutputTokens, "model-max");
   assert.equal(defaultRealtimeInput(entries[6]).maxOutputTokens, "model-max");
   assert.match(getRealtimeRequestExample(entries[5], defaultRealtimeInput(entries[5])), /"max_response_output_tokens": "inf"/);
@@ -69,11 +67,11 @@ test("Voice Liveは初回からモデル最大を選び、数値指定へ戻し�
 test("同じモデル・方式で利用者が入力した数値は保持し、Live・文字起こしに出力設定を追加しない", () => {
   for (const selected of [entries[0], entries[1], entries[5], entries[6]]) {
     const input = { modelId: selected.id, maxOutputTokens: 1 };
-    assert.equal(updateRealtimeModelSelection({ input, apiKeyId: "key" }, selected, selected).input, input);
+    assert.equal(updateRealtimeModelSelection({ input }, selected, selected).input, input);
   }
   for (const selected of [entries[3], entries[4], entries[7]]) {
     assert.deepEqual(defaultRealtimeInput(selected), { modelId: selected.id });
-    assert.deepEqual(updateRealtimeModelSelection({ input: { modelId: entries[1].id, maxOutputTokens: 1 }, apiKeyId: "key" }, entries[1], selected).input, { modelId: selected.id });
+    assert.deepEqual(updateRealtimeModelSelection({ input: { modelId: entries[1].id, maxOutputTokens: 1 } }, entries[1], selected).input, { modelId: selected.id });
   }
 });
 

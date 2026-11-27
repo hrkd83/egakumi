@@ -135,8 +135,11 @@ class EntraCoreAppsTests(unittest.TestCase):
         self.assertIn('apiAuthentication', role['properties']['principalId'])
         app = compile_bicep('apps/portal/deploy/application.bicep')
         self.assertIn('PORTAL_API_AUTH_KEY_CLIENT_ID', str(app['variables']['apiAuthenticationVariables']))
-        other = compile_bicep('apps/portal/deploy/group-reconciliation-job.bicep')
-        self.assertNotIn('PORTAL_API_AUTH_KEY_URL', json.dumps(other))
+        schema = compile_bicep('apps/portal/deploy/schema-job.bicep')
+        job, = [resource for resource in schema['resources'] if resource['type'] == 'Microsoft.App/jobs']
+        self.assertEqual(job['identity']['userAssignedIdentities'], {
+            "[format('{0}', parameters('schemaIdentity').id)]": {},
+        })
 
 
 if __name__ == '__main__':

@@ -189,7 +189,6 @@ class ApiPublicationSizeTests(unittest.TestCase):
                     operation["backendOverride"].setdefault("backendUrl", "https://aif-test-fixture.services.ai.azure.com")
         cls.parameters = {
             "apiDefinitions": definitions,
-            "rateLimits": config["gateway"]["rateLimits"],
             "names": {"apim": "apim-test-fixture"},
             "publishApis": True,
             "l7IngressSecretIdentifier": "https://kv-test-fixture.vault.azure.net/secrets/core-l7-ingress-secret",
@@ -317,7 +316,10 @@ class ApiPublicationSizeTests(unittest.TestCase):
         protected = [product for product in products if product not in dedicated]
         self.assertTrue(protected)
         self.assertTrue(all(product["properties"]["subscriptionRequired"] is True
-                            and product["properties"]["approvalRequired"] is True for product in protected))
+                            and product["properties"]["approvalRequired"] is True
+                            and product["properties"]["state"] == "notPublished" for product in protected))
+        self.assertFalse(any(resource["type"] == "Microsoft.ApiManagement/service/subscriptions"
+                             for resource in expanded["resources"]))
         self.assertTrue(all(resource["properties"]["subscriptionRequired"] is True for resource in expanded["resources"]
                             if resource["type"] == "Microsoft.ApiManagement/service/apis"))
         policy = next(resource for resource in expanded["resources"]
@@ -661,19 +663,6 @@ class ApiPublicationSizeTests(unittest.TestCase):
                       if '!(bool)JObject.Parse((string)context.Variables["gatewayConnectionSelection"])["allowed"]'
                       in node.get("condition", ""))
         self.assertIsNotNone(denied.find("return-response"))
-
-    def test_subscription_overrides_still_fit(self):
-        parameters = copy.deepcopy(self.parameters)
-        parameters["rateLimits"]["subscriptionKey"]["overrides"] = [
-            {"callerId": "subscription-fixture-" + str(index), "calls": 30, "renewalPeriodSeconds": 60}
-            for index in range(16)]
-        for credential_enabled, entra_enabled in ((False, False), (True, True)):
-            with self.subTest(credential_enabled=credential_enabled, entra_enabled=entra_enabled):
-                case = copy.deepcopy(parameters)
-                case["entraAuthentication"] = {"enabled": entra_enabled}
-                if credential_enabled:
-                    case["credentialLogin"] = copy.deepcopy(self.credential_login)
-                self.assert_split_budgets(case)
 
     def test_additional_api_contract_preserves_source_and_resource_definitions_with_headroom(self):
         parameters = copy.deepcopy(self.parameters)

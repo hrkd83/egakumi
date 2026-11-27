@@ -23,11 +23,9 @@ export function getTextPanelView(state: TextPanelGeneration, input: TextGenerati
   };
 }
 
-/** 提供元のパネルに実行状態とキーIDを閉じ、別の提供元の結果を表示しません。 */
+/** 提供元のパネルに実行状態を閉じ、別の提供元の結果を表示しません。 */
 export function createTextPanelStore() {
   return createStore<TextPanelGeneration & {
-    modelApiKeyId: string;
-    setModelApiKeyId(id: string): void;
     reconcileInput(input: TextGenerationInput): void;
     beginGeneration(input: TextGenerationInput): void;
     updateGeneration(result: TextGenerationResult): void;
@@ -36,8 +34,7 @@ export function createTextPanelStore() {
     cancelGeneration(): void;
     resetGeneration(): void;
   }>((set) => ({
-    modelApiKeyId: "", generationInput: null, generationStatus: "idle", generationResult: null, generationFailure: null, generationCancelled: false,
-    setModelApiKeyId: (modelApiKeyId) => set({ modelApiKeyId, generationResult: null, generationFailure: null, generationStatus: "idle", generationCancelled: false }),
+    generationInput: null, generationStatus: "idle", generationResult: null, generationFailure: null, generationCancelled: false,
     reconcileInput: (input) => set((state) => sameInput(state.generationInput, input) ? state : {
       generationInput: { ...input }, generationStatus: "idle", generationResult: null, generationFailure: null, generationCancelled: false,
     }),

@@ -1,11 +1,10 @@
 "use client";
 
-import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+import { TryAuthenticationControl, useTryAuthentication } from "@/components/try-authentication";
 
 import { useFieldIds } from "@/lib/use-field-ids";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { Check, Copy, LoaderCircle, Play, Plus, Square, Trash2 } from "lucide-react";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
@@ -23,16 +22,14 @@ import { readEmbeddingResponse } from "@/lib/embedding-response";
 import { getEmbeddingDictionary } from "@/lib/i18n/embedding";
 import { INTEGRATION_LANGUAGES, type IntegrationLanguage } from "@/lib/model-integration";
 import { ModelResponseError } from "@/lib/model-response";
-import { loadModelKeyChoices, type ModelKeyChoice } from "@/lib/model-key-choices";
 import type { TextGenerationFailure } from "@/lib/model-request";
 import type { EmbeddingModel } from "@/lib/model-types";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { Locale } from "@/lib/i18n/config";
 
-/** 埋め込みパネルの表示状態です。購読キーの実値は保持しません。 */
+/** 埋め込みパネルの表示状態です。試用資格情報はサーバーで扱います。 */
 type PanelState = {
   input: EmbeddingInput;
-  apiKeyId: string;
   language: IntegrationLanguage | "json";
   tab: "request" | "schema" | "response";
   loading: boolean;
@@ -55,21 +52,17 @@ function EmbeddingCode({ code, title, dictionary }: { code: string; title: strin
 
 const languageNames: Record<IntegrationLanguage, string> = { typescript: "TypeScript", python: "Python", php: "PHP", csharp: "C#", curl: "cURL" };
 
-/** 編集した複数テキストを、本人が選んだ購読キーで比較する埋め込みガイドです。 */
+/** 編集した複数テキストを、本人のBearerで比較する埋め込みガイドです。 */
 export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { models: EmbeddingModel[]; dictionary: Dictionary; locale: Locale; gatewayOrigin: string | null }) {
   const fieldId = useFieldIds();
   const { scope, initialModel, rememberModel } = useModelSelection("embeddings", models);
   const savedSettings = usePortalStore((state) => state.modelSettings.embeddings[scope]), rememberSettings = usePortalStore((state) => state.setModelSettings);
   const draft = usePortalStore((state) => state.modelDrafts.embeddingTexts), updateDrafts = usePortalStore((state) => state.updateModelDrafts);
-  const [store] = useState(() => createStore<PanelState>(() => ({ input: { ...restoreModelSettings("embeddings", initialModel ? defaultEmbeddingInput(initialModel) : { modelId: "", dimensions: null, inputType: null, texts: [EMBEDDING_SAMPLE_TEXTS[0]] }, savedSettings, (input) => { if (initialModel) buildEmbeddingRequest(initialModel, input); }), ...(draft !== null ? { texts: [...draft] } : {}) }, apiKeyId: "", language: "json", tab: "request", loading: false, result: null, failure: null, cancelled: false })));
+  const [store] = useState(() => createStore<PanelState>(() => ({ input: { ...restoreModelSettings("embeddings", initialModel ? defaultEmbeddingInput(initialModel) : { modelId: "", dimensions: null, inputType: null, texts: [EMBEDDING_SAMPLE_TEXTS[0]] }, savedSettings, (input) => { if (initialModel) buildEmbeddingRequest(initialModel, input); }), ...(draft !== null ? { texts: [...draft] } : {}) }, language: "json", tab: "request", loading: false, result: null, failure: null, cancelled: false })));
   const state = useStore(store);
-  const [choices, setChoices] = useState<{ apiId: string; status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] }>({ apiId: "", status: "loading", keys: [] });
-  const [refresh, setRefresh] = useState(0);
   const requestRef = useRef<AbortController | null>(null);
   const model = models.find((item) => item.id === state.input.modelId) ?? models[0];
-  const apiId = model?.apiId ?? "";
-  const selectedKey = choices.apiId === apiId && choices.status === "ready" ? choices.keys.find((item) => item.id === state.apiKeyId) : undefined;
-  const authentication = useTryAuthentication(selectedKey?.id);
+  const authentication = useTryAuthentication();
   const text = dictionary.modelGateway;
   const guide = text.integration;
   const embedding = getEmbeddingDictionary(locale);
@@ -79,18 +72,11 @@ export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { 
   try { if (model && parsed.success) payload = buildEmbeddingRequest(model, parsed.data); } catch { /* 不正なオプションは実行せず、同じ検証結果を画面で案内します。 */ }
 
   useEffect(() => () => deactivatePanelRequest(requestRef, (pending) => store.setState({ loading: false, ...(pending ? { cancelled: true } : {}) })), [store]);
-  useEffect(() => {
-    if (!apiId) return;
-    const controller = new AbortController();
-    void loadModelKeyChoices(apiId, controller.signal).then((keys) => { if (!controller.signal.aborted) setChoices({ apiId, status: "ready", keys }); }).catch(() => { if (!controller.signal.aborted) setChoices({ apiId, status: "error", keys: [] }); });
-    return () => controller.abort();
-  }, [apiId, refresh]);
 
   /** オプションの選択とリクエスト例を同じ状態から更新します。 */
   function updateInput(patch: Partial<EmbeddingInput>) { if (patch.texts !== undefined) updateDrafts({ embeddingTexts: patch.texts }); const input = { ...store.getState().input, ...patch }; rememberSettings("embeddings", scope, input); store.setState({ input, result: null, failure: null, cancelled: false }); }
 
   /** キー候補を取得し直し、古いグループ所属や削除されたキーで実行しないようにします。 */
-  function refreshKeys() { setChoices({ apiId, status: "loading", keys: [] }); setRefresh((value) => value + 1); }
 
   /** 編集内容と設定を送り、キーの実値はBFFで解決します。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
@@ -122,16 +108,8 @@ export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { 
     </>}
     settings={
       <form onSubmit={execute} className="space-y-5">
-        <TryAuthenticationPicker model={authentication} locale={locale} disabled={state.loading} />
+        <TryAuthenticationControl model={authentication} locale={locale} disabled={state.loading} />
 
-      <div className="space-y-2 rounded-lg border border-border bg-white p-3" hidden={authentication.selection.mode === "bearer"}>
-        <div className="flex items-center justify-between gap-3"><label htmlFor={fieldId("embedding-api-key")} className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || choices.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button></div>
-        <Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.apiId !== apiId || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => store.setState({ apiKeyId })}><SelectTrigger id={fieldId("embedding-api-key")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block truncate">{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
-        <p className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
-        {(choices.apiId !== apiId || choices.status === "loading") && <p role="status" className="text-sm text-muted-foreground">{guide.loadingKeys}</p>}
-        {choices.apiId === apiId && choices.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
-        {choices.apiId === apiId && choices.status === "ready" && !choices.keys.length && <p role="status" className="text-sm leading-6 text-muted-foreground">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="text-primary underline underline-offset-4">{guide.manageKeys}</Link></p>}
-      </div>
       <div className="grid items-start gap-4 sm:grid-cols-2">
         <div className="space-y-2"><label htmlFor={fieldId("embedding-dimensions")} className="block text-sm font-medium">{embedding.dimensions}</label><Select value={state.input.dimensions === null ? "default" : String(state.input.dimensions)} disabled={state.loading} onValueChange={(value) => updateInput({ dimensions: value === "default" ? null : Number(value) })}><SelectTrigger id={fieldId("embedding-dimensions")} aria-describedby={fieldId("embedding-dimensions-help")} className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="default">{embedding.defaultDimensions} ({number.format(getEmbeddingDefaultDimensions(model))})</SelectItem>{getEmbeddingDimensionChoices(model).map((value) => <SelectItem key={value} value={String(value)}>{number.format(value)}</SelectItem>)}</SelectContent></Select></div>
         {model.providerId === "cohere" && <div className="space-y-2"><label htmlFor={fieldId("embedding-input-type")} className="block text-sm font-medium">{embedding.inputType}</label><Select value={state.input.inputType ?? ""} disabled={state.loading} onValueChange={(inputType) => updateInput({ inputType })}><SelectTrigger id={fieldId("embedding-input-type")} className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{model.inputTypes.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>}

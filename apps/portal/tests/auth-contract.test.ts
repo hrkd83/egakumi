@@ -78,21 +78,21 @@ test("ログイン後に外部URLやAPIパスへ転送しない", () => {
     assert.equal(safeReturnTo(path, "ja"), "/ja/models");
   assert.equal(safeReturnTo("/ja/tools", "ja"), "/ja/tools");
   for (const locale of ["ja", "en"] as const) {
-    const callbackURL = `/${locale}/company-administration`;
+    const callbackURL = `/${locale}/tools`;
     assert.equal(safeReturnTo(callbackURL, locale), callbackURL);
     assert.ok(parsePortalSignIn({ provider: "microsoft", callbackURL,
       errorCallbackURL: `/${locale}/login?error=authentication_failed&next=${encodeURIComponent(callbackURL)}` }));
   }
 });
 
-test("APIの詳細ガイドとシステム管理画面へ認証後も同じ言語で復帰する", () => {
+test("APIの詳細ガイドへ認証後も同じ言語で復帰する", () => {
   for (const locale of ["ja", "en"] as const) {
     for (const suffix of [
       "models/text/openai", "models/embeddings/cohere", "models/image/black-forest-labs",
       "models/speech/azure-ai-speech", "models/realtime/openai", "models/rerank/cohere",
       "models/decision/microsoft", "tools/identity/graph-profile", "tools/privacy/pii-redact",
       "tools/document/document-analysis", "agents/assistant/knowledge-agent",
-      "agents/research/research-agent", "agents/workflow/workflow-agent", "subscription-sync",
+      "agents/research/research-agent", "agents/workflow/workflow-agent",
     ]) {
       const callbackURL = `/${locale}/${suffix}`;
       assert.equal(safeReturnTo(callbackURL, locale), callbackURL);

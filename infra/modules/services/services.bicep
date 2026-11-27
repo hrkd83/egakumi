@@ -167,6 +167,7 @@ resource apim 'Microsoft.ApiManagement/service@2024-05-01' = {
     virtualNetworkType: 'Internal'
     virtualNetworkConfiguration: { subnetResourceId: apimSubnetId }
     publicNetworkAccess: 'Enabled'
+    developerPortalStatus: 'Disabled'
     // 他用途の既存domainはowned GETから保持し、旧gRPC専用domainは後処理で照合して撤去します。
     // https://learn.microsoft.com/azure/azure-resource-manager/templates/deployment-modes#incremental-mode
     hostnameConfigurations: existingApimHostnameConfigurations[?names.apim] ?? []

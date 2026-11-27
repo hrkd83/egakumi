@@ -1101,7 +1101,7 @@ def read_fresh_publication(plan, transport):
         if _read(transport, resource_id, snapshot, missing=True) is not None:
             raise ValueError("A selected API already exists; a protected source is required before activation")
     inventories = {}
-    for kind in ("apis", "policyFragments", "backends", "products", "namedValues", "subscriptions", "loggers", "diagnostics"):
+    for kind in ("apis", "policyFragments", "backends", "products", "namedValues", "loggers", "diagnostics"):
         inventories[kind] = _read(transport, apim + "/" + kind, snapshot, collection=True)["value"]
         prefix, seen = apim + "/" + kind + "/", set()
         for item in inventories[kind]:
@@ -1124,11 +1124,10 @@ def read_fresh_publication(plan, transport):
             raise ValueError("Existing shared backends require their protected source before initial activation")
         _read(transport, allowed_backend, snapshot)
     product_names = {api["productId"] for api in definitions} | {ENTRA_OPEN_PRODUCT_ID, "released-apis"}
-    subscription_names = {entry["subscriptionId"] for api in definitions for entry in api.get("keySubscriptions", [])}
     named_names = {api["name"] + suffix for api in definitions for suffix in ("-backend-audience", "-backend-secret")}
     if plan["parameters"].get("auditRelay", {}).get("value"):
         named_names.update({"core-audit-relay-audience", "core-audit-relay-url"})
-    for kind, names in (("products", product_names), ("subscriptions", subscription_names),
+    for kind, names in (("products", product_names),
                         ("namedValues", named_names), ("loggers", {"azuremonitor"}), ("diagnostics", {"azuremonitor"})):
         names = {name.casefold() for name in names}
         for item in inventories[kind]:
@@ -1326,14 +1325,13 @@ def complete_named_value_expectations(manifest, plan, transport):
             expected[resource_id] = properties
     vault = "https://" + plan["parameters"]["names"]["value"]["keyVault"] + ".vault.azure.net/secrets/"
     secret_names = {"core-l7-ingress-secret": "core-l7-ingress-secret", "core-realtime-ticket-key": "core-realtime-ticket-key",
-                    "core-credential-broker-secret": "core-credential-broker-key", "core-subscription-profile-secret": "core-subscription-profile-key"}
+                    "core-credential-broker-secret": "core-credential-broker-key"}
     for name in sorted(references):
         _identifier(name)
         resource_id = apim_id + "/namedValues/" + name
         if resource_id in expected:
             continue
-        if name not in {*secret_names, "core-subscription-key-header", "core-l7-ingress-enabled", "core-subscription-profile-enabled",
-                        "core-subscription-profile-url", "core-credential-broker-url"}:
+        if name not in {*secret_names, "core-subscription-key-header", "core-l7-ingress-enabled", "core-credential-broker-url"}:
             raise ValueError("A NamedValue reference has no generated or approved Core connection expectation")
         body = _read(transport, resource_id, {})
         properties = body.get("properties", {})
@@ -1348,17 +1346,10 @@ def complete_named_value_expectations(manifest, plan, transport):
             if properties.get("secret") is not True:
                 raise ValueError("Core connection secrets must remain secret NamedValues")
             kv = properties.get("keyVault")
-            if name == "core-subscription-profile-secret" and not kv:
-                # The initial disabled profile connection has a secret placeholder.
-                enabled = _read(transport, apim_id + "/namedValues/core-subscription-profile-enabled", {})
-                if enabled.get("properties", {}).get("value") != "false":
-                    raise ValueError("Active profile connections must use their provisioned Key Vault reference")
-                expected[resource_id] = {"displayName": name, "secret": True}
-            else:
-                if (not isinstance(kv, dict) or kv.get("secretIdentifier") != vault + secret_names[name]
-                        or kv.get("identityClientId") is not None or kv.get("lastStatus", {}).get("code", "").lower() != "success"):
-                    raise ValueError("Core connection Key Vault references must match the provisioned system identity")
-                expected[resource_id] = {"displayName": name, "secret": True, "keyVault": {"secretIdentifier": vault + secret_names[name]}}
+            if (not isinstance(kv, dict) or kv.get("secretIdentifier") != vault + secret_names[name]
+                    or kv.get("identityClientId") is not None or kv.get("lastStatus", {}).get("code", "").lower() != "success"):
+                raise ValueError("Core connection Key Vault references must match the provisioned system identity")
+            expected[resource_id] = {"displayName": name, "secret": True, "keyVault": {"secretIdentifier": vault + secret_names[name]}}
         else:
             value = properties.get("value")
             if properties.get("secret") is not False or properties.get("keyVault") or not isinstance(value, str):
@@ -1369,42 +1360,25 @@ def complete_named_value_expectations(manifest, plan, transport):
             elif name == "core-l7-ingress-enabled":
                 if value != ("true" if l7_enabled else "false"):
                     raise ValueError("L7 ingress activation differs from the prepared foundation")
-            elif name == "core-subscription-profile-enabled":
-                if value not in ("true", "false"):
-                    raise ValueError("Profile connection activation must be a boolean string")
             else:
                 parsed = urlsplit(value)
                 if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment or parsed.query:
                     raise ValueError("Core connection endpoints must be fixed credential-free HTTPS URLs")
-                if name == "core-subscription-profile-url" and parsed.hostname == "profile.invalid":
-                    enabled = _read(transport, apim_id + "/namedValues/core-subscription-profile-enabled", {})
-                    if enabled.get("properties", {}).get("value") != "false":
-                        raise ValueError("Active profiles must use their configured private connection")
-                else:
-                    profile = name == "core-subscription-profile-url"
-                    app_name = "ca-" + plan["resourceStem"] + ("-sub-profile" if profile else "-credentials")
-                    expected_path = "/api/internal/subscription-profile" if name == "core-subscription-profile-url" else ""
-                    app_id = apim_id.split("/providers/", 1)[0] + "/providers/Microsoft.App/containerApps/" + app_name
-                    application = require_success(transport.request("GET", app_id + "?api-version=2025-01-01"),
-                                                  "Read owned Core connection application")
-                    if not isinstance(application, dict) or str(application.get("id", "")).lower() != app_id.lower():
-                        raise ValueError("Core connection application must belong to the selected service group")
-                    properties = application.get("properties", {})
-                    ingress = properties.get("configuration", {}).get("ingress", {})
-                    environment_id = app_id.split("/containerApps/", 1)[0] + "/managedEnvironments/cae-" + plan["resourceStem"]
-                    if profile:
-                        if (str(properties.get("managedEnvironmentId", "")).casefold() != environment_id.casefold()
-                                or ingress.get("external") is not True or ingress.get("allowInsecure", False) is not False):
-                            raise ValueError("The subscription profile application must use the selected private environment and HTTPS ingress")
-                    else:
-                        ingress = broker_https_ingress(properties, environment_id + "-broker")
-                        if not ingress:
-                            raise ValueError("The Credential Broker must use its dedicated private environment and HTTPS ingress")
-                    fqdn = ingress.get("fqdn")
-                    if (not isinstance(fqdn, str) or not re.fullmatch(r"[a-z0-9.-]+\.azurecontainerapps\.io", fqdn)
-                            or not fqdn.startswith(app_name + ".") or parsed.hostname != fqdn
-                            or parsed.path != expected_path or parsed.port not in (None, 443)):
-                        raise ValueError("Core connection endpoints must belong to the owned private application and fixed path")
+                app_name = "ca-" + plan["resourceStem"] + "-credentials"
+                app_id = apim_id.split("/providers/", 1)[0] + "/providers/Microsoft.App/containerApps/" + app_name
+                application = require_success(transport.request("GET", app_id + "?api-version=2025-01-01"),
+                                              "Read owned Credential Broker application")
+                if not isinstance(application, dict) or str(application.get("id", "")).lower() != app_id.lower():
+                    raise ValueError("The Credential Broker must belong to the selected service group")
+                environment_id = app_id.split("/containerApps/", 1)[0] + "/managedEnvironments/cae-" + plan["resourceStem"] + "-broker"
+                ingress = broker_https_ingress(application.get("properties", {}), environment_id)
+                if not ingress:
+                    raise ValueError("The Credential Broker must use its dedicated private environment and HTTPS ingress")
+                fqdn = ingress.get("fqdn")
+                if (not isinstance(fqdn, str) or not re.fullmatch(r"[a-z0-9.-]+\.azurecontainerapps\.io", fqdn)
+                        or not fqdn.startswith(app_name + ".") or parsed.hostname != fqdn
+                        or parsed.path or parsed.port not in (None, 443)):
+                    raise ValueError("Core connection endpoints must belong to the owned private application and fixed path")
             expected[resource_id] = {"displayName": name, "secret": False, "value": value}
     expected_backends = copy.deepcopy(manifest.backends)
     for name in sorted(backend_references):
@@ -1542,7 +1516,7 @@ def _membership_readset(snapshot, apim_id, api_id, manifest):
             elif resource_id.startswith(apim_id + "/"):
                 shared_kind = resource_id[len(apim_id) + 1:].split("/", 1)[0]
                 if (shared_kind not in ("policies", "apis", "policyFragments", "namedValues", "backends",
-                                        "products", "subscriptions", "loggers", "diagnostics")
+                                        "products", "loggers", "diagnostics")
                         or shared_kind == "apis" and resource_id != apim_id + "/apis"):
                     return snapshot
             elif ("/providers/microsoft.apimanagement/" in resource_id.casefold()
@@ -1775,7 +1749,7 @@ def read_reconciliation_inventory(plan, template, transport, *, known_manifest=N
     snapshot.update(open_snapshot)
     _read(transport, apim + "/policies/policy", snapshot, raw=True)
     shared = {}
-    for kind in ("policyFragments", "backends", "namedValues", "subscriptions"):
+    for kind in ("policyFragments", "backends", "namedValues"):
         rows = _read(transport, apim + "/" + kind, snapshot, collection=True)["value"]
         prefix = apim + "/" + kind + "/"
         canonical = {rid.casefold(): rid for rid in snapshot}
@@ -1800,26 +1774,6 @@ def read_reconciliation_inventory(plan, template, transport, *, known_manifest=N
                 kv = properties["keyVault"]
                 if kv.get("identityClientId") is not None or kv.get("lastStatus", {}).get("code", "").lower() != "success":
                     raise ValueError("Reconciled secret references must resolve through APIM system identity")
-    subscription_contracts = {}
-    for api in definitions:
-        for entry in api.get("keySubscriptions", []):
-            rid = apim + "/subscriptions/" + _identifier(entry["subscriptionId"])
-            expected = {"scope": apim + "/products/" + _identifier(api["productId"]),
-                        "state": "active" if entry["enabled"] else "suspended"}
-            if rid in subscription_contracts and subscription_contracts[rid] != expected:
-                raise ValueError("Declared subscriptions must have one consistent scope/state")
-            subscription_contracts[rid] = expected
-    for rid, expected in subscription_contracts.items():
-        requested = shared["subscriptions"].get(rid.casefold(), rid)
-        body = _read(transport, requested, snapshot, missing=True)
-        if body is None:
-            if rid.casefold() in shared["subscriptions"]:
-                raise ValueError("Subscription absence disagrees with the complete live inventory")
-            continue
-        props = body.get("properties", {})
-        if (not isinstance(props.get("scope"), str) or props["scope"].casefold() != expected["scope"].casefold()
-                or props.get("state") != expected["state"]):
-            raise ValueError("Reconciliation must preserve existing subscription scope/state; reconcile declared keys separately")
     for rid, (kind, path, required, header, operations, allowed_products) in contracts.items():
         body = _read(transport, rid, snapshot, missing=True)
         if body is None:

@@ -14,7 +14,7 @@ class OperationBackendPublicationTests(unittest.TestCase):
                 "path": "models/speech/v1", "productId": "models", "subscriptionKeyHeader": "Ocp-Apim-Subscription-Key",
                 "backendService": "external", "backendUrl": "https://tts.example.com",
                 "backendAudience": "https://cognitiveservices.azure.com", "backendAuthentication": {"mode": "speechEntra", "resourceId": "tts-resource"},
-                "backendHeaders": {"X-Upstream": "tts"}, "keySubscriptions": [],
+                "backendHeaders": {"X-Upstream": "tts"},
                 "authorization": {"mode": "subscriptionKey",
                                   "operationConstraints": {name: {"kind": "registeredOperation", "maxRequestBytes": 1024} for name in ("tts", "stt")}},
                 "operations": [{"name": "tts", "displayName": "TTS", "method": "POST", "urlTemplate": "/synthesize", "templateParameters": []},

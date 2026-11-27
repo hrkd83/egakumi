@@ -51,17 +51,16 @@ export function getAuthEnvironment(): AuthEnvironment {
     baseURL: process.env.BETTER_AUTH_URL,
     secret: process.env.BETTER_AUTH_SECRET,
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID,
-    microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET,
     microsoftTenantId: process.env.MICROSOFT_TENANT_ID,
   }, "Portal authentication");
-  if ((!certificate && !settings.microsoftClientSecret) || (certificate && settings.microsoftClientSecret)) {
-    throw new Error("Portal authentication requires exactly one client credential method");
-  }
   const url = new URL(settings.baseURL);
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (url.username || url.password || url.search || url.hash || url.pathname !== "/"
       || (url.protocol !== "https:" && !(url.protocol === "http:" && local && process.env.NODE_ENV !== "production"))) {
     throw new Error("BETTER_AUTH_URL must be an HTTPS origin, or a local HTTP origin during development");
+  }
+  if (!certificate || process.env.MICROSOFT_CLIENT_SECRET) {
+    throw new Error("Portal authentication requires a certificate");
   }
   return { ...settings, certificate, baseURL: url.origin };
 }

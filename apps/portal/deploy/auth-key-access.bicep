@@ -3,7 +3,6 @@ targetScope = 'resourceGroup'
 param vaultName string
 param keyName string
 param authIdentity object
-param managementIdentity object = {}
 resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: vaultName }
 resource key 'Microsoft.KeyVault/vaults/keys@2023-07-01' existing = { parent: vault, name: keyName }
 resource signerRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
@@ -20,10 +19,4 @@ resource signerAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(key.id, authIdentity.principalId, signerRole.id)
   scope: key
   properties: { roleDefinitionId: signerRole.id, principalId: authIdentity.principalId, principalType: 'ServicePrincipal' }
-}
-
-resource managementSignerAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(managementIdentity)) {
-  name: guid(key.id, managementIdentity.principalId, signerRole.id)
-  scope: key
-  properties: { roleDefinitionId: signerRole.id, principalId: managementIdentity.principalId, principalType: 'ServicePrincipal' }
 }

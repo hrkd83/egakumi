@@ -69,8 +69,6 @@ class AuditPublicationTests(unittest.TestCase):
     raw=policy_fixture_path(directory,filename).read_text(encoding='utf-8')
     self.assertIn(source_marker,raw)
     expected_xml=render_audit_policy(raw,source_comments=comment_mode)
-    if filename=='core-rate-limit.xml':
-     expected_xml=expected_xml.replace('__RATE_LIMITS_BASE64__',base64.b64encode(json.dumps(self.parameters['rateLimits'],separators=(',',':')).encode()).decode())
     expected=ET.fromstring(expected_xml)
     value=self.template['resources'][resource_name]['properties']['value']
     actual=self.evaluate(value) if value.startswith('[') else value
@@ -99,23 +97,16 @@ class AuditPublicationTests(unittest.TestCase):
      self.assertIn(structure(node),source_messages)
      self.assertIn('"authenticatedSubject"',node.find('message').text)
      self.assertIn('"requestContext"',node.find('message').text)
- def test_subscription_profile_inline_matches_python_renderer_in_every_compiled_api_and_source(self):
-  def structure(node):
-   return (node.tag,tuple(sorted(node.attrib.items())),(node.text or '').strip(),
-           tuple(structure(child) for child in node))
-  raw=policy_fixture_path(CORE/'apps/api-gateway/policies','subscription-profile.xml').read_text(encoding='utf-8')
-  self.assertIn('__SUBSCRIPTION_PROFILE_CSHARP__',raw)
-  expected=[structure(node) for node in ET.fromstring(render_audit_policy(raw))]
+ def test_compiled_api_and_protected_source_apply_user_limits_after_authentication(self):
   def check(value):
-   self.assertNotIn('__SUBSCRIPTION_PROFILE_CSHARP__',value)
    root=ET.fromstring(value)
-   inbound=list(root.find('inbound'))
-   starts=[index for index,node in enumerate(inbound)
-           if node.tag=='set-variable' and node.get('name')=='gatewaySubscriptionProfile']
-   self.assertEqual(len(starts),1)
-   self.assertEqual([structure(node) for node in inbound[starts[0]:starts[0]+len(expected)]],expected)
-   self.assertEqual(len(root.findall(".//set-variable[@name='gatewayFetchedProfile']")),1)
-   self.assertEqual(len(root.findall(".//set-variable[@name='gatewayAuditCode'][@value='LIMIT_PROFILE_UNAVAILABLE']")),1)
+   inbound=root.find('inbound')
+   children=list(inbound)
+   selector=next(node for node in inbound.findall('choose')
+                 if node.find("when/include-fragment[@fragment-id='core-entra-user-profile']") is not None)
+   self.assertIn('["method"] == "user"',selector.find('when').get('condition'))
+   rate=inbound.find("include-fragment[@fragment-id='core-rate-limit']")
+   self.assertLess(children.index(selector),children.index(rate))
   for index,api in enumerate(self.parameters['apiDefinitions']):
    with self.subTest(api=api['name'],source='deployed'):
     check(compiled_policy_value(self.template,self.parameters,index))
@@ -124,7 +115,6 @@ class AuditPublicationTests(unittest.TestCase):
   parameters.update(self.parameters)
   reader=DiscoveryExpression('[true()]',self.template['variables'],functions=self.template['functions'])
   policies=reader.resolve(self.template['outputs']['entraPublicationSource']['value']['policies'],parameters)
-  self.assertFalse(any(entry['suffix'].startswith('/policyFragments/subscription-profile') for entry in policies))
   for api in self.parameters['apiDefinitions']:
    suffix='/apis/'+api['name']+('/operations/onHandshake' if api['apiType']=='websocket' else '')+'/policies/policy'
    matches=[entry for entry in policies if entry['suffix']==suffix]
@@ -270,7 +260,8 @@ class AuditPublicationTests(unittest.TestCase):
     self.assertEqual(len(includes),1 if selected else 0)
     if selected:
      inbound=list(root.find('inbound'))
-     profile=root.find("inbound/set-variable[@name='gatewaySubscriptionProfile']")
+     profile=next(node for node in root.findall('inbound/choose')
+                  if node.find("when/include-fragment[@fragment-id='core-entra-user-profile']") is not None)
      rate=root.find("inbound/include-fragment[@fragment-id='core-rate-limit']")
      self.assertIsNotNone(profile)
      self.assertIsNotNone(rate)

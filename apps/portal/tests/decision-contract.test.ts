@@ -43,7 +43,7 @@ test("TypeScriptの実コード例を実行しても、配列内を含むJSONの
   const expected = buildDecisionRequest(model, input);
   let calls = 0;
   await runInNewContext(`(async () => {${getDecisionIntegrationExample("typescript", model, input, "https://gateway.example.com")}})()`, {
-    process: { env: { GATEWAY_API_KEY: "independent-synthetic-key" } }, AbortSignal, console: { log() {} },
+    process: { env: { GATEWAY_ACCESS_TOKEN: "independent-synthetic-key" } }, AbortSignal, console: { log() {} },
     fetch: async (url: string, init: RequestInit) => {
       calls++;
       assert.equal(url, "https://gateway.example.com/models/microsoft-decision/v1/systemone");
@@ -140,17 +140,17 @@ test("1質問の要求でも固定の3回答を要求せず、要求された質
   assert.deepEqual(data.answers, [{ name: "approved", type: "noul", value: 0.3 }]);
 });
 
-test("コード例とスキーマは購読キー方式と正しい配備名・型を提示する", () => {
+test("コード例とスキーマはBearer方式と正しい配備名・型を提示する", () => {
   const input = defaultDecisionInput(model);
   input.state = { message: "quote ' \" and $name `command` and\nnew line" };
   assert.equal(getDecisionEndpoint(model, "https://gateway.example.com"), "https://gateway.example.com/models/microsoft-decision/v1/systemone");
   assert.throws(() => getDecisionEndpoint(model, "https://user:secret@gateway.example.com"));
   assert.throws(() => getDecisionEndpoint({ ...model, path: "//other.invalid" }, "https://gateway.example.com"));
-  assert.deepEqual(getDecisionHeaders(), { "Content-Type": "application/json", Accept: "application/json", "api-key": "${GATEWAY_API_KEY}" });
+  assert.deepEqual(getDecisionHeaders(), { "Content-Type": "application/json", Accept: "application/json", "Authorization": "Bearer ${GATEWAY_ACCESS_TOKEN}" });
   for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) {
     const code = getDecisionIntegrationExample(language, model, input, "https://gateway.example.com");
-    assert.match(code, /GATEWAY_API_KEY/); assert.match(code, /api-key/); assert.match(code, /systemone/);
-    assert.doesNotMatch(code, /Authorization|Bearer|max_output_tokens|stream/);
+    assert.match(code, /GATEWAY_ACCESS_TOKEN/); assert.match(code, /Authorization/); assert.match(code, /systemone/);
+    assert.doesNotMatch(code, /max_output_tokens|stream/);
   }
   assert.ok(getDecisionRequestSchema(model).properties);
   assert.ok(getDecisionResponseSchema().properties);

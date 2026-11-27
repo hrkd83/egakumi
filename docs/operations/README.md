@@ -4,7 +4,7 @@
 
 このプロダクトを運営し、エンハンス・不具合修正を行う担当者のための手順。変更対象に応じて次の入口を選び、変更前の値・実反映・通常利用・終了時の扱いを確認する。
 
-設定変更は、params・config・API定義・WAF manifest等のJSON資材を編集し、`scripts/operations/`のスクリプトで計画・反映することを基本とする。通常運用ではポリシーXMLを直接編集しない。共通ポリシーの処理自体を変える場合は[開発者向けの改修手順](../../DEVELOPMENT.md#apim共通ポリシーを改修する)を使う。利用者のキー管理・購読同期・Entra所属管理は、それぞれの既存GUIを使う。
+設定変更は、params・config・API定義・WAF manifest等のJSON資材を編集し、`scripts/operations/`のスクリプトで計画・反映することを基本とする。通常運用ではポリシーXMLを直接編集しない。共通ポリシーの処理自体を変える場合は[開発者向けの改修手順](../../DEVELOPMENT.md#apim共通ポリシーを改修する)を使う。例外の購読キーは基盤管理者がAzureポータル上のAPIMで管理する。
 
 | 普段の作業 | 手順 | 主な入口 |
 | --- | --- | --- |
@@ -13,7 +13,7 @@
 | API・操作・入力制約・ポリシーを直す | [APIM変更](apim.md) | 定義・生成ポリシーの検査→Gateway個別配備（G） |
 | モデル・容量・版・公開先を変える | [Foundryモデル管理](foundry.md) | `operations/model.py`→参照config・API・必要なPortalを整合 |
 | secretの期限更新・TLS証明書更新 | [認証情報・証明書の更新](secrets-and-certificates.md) | `operations/entra_secret.py`・`certificate.py`、新規認証・公開TLS確認 |
-| 所属・利用条件・キー・購読・CM容量を保守する | [利用資格・キー・プール](access-and-keys.md) | `operations/api_key.py`、P／G、Entra・Portalの正規管理操作、既存job |
+| 所属・利用条件・キー・購読・CM容量を保守する | [利用資格・キー・プール](access-and-keys.md) | Azureポータル、G、既存ジョブ |
 | WAF・外向き許可・監視・サービス容量を変える | [基盤設定の通常変更](platform-settings.md) | `operations/waf.py`・`monitoring.py`、G等の対象限定反映 |
 | NSGの通信範囲・優先度を確認する | [NSGの構成と優先度](network-security-groups.md) | 共通採番JSONと初期構築5モジュールのBicep |
 | 通信要件・Firewallの許可範囲・判断を確認する | [通信要件](../reference/network-communication-requirements.md)・[Firewall設計](../reference/firewall-policy-design.md) | 実経路、RCG/collection/規則、対応NSG、[検証と実証結果の管理](../reference/network-security-validation.md) |

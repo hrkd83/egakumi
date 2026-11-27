@@ -1,11 +1,10 @@
 "use client";
 
-import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+import { TryAuthenticationControl, useTryAuthentication } from "@/components/try-authentication";
 
 import { useFieldIds } from "@/lib/use-field-ids";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { Check, Copy, LoaderCircle, Mic, MicOff, Square, Volume2 } from "lucide-react";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
@@ -18,7 +17,6 @@ import { useModelSelection } from "@/components/use-model-selection";
 import { restoreModelSettings } from "@/lib/model-settings";
 import { getRealtimeAudioDictionary } from "@/lib/i18n/realtime-audio";
 import { INTEGRATION_LANGUAGES, type IntegrationLanguage } from "@/lib/model-integration";
-import { loadModelKeyChoices, type ModelKeyChoice } from "@/lib/model-key-choices";
 import { chooseRealtimeVariant, groupRealtimeModels, updateRealtimeModelSelection } from "@/lib/realtime-model-choices";
 import { REALTIME_SERIES } from "@/lib/realtime-series";
 import { getRealtimeVoiceOptions } from "@/lib/realtime-voices";
@@ -33,7 +31,7 @@ import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { Locale } from "@/lib/i18n/config";
 
 /** 表示設定とメモリー内の会話履歴です。認証キー・SDP・音声録音は保持しません。 */
-type ConversationState = { input: RealtimeInput; apiKeyId: string; language: IntegrationLanguage | "body"; tab: "request" | "schema" | "response"; connecting: boolean; connected: boolean; stopping: boolean; muted: boolean; playbackBlocked: boolean; turns: RealtimeTurn[]; timeline: { eventType: string; elapsedMs: number }[]; eventCount: number; elapsedSeconds: number; maximumDurationMs: number; usage: Record<string, number>; complete: Omit<RealtimeCompletion, "handle"> | null; failure: TextGenerationFailure | null; localFailure: RealtimeBrowserFailure | null; turnFailed: boolean; retrying: boolean; retryFailed: boolean; canRetryStop: boolean };
+type ConversationState = { input: RealtimeInput; language: IntegrationLanguage | "body"; tab: "request" | "schema" | "response"; connecting: boolean; connected: boolean; stopping: boolean; muted: boolean; playbackBlocked: boolean; turns: RealtimeTurn[]; timeline: { eventType: string; elapsedMs: number }[]; eventCount: number; elapsedSeconds: number; maximumDurationMs: number; usage: Record<string, number>; complete: Omit<RealtimeCompletion, "handle"> | null; failure: TextGenerationFailure | null; localFailure: RealtimeBrowserFailure | null; turnFailed: boolean; retrying: boolean; retryFailed: boolean; canRetryStop: boolean };
 const languageNames: Record<IntegrationLanguage, string> = { typescript: "TypeScript", python: "Python", php: "PHP", csharp: "C#", curl: "cURL" };
 const familyNames = Object.fromEntries(REALTIME_SERIES.map((series) => [series.family, series.label]));
 
@@ -52,17 +50,14 @@ export function RealtimeAudioPanel({ models, dictionary, locale, gatewayOrigin }
   const text = dictionary.modelGateway, guide = text.integration, rt = getRealtimeAudioDictionary(locale, series?.family);
   const { scope, initialModel, rememberModel } = useModelSelection("realtime", models, series?.id);
   const savedSettings = usePortalStore((state) => state.modelSettings.realtime[scope]), rememberSettings = usePortalStore((state) => state.setModelSettings);
-  const [store] = useState(() => createStore<ConversationState>(() => ({ input: restoreModelSettings("realtime", initialModel ? defaultRealtimeInput(initialModel) : { modelId: "" }, savedSettings, (input) => { if (initialModel) validateRealtimeInput(initialModel, input); }), apiKeyId: "", language: "body", tab: "request", connecting: false, connected: false, stopping: false, muted: false, playbackBlocked: false, turns: [], timeline: [], eventCount: 0, elapsedSeconds: 0, maximumDurationMs: REALTIME_MAX_DURATION_MS, usage: {}, complete: null, failure: null, localFailure: null, turnFailed: false, retrying: false, retryFailed: false, canRetryStop: false })));
+  const [store] = useState(() => createStore<ConversationState>(() => ({ input: restoreModelSettings("realtime", initialModel ? defaultRealtimeInput(initialModel) : { modelId: "" }, savedSettings, (input) => { if (initialModel) validateRealtimeInput(initialModel, input); }), language: "body", tab: "request", connecting: false, connected: false, stopping: false, muted: false, playbackBlocked: false, turns: [], timeline: [], eventCount: 0, elapsedSeconds: 0, maximumDurationMs: REALTIME_MAX_DURATION_MS, usage: {}, complete: null, failure: null, localFailure: null, turnFailed: false, retrying: false, retryFailed: false, canRetryStop: false })));
   const state = useStore(store);
   const requestRef = useRef<AbortController | null>(null), conversationRef = useRef<RealtimeConversation | null>(null), stopHandleRef = useRef<string | undefined>(undefined);
-  const [keyState, setKeyState] = useState<{ apiId: string; status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] }>({ apiId: "", status: "loading", keys: [] });
-  const [refresh, setRefresh] = useState(0);
-  const model = models.find((entry) => entry.id === state.input.modelId) ?? models[0], apiId = model?.apiId ?? "";
+  const model = models.find((entry) => entry.id === state.input.modelId) ?? models[0];
   const modelChoices = groupRealtimeModels(models), modelChoice = modelChoices.find((choice) => choice.variants.some((entry) => entry.id === model?.id));
   const voiceOptions = model ? getRealtimeVoiceOptions(model) : [];
   const maximumOutputTokens = model?.numericMaxOutputTokens ?? model?.maxOutputTokens ?? 1;
-  const keysReady = keyState.apiId === apiId && keyState.status === "ready", selectedKey = keysReady ? keyState.keys.find((entry) => entry.id === state.apiKeyId) : undefined;
-  const authentication = useTryAuthentication(selectedKey?.id);
+  const authentication = useTryAuthentication();
   const parsed = realtimeInputSchema.safeParse(state.input), origin = gatewayOrigin ?? "https://gateway.example.com", number = new Intl.NumberFormat(locale);
   let valid = false;
   try { if (model && parsed.success) { validateRealtimeInput(model, parsed.data); valid = true; } } catch { /* モデル固有の指定範囲に合わない値は送信しません。 */ }
@@ -74,17 +69,11 @@ export function RealtimeAudioPanel({ models, dictionary, locale, gatewayOrigin }
     window.addEventListener("pagehide", leave);
     return () => { window.removeEventListener("pagehide", leave); leave(); };
   }, []);
-  useEffect(() => {
-    if (!apiId) return;
-    const controller = new AbortController();
-    void loadModelKeyChoices(apiId, controller.signal).then((keys) => { if (!controller.signal.aborted) setKeyState({ apiId, status: "ready", keys }); }).catch(() => { if (!controller.signal.aborted) setKeyState({ apiId, status: "error", keys: [] }); });
-    return () => controller.abort();
-  }, [apiId, refresh]);
   useEffect(() => { if (!state.connected) return; const timer = setInterval(() => store.setState((current) => ({ elapsedSeconds: current.elapsedSeconds + 1 })), 1_000); return () => clearInterval(timer); }, [state.connected, store]);
 
   /** 新しい設定に前の会話結果を混ぜません。接続中は設定変更を許可しません。 */
   function clearResult() { store.setState({ turns: [], timeline: [], eventCount: 0, elapsedSeconds: 0, usage: {}, complete: null, failure: null, localFailure: null, turnFailed: false, retryFailed: false, playbackBlocked: false }); }
-  /** 編集した安全な設定だけをシリーズ別に記憶し、会話や購読は共有しません。 */
+  /** 編集した安全な設定だけをシリーズ別に記憶し、会話や認可状態は共有しません。 */
   function updateInput(patch: Partial<RealtimeInput>) { if (locked) return; const input = { ...store.getState().input, ...patch }; clearResult(); rememberSettings("realtime", scope, input); store.setState({ input }); }
   /** モデルと方式を別々に選んでも、開始時には一つの実API定義へ対応付けます。 */
   function selectModel(next: RealtimeModel) {
@@ -130,7 +119,6 @@ export function RealtimeAudioPanel({ models, dictionary, locale, gatewayOrigin }
   /** 取消は端末のマイク停止とサーバーの終了確認を同じ操作にまとめます。 */
   function stop() { store.setState({ stopping: true }); if (conversationRef.current) void conversationRef.current.stop(); else requestRef.current?.abort(); }
   /** 所属とキーの一覧を読み直し、古い実行結果を消します。 */
-  function refreshKeys() { clearResult(); setKeyState({ apiId, status: "loading", keys: [] }); setRefresh((value) => value + 1); }
   /** ミュート中も接続を維持し、利用者の次の発話へ戻れるようにします。 */
   function mute() { const muted = !store.getState().muted; conversationRef.current?.setMuted(muted); store.setState({ muted }); }
   /** 未確認の停止だけを再確認し、会話を自動再開しません。 */
@@ -157,8 +145,7 @@ export function RealtimeAudioPanel({ models, dictionary, locale, gatewayOrigin }
         <div className="space-y-2"><label htmlFor={fieldId("realtime-transport")} className="text-sm font-medium">{rt.transport}</label><Select value={model.transport} disabled={locked || !modelChoice || modelChoice.variants.length < 2} onValueChange={(transport) => { const next = modelChoice?.variants.find((entry) => entry.transport === transport); if (next) selectModel(next); }}><SelectTrigger id={fieldId("realtime-transport")} className="h-10 w-full bg-white text-sm" aria-describedby={fieldId("realtime-transport-help")}><SelectValue /></SelectTrigger><SelectContent>{modelChoice?.variants.map((entry) => <SelectItem key={entry.id} value={entry.transport}>{entry.transport === "webrtc" ? rt.webrtc : rt.websocket}</SelectItem>)}</SelectContent></Select><p id={fieldId("realtime-transport-help")} className="text-sm leading-5 text-muted-foreground">{rt.transportHelp}</p></div>
       </div></div>;
   const settings = <form id={fieldId("realtime-settings")} onSubmit={start} className="min-w-0 space-y-5">
-      <TryAuthenticationPicker model={authentication} locale={locale} disabled={locked} />
-      <div className="space-y-2 rounded-lg border border-border bg-white p-3" hidden={authentication.selection.mode === "bearer"}><div className="flex items-center justify-between gap-3"><label htmlFor={fieldId("realtime-api-key")} className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={locked || keyState.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button></div><Select value={selectedKey?.id ?? ""} disabled={locked || !keysReady || !keyState.keys.length} onValueChange={(apiKeyId) => { clearResult(); store.setState({ apiKeyId }); }}><SelectTrigger id={fieldId("realtime-api-key")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{keyState.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block min-w-0 truncate" title={[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}>{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select><p className="text-sm leading-5 text-muted-foreground">{guide.apiKeyHelp}</p>{(keyState.apiId !== apiId || keyState.status === "loading") && <p role="status" className="text-sm text-muted-foreground">{guide.loadingKeys}</p>}{keyState.apiId === apiId && keyState.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}{keysReady && !keyState.keys.length && <p role="status" className="text-sm leading-6 text-muted-foreground">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="text-primary underline underline-offset-4">{guide.manageKeys}</Link></p>}</div>
+      <TryAuthenticationControl model={authentication} locale={locale} disabled={locked} />
 
       {voiceOptions.length > 0 && <div className="space-y-2"><label htmlFor={fieldId("realtime-voice")} className="text-sm font-medium">{rt.voice}</label>{model.family === "live" ? <><Input id={fieldId("realtime-voice")} list={fieldId("realtime-voice-suggestions")} value={state.input.voice ?? model.voice} disabled={locked} onChange={(event) => updateInput({ voice: event.target.value })} /><datalist id={fieldId("realtime-voice-suggestions")}>{voiceOptions.map((voice) => <option key={voice.id} value={voice.id} />)}</datalist></> : <Select value={state.input.voice ?? model.voice} disabled={locked || voiceOptions.length < 2} onValueChange={(voice) => { if (voiceOptions.some((option) => option.id === voice)) { updateInput({ voice }); } }}><SelectTrigger id={fieldId("realtime-voice")} className="h-10 w-full bg-white text-sm" aria-describedby={fieldId("realtime-voice-help")}><SelectValue /></SelectTrigger><SelectContent>{voiceOptions.map((voice) => <SelectItem key={voice.id} value={voice.id}>{voice.label[locale]}</SelectItem>)}</SelectContent></Select>}<p id={fieldId("realtime-voice-help")} className="text-sm leading-6 text-muted-foreground">{model.family === "live" || voiceOptions.length > 1 ? rt.voiceHelp : rt.fixedVoice.replace("{voice}", voiceOptions[0].label[locale])}</p></div>}
       {model.maxOutputTokens === null ? <p className="text-sm leading-6 text-muted-foreground">{model.family === "transcription" ? rt.transcriptionTokens : rt.liveTokens}</p> : <div className="space-y-2"><label htmlFor={fieldId("realtime-output-tokens")} className="text-sm font-medium">{rt.maxOutputTokens}</label><Input id={fieldId("realtime-output-tokens")} type="number" min={1} max={maximumOutputTokens} step={1} value={typeof state.input.maxOutputTokens === "number" && Number.isFinite(state.input.maxOutputTokens) ? state.input.maxOutputTokens : ""} aria-describedby={fieldId("realtime-token-range")} disabled={locked || state.input.maxOutputTokens === "model-max"} onChange={(event) => { updateInput({ maxOutputTokens: event.target.valueAsNumber }); }} className="h-10 max-w-60 bg-white text-sm" /><p id={fieldId("realtime-token-range")} className="text-sm text-muted-foreground">{rt.tokenRange.replace("{maximum}", number.format(maximumOutputTokens))}</p><p className="text-sm leading-5 text-muted-foreground">{rt.tokenHelp}</p>{model.supportsMaximumOutput && <div className="space-y-1"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={state.input.maxOutputTokens === "model-max"} disabled={locked} onChange={(event) => { updateInput({ maxOutputTokens: event.target.checked ? "model-max" : maximumOutputTokens }); }} />{rt.modelMaximum.replace("{count}", number.format(model.maxOutputTokens))}</label><p className="text-sm leading-5 text-muted-foreground">{rt.modelMaximumHelp}</p></div>}</div>}

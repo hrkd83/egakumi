@@ -5,13 +5,13 @@ import { getModelGatewayEnvironment, handleTextGeneration } from "../lib/model-g
 import type { ModelGenerationDependencies } from "../lib/model-gateway.ts";
 import { textGenerationInputSchema, MODEL_MAX_UPSTREAM_JSON_BYTES } from "../lib/model-request.ts";
 import { readModelResponse } from "../lib/model-response.ts";
-import { ApiKeyError } from "../lib/api-keys/contracts.ts";
+import { ApiAuthenticationError } from "../lib/api-auth/settings.ts";
 import { SAMPLE_TEXT_PROMPT, getTextGenerationHeaders } from "../lib/model-integration.ts";
+import { trialBearer, unicodeEscaped } from "./helpers/trial-bearer.ts";
 
 const portalOrigin = "https://portal.example.invalid";
 const gatewayOrigin = "https://gateway.example.invalid";
-const secret = "test-only-subscription-key";
-const selectedKeyId = "portal-11111111-1111-4111-8111-111111111111";
+const secret = "test-only-access-token";
 const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
 const defaultInput = { message: SAMPLE_TEXT_PROMPT, modelId: chatModel.id, maxOutputTokens: 128, stream: false };
 
@@ -31,7 +31,7 @@ test("32KiBを超える文章も公開モデルの技術上限内なら変更せ
 function request(input: unknown = defaultInput, headers: Record<string, string> = {}): Request {
   return new Request(`${portalOrigin}/api/models/generate`, {
     method: "POST", headers: { Origin: portalOrigin, "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(input && typeof input === "object" ? { apiKeyId: selectedKeyId, ...input } : input),
+    body: JSON.stringify(input && typeof input === "object" ? { authentication: "bearer", ...input } : input),
   });
 }
 
@@ -40,7 +40,7 @@ function dependencies(overrides: Partial<ModelGenerationDependencies> = {}): Mod
   return {
     readSession: async () => actor, readPortalOrigin: () => portalOrigin,
     readGatewayEnvironment: async () => ({ origin: gatewayOrigin }),
-    resolveSubscriptionKey: async () => secret,
+    resolveBearer: async () => trialBearer(secret, actor),
     readModels: () => textGenerationModels,
     fetch: async () => Response.json({
       model: chatModel.id, choices: [{ message: { content: "OK" }, finish_reason: "stop" }],
@@ -71,8 +71,8 @@ test("同じ実モデル名でも明示したAPI形式・トークン項目を�
     let requests = 0, resolutions = 0;
     const result = await handleTextGeneration(request({ ...defaultInput, operationId: model.operationId }), dependencies({
       readModels: () => [responseVariant, chatModel],
-      resolveSubscriptionKey: async (principal, id, apiId) => {
-        resolutions++; assert.deepEqual(principal, actor); assert.equal(id, selectedKeyId); assert.equal(apiId, model.apiId); return secret;
+      resolveBearer: async () => {
+        resolutions++; return trialBearer(secret, actor);
       },
       fetch: async (url, options) => {
         requests++;
@@ -116,7 +116,7 @@ test("形式省略時はカタログ順序に依存せずOpenAI Responsesを優�
 test("未対応のモデルとAPI形式の組合せや重複した定義は認可・上流通信の前に拒否する", async () => {
   let requests = 0, resolutions = 0;
   const denied = dependencies({
-    resolveSubscriptionKey: async () => { resolutions++; return secret; },
+    resolveBearer: async () => { resolutions++; return trialBearer(secret, actor); },
     fetch: async () => { requests++; throw new Error("must not fetch"); },
   });
   for (const input of [
@@ -184,8 +184,8 @@ test("Chat Completionsは定義のパス・出力パラメーターでAPIMを一
     assert.equal(options?.redirect, "error");
     assert.equal(options?.cache, "no-store");
     const headers = new Headers(options?.headers);
-    assert.deepEqual(Object.fromEntries(headers), Object.fromEntries(new Headers({ ...getTextGenerationHeaders(false), "api-key": secret })));
-    assert.equal(headers.get("api-key"), secret);
+    assert.deepEqual(Object.fromEntries(headers), Object.fromEntries(new Headers({ ...getTextGenerationHeaders(false), Authorization: `Bearer ${secret}` })));
+    assert.equal(headers.get("Authorization"), `Bearer ${secret}`);
     assert.equal(headers.get("Accept"), "application/json");
     assert.equal(headers.get("X-Egakumi-Profile"), null);
     assert.equal(headers.get("cookie"), null);
@@ -264,7 +264,7 @@ test("Responsesの未完了処理や失敗を通常の生成成功として返�
   assert.equal((await partial.json()).rawResponse.incomplete_details.reason, "max_output_tokens");
 });
 
-test("ChatとResponsesの正常JSONへ反射された購読キーを復号後にも拒否する", async () => {
+test("ChatとResponsesの正常JSONへ反射されたBearerトークンを復号後にも拒否する", async () => {
   for (const model of [chatModel, responsesModel]) {
     const value = model.operationId === "responses-create"
       ? { model: model.id, status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "synthetic result" }] }] }
@@ -282,13 +282,13 @@ test("ChatとResponsesの正常JSONへ反射された購読キーを復号後に
   }
 });
 
-test("両JSON方式で引用符付きキーの値・プロパティ名への反射も拒否する", async () => {
-  const credential = 'synthetic-text-"key"-\\-value';
+test("両JSON方式でUnicodeエスケープしたBearerの値・プロパティ名への反射も拒否する", async () => {
+  const credential = "synthetic-text-bearer-token";
   for (const model of [chatModel, responsesModel]) {
     const value = model.operationId === "responses-create" ? { model: model.id, status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "synthetic result" }] }] } : { model: model.id, choices: [{ message: { content: "synthetic result" }, finish_reason: "stop" }] };
     for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
-      const raw = JSON.stringify({ ...value, ...reflected }); assert.equal(raw.includes(credential), false);
-      const response = await handleTextGeneration(request({ ...defaultInput, modelId: model.id, operationId: model.operationId }), dependencies({ readModels: () => [model], resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+      const raw = JSON.stringify({ ...value, ...reflected }).replaceAll(credential, unicodeEscaped(credential)); assert.equal(raw.includes(credential), false);
+      const response = await handleTextGeneration(request({ ...defaultInput, modelId: model.id, operationId: model.operationId }), dependencies({ readModels: () => [model], resolveBearer: async () => trialBearer(credential, actor), fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
       assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
     }
   }
@@ -335,19 +335,20 @@ test("接続先はHTTPSオリジンに限定し、組み込みキーやキーフ
   await assert.rejects(getModelGatewayEnvironment({ PORTAL_GATEWAY_SUBSCRIPTION_KEY: secret }));
 });
 
-test("選択した台帳IDを認証済み本人とサーバー定義APIへ結び付け、キーは上流ヘッダーだけで使用する", async () => {
+test("本人のBearerを上流ヘッダーだけで使用する", async () => {
   let resolutions = 0;
   const result = await handleTextGeneration(request(), dependencies({
-    resolveSubscriptionKey: async (principal, id, apiId) => {
-      assert.deepEqual(principal, actor);
-      assert.equal(id, selectedKeyId);
-      assert.equal(apiId, "openai-inference-v1");
+    resolveBearer: async () => {
       resolutions++;
-      return secret;
+      return trialBearer(secret, actor);
     },
     fetch: async (url, options) => {
-      assert.equal(new Headers(options?.headers).get("api-key"), secret);
-      assert.equal(String(options?.body).includes(selectedKeyId), false);
+      const headers = new Headers(options?.headers);
+      assert.equal(headers.get("Authorization"), `Bearer ${secret}`);
+      assert.equal(headers.get("api-key"), null);
+      const body = JSON.parse(String(options?.body));
+      assert.equal(Object.hasOwn(body, "authentication"), false);
+      assert.equal(String(options?.body).includes(secret), false);
       return dependencies().fetch!(url, options);
     },
   }));
@@ -356,23 +357,26 @@ test("選択した台帳IDを認証済み本人とサーバー定義APIへ結び
   assert.equal((await result.text()).includes(secret), false);
 });
 
-test("キー未選択・台帳ID改変・認可失敗・確認障害では共通キーへ代替せずモデルを呼ばない", async () => {
+test("不正な認証方式・別ユーザーの認可・認証障害で上流を呼ばない", async () => {
   let resolutions = 0;
   let calls = 0;
   const context = dependencies({
-    resolveSubscriptionKey: async () => { resolutions++; return secret; },
+    resolveBearer: async () => { resolutions++; return trialBearer(secret, actor); },
     fetch: async () => { calls++; throw new Error("should not call"); },
   });
-  for (const apiKeyId of [undefined, "", "master", "model-users", "../other", "portal-invalid"]) {
-    assert.equal((await handleTextGeneration(request({ ...defaultInput, apiKeyId }), context)).status, 400);
+  for (const authentication of [undefined, "", "key", "Bearer"]) {
+    assert.equal((await handleTextGeneration(request({ ...defaultInput, authentication }), context)).status, 400);
   }
+  assert.equal((await handleTextGeneration(request({ ...defaultInput, apiKeyId: "synthetic-key" }), context)).status, 400);
   assert.equal(resolutions, 0);
-  for (const status of [403, 404, 409, 503]) {
+  const unbound = await handleTextGeneration(request(), { ...context, resolveBearer: async () => trialBearer(secret) });
+  assert.equal(unbound.status, 401);
+  for (const [code, status] of [["ApiAuthenticationRequired", 401], ["ApiAuthenticationBusy", 409], ["ApiAuthenticationUnavailable", 503]] as const) {
     const result = await handleTextGeneration(request(), { ...context,
-      resolveSubscriptionKey: async () => { throw new ApiKeyError("private-authorization-error", status); },
+      resolveBearer: async () => { throw new ApiAuthenticationError(code, status); },
     });
-    assert.equal(result.status, status < 500 ? 403 : 503);
-    assert.deepEqual(await result.json(), { error: { code: status < 500 ? "ApiKeyUnavailable" : "ApiKeyAccessUnavailable" } });
+    assert.equal(result.status, status);
+    assert.deepEqual(await result.json(), { error: { code } });
   }
   assert.equal(calls, 0);
 });

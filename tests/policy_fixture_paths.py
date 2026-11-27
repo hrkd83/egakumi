@@ -59,7 +59,6 @@ for _suffix in (".xml", ".cs"):
     _PRIMARY_FILES["realtime-owner-context" + _suffix] = Path("snippets/authentication/realtime-owner-context") / ("realtime-owner-context" + _suffix)
     _PRIMARY_FILES["credential-challenge" + _suffix] = Path("snippets/authentication/credential-challenge") / ("credential-challenge" + _suffix)
 for _suffix in (".xml", ".cs"):
-    _PRIMARY_FILES["subscription-profile" + _suffix] = Path("snippets/quota/subscription-profile") / ("subscription-profile" + _suffix)
     _PRIMARY_FILES["rate-limit-error" + _suffix] = Path("snippets/quota/rate-limit-error") / ("rate-limit-error" + _suffix)
     _PRIMARY_FILES["mcp-rate-cleanup" + _suffix] = Path("snippets/quota/mcp-rate-cleanup") / ("mcp-rate-cleanup" + _suffix)
 for _suffix in (".xml", ".cs"):

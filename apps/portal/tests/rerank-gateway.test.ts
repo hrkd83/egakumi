@@ -1,23 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiKeyError } from "../lib/api-keys/contracts.ts";
+import { ApiAuthenticationError } from "../lib/api-auth/settings.ts";
 import { handleRerank, type RerankGatewayDependencies } from "../lib/rerank-gateway.ts";
 import { defaultRerankInput } from "../lib/rerank-integration.ts";
 import type { RerankModel } from "../lib/rerank-types.ts";
+import { trialBearer, unicodeEscaped } from "./helpers/trial-bearer.ts";
 
 const model: RerankModel = { id: "Cohere-rerank-v4.0-fast", label: "Cohere-rerank-v4.0-fast", providerId: "cohere", provider: "Cohere", apiId: "cohere-inference-v1", operationId: "rerank", path: "/models/cohere/v1/rerank", maxRequestBytes: 65_536, maxDocuments: 8, minTopN: 1, maxTopN: 3 };
-const input = defaultRerankInput(model), key = "test-only-rerank-subscription-key", apiKeyId = "portal-11111111-1111-4111-8111-111111111111";
+const input = defaultRerankInput(model), accessToken = "fixture".repeat(4);
 const portalOrigin = "https://portal.example.invalid", gatewayOrigin = "https://gateway.example.invalid";
 const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
 const body = { results: [{ index: 0, relevance_score: 0.9 }, { index: 2, relevance_score: 0.7 }, { index: 1, relevance_score: 0.1 }], meta: { billed_units: { search_units: 1 } } };
 
 /** 認証済みのブラウザーが送る同一オリジン要求を作ります。 */
 function request(value: unknown = input, headers: Record<string, string> = {}, signal?: AbortSignal): Request {
-  return new Request(`${portalOrigin}/api/models/rerank`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ apiKeyId, ...(value as Record<string, unknown>) }), signal });
+  return new Request(`${portalOrigin}/api/models/rerank`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ authentication: "bearer", ...(value as Record<string, unknown>) }), signal });
 }
 /** 外部通信を置き換えつつ、実際の認可・制約・応答検証は通します。 */
 function dependencies(overrides: Partial<RerankGatewayDependencies> = {}): RerankGatewayDependencies {
-  return { readSession: async () => actor, readPortalOrigin: () => portalOrigin, readGatewayEnvironment: async () => ({ origin: gatewayOrigin }), resolveSubscriptionKey: async () => key, readModels: () => [model], fetch: async () => Response.json(body, { headers: { "apim-request-id": "req-123" } }), ...overrides };
+  return { readSession: async () => actor, readPortalOrigin: () => portalOrigin, readGatewayEnvironment: async () => ({ origin: gatewayOrigin }), resolveBearer: async () => trialBearer(accessToken, actor), readModels: () => [model], fetch: async () => Response.json(body, { headers: { "apim-request-id": "req-123" } }), ...overrides };
 }
 
 test("同一オリジンとログイン本人を確認できない要求は転送しない", async () => {
@@ -32,9 +33,9 @@ test("同一オリジンとログイン本人を確認できない要求は転�
   assert.equal(calls, 0);
 });
 
-test("除外本文欄と同名のqueryを本文読込・購読キー取得より前に拒否する", async () => {
-  let keys = 0, calls = 0;
-  const deps = dependencies({ resolveSubscriptionKey: async () => { keys++; return key; }, fetch: async () => { calls++; throw new Error("not expected"); } });
+test("除外本文欄と同名のqueryを本文読込・Bearer取得より前に拒否する", async () => {
+  let tokenReads = 0, calls = 0;
+  const deps = dependencies({ resolveBearer: async () => { tokenReads++; return trialBearer(accessToken, actor); }, fetch: async () => { calls++; throw new Error("not expected"); } });
   for (const query of ["query=synthetic", "documents=synthetic", "documents=one&documents=two", "arbitrary=synthetic", "%64ocuments=synthetic"]) {
     const incoming = new Request(`${portalOrigin}/api/models/rerank?${query}`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "Application/JSON; charset=UTF-8" }, body: "{" });
     const response = await handleRerank(incoming, deps);
@@ -43,23 +44,23 @@ test("除外本文欄と同名のqueryを本文読込・購読キー取得より
   }
   const anonymous = new Request(`${portalOrigin}/api/models/rerank?query=synthetic`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "application/json" }, body: "{" });
   assert.equal((await handleRerank(anonymous, { ...deps, readSession: async () => null })).status, 401);
-  assert.equal(anonymous.bodyUsed, false); assert.equal(keys, 0); assert.equal(calls, 0);
+  assert.equal(anonymous.bodyUsed, false); assert.equal(tokenReads, 0); assert.equal(calls, 0);
 });
 
-test("選択した購読を本人とAPIで再認可し、固定パスへ一回だけ送る", async () => {
+test("本人のBearerで固定Rerank APIへ一度だけ送る", async () => {
   let calls = 0;
   const response = await handleRerank(request(), dependencies({
-    resolveSubscriptionKey: async (owner, id, apiId) => { assert.deepEqual(owner, actor); assert.equal(id, apiKeyId); assert.equal(apiId, model.apiId); return key; },
+    resolveBearer: async () => trialBearer(accessToken, actor),
     fetch: async (url, options) => {
       calls++; assert.equal(String(url), `${gatewayOrigin}${model.path}`); assert.equal(options?.redirect, "error"); assert.equal(options?.cache, "no-store");
-      const headers = new Headers(options?.headers); assert.equal(headers.get("api-key"), key); assert.equal(headers.get("cookie"), null);
+      const headers = new Headers(options?.headers); assert.equal(headers.get("Authorization"), `Bearer ${accessToken}`); assert.equal(headers.get("cookie"), null);
       assert.deepEqual(JSON.parse(String(options?.body)), { model: model.id, query: input.query, documents: input.documents, top_n: input.topN });
       return dependencies().fetch!(url, options);
     },
   }));
   assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
   const result = await response.json(); assert.equal(result.ranking[1].document, input.documents[2]); assert.equal(result.searchUnits, 1); assert.equal(result.requestId, "req-123");
-  assert.equal(JSON.stringify(result).includes(key), false); assert.equal(calls, 1);
+  assert.equal(JSON.stringify(result).includes(accessToken), false); assert.equal(calls, 1);
 });
 
 test("未知項目・未知モデル・不正件数・文字列以外の文書を送信前に拒否する", async () => {
@@ -77,8 +78,8 @@ test("未知項目・未知モデル・不正件数・文字列以外の文書�
 test("無権限・キー解決失敗時に共有キーへフォールバックしない", async () => {
   let calls = 0;
   const deps = dependencies({ fetch: async () => { calls++; throw new Error("not expected"); } });
-  assert.equal((await handleRerank(request(), { ...deps, resolveSubscriptionKey: async () => { throw new ApiKeyError("AccessDenied", 403); } })).status, 403);
-  assert.equal((await handleRerank(request(), { ...deps, resolveSubscriptionKey: async () => { throw new Error("private upstream detail"); } })).status, 503);
+  assert.equal((await handleRerank(request(), { ...deps, resolveBearer: async () => { throw new ApiAuthenticationError("ApiAuthenticationRequired", 401); } })).status, 401);
+  assert.equal((await handleRerank(request(), { ...deps, resolveBearer: async () => { throw new Error("private upstream detail"); } })).status, 503);
   assert.equal(calls, 0);
 });
 
@@ -89,25 +90,25 @@ test("未許可パス・別API・別プロバイダーと不正な接続先を�
 
 test("上流エラー本文を公開せず、429は安全な待機秒数だけを返す", async () => {
   for (const status of [302, 400, 401, 403, 500]) {
-    const result = await handleRerank(request(), dependencies({ fetch: async () => new Response(key, { status }) }));
-    assert.equal(result.status, 502); assert.equal((await result.text()).includes(key), false);
+    const result = await handleRerank(request(), dependencies({ fetch: async () => new Response(accessToken, { status }) }));
+    assert.equal(result.status, 502); assert.equal((await result.text()).includes(accessToken), false);
   }
-  const limited = await handleRerank(request(), dependencies({ fetch: async () => new Response(key, { status: 429, headers: { "retry-after": "12" } }) }));
+  const limited = await handleRerank(request(), dependencies({ fetch: async () => new Response(accessToken, { status: 429, headers: { "retry-after": "12" } }) }));
   assert.deepEqual(await limited.json(), { error: { code: "RateLimitExceeded" }, retryAfterSeconds: 12 });
 });
 
 test("復号済みの引用符付きキーを正常な順位JSONの値と名前から検出する", async () => {
-  const credential = 'synthetic-rerank-"key"-\\-value';
+  const credential = "synthetic-rerank-bearer-token";
   for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
-    const raw = JSON.stringify({ ...body, ...reflected }); assert.equal(raw.includes(credential), false);
-    const response = await handleRerank(request(), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+    const raw = JSON.stringify({ ...body, ...reflected }).replaceAll(credential, unicodeEscaped(credential)); assert.equal(raw.includes(credential), false);
+    const response = await handleRerank(request(), dependencies({ resolveBearer: async () => trialBearer(credential, actor), fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
     assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
   }
 });
 
 test("不正応答・重複順位・秘密反射・過大応答を成功として返さない", async () => {
-  for (const value of [{ ...body, private: key }, { results: [{ index: 0, relevance_score: 0.8 }] }, { results: [{ index: 0, relevance_score: 0.8 }, { index: 0, relevance_score: 0.7 }, { index: 1, relevance_score: 0.1 }] }, { error: { message: key } }]) {
-    const result = await handleRerank(request(), dependencies({ fetch: async () => Response.json(value) })); assert.equal(result.status, 502); assert.equal((await result.text()).includes(key), false);
+  for (const value of [{ ...body, private: accessToken }, { results: [{ index: 0, relevance_score: 0.8 }] }, { results: [{ index: 0, relevance_score: 0.8 }, { index: 0, relevance_score: 0.7 }, { index: 1, relevance_score: 0.1 }] }, { error: { message: accessToken } }]) {
+    const result = await handleRerank(request(), dependencies({ fetch: async () => Response.json(value) })); assert.equal(result.status, 502); assert.equal((await result.text()).includes(accessToken), false);
   }
   assert.equal((await handleRerank(request(), dependencies({ fetch: async () => new Response("x", { headers: { "content-type": "text/plain" } }) }))).status, 502);
   assert.equal((await handleRerank(request(), dependencies({ fetch: async () => new Response(" ".repeat(1_048_577), { headers: { "content-type": "application/json" } }) }))).status, 502);

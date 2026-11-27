@@ -12,7 +12,7 @@ const dictionaries = {
     invalid: "本文、言語、サイズを確認してください。提供元の上限は5,120文字要素、Language API要求全体で1,000,000バイトです。",
     failed: "マスキング結果を取得できませんでした。時間をおいてお試しください。",
     empty: "実行すると、マスキング後の文章と検出数を表示します。",
-    notice: "選択した購読キーを使い、入力した文章をGateway経由でPII解析へ送信します。Portalは入力や結果をデータベースに保存しません。",
+    notice: "本人のアクセストークンを使い、入力した文章をGateway経由でPII解析へ送信します。Portalは入力や結果をデータベースに保存しません。",
     response: "公開応答JSON", document: "Azure AI LanguageのPIIドキュメント", bytes: "コンパクトJSONのサイズ", schema: "このGatewayが公開するREST APIの完全な入力・出力契約です。",
   },
   en: {
@@ -26,7 +26,7 @@ const dictionaries = {
     invalid: "Check the text, language, and request size. Provider limits are 5,120 text elements and 1,000,000 bytes for the complete Language API request.",
     failed: "The redaction result could not be retrieved. Please try again later.",
     empty: "Run a request to see the redacted text and detection count.",
-    notice: "The text is sent through the Gateway to PII analysis using the selected subscription key. Portal does not save the text or result to its database.",
+    notice: "The text is sent through the Gateway to PII analysis using the signed-in user’s access token. Portal does not save the text or result to its database.",
     response: "Public response JSON", document: "Azure AI Language PII documentation", bytes: "Compact JSON size", schema: "The complete input and output contract of the REST API published by this Gateway.",
   },
 } satisfies Record<Locale, Record<string, string>>;

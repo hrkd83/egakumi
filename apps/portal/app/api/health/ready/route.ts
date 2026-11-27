@@ -1,9 +1,5 @@
-import { getGatewayProfileSettings } from "@/lib/api-keys/gateway-profile";
-import { getApiKeyLimitRepository } from "@/lib/api-keys/limit-repository";
-import { getCompanyRepository } from "@/lib/company-administration/repository";
-import { assertConnectionSessionStoreReady } from "@/lib/connection-session/store";
+import { getApiAuthStore } from "@/lib/api-auth/store";
 import { scheduleApiAuthCleanup } from "@/lib/api-auth/service";
-import { subscriptionManagerOrigin } from "@/lib/subscription-service/client";
 import { connection } from "next/server";
 
 let expiresAt = 0;
@@ -15,19 +11,7 @@ function readiness(): Promise<boolean> {
   expiresAt = Number.POSITIVE_INFINITY;
   check = (async () => {
     try {
-      const manager = subscriptionManagerOrigin();
-      if (manager) {
-        const response = await fetch(`${manager}/api/health/ready`, {
-          cache: "no-store", redirect: "error", signal: AbortSignal.timeout(5_000),
-        });
-        const body = await response.json();
-        if (!response.ok || body.status !== "ready") return false;
-      } else {
-        const settings = getGatewayProfileSettings();
-        await getApiKeyLimitRepository().getGatewayProfile(settings.tenantId, "profile-readiness");
-        await getCompanyRepository().assertReady();
-      }
-      await assertConnectionSessionStoreReady();
+      await getApiAuthStore().assertReady();
       scheduleApiAuthCleanup();
       return true;
     } catch { return false; }
@@ -35,7 +19,7 @@ function readiness(): Promise<boolean> {
   return check;
 }
 
-/** 実行IDによるSQL照会と専用鍵の準備を確認し、接続情報は返しません。 */
+/** 実行IDで認可スキーマを照会してSQLへの接続を確認します。 */
 export async function GET(): Promise<Response> {
   await connection();
   if (await readiness()) {

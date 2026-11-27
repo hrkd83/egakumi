@@ -65,10 +65,10 @@ test("5言語のガイドは同じ編集済み本文と固定公開パスを使�
   for (const origin of ["http://example.com", "https://user:pass@example.com", "https://example.com/path"]) assert.throws(() => getPiiEndpoint(origin));
   for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) {
     const code = getPiiIntegrationExample(language, input, "https://gateway.example.com");
-    assert.match(code, /GATEWAY_API_KEY/); assert.match(code, /\/tools\/pii\/v1\/redact/); assert.match(code, /language/);
+    assert.match(code, /GATEWAY_ACCESS_TOKEN/); assert.match(code, /\/tools\/pii\/v1\/redact/); assert.match(code, /language/);
     assert.doesNotMatch(code, /connectionSession|X-Core-Connection/);
   }
-  assert.equal(getPiiHeaders()["api-key"], "${GATEWAY_API_KEY}");
+  assert.equal(getPiiHeaders()["Authorization"], "Bearer ${GATEWAY_ACCESS_TOKEN}");
 });
 
 test("ブラウザー側も型と応答上限を検査し自由なエラー文を表示しない", async () => {

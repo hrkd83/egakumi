@@ -16,8 +16,6 @@ param entraAuthentication object = {}
 param graphOboEnabled bool = false
 @description('基盤と各APIで照合済みの購読キーヘッダー名。診断の秘密マスクにも使います。')
 param subscriptionKeyHeader string = 'api-key'
-@description('APIMが検証した購読IDごとの共通要求回数制限。')
-param rateLimits object = { user: { enabled: false, calls: 60, renewalPeriodSeconds: 60 }, subscriptionKey: { enabled: false, calls: 60, renewalPeriodSeconds: 60, overrides: [] }, application: { enabled: false, calls: 60, renewalPeriodSeconds: 60, overrides: [] } }
 @description('監査を有効にした場合に照合済みの内部リレーHTTPS URLとAPIMの認証先を指定します。')
 param auditRelay object = {}
 @description('この明示的な API 登録処理の指定です。APIM 全体の公開・停止スイッチではありません。')
@@ -280,8 +278,6 @@ resource credentialLoginDiagnostics 'Microsoft.ApiManagement/service/apis/diagno
 }]
 
 // ポリシー本文は読みやすい XML ファイルで管理し、契約固有の箇所だけを Bicep が置換します。
-// cache-lookup-valueはfragmentに置けないため、固定の照会本文をAPIポリシーへ展開します。
-var subscriptionProfileXml = replace(replace(renderPolicyTemplate(loadTextContent('policies/snippets/quota/subscription-profile/subscription-profile.xml'), loadTextContent('policies/snippets/quota/subscription-profile/subscription-profile.cs'), subscriptionProfileSnippetSlots), '<fragment>', ''), '</fragment>', '')
 // 原文だけを変数へ保持し、差し込みは使用先と生成元で同じ関数を呼びます。
 // 原文と置換済みXMLの二重保存を避け、説明コメントと実行コードを保ったまま容量を減らします。
 var auditBodyModelErrorXml = replace(trim(replace(replace(loadTextContent('policies/snippets/audit/audit-body-model-error/audit-body-model-error.xml'), '<fragment>', ''), '</fragment>', '')), '\n', '\n    ')
@@ -316,9 +312,7 @@ var realtimeHangupPolicyTemplate = loadTextContent('policies/operation-policies/
 var realtimeHangupOwnerSource = loadTextContent('policies/operation-policies/realtime/realtime-hangup.cs')
 var liveCreatePolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/live/live-create.xml'), loadTextContent('policies/operation-policies/live/live-create.cs'), liveCreatePolicySlots)
 var generatedMcpPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/api-templates/mcp/generated.xml'), loadTextContent('policies/api-templates/mcp/generated.cs'), mcpTemplateSlots)
-func configuredApiTemplate(apiType string) string => replace(
-  apiType == 'http' ? restPolicyTemplate : renderStreamPolicy(apiType == 'websocket' ? websocketPolicySections : externalMcpPolicySections),
-  '__SUBSCRIPTION_PROFILE_XML__', subscriptionProfileXml)
+func configuredApiTemplate(apiType string) string => apiType == 'http' ? restPolicyTemplate : renderStreamPolicy(apiType == 'websocket' ? websocketPolicySections : externalMcpPolicySections)
 func configuredOperationTemplate(template string, errorXml string, entraErrorXml string) string => replace(replace(replace(template, '__RATE_LIMIT_ERROR_XML__', errorXml), '__OPERATION_ENTRA_AUTHENTICATION_ERROR_XML__', entraErrorXml), '__AUDIT_BODY_MODEL_ERROR_XML__', auditBodyModelErrorXml)
 // Compact connection-failure audit retains the verified key/user identity and
 // fits the APIM fragment budget. Normal business audit remains the full fragment.
@@ -402,9 +396,8 @@ func realtimePolicyValue(template string, marker string, source string, ownerTem
 var backendAuditFragmentSlots = [
   { marker: '__CORE_BACKEND_AUDIT_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
 ]
-// cacheを含むsnippetはAPIへinline展開し、取得式だけを同名C#から説明付きで埋め込みます。
-var subscriptionProfileSnippetSlots = [
-  { marker: '__SUBSCRIPTION_PROFILE_CSHARP__', section: '', body: false, trimmed: true, indent: '            ' }
+var rateLimitFragmentSlots = [
+  { marker: '__CORE_RATE_LIMIT_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
 ]
 var apiSettingsFragmentSlots = [
   { marker: '__CORE_API_SETTINGS_CSHARP__', section: '', body: false, trimmed: true, indent: '    ' }
@@ -492,7 +485,6 @@ var modelLimitsFragmentSlots = [
   { marker: '__CORE_MODEL_LIMITS_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
 ]
 // 確認済みの利用者と利用枠設定から回数制限を選ぶ部品を、同名XMLとC#から説明付きで展開します。
-func rateLimitFragmentValue(template string, source string, limits object) string => replace(replace(template, '__CORE_RATE_LIMIT_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      ')), '__RATE_LIMITS_BASE64__', base64(string(limits)))
 // 確認済み社員IDでトークン枠の計数キーを作る式だけを、同名XMLとC#から説明付きで展開します。
 var tokenLimitFragmentSlots = [
   { marker: '__CORE_TOKEN_LIMITS_ENABLED_CSHARP__', section: 'enabled', body: false, trimmed: true, indent: '      ' }
@@ -767,10 +759,8 @@ var operationEntries = flatten(map(filter(apiDefinitions, api => api.apiType == 
   httpEvidence: contains(httpEvidenceApiOperations[indexOf(apiDefinitions, api)], operation.name)
 })))
 var operationBackendEntries = flatten(map(filter(apiDefinitions, api => api.apiType == 'http'), api => map(filter(api.operations, operation => contains(operation, 'backendOverride')), operation => { apiName: api.name, operationName: operation.name, backend: operation.backendOverride })))
-// Product ごとの subscription 登録を集約し、重複を除いて作成します。認可は引き続き API/操作単位で行います。
-var allSubscriptionEntries = flatten(map(apiDefinitions, api => map(api.keySubscriptions, entry => { productId: api.productId, entry: entry })))
-var subscriptionEntries = union(allSubscriptionEntries, [])
-// 通常キーは公開済みAPIを一つの製品から利用します。既存製品は検証用に維持します。
+// 各APIが指定したキー用Productを重複なく作り、リリース済みAPIを集約するProductを加えます。
+// 利用する購読は基盤管理者がAzureポータルで作成します。
 var releasedProductId = 'released-apis'
 var productIds = union(map(apiDefinitions, api => api.productId), [releasedProductId])
 var releasedApis = filter(apiDefinitions, api => api.?released ?? false)
@@ -858,24 +848,22 @@ resource authenticatedSubjectFragment 'Microsoft.ApiManagement/service/policyFra
   properties: { format: 'rawxml', description: '共通認証後に確認済みの購読または社員の識別情報を監査用に整理する。', value: renderPolicyTemplate(authenticatedSubjectTemplate, authenticatedSubjectSource, authenticatedSubjectFragmentSlots) }
 }
 
-// 本人/共有キー/サービスの中央設定を全APIで共有し、同じ枠へ異なる上限を適用しません。
+// 確認したEntraユーザーの同じ利用枠とカウンターを全APIで共有します。
 resource rateLimitFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-rate-limit'
-  properties: { format: 'rawxml', description: '確認済みの購読または社員の識別情報と利用枠設定から回数制限を選び、取消・切断の免除と既存カウンターを維持する。応答本文は読み取らない。', value: rateLimitFragmentValue(rateLimitTemplate, rateLimitSource, rateLimits) }
+  properties: { format: 'rawxml', description: '認証済みEntraユーザーの利用回数枠を適用し、取消・切断の免除と既存カウンターを維持する。', value: renderPolicyTemplate(rateLimitTemplate, rateLimitSource, rateLimitFragmentSlots) }
 }
 // 本文を扱うnative token policyを、HTTPの対応APIだけから参照します。
 resource tokenLimitFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-token-limits'
-  properties: { format: 'rawxml', description: '操作の実効接続先がFoundry OpenAIである対応HTTP操作の毎分・累積トークン枠を、確認済み社員IDまたは購読IDによる既存カウンターへ渡す。社員の認証と利用枠の検査は先行処理へ集約する。内部対象一覧の不備は既存on-errorへ渡し、正常な空一覧・対象外・免除とnative計数の条件は維持する。', value: renderPolicyTemplate(tokenLimitTemplate, tokenLimitSource, tokenLimitFragmentSlots) }
+  properties: { format: 'rawxml', description: '操作の実効接続先がFoundry OpenAIである対応HTTP操作の毎分・累積トークン枠を、認証済みEntraユーザーの既存カウンターへ渡す。社員の認証と利用枠の検査は先行処理へ集約する。内部対象一覧の不備は既存on-errorへ渡し、正常な空一覧・対象外・免除とnative計数の条件は維持する。', value: renderPolicyTemplate(tokenLimitTemplate, tokenLimitSource, tokenLimitFragmentSlots) }
 }
-// The API-inlined subscription profile includes this standalone fragment;
-// keep employee-only validation once instead of duplicating every API XML.
 resource entraUserProfileFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-entra-user-profile'
-  properties: { format: 'rawxml', description: '認証済み社員JSONを解析し、共通認証で検査済みの利用枠を後段へ渡します。構造・必須項目・型・範囲・期間の検査は先行共通認証へ集約し、取得失敗は補完せず既存on-errorへ渡します。SQL照会・cache・入れ子の部品は使用しません。', value: renderPolicyTemplate(entraUserProfileTemplate, entraUserProfileSource, entraUserProfileFragmentSlots) }
+  properties: { format: 'rawxml', description: '認証済み社員JSONを解析し、共通認証で検査済みの利用枠を後段へ渡します。構造・必須項目・型・範囲・期間の検査は先行共通認証へ集約し、取得失敗は補完せず既存on-errorへ渡します。', value: renderPolicyTemplate(entraUserProfileTemplate, entraUserProfileSource, entraUserProfileFragmentSlots) }
 }
 
 // 追跡候補の検査と下流IDの退避。fragment内で本文やtokenをログへ出しません。
@@ -1117,7 +1105,7 @@ resource entraOpenProductPolicyResource 'Microsoft.ApiManagement/service/product
   dependsOn: [entraOpenProduct]
 }
 
-// Model / Tool / Hosted Agent 等の利用者向け Product 分類を作ります。分類だけで呼出権限は付けません。
+// Model / Tool / Hosted Agent 等のキー用Productを管理者にだけ表示します。
 resource protectedProducts 'Microsoft.ApiManagement/service/products@2024-05-01' = [for productId in productIds: {
   parent: apim
   name: productId
@@ -1126,7 +1114,7 @@ resource protectedProducts 'Microsoft.ApiManagement/service/products@2024-05-01'
     description: productId == releasedProductId ? 'All released business APIs. API-specific validation and personal connection requirements still apply.' : 'Verification API bundle ${productId}; caller authorization remains API-scoped.'
     subscriptionRequired: true
     approvalRequired: true
-    state: 'published'
+    state: 'notPublished'
   }
 }]
 // 公開 API と利用者向け Product の所属を関連付けます。
@@ -1160,18 +1148,6 @@ resource releasedMcpProductApiLinks 'Microsoft.ApiManagement/service/products/ap
 resource credentialLoginProductLinks 'Microsoft.ApiManagement/service/products/apis@2024-05-01' = [for productId in productIds: if (credentialLoginEnabled) {
   name: '${apim.name}/${productId}/credential-manager-login'
   dependsOn: [credentialLoginApi, protectedProducts, releasedMcpProductApiLinks]
-}]
-// 承認済みシステム用 APIM subscription を作成。キー値を出力しません。
-resource subscriptions 'Microsoft.ApiManagement/service/subscriptions@2024-05-01' = [for entry in subscriptionEntries: {
-  parent: apim
-  name: entry.entry.subscriptionId
-  properties: {
-    displayName: entry.entry.displayName
-    scope: '${apim.id}/products/${entry.productId}'
-    state: entry.entry.enabled ? 'active' : 'suspended'
-    allowTracing: false
-  }
-  dependsOn: [protectedProducts]
 }]
 // 通常 API の認証・認可・監査・転送規則を登録します。WebSocket は下の onHandshake に設定します。
 // 大きいXMLを一斉に書くとDeveloperの管理処理が詰まるため、１件の完了後に次を送ります。
@@ -1458,7 +1434,7 @@ output entraPublicationSource object = {
       { suffix: '/policyFragments/core-credential-browser-exception', value: browserExceptionFragmentValue(browserExceptionTemplate, browserExceptionSource, credentialLoginEnabled) }
       { suffix: '/policyFragments/core-common-authentication', value: commonAuthenticationFragmentValue(commonAuthenticationTemplate, commonAuthenticationSource, entraAuthentication.?enabled ?? false, gatewayTelemetryTemplate, gatewayTelemetrySource) }
       { suffix: '/policyFragments/core-audit-authenticated-subject', value: renderPolicyTemplate(authenticatedSubjectTemplate, authenticatedSubjectSource, authenticatedSubjectFragmentSlots) }
-      { suffix: '/policyFragments/core-rate-limit', value: rateLimitFragmentValue(rateLimitTemplate, rateLimitSource, rateLimits) }
+      { suffix: '/policyFragments/core-rate-limit', value: renderPolicyTemplate(rateLimitTemplate, rateLimitSource, rateLimitFragmentSlots) }
       { suffix: '/policyFragments/core-token-limits', value: renderPolicyTemplate(tokenLimitTemplate, tokenLimitSource, tokenLimitFragmentSlots) }
       { suffix: '/policyFragments/core-entra-user-profile', value: renderPolicyTemplate(entraUserProfileTemplate, entraUserProfileSource, entraUserProfileFragmentSlots) }
       { suffix: '/policyFragments/core-audit-context', value: auditContextFragmentXml }

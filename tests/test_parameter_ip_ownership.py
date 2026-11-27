@@ -109,7 +109,6 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                 self.assertFalse(set(options["network"]["firewall"]) & set(FIREWALL_INPUTS))
                 self.assertNotIn("dnsServers", options["network"]["firewall"])
                 self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
-                self.assertIn("rateLimits", options["gateway"])
                 for key in RETIRED_FIREWALL_INPUTS:
                     self.assertNotIn(key, options["network"]["firewall"])
                     self.assertNotIn(key, parameters["network"].get("firewall", {}))
@@ -174,11 +173,6 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         self.assertFalse(RETIRED_FIREWALL_INPUTS.intersection(firewall))
         self.assertIn("graph.microsoft.com", result["generatedApimServiceFqdns"])
         self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], [])
-        for kind, common in options["gateway"]["rateLimits"].items():
-            for key, value in common.items():
-                self.assertEqual(result["gateway"]["rateLimits"][kind][key], value)
-        for kind in ("subscriptionKey", "application"):
-            self.assertEqual(result["gateway"]["rateLimits"][kind]["overrides"], [])
 
     def test_generated_idps_ranges_subtract_only_the_gateway(self):
         options, parameters = custom_documents()

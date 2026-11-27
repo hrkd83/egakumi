@@ -28,8 +28,6 @@ def fixture(*, broker_separated=False):
         state['outputs']['managementClientInventory']['environments'].append(broker)
     expected = targets['portal']
     outputs = {'managementMaintenance': copy.deepcopy(expected)}
-    outputs.update({key: {'id': identity, 'name': identity.rsplit('/', 1)[-1], 'fqdn': 'service.example.com'}
-                    for key, identity in zip(('subscriptionAdmin', 'subscriptionProfileReader'), expected['applicationIds'][1:])})
     template = {'parameters': {'inventory': {'type': 'secureObject'}}, 'resources': [
         {'type': 'Microsoft.Compute/virtualMachines/runCommands', 'name': 'prepare-maintenance-client'}]}
     return config, state, outputs, template
@@ -178,14 +176,14 @@ class ManagementClientAssetTests(unittest.TestCase):
                 component='portal', template=template, repository=Path(root))
         self.assertFalse(any(method == 'PUT' for method, path, body in transport.calls))
 
-    def test_a_subscription_service_outside_the_expected_aca_stops_client_preparation(self):
+    def test_portal_outside_the_expected_aca_stops_client_preparation(self):
         config, state, outputs, template = fixture()
         transport = AssetTransport(config, state)
         original_request = transport.request
 
         def request(method, path, body=None):
             result = original_request(method, path, body)
-            if '/containerApps/' in path and '-sub-profile?' in path:
+            if '/containerApps/' in path and '-portal?' in path:
                 result['body']['properties']['environmentId'] = '/synthetic/another-environment'
             return result
 
@@ -195,17 +193,12 @@ class ManagementClientAssetTests(unittest.TestCase):
                 component='portal', template=template, repository=Path(root))
         self.assertFalse(any(method == 'PUT' for method, path, body in transport.calls))
 
-    def test_sql_initialization_includes_known_service_ids_without_registering_uncreated_apps(self):
+    def test_sql_initialization_excludes_portal_until_application_exists(self):
         config, state, outputs, _ = fixture()
         outputs['managementMaintenance']['applicationIds'] = []
-        outputs['subscriptionAdmin']['fqdn'] = ''
-        outputs['subscriptionProfileReader']['fqdn'] = ''
         merged, additions = assets._merge_outputs(config, state['outputs']['managementClientInventory'], outputs, 'portal')
         self.assertEqual(merged['applications'], state['outputs']['managementClientInventory']['applications'])
-        self.assertNotIn(outputs['subscriptionAdmin']['id'], additions)
-        outputs['subscriptionAdmin']['fqdn'] = 'service.example.com'
-        with self.assertRaisesRegex(ValueError, 'output is incomplete'):
-            assets._merge_outputs(config, state['outputs']['managementClientInventory'], outputs, 'portal')
+        self.assertFalse(any('/containerApps/' in target for target in additions))
 
     def test_unrelated_storage_in_the_same_monitor_group_and_unknown_container_are_rejected(self):
         for change in ('other-storage', 'other-container', 'other-workspace-id', 'other-vm-principal'):

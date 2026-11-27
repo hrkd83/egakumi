@@ -3,7 +3,6 @@ import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 import { containsModelCredential } from "./model-credential.ts";
 import { z } from "zod";
-import { ApiKeyError } from "./api-keys/contracts.ts";
 import { apiAuthenticationFailure, resolveGatewayCredential, type GatewayCredential, assertGatewayCredential } from "./api-auth/gateway-credential.ts";
 import { getModelGatewayEnvironment } from "./model-gateway.ts";
 import { readEmbeddingBody } from "./embedding-response.ts";
@@ -41,12 +40,12 @@ export async function handlePiiMcp(request: Request, dependencies: PiiGatewayDep
   try { endpoint = getPiiMcpEndpoint((await (dependencies.readGatewayEnvironment ?? getModelGatewayEnvironment)()).origin); } catch { return failure("GatewayNotConfigured", 503); }
   let credential: GatewayCredential;
   try {
-    credential = await resolveGatewayCredential(request, actor, input, PII_MCP.apiId, new URL(endpoint).origin,
-      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+    credential = await resolveGatewayCredential(request, actor, new URL(endpoint).origin, dependencies.resolveBearer);
   } catch (error) {
     const apiAuth = apiAuthenticationFailure(error);
     if (apiAuth) return failure(apiAuth.code, apiAuth.status);
-    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
+    return failure("ApiAuthenticationUnavailable", 503); }
+  const verifyCredential = dependencies.verifyCredential ?? assertGatewayCredential;
   const timeout = modelDeadline(dependencies.timeoutMs), signal = AbortSignal.any([request.signal, timeout]), fetcher = dependencies.fetch ?? globalThis.fetch;
   let session: string | null = null, protocol: typeof PII_MCP_PROTOCOLS[number] | null = null, currentId: number | null = null, requestId: string | undefined;
   const started = performance.now();
@@ -54,7 +53,7 @@ export async function handlePiiMcp(request: Request, dependencies: PiiGatewayDep
   function requestHeaders() { return { "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...credential.headers, ...(session ? { "Mcp-Session-Id": session } : {}), ...(protocol ? { "MCP-Protocol-Version": protocol } : {}) }; }
   /** JSON-RPC要求と応答IDを対応付け、HTTPエラーの本文は破棄します。 */
   async function send(message: PiiMcpMessage): Promise<unknown> {
-    await assertGatewayCredential(credential);
+    await verifyCredential(credential);
     currentId = message.id ?? null;
     const response = await fetcher(endpoint, { method: "POST", redirect: "error", cache: "no-store", signal, headers: requestHeaders(), body: JSON.stringify(message) });
     const id = response.headers.get("apim-request-id"); if (id && /^[a-zA-Z0-9_-]{1,128}$/.test(id)) requestId = id;
@@ -113,7 +112,7 @@ export async function handlePiiMcp(request: Request, dependencies: PiiGatewayDep
     // 切断を中止と同一視せず、可能なら取消通知とセッション破棄を別要求で届けます。
     const cleanupSignal = AbortSignal.timeout(2000);
     try {
-      await assertGatewayCredential(credential);
+      await verifyCredential(credential);
       if (currentId && protocol) { const cancelled = await fetcher(endpoint, { method: "POST", redirect: "error", cache: "no-store", signal: cleanupSignal, headers: requestHeaders(), body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: currentId } }) }); await cancelled.body?.cancel(); }
       if (session) { const closed = await fetcher(endpoint, { method: "DELETE", redirect: "error", cache: "no-store", signal: cleanupSignal, headers: requestHeaders() }); await closed.body?.cancel(); }
     } catch { /* 終了要求の失敗は秘密も結果も書き換えず、今回の一時状態を破棄します。 */ }

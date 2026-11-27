@@ -185,32 +185,12 @@ class MaintenanceUpgradeTests(unittest.TestCase):
                           self.context.workspace.root.parent / 'other' / 'state.json'):
             with self.assertRaises(OperationError): self.context.save_private(candidate, {'synthetic': True})
 
-    def test_subscription_services_are_included_only_when_both_belong_to_the_constructed_environment(self):
-        groups, stem, _ = maintenance.nsg._scope(self.context.config)
-        svc = groups['svc'] + '/providers/Microsoft.App/'
-        environment = svc + 'managedEnvironments/cae-' + stem
-        expected = ['ca-' + stem + suffix for suffix in ('-sub-admin', '-sub-profile')]
-        admin, profile = [svc + 'containerApps/' + name for name in expected]
-        self.transport.add(admin, 'Microsoft.App/containerApps', {'environmentId': environment})
-        with self.assertRaisesRegex(OperationError, 'services are incomplete'):
-            self.operation.preflight()
-        self.transport.add(profile, 'Microsoft.App/containerApps', {'environmentId': environment + '-other'})
-        with self.assertRaisesRegex(OperationError, 'constructed ACA environment'):
-            self.operation.preflight()
-        self.transport.resources[profile]['properties']['environmentId'] = environment
-        plan = self.operation.preflight()
-        self.assertTrue(set(expected) <= set(plan['applicationNames']))
-        self.assertTrue({admin, profile} <= set(self.operation.client_inventory(plan)['applications']))
-        self.assertFalse(self.transport.mutations())
-
     def test_split_environment_inventory_verifies_components_in_their_own_aca(self):
         groups, stem, _ = maintenance.nsg._scope(self.context.config)
         svc = groups['svc'] + '/providers/Microsoft.App/'
         portal = svc + 'managedEnvironments/cae-' + stem
         broker = portal + '-broker'
         self.context.state['outputs']['brokerPlatform'] = {'environmentName': broker.rsplit('/', 1)[-1], 'environmentId': broker}
-        for name in maintenance.subscription_app_names(self.context.config).values():
-            self.transport.add(svc + 'containerApps/' + name, 'Microsoft.App/containerApps', {'environmentId': portal})
         for kind, names in (('containerApps', ['ca-' + stem + '-credentials']),
                             ('jobs', ['caj-' + stem + '-schema', 'caj-' + stem + '-recon'])):
             for name in names:

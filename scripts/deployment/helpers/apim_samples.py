@@ -1,7 +1,6 @@
 """API登録後にAPIMの初期サンプルだけを整理する。キー値は取得・記録しない。"""
 from __future__ import annotations
 
-import re
 import time
 from urllib.parse import parse_qs, urlsplit
 
@@ -18,7 +17,7 @@ def cleanup_candidates(apis):
     product_names = {api.get("productId", "").casefold() for api in apis}
     return {"apiNames": [] if SAMPLE_API in api_names else [SAMPLE_API],
             "productNames": [name for name in SAMPLE_PRODUCTS if name not in product_names],
-            "subscriptionSelection": "sample-product-or-echo-api-scopes-only", "inventoryChecked": False}
+            "subscriptionSelection": "retain-subscribed-samples", "inventoryChecked": False}
 
 
 def _read(transport, path, api=APIM_API):
@@ -66,13 +65,13 @@ def _default_echo(body):
 
 
 def cleanup_default_samples(apim_id, apis, transport, *, sleep=time.sleep, timeout_seconds=300):
-    """既知の初期定義を購読→製品→APIの順で削除し、404まで確認する。
+    """既知の初期定義を製品→APIの順で削除し、404まで確認する。
 
-    設定で指定した名前、変更されたEcho、業務APIが所属する製品は保持する。
+    設定で指定した名前、変更されたEcho、業務APIや購読が付く製品は保持する。
     それらを見つけてもAPI公開を止めず、保持理由を結果へ記録する。
     """
     result = {"status": "complete", "deletedApiIds": [], "deletedProductIds": [],
-              "deletedSubscriptionIds": [], "skipped": []}
+              "skipped": []}
     candidates = cleanup_candidates(apis)
     echo_id = apim_id + "/apis/" + SAMPLE_API
     deadline = time.monotonic() + timeout_seconds
@@ -93,7 +92,10 @@ def cleanup_default_samples(apim_id, apis, transport, *, sleep=time.sleep, timeo
         if time.monotonic() >= deadline:
             raise ValueError("Default APIM sample cleanup is pending: " + resource_id)
         etag = body.get("etag") or next((v for k, v in current.get("headers", {}).items() if k.casefold() == "etag"), "*")
-        response = transport.request("DELETE", resource_id + "?api-version=" + APIM_API, headers={"If-Match": etag})
+        path = resource_id + "?api-version=" + APIM_API
+        if key == "deletedProductIds":
+            path += "&deleteSubscriptions=false"
+        response = transport.request("DELETE", path, headers={"If-Match": etag})
         if response["statusCode"] not in (200, 202, 204, 404):
             raise ValueError("Delete default APIM sample failed (HTTP " + str(response["statusCode"]) + "): " + resource_id)
         while time.monotonic() < deadline:
@@ -129,6 +131,24 @@ def cleanup_default_samples(apim_id, apis, transport, *, sleep=time.sleep, timeo
             continue
         eligible_products.append(product_id)
 
+    if eligible_products or echo_removable:
+        scopes = set()
+        for subscription in _items(transport, apim_id + "/subscriptions"):
+            scope = subscription.get("properties", {}).get("scope")
+            if not isinstance(scope, str):
+                raise ValueError("Default sample subscription scope is invalid")
+            normalized_scope = scope.rstrip("/").casefold()
+            if normalized_scope.startswith(("/products/", "/apis/")):
+                normalized_scope = apim_id.casefold() + normalized_scope
+            scopes.add(normalized_scope)
+        for product_id in eligible_products[:]:
+            if product_id.casefold() in scopes:
+                skip(product_id, "existing-subscription")
+                eligible_products.remove(product_id)
+        if echo_removable and echo_id.casefold() in scopes:
+            skip(echo_id, "existing-subscription")
+            echo_removable = False
+
     if echo_removable:
         links = _items(transport, echo_id + "/products")
         eligible_ids = {value.casefold() for value in eligible_products}
@@ -140,20 +160,6 @@ def cleanup_default_samples(apim_id, apis, transport, *, sleep=time.sleep, timeo
             echo_removable = False
             skip(echo_id, "api-used-by-retained-product")
 
-    subscription_scopes = {value.casefold() for value in eligible_products}
-    if echo_removable:
-        subscription_scopes.add(echo_id.casefold())
-    subscriptions = _items(transport, apim_id + "/subscriptions") if subscription_scopes else []
-    for subscription in subscriptions:
-        scope = subscription.get("properties", {}).get("scope", "")
-        if not isinstance(scope, str) or scope.rstrip("/").casefold() not in subscription_scopes:
-            continue
-        subscription_id = subscription.get("id", "")
-        prefix = apim_id + "/subscriptions/"
-        name = subscription_id[len(prefix):] if isinstance(subscription_id, str) and subscription_id.casefold().startswith(prefix.casefold()) else ""
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,255}", name) or name.casefold() == "master":
-            raise ValueError("Default sample subscription ID differs from the selected APIM")
-        remove(subscription_id, "deletedSubscriptionIds", lambda b: str(b.get("properties", {}).get("scope", "")).rstrip("/").casefold() in subscription_scopes)
     for product_id in eligible_products:
         remove(product_id, "deletedProductIds", lambda b: str(b.get("properties", {}).get("displayName", "")).casefold() == product_id.rsplit("/", 1)[-1])
     if echo_removable:

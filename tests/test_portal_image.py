@@ -98,34 +98,15 @@ class PortalImageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'request size limit'):
             image.build_command_body('japaneast', '\u65e5' * (image.MAX_COMMAND_BYTES // 4))
 
-    def test_deployment_bundle_contains_sql_configuration_and_scheduled_job_entrypoints(self):
-        # 実配備で送るtarを調べ、Docker COPY後のマイグレーション・定期ジョブが欠けないことを確認する。
+    def test_deployment_bundle_contains_authentication_sql_and_entrypoints(self):
+        # ACAジョブとPortalを起動するイメージのソースを検査します。
         data, _ = image.source_bundle(ROOT)
         with tarfile.open(fileobj=io.BytesIO(data), mode='r:xz') as archive:
             names = set(archive.getnames())
-        for name in ('scripts/api-key-group-config.ts', 'scripts/api-key-administration-config.ts',
-                     'scripts/api-key-subscription-import.ts', 'scripts/bootstrap-api-key-subscriptions.ts',
-                     'scripts/reconcile-api-key-groups.ts', 'lib/api-key-administration/service.ts',
-                     'lib/api-keys/group-policy.ts', 'sql/004_group_lifecycle.sql',
-                     'sql/005_api_key_administration.sql', 'sql/006_group_name_pattern.sql',
-                     'sql/007_apim_subscription_identity.sql'):
-            with self.subTest(path=name):
-                self.assertIn(name, names)
-        self.assertIn('lib/company-administration/repository.ts', names)
-        self.assertIn('sql/008_key_usage_companies.sql', names)
-        self.assertIn('sql/009_subscription_sync.sql', names)
-        self.assertIn('lib/subscription-sync/service.ts', names)
-        self.assertIn('lib/subscription-sync/repository.ts', names)
-        self.assertIn('app/api/subscription-sync/route.ts', names)
-        self.assertIn('services/subscription-admin/server.mjs', names)
-        self.assertIn('services/subscription-profile/server.mjs', names)
-        self.assertIn('sql/013_subscription_profile_reader.sql', names)
-        for name in ('sql/010_connection_sessions.sql', 'lib/connection-session/client.ts',
-                     'lib/connection-session/crypto.ts', 'lib/connection-session/store.ts',
-                     'lib/graph-tool-server.ts', 'app/api/tools/graph/keys/route.ts',
-                     'app/api/tools/graph/profile/route.ts', 'app/api/tools/graph/connection/route.ts'):
-            with self.subTest(path=name):
-                self.assertIn(name, names)
+        self.assertTrue({'scripts/migrate-auth.ts', 'scripts/auth-migrations.ts',
+                         'scripts/auth-runtime-grants.ts', 'scripts/serve-portal.ts'} <= names)
+        self.assertEqual({name for name in names if name.startswith('sql/')},
+                         {'sql/001_initial.sql', 'sql/011_api_authentication.sql'})
 
     def make_source(self, root):
         source = root / 'apps/portal'
@@ -133,10 +114,6 @@ class PortalImageTests(unittest.TestCase):
         for name in image.TOP_LEVEL_FILES | image.EXTRA_FILES:
             path = source / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b'public\r\n')
-        for name in image.SUBSCRIPTION_ENTRYPOINTS:
-            path = source.parent / name
-            path.parent.mkdir(parents=True)
             path.write_bytes(b'public\r\n')
         (source / 'app').mkdir()
         (source / 'app/page.tsx').write_bytes(b'page\r\n')
@@ -354,11 +331,7 @@ class PortalImageTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((folder / 'source/app/api/health/route.ts').is_file())
             self.assertTrue((folder / 'source/scripts/auth-runtime-grants.ts').is_file())
-            self.assertTrue((folder / 'source/scripts/api-key-group-config.ts').is_file())
-            self.assertTrue((folder / 'source/scripts/reconcile-api-key-groups.ts').is_file())
-            self.assertTrue((folder / 'source/scripts/api-key-subscription-import.ts').is_file())
-            self.assertTrue((folder / 'source/scripts/bootstrap-api-key-subscriptions.ts').is_file())
-            self.assertTrue((folder / 'source/sql/007_apim_subscription_identity.sql').is_file())
+            self.assertTrue((folder / 'source/sql/011_api_authentication.sql').is_file())
         stream = io.BytesIO()
         with tarfile.open(fileobj=stream, mode='w') as archive:
             item = tarfile.TarInfo('../outside.ts')

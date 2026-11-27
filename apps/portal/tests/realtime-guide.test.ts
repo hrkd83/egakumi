@@ -67,7 +67,7 @@ for (const mode of ["conversation", "initial-error", "initial-close", "active-er
     for (const model of getRealtimeModels().filter((candidate) => candidate.transport === "websocket")) {
       const source = getRealtimeIntegrationCode(model, defaultRealtimeInput(model), "https://gateway.example.invalid", "python");
       const result = spawnSync(python, ["-c", pythonFixture + "\n" + source + "\n" + runFixture, mode], {
-        encoding: "utf8", timeout: 5000, env: { ...process.env, GATEWAY_API_KEY: "isolated-guide-fixture" },
+        encoding: "utf8", timeout: 5000, env: { ...process.env, GATEWAY_ACCESS_TOKEN: "isolated-guide-fixture" },
       });
       assert.equal(result.status, 0, `${model.id}: ${result.stderr}`);
       const observed = JSON.parse(result.stdout.trim()) as { error: string | null; turns: number; stopped: boolean };
@@ -105,10 +105,10 @@ for (const scenario of ["user-stop", "service-error"]) {
         .replace("export async function", "async function");
       const javascript = transpileModule(generated, { compilerOptions: { module: ModuleKind.None, target: ScriptTarget.ES2022 } }).outputText;
       const create = new Function("WebSocket", "process", javascript + "\nreturn converse;") as
-        (webSocket: typeof WebSocket, environment: { env: { GATEWAY_API_KEY: string } }) => (frames: AsyncIterable<Uint8Array>, stop: AbortSignal, consume: () => void) => Promise<void>;
+        (webSocket: typeof WebSocket, environment: { env: { GATEWAY_ACCESS_TOKEN: string } }) => (frames: AsyncIterable<Uint8Array>, stop: AbortSignal, consume: () => void) => Promise<void>;
       let deadline: ReturnType<typeof setTimeout> | undefined;
       try {
-        const converse = create(WebSocket, { env: { GATEWAY_API_KEY: "isolated-guide-fixture" } });
+        const converse = create(WebSocket, { env: { GATEWAY_ACCESS_TOKEN: "isolated-guide-fixture" } });
         await Promise.race([converse(input, controller.signal, () => undefined), new Promise<never>((_resolve, reject) => {
           deadline = setTimeout(() => reject(new Error("Guide waited for a stalled microphone")), 1000);
         })]);

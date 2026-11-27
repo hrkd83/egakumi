@@ -2,7 +2,7 @@
 
 前：[09. Core構築後のEntra登録](09-egakumi-portal.md) · [10. ハブ＆スポーク（任意）](10-hub-spoke.md) · [README](../../README.md) · 次：[12. Portalの個別配備](12-deploy-portal.md)
 
-CoreのAPIM、共通SQL、非公開ACR、ACA環境を使い、BrokerとCredential Managerの本人接続基盤を配備する。その後、APIMのAPI定義、バックエンド、ポリシー、製品、購読を登録する。本文監査が有効な環境では、この工程で中継と保存ワーカーも配備する。[本文監査の構成と受入条件](../reference/request-body-audit.md)
+CoreのAPIM、共通SQL、非公開ACR、ACA環境を使い、BrokerとCredential Managerの本人接続基盤を配備する。その後、APIMのAPI定義、バックエンド、ポリシー、製品を登録する。購読キーの例外発行は基盤管理者がAzureポータルで行う。本文監査が有効な環境では、中継と保存ワーカーも配備する。 [購読キーの運用](../operations/access-and-keys.md) · [本文監査の構成と受入条件](../reference/request-body-audit.md)
 
 | `apps` 配下の資材 | Gateway個別配備での役割 |
 | --- | --- |
@@ -27,7 +27,7 @@ CoreのAPIM、共通SQL、非公開ACR、ACA環境を使い、BrokerとCredentia
 
 ## 2. 本人接続の設定を確認する
 
-公開paramsの`credentialProviders.graphDelegated`にはClient IDと`clientSecretFile`を設定する。共通configの同slotには表示名・scope・pool、`config.gateway.authentication.credentialLogin`にはprovider選択とセッション設定を置く。標準の論理名`graph-delegated`とtenantは固定資材から導出する。追加providerは双方の`additional[]`で定義と登録を論理名照合する。最終構成の本人確認には`gateway.authentication.credentialLogin.identity`を必須とする。Portalの`portalAuthentication.credentialProviderName`も同じ論理プロファイルを使う。
+公開paramsの`credentialProviders.graphDelegated`にはClient IDと`clientSecretFile`を設定する。共通configの同slotには表示名・scope・pool、`config.gateway.authentication.credentialLogin`にはprovider選択とセッション設定を置く。標準の論理名`graph-delegated`とtenantは固定資材から導出する。追加providerは双方の`additional[]`で定義と登録を論理名照合する。最終構成の本人確認には`gateway.authentication.credentialLogin.identity`を必須とする。
 
 ```bash
 python3 scripts/deployment/lifecycle.py validate --config "$DEPLOY_PARAMS_FILE"
@@ -66,7 +66,7 @@ python3 scripts/deploy_gateway.py \
 4. credentials DB、認証窓口の実行用ID、CMプロバイダー・必要な組み込みロール、専用鍵とAPIMの名前付きの値・バックエンドを配備する。
 5. 同じdigestのSQL初期化ジョブを実行し、テーブル・プール台帳・実行用IDのSQL権限を準備する。本人対応とCMプールは保持する。本人セッションv2へ初めて切り替える際は`002_session_lifecycle.sql`が旧取引・旧セッションを無効化し、セッション関連テーブルを新定義へ置き換える。v2配備の通常再試行では有効なセッションを初期化し直さない。`003_idle_connection_cleanup.sql`はスキーマ版3として未使用接続回収と割当処理を更新し、既存の`LastUsedAt`を巻き戻さず保持する。`004_verified_user_caller.sql`はスキーマ版4としてユーザー主体用の`CallerId`列を追加し、既存の購読・取引・セッション・CM接続を保持する。
 6. SQL初期化に成功してからContainer Appと定期照合ジョブを配備し、認証窓口の正常起動を確認する。新しいStartup・Readiness・Liveness probeは`/health/gateway-caller-v1`でSQL版4とユーザー主体用の列を毎回検査する。初期化に失敗した場合はアプリ更新とAPI登録に進まない。
-7. API・バックエンド・Product・購読・ポリシーを登録する。必要な診断ログと初期サンプルの整理も行う。
+7. API・バックエンド・Product・ポリシーを登録する。購読キーは[例外発行の運用](../operations/access-and-keys.md)に沿って管理者が発行する。必要な診断ログと初期サンプルの整理も行う。
 
 標準19 API正本を常用で解決する。計画と反映は個別コマンドの`--execute`で区別し、公開paramsの切替フラグを使わない。
 

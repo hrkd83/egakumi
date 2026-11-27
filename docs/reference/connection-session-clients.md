@@ -31,66 +31,7 @@ rotationCommitAttempted          確定要求を送る前に保存する試行�
 
 ## Next.js / Node.js
 
-サーバー用クライアントの正本は[`apps/portal/lib/connection-session/client.ts`](../../apps/portal/lib/connection-session/client.ts)。別アプリへ取り込むときはこの実装を使い、暗号化共有store・認証済み本人の境界をそのアプリへ実装する。追加の認証SDKは要求せず、アプリの既存認証から確認済み本人を受け取る。PortalのBetter Authログインと、この接続セッションの期限を同一にしない。
-
-業務GETは排他取得後に開始する90秒のHTTP予算を使い、前後の更新確定と業務実行前409後の
-再試行でも同じ期限を共有する。更新確定などの制御要求は1要求25秒を上限とし、業務処理中は
-残り予算も越えない。期限後の追加送信や、成功済み業務の自動再送は行わない。
-単独の完了確認・ログアウト・切断は25秒のまま。SQLの処理時間はこのHTTP予算に含めた
-完了保証ではなく、共有storeのリースと版数・期限のfencingで保護する。
-
-```typescript
-// app/api/graph/me/route.ts の組み込み例。server-onlyのモジュール内で生成する。
-import "server-only";
-import { ConnectionSessionClient } from "./connection-session";
-
-export async function GET() {
-  // 以下3件は呼び出しアプリが実装する境界。HTTPのtid/oid申告で代用しない。
-  const principal = await requireVerifiedPrincipal();
-  const subscription = await authorizedSubscriptionFor(principal);
-  const store = encryptedSharedConnectionStore;
-  const client = new ConnectionSessionClient({
-    origin: configuredGatewayOrigin,
-    apiKey: subscription.primaryKey,
-    subscriptionId: subscription.id,
-    profile: "graph-delegated",
-    principal: { tenantId: principal.tenantId, ownerId: principal.objectId },
-    store,
-  });
-  const result = await client.get("/tools/graph/v1/me");
-  if (result.kind === "login") {
-    // 仮セッションの保存完了後。画面はURLを表示し、アプリ自身の完了確認APIを照会する。
-    return Response.json({ status: "need_login", loginUrl: result.loginUrl },
-      { status: 409, headers: { "Cache-Control": "no-store" } });
-  }
-  return result.response; // 更新秘密ヘッダーは参照実装が除去済み。
-}
-```
-
-上記の`requireVerifiedPrincipal`・購読認可・暗号化共有storeはアプリの実装箇所であり、参照実装に架空の認証処理は含めない。`SharedStateStore.withExclusive()`内で同じ保存キーを排他し、`StateTransaction.save()`は期待revisionと一致するときだけ保存する。DBに暗号化・復号するのもアダプターの担当。
-
-アプリ自身の完了確認Route Handlerでも同じ本人認証・購読認可を行い、同じbindingの`client.poll()`を呼ぶ。ブラウザーへは`pending/complete`だけを返す。ブラウザーにGatewayのpollSecretを送らない。完了後は通常のGraph取得を再要求する。書き込み操作の自動再送はアプリが冪等性を確認した場合だけ行う。
-
-このTypeScript実装の業務応答は64KiBまでの有限なJSONを対象とし、ストリーミングには使用しない。応答本文を更新確定より先に受け取り、確定の通信待ちで成功済みの本文を失わないようにしている。
-
-ログアウト・本人の全失効・接続解除には、それぞれ同じクライアントの`logout()`・`logoutAll()`・`disconnect()`を使用する。接続解除が202の`disconnect_pending`でもSQLでは利用禁止済みのため、アプリ側の秘密を破棄する。
-
-更新候補を保存後に確定通信が失敗した場合、`sessionUpdatePending: true`と元の業務応答を返す。画面に再認証を要求せず、次回要求の先頭で確定を再試行する。
-
-Portalの実装は`lib/connection-session/store.ts`と`crypto.ts`を使用し、`portalConnectionState`へ利用者別の接続状態をAES-256-GCMで保存する。保存先の鍵は`BETTER_AUTH_SECRET`から用途別に導出し、DBのリース・版数比較で排他する。署名鍵の更新後は旧暗号文を復号できないため、管理者がGraph保存状態を初期化してから再認証する運用が必要である。画面の再実行だけでは復旧せず、暗号文の不正は自動破棄しない。Microsoftアクセストークン・更新トークンは引き続きCMが管理する。
-
-参照実装の実通信なしテストと型検査（リポジトリルートで実行）:
-
-```bash
-node --experimental-strip-types --test apps/portal/tests/connection-session-client.test.ts
-node apps/portal/node_modules/typescript/bin/tsc --noEmit --strict --target ES2022 \
-  --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions \
-  --types node --typeRoots apps/portal/node_modules/@types \
-  apps/portal/lib/connection-session/client.ts \
-  apps/portal/tests/connection-session-client.test.ts
-```
-
-このテストはPortalの`npm test`にも含まれる。Nodeの型消去はテスト実行用。本番アプリへ組み込む際は、そのアプリのTypeScriptビルドを使う。
+購読キーで本人接続を使うクライアントは、このページの開始・完了確認・更新・失効の契約をバックエンドに実装します。PortalはBearerを使うため、購読キー向けのTypeScript参照実装は現在のPortal資材に含まれません。Gateway.Invokeを利用できるアプリは、OAuthで取得した本人のトークンを送信してGraphのOBO経路を利用できます。
 
 ## FastAPI / Python
 

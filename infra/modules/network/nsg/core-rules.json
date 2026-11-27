@@ -298,23 +298,6 @@
             "443"
           ]
         },
-        "allow-aca-https-egress": {
-          "designRecordId": "N-APIM-OUT-02",
-          "direction": "Outbound",
-          "priority": 220,
-          "access": "Allow",
-          "protocol": "Tcp",
-          "sourcePort": "*",
-          "source": [
-            "subnet:apim"
-          ],
-          "destination": [
-            "ip:aca"
-          ],
-          "destinationPorts": [
-            "443"
-          ]
-        },
         "allow-key-vault-https-egress": {
           "designRecordId": "N-APIM-OUT-03",
           "direction": "Outbound",
@@ -1070,24 +1053,6 @@
             "31443"
           ]
         },
-        "allow-apim-https-ingress": {
-          "designRecordId": "B-ACA-04",
-          "direction": "Inbound",
-          "priority": 220,
-          "access": "Allow",
-          "protocol": "Tcp",
-          "sourcePort": "*",
-          "source": [
-            "subnet:apim"
-          ],
-          "destination": [
-            "subnet:aca"
-          ],
-          "destinationPorts": [
-            "443",
-            "31443"
-          ]
-        },
         "allow-mgmt-vm-https-ingress": {
           "designRecordId": "N-ACA-IN-MGMT-HTTPS",
           "direction": "Inbound",
@@ -1186,23 +1151,6 @@
           ],
           "destination": [
             "ips:registry"
-          ],
-          "destinationPorts": [
-            "443"
-          ]
-        },
-        "allow-arm-https-egress": {
-          "designRecordId": "B-ACA-13",
-          "direction": "Outbound",
-          "priority": 223,
-          "access": "Allow",
-          "protocol": "Tcp",
-          "sourcePort": "*",
-          "source": [
-            "subnet:aca"
-          ],
-          "destination": [
-            "tag:AzureResourceManager"
           ],
           "destinationPorts": [
             "443"

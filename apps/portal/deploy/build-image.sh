@@ -45,12 +45,8 @@ if hashlib.sha256(data).hexdigest() != '__SOURCE_SHA256__':
 top = {'Dockerfile', '.dockerignore', 'package.json', 'package-lock.json', 'next.config.ts',
        'tsconfig.json', 'proxy.ts'}
 extra = {'scripts/migrate-auth.ts', 'scripts/auth-migrations.ts', 'scripts/auth-runtime-grants.ts',
-         'scripts/api-key-group-config.ts', 'scripts/api-key-administration-config.ts',
-         'scripts/reconcile-api-key-groups.ts',
-         'scripts/api-key-subscription-import.ts', 'scripts/bootstrap-api-key-subscriptions.ts',
          'scripts/prepare-model-catalog.ts',
          'scripts/prepare-realtime-worklet.ts', 'scripts/serve-portal.ts',
-         'services/subscription-admin/server.mjs', 'services/subscription-profile/server.mjs',
          'deploy/build-image.sh', 'styles/shadcn.LICENSE.md'}
 extensions = {
     'app': {'.ts', '.tsx', '.css', '.json', '.ico', '.svg', '.png', '.jpg', '.jpeg', '.webp', '.avif'},
@@ -90,7 +86,7 @@ stage=image-content-check
 # 配備時と同じ非rootユーザーで本体とSQL資材の読み取りを確認する。
 # Azureの秘密情報は渡さず、ネットワークも切った状態で検査する。
 docker run --rm --network none --entrypoint node "$image" --conditions=react-server --experimental-strip-types --input-type=module -e \
-    'import fs from "node:fs"; if (process.getuid() === 0) throw Error("root runtime"); for (const file of ["server.js", "sql/001_initial.sql", "sql/004_group_lifecycle.sql", "sql/005_api_key_administration.sql", "sql/006_group_name_pattern.sql", "sql/007_apim_subscription_identity.sql", "sql/008_key_usage_companies.sql", "sql/009_subscription_sync.sql", "sql/012_subscription_management_authentication.sql", "sql/013_subscription_profile_reader.sql", "lib/company-administration/repository.ts", "scripts/migrate-auth.ts", "scripts/api-key-group-config.ts", "scripts/api-key-administration-config.ts", "scripts/api-key-subscription-import.ts", "scripts/bootstrap-api-key-subscriptions.ts", "scripts/reconcile-api-key-groups.ts", "scripts/serve-portal.ts", "lib/realtime-relay.ts", "public/realtime-audio-worklet.js", "../subscription-admin/server.mjs", "../subscription-profile/server.mjs"]) fs.accessSync(file); await import("./scripts/serve-portal.ts"); await import("./lib/subscription-service/server.ts");' \
+    'import fs from "node:fs"; if (process.getuid() === 0) throw Error("root runtime"); for (const file of ["server.js", "sql/001_initial.sql", "sql/011_api_authentication.sql", "scripts/migrate-auth.ts", "scripts/auth-migrations.ts", "scripts/auth-runtime-grants.ts", "scripts/serve-portal.ts", "lib/realtime-relay.ts", "public/realtime-audio-worklet.js"]) fs.accessSync(file); await import("./scripts/serve-portal.ts");' \
     >"$work/startup-check.log" 2>&1
 stage=registry-login
 # VM自身のMIでトークンを取得し、標準ACR交換APIへ渡す。

@@ -94,7 +94,7 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | NSG全件読戻し | 基本構成と証明書用ACAの規則、本文監査有効時の追加規則 | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが正本に一致する。各ACAの専用サブネット・NSG関連付け、両方向の終端Deny、Azure既定規則、PEのNSGポリシー、管理VM／APIMの時刻通信を確認する。 |
 | FW全件読戻し | 基本は6 RCG・10 collection・35規則。本文監査有効時は7 RCG・12 collection・37規則 | priority、action、種別、全source/destination、protocol/port、TLS inspectionが資材と一致する。`rcg-platform`の12規則、本文監査用`rcg-audit-evidence`の2規則、APIMのNTP許可と管理VMの旧NTP規則の撤去を確認する。 |
 | 公開入口 | CLIENT、APPGW-APIM、APPGW-ACA | 公開TLS、HTTPリダイレクト、APIM正常API、Portalのhealthと画面、L7入口保護を確認。両バックエンドのHTTPSプローブとFirewallのTLS検査・非対象経路の拒否も確認。healthだけを全APIの認可確認にしない |
-| 購読管理と照会 | ACA-INTERNAL、APIM-ACA、ACA-SQL | Portalから購読管理、APIMからプロファイル照会へ直接HTTPSで接続。専用2アプリのrevision、DNS・証明書・実際のIngress拒否、本人トークンと照会鍵、SQL権限を確認 |
+| PortalとGateway | ACA-APIM、ACA-SQL | Portalの試用は公開Gatewayを経由する。Portal用実行IDのAPIM管理API呼出しが拒否されることも確認 |
 | Broker分離 | APIM-BROKER、ACA-KV、ACA-SQL、ACA-ACR、ACA-ARM、ACA-ENTRA | APIMからBrokerへの許可、Portal用ACA・AppGW・管理VMからの拒否、Brokerの起動・SQL・CM・OBO・監査、PortalとBrokerが別々のACA環境を使うことを確認する。 |
 | 本文監査の分離 | APIMから専用中継、専用ACAからEvent Hubs・本文Blob・チェックポイントBlob | 中継へのAPIM以外からの接続と未許可IDを拒否し、保存ワーカーに入口がないことを確認する。Private DNSと実効NSG、各実行IDの権限、JSON／SSEの受領確認、Event Hubs障害時の応答、Blobへの保存を合成データで確認する。 [本文監査の受入条件](request-body-audit.md) |
 | PE接続 | APIM/ACA/管理VMとFoundry/KV/SQL/ACR/監査Blob、本文監査用の3 PE | DNS回答とPE全IP、往復制御、サービスTLSと認可を照合する。本文監査が有効な場合はEvent Hubs・本文Blob・チェックポイントBlobの三つを個別に確認する。 |
@@ -137,7 +137,7 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | 高・公開入口の迂回 | AppGWが再暗号化し、Firewall経由のHTTPSがAPIM／ACAの許可元になる。APIMにもAppGWの信頼済み入口確認がある。別経路からの到達や信頼情報の漏えいで境界が弱くなる | 有効なNSG・ルート・SNIを読戻し、外部入口、バックエンドの直接接続、許可されていないサブネットからの到達を確認する。AppGWとAPIMの監査を要求IDで照合する |
 | 高・TLS検査とログ | 検査したURLはFirewallのApplication Rule／Threat Intelログの`TargetUrl`に含まれる可能性があり、OAuthの戻り先には一回限りの値が含まれ得る | URLを記録するカテゴリには取り込み時の削除を適用し、加工前のStorage直送を分ける。合成マーカーのある要求でWorkspace・Storageの双方を確認する。 [Application Ruleログの項目](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwapplicationrule) · [Threat Intelログの項目](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwthreatintel) |
 | 高・Portalと接続所有者 | Portalのプロセスは、同じアプリに割り当てた認証SQL用IDとトークン暗号鍵用IDを使う。侵害時は両方に影響し得る。Entraは同じPortalクライアントで同意済みの別用途にも更新トークンを交換できる | 固定鍵版、期限、認証世代、SQLセッションを照合する。別本人、失効、更新競合、複数レプリカでの停止、インシデント時のセッション失効と鍵更新を受け入れる。 [PortalのID割当](../../apps/portal/deploy/application.bicep) · [Entra追加認証と残る影響](../setup/09-egakumi-portal.md#一度の登録依頼に含める設定) |
-| 高・購読管理への書込み権限 | 公開PortalからAPIM管理権限とSQL台帳の書込み権限を分離した。購読管理の実行IDには対象APIMの購読操作と製品参照を許可する。割当はAPIMインスタンス単位であり、管理サービスの侵害は同じAPIMの他の購読にも影響し得る | 本人トークン、操作時の所属、対象IDと実効権限を[購読管理とプロファイル照会の分離](#購読管理とプロファイル照会の分離)で確認する。既存環境に旧Contributorの割当があれば、移行の受入後に割当IDを特定して個別に回収する。 [APIMロール定義](../../apps/portal/deploy/api-keys.bicep) |
+| 高・公開Portalへの権限集中 | Portalから購読管理を撤去し、APIM購読は基盤管理者が管理する。Portalの実行IDは認証・試用のSQLとKey Vaultを使用する | [PortalとAPIMの管理境界](#portalとapimの管理境界)を確認する |
 | 高・共有Key Vaultの読取範囲 | 公開TLSのPFXとACME状態を専用Vaultに分離した。新規資材はAppGWに対象PFXの読取りを付与する。APIMは指定のNamed Valueを参照し、読取のRBACは業務用Vault全体に及ぶ。業務用Vaultは複数処理で共有し、APIM管理プレーンのための例外を持つ | 必要な参照に加え、AppGWによる他のsecretの読取と、APIMや業務用ACAのIDによるTLS Vaultへの未許可操作が拒否されることを確認する。既存環境の広域割当、旧timer、旧証明書とACME状態は実際の依存を確認してから個別に取り扱う。 [Vaultの設定](../../infra/modules/services/services.bicep) · [RBACの設定](../../infra/modules/services/service-bindings.bicep) |
 | 高・PortalからBrokerへの横移動 | Brokerを専用の内部ACA環境とサブネットへ分離した。アプリの業務接続をAPIMに限定し、Broker側でも共有鍵・本人・権限を照合する。同じVNetのPEとAzure管理・監視サービスは用途別に利用する | Portal用ACAからBrokerへの直接到達を拒否し、公開Gateway経由の正規処理が成立することを確認する。APIM由来の異常な要求と、Broker実行IDによる対象外の秘密・DB・ARM操作も拒否されることを確認する。 [Broker環境の分離](#credential-broker環境の分離) |
 | 中・接続先、長時間通信と障害 | 検査用中間CAとDNSが経路の信頼点になる。CA失効、証明書名の違い、長い接続の切断はGateway全体へ波及し得る | CAアクセスを専用IDと対象secretへ絞り、切替と期限を運用で確認する。正しい経路と証明書不一致、JSON、SSE、WebSocket、MCPを試験し、タイムアウトとIDPSを監査で識別する |
@@ -148,28 +148,13 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 対象 | 資材上の境界 | Azureで確認する内容 |
 | --- | --- | --- |
-| Portal用環境の内部通信 | 公開Portal、購読管理、プロファイル照会は同じACA環境内の別アプリ。購読管理は同じACA環境からの入口と本人委任に、照会はAPIMサブネットからの入口と専用鍵に限定する。各アプリに別の実行IDとSQL権限を割り当てる。 | Portalからの正規の購読操作とAPIMからの照会を確認する。別環境・未許可サブネット、無効な本人トークン・専用鍵、各実行IDからの対象外SQL操作を拒否することを確認する。 [購読管理とプロファイル照会の分離](#購読管理とプロファイル照会の分離) |
+| Portal用環境の内部通信 | PortalはApp GatewayからHTTPSで受信し、試用要求を公開Gatewayへ送る | APIMからPortalのACA ingressへの直接経路が拒否されることを確認する |
 
 実効権限、到達性、遮断結果は新規構築後の保護実施票に記録する。依存パッケージの公表済み指摘は[Portalの依存監査](../testing/portal-authentication-tests.md#本番依存の再監査)を参照する。
 
-### 購読管理とプロファイル照会の分離
+### PortalとAPIMの管理境界
 
-公開Portal、購読管理、プロファイル照会は、同じPortalイメージを別の実行ID・起動入口で使う3つのアプリとして構築する。購読管理は同じACA環境からのHTTPSに限定し、`Subscription.Manage`の発行元、audience、Portalクライアント、本人とscopeを検証してから操作時点の所属を確認する。照会は内部ACA環境のVIPでAPIMサブネットを許可し、専用鍵とSQL参照プロシージャを使う。公開Portalは認証SQLへの権限を使い、購読操作は専用サービスへ依頼する。 [購読管理の起動入口](../../apps/subscription-admin/server.mjs) · [照会の起動入口](../../apps/subscription-profile/server.mjs) · [ACAの定義](../../apps/portal/deploy/subscription-services.bicep) · [クレーム検証](https://learn.microsoft.com/en-us/entra/identity-platform/claims-validation)
-
-| 機能 | 新規環境で受け入れる契約 |
-| --- | --- |
-| 会社マスタ | 基盤管理グループによる会社の登録・改名・選択停止と変更監査。会社の選択停止と購読の失効を独立して扱う |
-| 基盤管理グループと所有候補 | `platformGroupId` と `groupNamePattern` の構築設定、Entraの所属変更、定期照合と管理画面。基盤管理グループの差替えと個々のキーの所有者移管は、現行手順どおり別操作とする |
-| 所有グループの移管 | 移管元の現在の所属、移管先の適格性・Product承認・発行枠を確認し、同じ購読を引き継ぐ。台帳の変更と移管監査を同じSQLトランザクションで記録する |
-| キーの利用・管理者同期 | 発行・表示・停止／再開・削除・利用枠、キーまたはBearerでの試用、管理者の同期プレビューとSQLからAPIMへの反映。同期はSQL未登録購読も差分として提示し、管理者の確認を経て適用する |
-
-| セキュリティ境界 | 新規環境で受け入れる契約 |
-| --- | --- |
-| 公開経路・資格情報 | App Gatewayや公開側から専用2アプリへ到達できず、購読管理は同じACA環境外、照会はAPIM以外のサブネットを拒否。管理側でCookie、別のclient、誤ったscope、期限切れ、別所属を拒否する。照会側で誤った専用鍵を拒否する |
-| APIMロール・SQL | 公開PortalのIDによるAPIM購読操作とSQL台帳への書込みが拒否される。管理IDは購読操作と製品参照が成立し、ポリシー・Named Value・バックエンドの更新が拒否される。照会IDはプロシージャを実行でき、テーブルの直接読取り・書込みを拒否される |
-| 初回構築と照会障害 | SQL初期化、専用2アプリの準備、公開ヘルス、APIMのNamed Value読戻しと有効化の順を確認する。APIMから正しい鍵で照会し、プロファイル未取得時の上流障害が503になる。同期の確認内容は公開PortalのCookie署名鍵と別の鍵で検証する |
-
-新規構築資材のコードと試験で境界を確認し、Azureでの配備、権限回収、上記の実受入は別途記録する。 [配備手順](../setup/12-deploy-portal.md) · [SQL権限](../../apps/portal/scripts/auth-runtime-grants.ts) · [APIMの接続定義](../../apps/portal/deploy/subscription-profile.bicep)
+Portalの実行IDがログイン・試用に必要なSQLとKey Vaultを利用でき、APIM購読の作成、キー取得・再生成、停止、ポリシーの更新が拒否されることを確認する。APIMからPortal内部のACAに直接接続できず、PortalからGatewayへは公開HTTPS経路で到達することを確認する。例外発行のキーはAPIMで停止し、停止後の要求が拒否されることを確認する。[Portalの配備](../setup/12-deploy-portal.md) · [購読キーの運用](../operations/access-and-keys.md)
 
 ### Credential Broker環境の分離
 

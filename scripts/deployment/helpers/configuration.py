@@ -64,7 +64,7 @@ TOP_KEYS = {
     "schemaVersion", "productName", "environmentName", "subscriptionId",
     "azureTenantId", "entraTenantId", "location", "foundryLocation", "apiCenterLocation", "tags", "network",
     "services", "gateway", "management", "monitoring", "certificate", "firewallTlsInspection", "authorization",
-    "apiDefinitions", "publishApis", "credentialProviders", "portal", "credentialBroker", "portalAuthentication", "portalApiKeys", "codex", "auditEvidence",
+    "apiDefinitions", "publishApis", "credentialProviders", "portal", "credentialBroker", "portalAuthentication", "codex", "auditEvidence",
 }
 NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 API_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
@@ -78,7 +78,7 @@ PARAMETER_KEYS = {
     "$schema", "$comment", "configFile", "schemaVersion", "productName",
     "environmentName", "subscriptionId", "azureTenantId", "entraTenantId", "services", "gateway",
     "management", "monitoring", "certificate", "firewallTlsInspection",
-    "credentialProviders", "portal", "codex", "portalApiKeys", "network", "location", "foundryLocation", "apiCenterLocation", "tags",
+    "credentialProviders", "portal", "codex", "network", "location", "foundryLocation", "apiCenterLocation", "tags",
 }
 # このVNet内で構築する資材のアドレスだけをNSGへ動的に渡します。
 # VNet・Firewall DNSとNSG初期集合はBicep内で固定し、公開入力では変更しません。
@@ -131,7 +131,6 @@ PARAMETER_OWNED_PATHS = (
     ("gateway", "authentication", "entra", "obo"),
     *(("gateway", "authentication", "credentialLogin", "identity", key) for key in ("clientId", "clientSecretFile")),
     *(("credentialProviders", "graphDelegated", key) for key in ("clientId", "clientSecretFile")),
-    *(("portalApiKeys", key) for key in ("platformGroupId", "groupNamePattern")),
 )
 
 # 旧入力は空値でも受け付けず、値の意味を変える自動移行をしません。
@@ -143,10 +142,8 @@ FIXED_INITIAL_PATHS = (
     ("gateway", "authentication", "subscriptionKeyHeader"),
     ("gateway", "authentication", "entra", "requiredScope"),
     ("gateway", "authentication", "credentialLogin", "identity", "tenantId"),
-    *(("gateway", "rateLimits", kind, "overrides") for kind in ("subscriptionKey", "application")),
     *(("monitoring", key) for key in ("auditAllowedIpAddresses", "auditReaders")),
     *(("certificate", key) for key in ("domainNames", "plugin")),
-    *(("portalApiKeys", key) for key in ("groups", "verificationSubscriptions")),
 )
 
 
@@ -781,10 +778,10 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
     """
     result = _list(copy.deepcopy(raw), "apiDefinitions")
     # 空配列はAPI登録コマンドが標準一式へ展開する。構築用の検査では空のまま扱う。
-    names, paths, subscription_ids = set(), set(), {}
+    names, paths = set(), set()
     for i, api in enumerate(result):
         p = f"apiDefinitions[{i}]"
-        _object(api, p, {"name", "displayName", "path", "backendService", "backendUrl", "backendPath", "backendAudience", "productId", "released", "subscriptionKeyHeader", "operations", "keySubscriptions", "authorization", "mcp", "credentialConnection", "apiType", "backendAuthentication", "backendHeaders", "mcpProxy", "websocket", "serviceClass"})
+        _object(api, p, {"name", "displayName", "path", "backendService", "backendUrl", "backendPath", "backendAudience", "productId", "released", "subscriptionKeyHeader", "operations", "authorization", "mcp", "credentialConnection", "apiType", "backendAuthentication", "backendHeaders", "mcpProxy", "websocket", "serviceClass"})
         _bool(api.setdefault("released", False), p + ".released")
         api_type = _choice(api.setdefault("apiType", "http"), p + ".apiType", ("http", "websocket", "mcp"))
         name = _string(api.get("name"), p + ".name", maximum=80)
@@ -988,18 +985,6 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
                 _fail(p + ".mcpProxy.endpoints", "must match the official transport endpoint names without duplicates")
         elif "mcpProxy" in api:
             _fail(p + ".mcpProxy", "is allowed only on an existing MCP proxy")
-        subscriptions = _list(api.get("keySubscriptions"), p + ".keySubscriptions")
-        actual = set()
-        for j, entry in enumerate(subscriptions):
-            q = f"{p}.keySubscriptions[{j}]"
-            _object(entry, q, {"subscriptionId", "displayName", "enabled"})
-            sid = _string(entry.get("subscriptionId"), q + ".subscriptionId")
-            if sid in actual or (sid in subscription_ids and subscription_ids[sid] != (product, entry)):
-                _fail(q + ".subscriptionId", "shared subscriptions must have identical settings and the same Product")
-            actual.add(sid)
-            subscription_ids[sid] = (product, entry)
-            _string(entry.get("displayName"), q + ".displayName")
-            _bool(entry.get("enabled"), q + ".enabled")
     # 各APIの入口audienceとkey headerは、上で基盤の共通認証設定と照合済みです。
     # 下流サービスのbackendAudienceとscopeのHTTPS URLは共通認証とは別に扱います。
     for i, api in enumerate(result):
@@ -1030,16 +1015,13 @@ def _portal_authentication(value: Any) -> dict:
     バックアップ条件だけを扱う。省略時は開発向けのBasicを選ぶ。
     """
     defaults = {
-        "credentialProviderName": "graph-delegated", "sqlSkuName": "Basic",
+        "sqlSkuName": "Basic",
         "sqlTier": "Basic", "sqlCapacity": 5, "sqlMaxSizeGB": 2,
         "backupRetentionDays": 7, "zoneRedundant": False, "backupRedundancy": "Local",
     }
     settings = _object(value, "portalAuthentication", set(defaults))
     for key, default in defaults.items():
         settings.setdefault(key, default)
-    provider = _string(settings["credentialProviderName"], "portalAuthentication.credentialProviderName")
-    if not API_NAME.fullmatch(provider):
-        _fail("portalAuthentication.credentialProviderName", "must be a logical credential provider name")
     tier = _choice(settings["sqlTier"], "portalAuthentication.sqlTier", ("Basic", "GeneralPurpose", "BusinessCritical"))
     _string(settings["sqlSkuName"], "portalAuthentication.sqlSkuName")
     _integer(settings["sqlCapacity"], "portalAuthentication.sqlCapacity", 2, 128)
@@ -1057,65 +1039,6 @@ def _portal_authentication(value: Any) -> dict:
     return settings
 
 
-def _portal_api_keys(value: Any) -> dict:
-    """環境ごとの所有グループと許可製品を検査する。未設定でも基盤構築は妨げない。"""
-    settings = _object(value, "portalApiKeys", {"groups", "platformGroupId", "groupNamePattern", "verificationSubscriptions", "verificationMaxSubscriptions"})
-    _integer(settings.setdefault("verificationMaxSubscriptions", 5), "portalApiKeys.verificationMaxSubscriptions", 1, 1000)
-    pattern = settings.setdefault("groupNamePattern", "")
-    if not isinstance(pattern, str) or len(pattern) > 512 or re.search(r"[\x00-\x1f\x7f]", pattern):
-        _fail("portalApiKeys.groupNamePattern", "must be a regular expression of at most 512 characters without control characters")
-    groups = _list(settings.setdefault("groups", []), "portalApiKeys.groups")
-    if len(groups) > 1000:
-        _fail("portalApiKeys.groups", "must contain no more than 1000 groups")
-    seen_groups = set()
-    for index, group in enumerate(groups):
-        path = f"portalApiKeys.groups[{index}]"
-        _object(group, path, {"groupId", "products"})
-        group["groupId"] = _guid(group.get("groupId"), path + ".groupId")
-        if group["groupId"] in seen_groups:
-            _fail(path + ".groupId", "duplicates an owner group")
-        seen_groups.add(group["groupId"])
-        products = _list(group.get("products"), path + ".products")
-        if not 1 <= len(products) <= 100:
-            _fail(path + ".products", "must contain from 1 to 100 approved products")
-        seen_products = set()
-        for product_index, product in enumerate(products):
-            product_path = f"{path}.products[{product_index}]"
-            _object(product, product_path, {"productId", "maxSubscriptions"})
-            identifier = _string(product.get("productId"), product_path + ".productId", maximum=80)
-            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}", identifier):
-                _fail(product_path + ".productId", "must be an APIM product identifier")
-            if identifier in seen_products:
-                _fail(product_path + ".productId", "duplicates an approved product")
-            seen_products.add(identifier)
-            _integer(product.setdefault("maxSubscriptions", 5), product_path + ".maxSubscriptions", 1, 1000)
-    if "platformGroupId" in settings:
-        settings["platformGroupId"] = _guid(settings["platformGroupId"], "portalApiKeys.platformGroupId")
-        if settings["platformGroupId"] not in seen_groups:
-            _fail("portalApiKeys.platformGroupId", "must identify a configured foundation verification owner group")
-    subscriptions = _list(settings.setdefault("verificationSubscriptions", []), "portalApiKeys.verificationSubscriptions")
-    if len(subscriptions) > 100:
-        _fail("portalApiKeys.verificationSubscriptions", "must contain at most 100 subscriptions")
-    seen_subscriptions = set()
-    platform = next((group for group in groups if group["groupId"] == settings.get("platformGroupId")), None)
-    for index, entry in enumerate(subscriptions):
-        path = f"portalApiKeys.verificationSubscriptions[{index}]"
-        _object(entry, path, {"subscriptionId", "productId", "displayName"})
-        identifier = _string(entry.get("subscriptionId"), path + ".subscriptionId", maximum=256)
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,255}", identifier) or identifier.lower() == "master":
-            _fail(path + ".subscriptionId", "must identify a product-scoped subscription; master is not allowed")
-        if identifier.lower() in seen_subscriptions:
-            _fail(path + ".subscriptionId", "duplicates a verification subscription")
-        seen_subscriptions.add(identifier.lower())
-        product = _string(entry.get("productId"), path + ".productId", maximum=80)
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}", product):
-            _fail(path + ".productId", "must be an APIM product identifier")
-        if platform and product not in {item["productId"] for item in platform["products"]}:
-            _fail(path + ".productId", "must be approved for the platform group")
-        _string(entry.get("displayName"), path + ".displayName", maximum=80)
-    return settings
-
-
 def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> dict:
     """合成済みの入力をコピーし、標準値と派生名を持つ検査済み設定を返す。
 
@@ -1130,7 +1053,6 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     if "firewallTlsInspection" in c:
         c["firewallTlsInspection"] = _firewall_tls_inspection(c["firewallTlsInspection"], Path(base_directory))
     c["portalAuthentication"] = _portal_authentication(c.get("portalAuthentication", {}))
-    c["portalApiKeys"] = _portal_api_keys(c.get("portalApiKeys", {}))
     if "$schema" in c:
         _string(c["$schema"], "$schema", maximum=1024)
     if "$comment" in c:
@@ -1234,7 +1156,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
             _string(model["quotaUsageName"], p + ".quotaUsageName", maximum=256)
     c["services"] = s
     # AppGW本体とPublic IPのゾーンは一致させる。WAFの本文上限と検査上限も整合させる。
-    g = _object(c.get("gateway", {}), "gateway", {"publicHostName", "authentication", "skuName", "autoscaleMinCapacity", "autoscaleMaxCapacity", "zones", "existingWafPolicyId", "wafMode", "wafCustomRules", "wafExclusions", "backendRequestTimeoutSeconds", "wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb", "wafFileUploadLimitInMb", "realtimeControlEnabled", "rateLimits"})
+    g = _object(c.get("gateway", {}), "gateway", {"publicHostName", "authentication", "skuName", "autoscaleMinCapacity", "autoscaleMaxCapacity", "zones", "existingWafPolicyId", "wafMode", "wafCustomRules", "wafExclusions", "backendRequestTimeoutSeconds", "wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb", "wafFileUploadLimitInMb", "realtimeControlEnabled"})
     g["publicHostName"] = _host(g.get("publicHostName"), "gateway.publicHostName")
     # 共通入口は購読キーの提示を優先し、キーなしBearer要求にはEntra認証を使います。
     authentication = _object(g.get("authentication"), "gateway.authentication", {"subscriptionKeyHeader", "credentialLogin", "entra"})
@@ -1293,34 +1215,6 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _list(g.setdefault(key, []), "gateway." + key)
     g.setdefault("existingWafPolicyId", "")
     _bool(g.setdefault("realtimeControlEnabled", False), "gateway.realtimeControlEnabled")
-    # 本人とアプリ単独は検証済み tid+oid、共有キーは APIM 購読 ID ごとに計数します。
-    # overrides はこの計数枠の上限を個別調整します。
-    limits_path = "gateway.rateLimits"
-    limits = _object(g.setdefault("rateLimits", {}), limits_path, {"user", "subscriptionKey", "application"})
-    for kind in ("user", "subscriptionKey", "application"):
-        rate_path = limits_path + "." + kind
-        fields = {"enabled", "calls", "renewalPeriodSeconds"} | ({"overrides"} if kind != "user" else set())
-        rate = _object(limits.setdefault(kind, {}), rate_path, fields)
-        # 既定では要求回数を制限せず、運用者が明示した場合だけ適用します。
-        _bool(rate.setdefault("enabled", False), rate_path + ".enabled")
-        if kind != "subscriptionKey" and rate["enabled"]:
-            _fail(rate_path + ".enabled", "common request limits use the verified subscription; enable subscriptionKey limits")
-        _integer(rate.setdefault("calls", 60), rate_path + ".calls", 1, 1000000)
-        _integer(rate.setdefault("renewalPeriodSeconds", 60), rate_path + ".renewalPeriodSeconds", 1, 300)
-        if kind == "user":
-            continue
-        overrides = _list(rate.setdefault("overrides", []), rate_path + ".overrides")
-        caller_ids = set()
-        for index, entry in enumerate(overrides):
-            entry_path = f"{rate_path}.overrides[{index}]"
-            _object(entry, entry_path, {"callerId", "calls", "renewalPeriodSeconds"})
-            # 監査に記録される callerId を、最大512字の文字列で指定します。
-            caller_id = _string(entry.get("callerId"), entry_path + ".callerId")
-            if caller_id in caller_ids:
-                _fail(entry_path + ".callerId", "duplicates a caller rate override")
-            caller_ids.add(caller_id)
-            _integer(entry.get("calls"), entry_path + ".calls", 1, 1000000)
-            _integer(entry.get("renewalPeriodSeconds"), entry_path + ".renewalPeriodSeconds", 1, 300)
     c["gateway"] = g
     # VMはサイズとOSイメージだけでなく、ディスク方式・SSH鍵・管理者名も検査する。
     # latestの自動選択は使わず、検証した固定版で再現可能にする。
@@ -1770,8 +1664,6 @@ def _reject_config_environment_inputs(standard: dict) -> None:
     if "credentialLogin" in authentication:
         _object(authentication["credentialLogin"], "config.gateway.authentication.credentialLogin",
                 {"providerNames", "transactionLifetimeSeconds", "loginCallsPerMinute", *SESSION_POLICY_DEFAULTS})
-    if "portalApiKeys" in standard:
-        _object(standard["portalApiKeys"], "config.portalApiKeys", {"verificationMaxSubscriptions"})
     gateway = standard.get("gateway", {})
     if isinstance(gateway, dict) and "grpc" in gateway:
         _fail("config.gateway", "contains unsupported field(s): grpc")
@@ -1837,8 +1729,6 @@ def _compose_configuration_source(source: Path, raw: dict) -> dict:
                 login = _object(authentication["credentialLogin"], "gateway.authentication.credentialLogin", {"identity"})
                 if "identity" in login:
                     _object(login["identity"], "gateway.authentication.credentialLogin.identity", {"clientId", "clientSecretFile"})
-    if "portalApiKeys" in raw:
-        _object(raw["portalApiKeys"], "portalApiKeys", {"platformGroupId", "groupNamePattern"})
     reference = _string(raw["configFile"], "configFile", maximum=4096)
     if "://" in reference or "\x00" in reference or Path(reference).suffix.lower() != ".json":
         _fail("configFile", "must reference a local JSON config file")

@@ -1,5 +1,7 @@
 # Portal工程4：API認証・保存・全Tryの設計
 
+この文書は工程3・4の設計当時の記録です。現行のPortalは本人のBearer試用を提供し、購読キーは基盤管理者がAPIMで管理します。最新の作業は[Entra登録](../setup/09-egakumi-portal.md)と[Portal配備](../setup/12-deploy-portal.md)を参照してください。
+
 状態はWIPです。工程4のOAuth、保存用資材、試用機能を新規構築に組み込みました。Azure適用、Entraの実コード交換、SQLと全試用機能の実環境受入は未実施です。ドメイン・IDは独立した例示か用途付きプレースホルダーです。
 
 ## 合意済みの実装方針

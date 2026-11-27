@@ -1,11 +1,10 @@
 "use client";
 
-import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+import { TryAuthenticationControl, useTryAuthentication } from "@/components/try-authentication";
 
 import { useFieldIds } from "@/lib/use-field-ids";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { Check, Copy, LoaderCircle, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +18,6 @@ import { createTextPanelStore, getTextPanelView } from "@/lib/text-panel-state";
 import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
 import { getMinimumTextOutputTokens, MAX_TEXT_MESSAGE_CHARACTERS, textGenerationInputSchema } from "@/lib/model-request";
 import { ModelResponseError, readModelResponse } from "@/lib/model-response";
-import { loadModelKeyChoices, type ModelKeyChoice } from "@/lib/model-key-choices";
 import { chooseTextModelVariant, groupTextModels, resolveTextModelVariant, updateTextModelSelection, resolveTextPanelInput, textModelDraft } from "@/lib/text-model-choices";
 import {
   SAMPLE_TEXT_PROMPT, INTEGRATION_LANGUAGES, buildTextGenerationRequest,
@@ -32,9 +30,8 @@ import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { Locale } from "@/lib/i18n/config";
 
 /** 一覧の取得失敗を『利用可能なキーなし』と取り違えないための表示状態です。 */
-type KeyChoiceState = { apiId: string; status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] };
 
-/** 読み取り専用のコード例を表示します。コピー対象にAPIキーの実値は含めません。 */
+/** 読み取り専用のコード例を表示します。例には実際のアクセストークンを含めません。 */
 function CodeBlock({ code, title, copyLabel, dictionary }: { code: string; title: string; copyLabel: string; dictionary: Dictionary }) {
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   /** 選択中のコードだけをコピーし、クリップボードへの書込み結果を案内します。 */
@@ -77,8 +74,6 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
   const input = useMemo(() => resolveTextPanelInput(models, draft, sharedInput), [models, draft, sharedInput]);
   const [store] = useState(createTextPanelStore);
   const resetGeneration = useStore(store, (state) => state.resetGeneration);
-  const apiKeyId = useStore(store, (state) => state.modelApiKeyId);
-  const selectApiKey = useStore(store, (state) => state.setModelApiKeyId);
   const language = usePortalStore((state) => state.integrationLanguage);
   const setLanguage = usePortalStore((state) => state.setIntegrationLanguage);
   const [activeTab, setActiveTab] = useState<"request" | "schema" | "response">("request");
@@ -90,15 +85,10 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
   const fail = useStore(store, (state) => state.failGeneration);
   const cancel = useStore(store, (state) => state.cancelGeneration);
   const requestRef = useRef<AbortController | null>(null);
-  const [keyChoices, setKeyChoices] = useState<KeyChoiceState>({ apiId: "", status: "loading", keys: [] });
-  const [keyRefresh, setKeyRefresh] = useState(0);
   const modelChoices = groupTextModels(models);
   const model = resolveTextModelVariant(models, input);
   const modelChoice = modelChoices.find((item) => item.id === model?.id);
-  const apiId = model?.apiId ?? "";
-  const choicesReady = keyChoices.apiId === apiId && keyChoices.status === "ready";
-  const selectedKey = choicesReady ? keyChoices.keys.find((key) => key.id === apiKeyId) : undefined;
-  const authentication = useTryAuthentication(selectedKey?.id);
+  const authentication = useTryAuthentication();
   const loading = status === "loading";
   const parsed = textGenerationInputSchema.safeParse({ ...input, modelId: model?.id, operationId: model?.operationId, ...(model?.maxOutputTokens === null ? { maxOutputTokens: undefined } : {}) });
   const valid = parsed.success && model !== undefined && (model.maxOutputTokens === null || typeof input.maxOutputTokens === "number" && input.maxOutputTokens >= getMinimumTextOutputTokens(model) && input.maxOutputTokens <= model.maxOutputTokens);
@@ -109,16 +99,6 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
 
   useEffect(() => () => deactivatePanelRequest(requestRef, (pending) => { if (pending) store.getState().cancelGeneration(); }), [store]);
 
-  useEffect(() => {
-    if (!apiId) return;
-    const controller = new AbortController();
-    void loadModelKeyChoices(apiId, controller.signal).then((keys) => {
-      if (!controller.signal.aborted) setKeyChoices({ apiId, status: "ready", keys });
-    }).catch(() => {
-      if (!controller.signal.aborted) setKeyChoices({ apiId, status: "error", keys: [] });
-    });
-    return () => controller.abort();
-  }, [apiId, keyRefresh]);
 
   /** 共有する比較入力と提供元固有の設定を、別の正本へ保存します。 */
   function updateInput(patch: Partial<typeof input>) {
@@ -127,25 +107,19 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
     resetGeneration();
   }
 
-  /** 古い一覧で実行させず、現在の所属と利用可否を改めて取得します。 */
-  function refreshKeys() {
-    setKeyChoices({ apiId, status: "loading", keys: [] });
-    setKeyRefresh((value) => value + 1);
-  }
 
-  /** モデル・方式の変更で古い結果を消し、実行先が変わる場合はキーの利用可否も選び直します。 */
+  /** モデル・方式の変更で古い結果を消します。 */
   function selectModel(next: TextGenerationModel) {
-    if (model?.apiId !== next.apiId) selectApiKey("");
     updateInput(updateTextModelSelection(input, next));
   }
 
-  /** 表示と同じメッセージ・設定を送り、接続先とキーはサーバーで解決します。 */
+  /** 表示と同じメッセージ・設定を送り、接続先とBearerはサーバーで解決します。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (requestRef.current || !model) return;
     store.getState().reconcileInput(input);
     if (!parsed.success || !valid) { fail({ error: { code: "InvalidRequest" } }); return; }
-    if (!authentication.credential) { fail({ error: { code: "ApiKeyUnavailable" } }); return; }
+    if (!authentication.credential) { fail({ error: { code: "ApiAuthenticationRequired" } }); return; }
     const controller = new AbortController();
     requestRef.current = controller;
     setActiveTab("response");
@@ -193,22 +167,8 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
     </>}
     settings={
       <form onSubmit={execute} className="space-y-5">
-        <TryAuthenticationPicker model={authentication} locale={locale} disabled={loading} />
+        <TryAuthenticationControl model={authentication} locale={locale} disabled={loading} />
 
-      <div className="space-y-2 rounded-lg border border-border bg-white p-3" hidden={authentication.selection.mode === "bearer"}>
-        <div className="flex items-center justify-between gap-3">
-          <label htmlFor={fieldId("integration-api-key")} className="text-sm font-medium">{guide.apiKey}</label>
-          <Button type="button" variant="ghost" size="sm" disabled={loading || keyChoices.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button>
-        </div>
-        <Select value={selectedKey?.id ?? ""} disabled={loading || !choicesReady || !keyChoices.keys.length} onValueChange={selectApiKey}>
-          <SelectTrigger id={fieldId("integration-api-key")} aria-describedby={fieldId("integration-api-key-help")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} className="min-w-0 flex-1 overflow-hidden text-left" /></SelectTrigger>
-          <SelectContent>{keyChoices.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block min-w-0 truncate text-left" title={[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}><span>{key.displayName}</span><span className="text-sm text-muted-foreground">{" · "}{[key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></span></SelectItem>)}</SelectContent>
-        </Select>
-        <p id={fieldId("integration-api-key-help")} className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
-        {(keyChoices.apiId !== apiId || keyChoices.status === "loading") && <p role="status" className="text-sm text-muted-foreground">{guide.loadingKeys}</p>}
-        {keyChoices.apiId === apiId && keyChoices.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
-        {choicesReady && !keyChoices.keys.length && <p role="status" className="text-sm leading-6 text-muted-foreground">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="font-medium text-primary underline underline-offset-4">{guide.manageKeys}</Link></p>}
-      </div>
       <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
         <div className="space-y-2">
           <label htmlFor={fieldId("integration-tokens")} className="block text-sm font-medium">{text.outputTokens}</label>

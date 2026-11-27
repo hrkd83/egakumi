@@ -63,7 +63,6 @@ def build_trial_configuration(base: dict, *, base_directory: Path, output_direct
     authentication.setdefault("subscriptionKeyHeader", "api-key")
     for api in selected:
         api["subscriptionKeyHeader"] = authentication["subscriptionKeyHeader"]
-        api["keySubscriptions"] = []
     result["apiDefinitions"] = selected
     result["publishApis"] = True
     # 出力フォルダーを変えても、宣言元のファイル参照は同じ場所を指すようにする。

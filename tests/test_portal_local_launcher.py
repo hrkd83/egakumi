@@ -24,17 +24,22 @@ class LocalPortalLauncherTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve() / "repository"
         (self.root / "apps/portal").mkdir(parents=True)
-        self.secret = Path(self.temporary.name) / "existing-secret.txt"
-        self.secret.write_text("independent-synthetic-client-secret", encoding="utf-8")
-        self.secret.chmod(0o600)
         self.configuration = {
             "environmentName": "example",
-            "portalAuthentication": {"credentialProviderName": "graph-delegated"},
-            "credentialProviders": [{
-                "name": "graph-delegated", "clientId": "<ENTRA_CLIENT_ID>",
-                "oauthTenantId": "<ENTRA_TENANT_ID>", "clientSecretFile": str(self.secret),
-            }],
+            "azureTenantId": "<AZURE_TENANT_ID>",
+            "portal": {"authentication": {
+                "clientId": "<PORTAL_ENTRA_CLIENT_ID>",
+                "tenantId": "<ENTRA_TENANT_ID>",
+            }},
         }
+        def certificate(configuration, workspace):
+            return {**configuration["portal"]["authentication"],
+                    "keyId": "https://vault.example.invalid/keys/portal-auth/" + "a" * 32,
+                    "certificateThumbprint": "b" * 40}
+
+        binding = patch.object(preparation, "deployment_authentication", side_effect=certificate)
+        binding.start()
+        self.addCleanup(binding.stop)
         with patch.object(preparation, "protect_new_file", lambda path: path.chmod(0o600)):
             result = preparation.prepare(self.configuration, self.root,
                                          execute=True, accept_sql_eula=True)
@@ -80,7 +85,7 @@ class LocalPortalLauncherTests(unittest.TestCase):
         self.assertNotIn("MICROSOFT_CLIENT_SECRET", values)
 
     def test_known_injected_secrets_are_redacted_while_logs_are_relayed(self):
-        keys = ("MICROSOFT_CLIENT_SECRET", "BETTER_AUTH_SECRET", "PORTAL_SQL_PASSWORD")
+        keys = ("BETTER_AUTH_SECRET", "PORTAL_SQL_PASSWORD")
         lines = ["Ready for synthetic requests.\n",
                  " ".join(self.runtime[key] for key in keys) + "\n"]
         output = io.StringIO()
@@ -89,7 +94,7 @@ class LocalPortalLauncherTests(unittest.TestCase):
             self.assertEqual(0, launcher.run(self.configuration, self.root, ["npm", "run", "dev"]))
         text = output.getvalue()
         self.assertIn("Ready for synthetic requests.", text)
-        self.assertEqual(3, text.count("[REDACTED]"))
+        self.assertEqual(len(keys), text.count("[REDACTED]"))
         self.assertTrue(all(self.runtime[key] not in text for key in keys))
 
     def test_legacy_dotenv_is_not_read_and_no_child_is_started(self):

@@ -60,10 +60,6 @@ class FixedInitialConfigurationTests(unittest.TestCase):
             "/subscriptions/" + self.parameters["subscriptionId"]
             + "/resourceGroups/rg-dns-synthetic/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-synthetic"
         )
-        self.parameters["portalApiKeys"] = {
-            "platformGroupId": "66666666-6666-4666-8666-666666666666",
-            "groupNamePattern": "^SYNTHETIC_",
-        }
 
     def write_inputs(self):
         for path, value in ((self.manifest, self.parameters), (self.options_file, self.options)):
@@ -110,12 +106,9 @@ class FixedInitialConfigurationTests(unittest.TestCase):
             ("gateway", "authentication", "subscriptionKeyHeader"),
             ("gateway", "authentication", "entra", "requiredScope"),
             ("gateway", "authentication", "credentialLogin", "identity", "tenantId"),
-            ("gateway", "rateLimits", "subscriptionKey", "overrides"),
-            ("gateway", "rateLimits", "application", "overrides"),
             ("monitoring", "auditAllowedIpAddresses"),
             ("monitoring", "auditReaders"),
             ("certificate", "domainNames"), ("certificate", "plugin"),
-            ("portalApiKeys", "groups"), ("portalApiKeys", "verificationSubscriptions"),
         )
         for target_name, owner in (("parameters", "params"), ("options", "config")):
             original = copy.deepcopy(getattr(self, target_name))
@@ -166,7 +159,6 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         self.assertEqual(profile["clientId"], self.parameters["credentialProviders"]["graphDelegated"]["clientId"])
         self.assertEqual(profile["tenantId"], self.parameters["entraTenantId"])
         self.assertEqual(profile["clientSecretEnv"], "OIDC_SECRET_0")
-        self.assertEqual(actual["portalAuthentication"]["credentialProviderName"], "graph-delegated")
 
     def test_omitted_entra_tenant_uses_azure_tenant_for_standard_graph_and_broker_identity(self):
         self.parameters.pop("entraTenantId")
@@ -198,14 +190,13 @@ class FixedInitialConfigurationTests(unittest.TestCase):
                 self.assert_rejected("gateway.authentication", "synthetic-private-value")
                 self.parameters = copy.deepcopy(original)
 
-    def test_config_cannot_supply_audience_credentials_or_platform_group(self):
+    def test_config_cannot_supply_environment_specific_identity(self):
         registration_paths = (
             ("gateway", "authentication", "entra", "audience"),
             ("gateway", "authentication", "credentialLogin", "identity", "clientId"),
             ("gateway", "authentication", "credentialLogin", "identity", "clientSecretFile"),
             ("credentialProviders", "graphDelegated", "clientId"),
             ("credentialProviders", "graphDelegated", "clientSecretFile"),
-            ("portalApiKeys", "platformGroupId"), ("portalApiKeys", "groupNamePattern"),
         )
         original = copy.deepcopy(self.options)
         for path in registration_paths:
@@ -216,7 +207,7 @@ class FixedInitialConfigurationTests(unittest.TestCase):
 
     def test_malformed_shared_config_objects_are_rejected_before_params_can_replace_them(self):
         shared_paths = (
-            ("network",), ("portalApiKeys",), ("gateway",),
+            ("network",), ("gateway",),
             ("gateway", "authentication"),
             ("gateway", "authentication", "entra"),
             ("monitoring",), ("management",), ("services",), ("certificate",),
@@ -299,36 +290,6 @@ class FixedInitialConfigurationTests(unittest.TestCase):
                                 "reference must retain its declaring folder")
                 self.assertFalse(Path(reference).exists(), "references are not secret files created by this test")
 
-    def test_single_platform_owner_generates_all_canonical_products_and_verification_subscriptions(self):
-        actual = self.normalized()["portalApiKeys"]
-        products = self.canonical_products()
-        self.assertTrue(products)
-        self.assertEqual(actual["verificationMaxSubscriptions"], 5)
-        self.assertEqual(actual["groups"], [{
-            "groupId": self.parameters["portalApiKeys"]["platformGroupId"],
-            "products": [{"productId": product, "maxSubscriptions": 5} for product in products],
-        }])
-        self.assertEqual(actual["verificationSubscriptions"], [{
-            "subscriptionId": "platform-" + product,
-            "productId": product,
-            "displayName": ("Platform verification - " + product)[:80],
-        } for product in products])
-
-    def test_shared_verification_limit_is_applied_to_every_generated_product(self):
-        self.options["portalApiKeys"]["verificationMaxSubscriptions"] = 9
-        actual = self.normalized()["portalApiKeys"]
-        self.assertEqual(actual["verificationMaxSubscriptions"], 9)
-        self.assertTrue(all(product["maxSubscriptions"] == 9 for product in actual["groups"][0]["products"]))
-        self.parameters["portalApiKeys"]["verificationMaxSubscriptions"] = 7
-        self.assert_rejected("portalApiKeys")
-
-    def test_absent_platform_owner_does_not_create_a_synthetic_group_or_subscription(self):
-        self.parameters["portalApiKeys"].pop("platformGroupId")
-        actual = self.normalized()["portalApiKeys"]
-        self.assertNotIn("platformGroupId", actual)
-        self.assertEqual(actual["groups"], [])
-        self.assertEqual(actual["verificationSubscriptions"], [])
-
     def test_source_documents_and_input_dictionaries_are_not_modified_or_given_generated_fields(self):
         self.write_inputs()
         original_parameters = copy.deepcopy(self.parameters)
@@ -340,12 +301,8 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         self.assertTrue((self.manifest.read_bytes(), self.options_file.read_bytes()) == original_files,
                         "loading must not rewrite either source")
         actual["credentialProviders"][0]["pool"]["count"] = 1
-        actual["portalApiKeys"]["groups"][0]["products"].clear()
         repeated = configuration.load_configuration(self.manifest)
         self.assertEqual(repeated["credentialProviders"][0]["pool"]["count"], 12)
-        self.assertTrue(repeated["portalApiKeys"]["groups"][0]["products"])
-        self.assertNotIn("groups", self.parameters["portalApiKeys"])
-        self.assertNotIn("verificationSubscriptions", self.parameters["portalApiKeys"])
         self.assertNotIn("domainNames", self.parameters["certificate"])
 
     def test_selected_profiles_default_to_premium_blocking_and_keep_snat(self):
@@ -383,8 +340,6 @@ class FixedInitialConfigurationTests(unittest.TestCase):
             "foundryReaders": [], "catalogReaders": [],
         })
         self.assertEqual(actual["gateway"]["existingWafPolicyId"], "")
-        for kind in ("subscriptionKey", "application"):
-            self.assertEqual(actual["gateway"]["rateLimits"][kind]["overrides"], [])
         self.assertEqual(actual["monitoring"]["auditAllowedIpAddresses"], [])
         self.assertEqual(actual["monitoring"]["auditReaders"], [])
 
@@ -394,8 +349,6 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         internal["apiDefinitions"] = [{"name": "synthetic-internal-api"}]
         internal["gateway"]["authentication"]["subscriptionKeyHeader"] = "synthetic-internal-key"
         internal["certificate"]["domainNames"] = ["legacy.synthetic.example.com"]
-        internal["portalApiKeys"]["groups"] = []
-        internal["portalApiKeys"]["verificationSubscriptions"] = []
         filename = self.directory / "internal.json"
         filename.write_text(json.dumps(internal), encoding="utf-8")
         loaded = configuration.load_configuration_source(filename)

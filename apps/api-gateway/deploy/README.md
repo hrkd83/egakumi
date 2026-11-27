@@ -8,7 +8,7 @@ apps/
 │   ├── apis/                   標準APIのJSON定義（1 API 1ファイル）
 │   ├── policies/               APIMのXMLポリシー
 │   ├── schemas/                API入出力のスキーマ
-│   ├── api-publication.bicep   API・バックエンド・製品・購読
+│   ├── api-publication.bicep   API・バックエンド・製品
 │   ├── waf-*.json              GatewayとPortalの入口に適用するWAF契約
 │   └── deploy/                 統合配備とAPIM・CM設定
 ├── credential-broker/
@@ -29,13 +29,13 @@ python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
 python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
-1行目は保存済みCore stateからのローカル計画、2行目はAzureへの配備です。`--deployment-name`を指定するCIでは、計画時にもCore配備結果をAzureから読み取ります。認証窓口のイメージ作成・登録後、本文監査が有効なら監査用アプリを配備します。その後、credentials DB・CM・実行用ID、SQL初期化、Broker・照合ジョブ、API・ポリシー・製品・購読、対象パスへのWAF調整の順に進みます。SQL初期化や起動が失敗した場合はAPI登録へ進みません。
+1行目は保存済みCore stateからのローカル計画、2行目はAzureへの配備です。`--deployment-name`を指定するCIでは、計画時にもCore配備結果をAzureから読み取ります。認証窓口のイメージ作成・登録後、本文監査が有効なら監査用アプリを配備します。その後、credentials DB・CM・実行用ID、SQL初期化、Broker・照合ジョブ、API・ポリシー・製品、対象パスへのWAF調整の順に進みます。SQL初期化や起動が失敗した場合はAPI登録へ進みません。
 
 既存のDB・CM接続・購読は同じIDで更新します。paramsやconfigを書き換えず、秘密値をイメージへ入れません。[apis/](../apis/)にある標準API正本を常用で解決します。公開params/configの`apiDefinitions`・`publishApis`によるAPI選択・切替は廃止し、旧項目は空配列やfalseでも拒否します。定義は`<API名>.json`の1 API 1ファイルで管理し、モデルの配備設定とCMプロバイダーの設定を含めません。標準Graphのアプリ登録・秘密参照はparamsの`credentialProviders.graphDelegated`、表示名・scope・poolはconfigの同slotで管理します。追加providerは定義／登録を`additional[]`の論理名で照合します。今回の配置整理だけで既存アプリID・secret・選択CM由来の本人確認fallbackを切り替えません。
 
 通常のAPIキーは`released-apis`（表示名`Released APIs`）製品に紐づき、リリース済みAPIをまとめて利用します。この製品とAPIとの関連もGateway配備資材に含みます。各API定義の`released: true`を関連付けの正本とし、標準APIはすべて明示しています。追加APIは省略時`false`です。`false`へ変更して配備すると、そのAPIと生成MCPの通常製品との関連を解除します。API本体や既存の検証製品・購読を削除せず、今回指定しなかったAPIにも触れません。
 
-`model-users`・`pii-users`・`connection-users`等の製品と検証用購読は維持します。本人接続の開始・完了確認・終了APIは同じ通常キーで利用できる補助関連を付けます。ブラウザー用の匿名補助APIは製品に含めません。Gateway配備で製品を用意し、その成功を確認してからPortalを個別配備します。
+`model-users`・`pii-users`・`connection-users`等の製品を配備します。例外の購読キーは基盤管理者がAzureポータルで発行します。本人接続の開始・完了確認・終了APIは同じ通常キーで利用できる補助関連を付けます。ブラウザー用の匿名補助APIは製品に含めません。Gateway配備で製品を用意し、その成功を確認してからPortalを個別配備します。
 
 計画は`.local/<environment>/state/gateway-plan.json`、完了結果は`.local/<environment>/state/gateway-deployment.json`に保存します。実際のMicrosoftサインインと各業務APIの疎通は、配備成功後に確認します。
 

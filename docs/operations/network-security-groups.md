@@ -80,7 +80,6 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-foundry-https-egress` | APIMサブネットCIDR | Foundry PE全IP /32 | TCP／443 | `N-APIM-OUT-01` |
-| 220 | `allow-aca-https-egress` | APIMサブネットCIDR | Portal用ACAの内部VIP /32 | TCP／443 | `N-APIM-OUT-02` |
 | 221 | `allow-key-vault-https-egress` | APIMサブネットCIDR | 業務用Key Vault PE全IP /32 | TCP／443 | `N-APIM-OUT-03` |
 | 223 | `allow-broker-https-egress` | APIMサブネットCIDR | Broker内部VIP /32 | TCP／443 | `N-APIM-OUT-BROKER-HTTPS` |
 | 320 | `allow-storage-egress` | APIMサブネットCIDR | `Storage`タグ | TCP／443 | `N-APIM-OUT-04` |
@@ -211,7 +210,6 @@ Portal用のACA環境は、必要な受信と送信を明示して両方向の�
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-firewall-https-ingress` | FirewallサブネットCIDR | ACAサブネットCIDR | TCP／443, 31443 | `B-ACA-03` |
-| 220 | `allow-apim-https-ingress` | APIMサブネットCIDR | ACAサブネットCIDR | TCP／443, 31443 | `B-ACA-04` |
 | 222 | `allow-mgmt-vm-https-ingress` | 管理VM private IP /32 | ACAサブネットCIDR | TCP／443, 31443 | `N-ACA-IN-MGMT-HTTPS` |
 | 320 | `allow-azure-load-balancer-ingress` | `AzureLoadBalancer`タグ | ACAサブネットCIDR | TCP／30000-32767 | `B-ACA-05` |
 | 321 | `allow-aca-internal-ingress` | ACAサブネットCIDR | ACAサブネットCIDR | Any／Any | `B-ACA-INTERNAL-IN` |
@@ -225,7 +223,6 @@ Portal用のACA環境は、必要な受信と送信を明示して両方向の�
 | 220 | `allow-key-vault-https-egress` | ACAサブネットCIDR | 業務用Key Vault PE全IP /32 | TCP／443 | `B-ACA-06` |
 | 221 | `allow-sql-1433-egress` | ACAサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-ACA-07` |
 | 222 | `allow-acr-https-egress` | ACAサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-ACA-08` |
-| 223 | `allow-arm-https-egress` | ACAサブネットCIDR | `AzureResourceManager`タグ | TCP／443 | `B-ACA-13` |
 | 320 | `allow-aca-internal-egress` | ACAサブネットCIDR | ACAサブネットCIDR | Any／Any | `B-ACA-02` |
 | 321 | `allow-entra-egress` | ACAサブネットCIDR | `AzureActiveDirectory`タグ | TCP／443 | `B-ACA-12` |
 | 322 | `allow-monitor-egress` | ACAサブネットCIDR | `AzureMonitor`タグ | TCP／443 | `B-ACA-14` |

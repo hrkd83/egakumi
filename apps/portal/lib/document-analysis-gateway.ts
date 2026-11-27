@@ -2,18 +2,17 @@ import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 import { z } from "zod";
 import { containsModelCredential } from "./model-credential.ts";
-import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
-import { apiAuthenticationFailure, resolveGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
-import { getPortalApiAuthentication, type PortalBearer } from "./api-auth/service.ts";
-import { tryApiKeyFields, tryBearerFields, type TryCredential } from "./api-auth/try-credential.ts";
+import { apiAuthenticationFailure, resolveGatewayCredential, type GatewayActor, type GatewayCredential } from "./api-auth/gateway-credential.ts";
+import { getPortalApiAuthentication, type PortalApiAuthentication, type PortalBearer } from "./api-auth/service.ts";
+import { tryBearerFields } from "./api-auth/try-credential.ts";
 import { getPublicModelGatewayOrigin } from "./model-public-config.ts";
 import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
-import { openDocumentOperation, sealDocumentOperation, DocumentOperationExpiredError, documentOperationStateSchema, type DocumentOperationState } from "./document-operation-handle.ts";
-import { DOCUMENT_ANALYSIS_API_ID, DOCUMENT_MEDIA_TYPES, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_RESULT_BYTES, documentAnalysisInputSchema, getDocumentAnalysisEndpoint, inspectDocument, parseDocumentAnalysisResult, readDocumentBody, type DocumentAnalysisErrorCode, type DocumentAnalysisFailure } from "./document-analysis-contracts.ts";
+import { documentOperationStateSchema, type DocumentOperationState } from "./document-operation-handle.ts";
+import { DOCUMENT_MEDIA_TYPES, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_RESULT_BYTES, documentAnalysisInputSchema, getDocumentAnalysisEndpoint, inspectDocument, parseDocumentAnalysisResult, readDocumentBody, type DocumentAnalysisErrorCode, type DocumentAnalysisFailure } from "./document-analysis-contracts.ts";
 
 const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" };
 const pollInput = z.strictObject({ handle: z.string().regex(/^[A-Za-z0-9_-]{40,16000}$/) });
-const pollInputSchema = z.union([pollInput.extend(tryApiKeyFields), pollInput.extend(tryBearerFields)]);
+const pollInputSchema = pollInput.extend(tryBearerFields);
 const acceptedSchema = z.object(documentOperationStateSchema.shape).omit({ startedAt: true }).extend({ status: z.literal("running"), requestId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).optional() });
 const gatewayErrors: Record<string, { code: DocumentAnalysisErrorCode; status: number }> = {
   DocumentInvalidInput: { code: "InvalidRequest", status: 400 }, DocumentInputTooLarge: { code: "DocumentTooLarge", status: 413 },
@@ -22,11 +21,11 @@ const gatewayErrors: Record<string, { code: DocumentAnalysisErrorCode; status: n
   DocumentAnalysisUnavailable: { code: "DocumentAnalysisUnavailable", status: 503 },
 };
 
-/** 文書解析の認証・購読確認・上流通信と、本人に束縛する暗号化鍵の境界です。 */
+/** 文書解析の認証・本人への操作参照の束縛・上流通信の境界です。 */
 export type DocumentAnalysisDependencies = {
-  readSession: () => Promise<ApiKeyActor | null>; readPortalOrigin: () => string;
-  readGatewayEnvironment?: () => Promise<{ origin: string }>; readHandleSecret?: () => string;
-  resolveSubscriptionKey?: (actor: ApiKeyActor, id: string, apiId: string) => Promise<string>;
+  readSession: () => Promise<GatewayActor | null>; readPortalOrigin: () => string;
+  readGatewayEnvironment?: () => Promise<{ origin: string }>;
+  bearerOperations?: Pick<PortalApiAuthentication, "sealOperation" | "openOperation">;
   resolveBearer?: () => Promise<PortalBearer>;
   fetch?: typeof globalThis.fetch; timeoutMs?: number;
 };
@@ -43,7 +42,7 @@ function retryAfter(response: Response): number {
 }
 
 /** 同一オリジンと現在のPortal本人を、送信と各状態確認のたびに検査します。 */
-async function authenticated(request: Request, dependencies: DocumentAnalysisDependencies, allowQuery = false): Promise<ApiKeyActor | Response> {
+async function authenticated(request: Request, dependencies: DocumentAnalysisDependencies, allowQuery = false): Promise<GatewayActor | Response> {
   let origin: string;
   try { origin = new URL(dependencies.readPortalOrigin()).origin; } catch { return failure("GatewayNotConfigured", 503); }
   const site = request.headers.get("sec-fetch-site");
@@ -51,7 +50,7 @@ async function authenticated(request: Request, dependencies: DocumentAnalysisDep
   try {
     const actor = await dependencies.readSession();
     if (!actor) return failure("AuthenticationRequired", 401);
-    if (!isAllowedPortalQuery(request, allowQuery ? ["model", "apiKeyId", "authentication"] : [])) return failure("InvalidRequest", 400);
+    if (!isAllowedPortalQuery(request, allowQuery ? ["model", "authentication"] : [])) return failure("InvalidRequest", 400);
     return actor;
   } catch { return failure("AuthenticationUnavailable", 503); }
 }
@@ -64,21 +63,20 @@ async function gatewayOrigin(dependencies: DocumentAnalysisDependencies): Promis
   return url.origin;
 }
 
-/** 選択方式の資格情報を解決し、固定されたGatewayだけで使います。 */
-async function getCredential(request: Request, actor: ApiKeyActor, input: TryCredential, origin: string,
+/** 本人のBearerを取得し、固定されたGatewayだけで使います。 */
+async function getCredential(request: Request, actor: GatewayActor, origin: string,
   dependencies: DocumentAnalysisDependencies): Promise<GatewayCredential | Response> {
   try {
-    return await resolveGatewayCredential(request, actor, input, DOCUMENT_ANALYSIS_API_ID, origin,
-      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+    return await resolveGatewayCredential(request, actor, origin, dependencies.resolveBearer);
   } catch (error) {
     const apiAuth = apiAuthenticationFailure(error);
     if (apiAuth) return failure(apiAuth.code, apiAuth.status);
-    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503);
+    return failure("ApiAuthenticationUnavailable", 503);
   }
 }
 
 /** Gatewayの受付と完了結果を検証し、操作チケットを本人専用handleへ封印します。 */
-async function gatewayResponse(response: Response, context: { actor: ApiKeyActor; selection: TryCredential; model: "prebuilt-read" | "prebuilt-layout"; startedAt: number; credential: GatewayCredential; signal: AbortSignal; dependencies: DocumentAnalysisDependencies; state?: DocumentOperationState; handle?: string }): Promise<Response> {
+async function gatewayResponse(response: Response, context: { model: "prebuilt-read" | "prebuilt-layout"; startedAt: number; credential: GatewayCredential; signal: AbortSignal; dependencies: DocumentAnalysisDependencies; state?: DocumentOperationState; handle?: string }): Promise<Response> {
   const id = response.headers.get("apim-request-id"); const requestId = id && /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : undefined;
   const details = requestId ? { requestId } : {};
   if (!response.ok) {
@@ -104,9 +102,8 @@ async function gatewayResponse(response: Response, context: { actor: ApiKeyActor
       const accepted = acceptedSchema.parse(value);
       if (accepted.model !== context.model || Date.parse(accepted.expiresAt) <= Date.now()) throw new Error("Invalid document operation");
       state = documentOperationStateSchema.parse({ operationId: accepted.operationId, model: accepted.model, statusPath: accepted.statusPath, ticket: accepted.ticket, expiresAt: accepted.expiresAt, startedAt: context.startedAt });
-      handle = context.selection.authentication === "bearer" && context.credential.bearer
-        ? await getPortalApiAuthentication().sealOperation(context.credential.bearer, "document", state.operationId, state, Date.parse(state.expiresAt))
-        : sealDocumentOperation(state, context.actor, context.selection.apiKeyId!, context.dependencies.readHandleSecret?.() ?? "");
+      handle = await (context.dependencies.bearerOperations ?? getPortalApiAuthentication())
+        .sealOperation(context.credential.bearer, "document", state.operationId, state, Date.parse(state.expiresAt));
     } else {
       const active = z.object({ operationId: z.uuid(), model: z.enum(["prebuilt-read", "prebuilt-layout"]), status: z.literal("running"), requestId: z.string().optional() }).strict().parse(value);
       if (active.operationId !== state.operationId || active.model !== state.model) throw new Error("Mismatched document operation");
@@ -154,8 +151,8 @@ function documentUploadStream(body: ReadableStream<Uint8Array>, mediaType: strin
   return { stream, state, cancel };
 }
 
-/** raw fileの本文を、本人の現在の購読で一度だけ転送します。元文書をメモリーへ集約しません。 */
-async function handleRawDocument(request: Request, dependencies: DocumentAnalysisDependencies, actor: ApiKeyActor, mediaType: string): Promise<Response> {
+/** raw fileの本文を、本人のBearerで一度だけ転送します。元文書をメモリーへ集約しません。 */
+async function handleRawDocument(request: Request, dependencies: DocumentAnalysisDependencies, actor: GatewayActor, mediaType: string): Promise<Response> {
   const url = new URL(request.url); let input: ReturnType<typeof documentAnalysisInputSchema.parse>;
   try {
     if (new Set(url.searchParams.keys()).size !== url.searchParams.size) throw new Error("Invalid document query");
@@ -166,7 +163,7 @@ async function handleRawDocument(request: Request, dependencies: DocumentAnalysi
   if (length !== null && (!Number.isSafeInteger(Number(length)) || Number(length) <= 0)) return failure("InvalidRequest", 400);
   if (Number(length ?? 0) > MAX_DOCUMENT_BYTES) return failure("DocumentTooLarge", 413);
   let endpoint: string; try { endpoint = getDocumentAnalysisEndpoint(await gatewayOrigin(dependencies), input.model); } catch { return failure("GatewayNotConfigured", 503); }
-  const credential = await getCredential(request, actor, input, new URL(endpoint).origin, dependencies);
+  const credential = await getCredential(request, actor, new URL(endpoint).origin, dependencies);
   if (credential instanceof Response) return credential;
   const timeout = modelDeadline(dependencies.timeoutMs); const signal = AbortSignal.any([request.signal, timeout]);
   const upload = documentUploadStream(request.body, mediaType, signal);
@@ -175,7 +172,7 @@ async function handleRawDocument(request: Request, dependencies: DocumentAnalysi
     const init: RequestInit & { duplex: "half" } = { method: "POST", redirect: "error", cache: "no-store", signal, body: upload.stream, duplex: "half", headers: { "Content-Type": mediaType, Accept: "application/json", ...credential.headers } };
     const response = await (dependencies.fetch ?? globalThis.fetch)(endpoint, init);
     if (upload.state.failure) return failure(upload.state.failure, upload.state.failure === "DocumentTooLarge" ? 413 : 400);
-    return await gatewayResponse(response, { actor, selection: input, model: input.model, startedAt, credential, signal, dependencies });
+    return await gatewayResponse(response, { model: input.model, startedAt, credential, signal, dependencies });
   } catch {
     if (upload.state.failure) return failure(upload.state.failure, upload.state.failure === "DocumentTooLarge" ? 413 : 400);
     return failure(request.signal.aborted ? "RequestCancelled" : timeout.aborted ? "DocumentAnalysisTimeout" : "DocumentAnalysisFailed", request.signal.aborted ? 499 : timeout.aborted ? 504 : 502);
@@ -205,39 +202,36 @@ export async function handleDocumentAnalysis(request: Request, dependencies: Doc
   } catch (error) { return request.signal.aborted ? failure("RequestCancelled", 499) : failure(error instanceof RangeError ? "DocumentTooLarge" : "InvalidRequest", error instanceof RangeError ? 413 : 400); }
   let endpoint: string;
   try { endpoint = getDocumentAnalysisEndpoint(await gatewayOrigin(dependencies), input.model); } catch { return failure("GatewayNotConfigured", 503); }
-  const credential = await getCredential(request, actor, input, new URL(endpoint).origin, dependencies);
+  const credential = await getCredential(request, actor, new URL(endpoint).origin, dependencies);
   if (credential instanceof Response) return credential;
   const timeout = modelDeadline(dependencies.timeoutMs); const signal = AbortSignal.any([request.signal, timeout]);
   try {
     const startedAt = Date.now();
     const response = await (dependencies.fetch ?? globalThis.fetch)(endpoint, { method: "POST", redirect: "error", cache: "no-store", signal, body: new Uint8Array(bytes).buffer, headers: { "Content-Type": mediaType, Accept: "application/json", ...credential.headers } });
-    return await gatewayResponse(response, { actor, selection: input, model: input.model, startedAt, credential, signal, dependencies });
+    return await gatewayResponse(response, { model: input.model, startedAt, credential, signal, dependencies });
   } catch (error) { return failure(request.signal.aborted ? "RequestCancelled" : timeout.aborted ? "DocumentAnalysisTimeout" : error instanceof RangeError ? "DocumentResultTooLarge" : "DocumentAnalysisFailed", request.signal.aborted ? 499 : timeout.aborted ? 504 : 502); }
 }
 
-/** 各状態確認で本人と購読権限を再確認し、封印した固定パスだけをGatewayへ照会します。 */
+/** 各状態確認で本人とBearer認可を再確認し、封印した固定パスだけをGatewayへ照会します。 */
 export async function handleDocumentAnalysisStatus(request: Request, dependencies: DocumentAnalysisDependencies): Promise<Response> {
   const actor = await authenticated(request, dependencies); if (actor instanceof Response) return actor;
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
-  let input: z.infer<typeof pollInputSchema>; let state: DocumentOperationState | undefined;
+  let input: z.infer<typeof pollInputSchema>; let state: DocumentOperationState;
   try {
     input = pollInputSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readDocumentBody(request.body, 32_768, request.signal))));
-    if (input.authentication !== "bearer") state = openDocumentOperation(input.handle, actor, input.apiKeyId, dependencies.readHandleSecret?.() ?? "");
-  } catch (error) { return failure(error instanceof DocumentOperationExpiredError ? "DocumentOperationExpired" : "DocumentOperationUnavailable", error instanceof DocumentOperationExpiredError ? 410 : 403); }
+  } catch { return failure("DocumentOperationUnavailable", 403); }
   let origin: string; try { origin = await gatewayOrigin(dependencies); } catch { return failure("GatewayNotConfigured", 503); }
-  const credential = await getCredential(request, actor, input, origin, dependencies);
+  const credential = await getCredential(request, actor, origin, dependencies);
   if (credential instanceof Response) return credential;
-  if (credential.bearer) {
-    try {
-      state = documentOperationStateSchema.parse(await getPortalApiAuthentication().openOperation(credential.bearer, "document", input.handle));
-      if (Date.parse(state.expiresAt) <= Date.now()) return failure("DocumentOperationExpired", 410);
-    } catch { return failure("DocumentOperationUnavailable", 403); }
-  }
-  if (!state) return failure("DocumentOperationUnavailable", 403);
+  try {
+    state = documentOperationStateSchema.parse(await (dependencies.bearerOperations ?? getPortalApiAuthentication())
+      .openOperation(credential.bearer, "document", input.handle));
+    if (Date.parse(state.expiresAt) <= Date.now()) return failure("DocumentOperationExpired", 410);
+  } catch { return failure("DocumentOperationUnavailable", 403); }
   const timeout = modelDeadline(dependencies.timeoutMs); const signal = AbortSignal.any([request.signal, timeout]);
   try {
     const response = await (dependencies.fetch ?? globalThis.fetch)(new URL(state.statusPath, origin), { method: "GET", redirect: "error", cache: "no-store", signal, headers: { Accept: "application/json", ...credential.headers, "X-Core-Document-Ticket": state.ticket } });
-    return await gatewayResponse(response, { actor, selection: input, model: state.model, startedAt: state.startedAt, credential, signal, dependencies, state, handle: input.handle });
+    return await gatewayResponse(response, { model: state.model, startedAt: state.startedAt, credential, signal, dependencies, state, handle: input.handle });
   } catch { return failure(request.signal.aborted ? "RequestCancelled" : timeout.aborted ? "DocumentAnalysisTimeout" : "DocumentAnalysisFailed", request.signal.aborted ? 499 : timeout.aborted ? 504 : 502); }
 }

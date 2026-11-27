@@ -4,13 +4,13 @@
 
 現在の[正式な初回構築手順](../../README.md#新規クローンから構築する)は、API・Tools・Credentialを事前登録し、`azd up`でCoreと認証用の公開証明書を準備する。API用の公開証明書登録と4つ目のPortalアプリの手動登録・同意を済ませ、GatewayとPortalを順に個別配備する。Codexは基盤の受入後に必要な場合だけ接続する。この一連のAzure配備、Entra登録・同意、実接続は実環境での受入待ち。以下にある個別のAzure確認記録は、各変更を確認した時点の結果である。既存環境の移行では、工程8で旧共用アプリ・接続を回収する。実環境の作業と証跡は環境別の保護領域に記録する。
 
-工程1（APIMのInbound棚卸）と工程2（backend・outbound・on-errorの棚卸）は完了判定前。共通認証・要求準備やテンプレート整理の実装が進んでいる。全操作の適用先・制御・継承の照合と、Gateway配備後の実効ポリシー・代表経路の確認が残る。工程3のPortal証明書認証と工程4の購読キー／Bearerによる試用は実装済みで、実環境の受入を待つ。
+工程1（APIMのInbound棚卸）と工程2（backend・outbound・on-errorの棚卸）は完了判定前。共通認証・要求準備やテンプレート整理の実装が進んでいる。全操作の適用先・制御・継承の照合と、Gateway配備後の実効ポリシー・代表経路の確認が残る。工程3のPortal証明書認証と工程4の本人Bearerによる試用は実装済みで、実環境の受入を待つ。
 
 ## 工程3〜8の資材と受入条件
 
 | 工程 | 資材 | 実環境で確認すること |
 |---|---|---|
-| 3 Portalの認証分離 | ACA JobでPortalの署名鍵と公開証明書を準備し、別アプリへ登録。サインインとGraph管理・定期照合に専用の証明書認証を使用 | 公開証明書登録と同意、ログイン、本人と既存所有権の照合、定期照合 |
+| 3 Portalの認証分離 | ACA JobでPortalの署名鍵と公開証明書を準備し、別アプリへ登録。サインインとAPI試用に専用の証明書認証を使用 | 公開証明書登録と同意、ログインと本人の照合 |
 | 4 PortalのAPI試用 | Portalログインと別のAPI用OAuth、本人照合、専用の暗号化SQL保存、キー／Bearerによる試用 | 両方式の正常処理、更新と失効、別本人の拒否、非同期・ストリーミング・Realtime |
 | 5 ToolsとGraph OBO | 購読キーでは本人がToolsで作成したCM接続を使用。BearerではBrokerがAPI専用証明書でGraphへOBO交換 | Graph再同意・更新、OBOの証明書登録と実交換、Graphの本人とscope照合、同意不足時のエラー |
 | 6 Credentialの本人確認 | Toolsとは別のOIDCクライアント・戻り先・secretを入力。新規構築では専用アプリを指定 | ブラウザーの本人確認、PKCE／state／nonce、他人の接続の拒否 |
@@ -49,7 +49,7 @@ flowchart TD
   A --> B["工程1 各API・操作のInbound棚卸"]
   B --> C["工程2 backend・outbound・on-error棚卸"]
   C --> D["工程3 egakumi-portalの認証分離"]
-  D --> E["工程4 Portalの試す機能をキー／Bearerに対応"]
+  D --> E["工程4 Portalで本人のBearerを使って試用"]
   E --> F["工程5 egakumi-toolsの外部API接続を分離<br/>BearerはGraph OBO"]
   F --> G["工程6 egakumi-credentialの本人確認を切替"]
   G --> I["工程8 4アプリで初回構築・受入<br/>移行時は旧共用アプリ・旧接続を回収"]
@@ -59,7 +59,7 @@ flowchart TD
 | アプリ名 | 最終的な責務 | 分離・整備する工程 |
 |---|---|---|
 | egakumi-api | APIMで公開するAPIの宛先。Gateway.Invokeを公開。下流トークン交換の中間APIも兼ねる | APIごとの入口制御は工程1～2、GraphのOBO資格情報と委任権限は工程5 |
-| egakumi-portal | Portalサインイン、Portal管理機能のGraph、APIを試す本人のトークン取得 | 工程3〜4。証明書署名で本人サインイン、管理Graph、API用OAuthを実行 |
+| egakumi-portal | Portalのサインインと本人のGateway.Invokeの取得 | 工程3〜4。証明書認証でサインインとAPI用OAuthを実行 |
 | egakumi-tools | CMがGraph等の外部API向け委任トークンを取得・更新 | 工程5。専用secretで本人のCM接続を取得・更新 |
 | egakumi-credential | 接続ログイン窓口で本人を確認 | 工程6。外部APIの業務権限やPortal管理権限は持たせない |
 
@@ -149,7 +149,7 @@ ToolsのFIC対応とCredentialの証明書対応は、採用する場合に更�
 | アプリ | プラットフォーム・戻り先 | 権限・scopeの分担 | 資格情報 |
 |---|---|---|---|
 | egakumi-api | APIリソース。戻り先不要 | Gateway.Invokeを公開、requestedAccessTokenVersion=2。OBO用のGraph委任User.Readと管理者同意 | OBO専用の公開証明書 |
-| egakumi-portal | Web。Portalの/api/auth/callback/microsoft。API追加認証の/api/api-auth/callbackも同時に登録 | ログインはopenid/profile/email。管理GraphはGroupMember.Read.All・User.ReadBasic.Allのアプリケーション権限。「試す」はegakumi-apiのGateway.Invoke委任権限と必要なoffline_access | KV署名用証明書の公開部分。Entra client secretは作らない |
+| egakumi-portal | Web。Portalの/api/auth/callback/microsoft。API追加認証の/api/api-auth/callbackも同時に登録 | ログインはopenid/profile/email。「試す」はegakumi-apiのGateway.Invoke委任権限と必要なoffline_access | KV署名用証明書の公開部分。Entra client secretは作らない |
 | egakumi-tools | Web。CM標準redirect | Graph /meは委任User.Read、OIDC・更新に必要なscope。WorkIQはresource別に確認。Portal管理Graph権限は付けない | CM専用client secret |
 | egakumi-credential | Web。接続窓口の/auth/connections/browser/identity-callback | OIDC本人確認。Graph業務委任やPortal管理権限を付けない | 本人確認専用client secret |
 
@@ -244,7 +244,7 @@ Bearer要求では、署名・期限・自社tenant/issuer・v2のaud=<API_APP_C
 | [api-publication.bicep](../../apps/api-gateway/api-publication.bicep)・[api_publication.py](../../apps/api-gateway/deploy/api_publication.py)・[entra_publication.py](../../apps/api-gateway/deploy/entra_publication.py) | APIはsubscriptionRequired=trueのまま、固定ID `core-entra-model-users`・所有marker `core-owned-entra-model-users-v1`のopen Productを作成。業務API正本・生成MCP・設定済みCM保護入口を自動関連付け、Productは各sectionのbaseだけを継承。CMブラウザー入口は除外。同名未所有resource・別open Product・未知policyで停止し、URL・operation・既存Productを保持してreadback |
 | [service.xml](../../apps/api-gateway/policies/service.xml)・[core-common-authentication](../../apps/api-gateway/policies/fragments/authentication/core-common-authentication/README.md)・[apim_authentication.py](../../scripts/deployment/helpers/apim_authentication.py)・[apim_common_authentication.py](../../scripts/deployment/helpers/apim_common_authentication.py) | 信頼した入口検査後、キー提示時は従来キー検証。無効キーのopen Product fallbackを401で拒否し、キーなしでは専用Productの文脈を共通側で確認してJWT検証する。全API共通とし、API名・操作の対応フラグによる認証分岐は設けない。標準検証の失敗は共通on-errorのcore-entra-authentication-errorで処理する。base継承と既存キー＋任意Authorizationの互換性を保持 |
 | REST、WebSocket、外部MCP、生成MCPのテンプレート | 共通の検証済み主体を使う認可へ拡張。API ID固定判定、モデル・query検査を両認証方式で維持 |
-| [subscription-profile snippet](../../apps/api-gateway/policies/snippets/quota/subscription-profile/README.md)・[core-entra-user-profile](../../apps/api-gateway/policies/fragments/quota/core-entra-user-profile/README.md)・[core-rate-limit](../../apps/api-gateway/policies/fragments/quota/core-rate-limit/README.md)・[core-token-limits](../../apps/api-gateway/policies/fragments/quota/core-token-limits/README.md) | 既存キーのcounterと設定を保持。社員分岐はAPIへ埋め込むchooseから、入れ子のincludeを持たない`core-entra-user-profile`を呼び、共通認証で検査済みの構成由来制限を引き継ぐ。nullの制限は実行せず、本人不明・構成不正は先行処理が拒否。SQL取得不備は既存監査へ記録して503で停止 |
+| `subscription-profile snippet`・[core-entra-user-profile](../../apps/api-gateway/policies/fragments/quota/core-entra-user-profile/README.md)・[core-rate-limit](../../apps/api-gateway/policies/fragments/quota/core-rate-limit/README.md)・[core-token-limits](../../apps/api-gateway/policies/fragments/quota/core-token-limits/README.md) | 既存キーのcounterと設定を保持。社員分岐はAPIへ埋め込むchooseから、入れ子のincludeを持たない`core-entra-user-profile`を呼び、共通認証で検査済みの構成由来制限を引き継ぐ。nullの制限は実行せず、本人不明・構成不正は先行処理が拒否。SQL取得不備は既存監査へ記録して503で停止 |
 | audit-context.xml・fragments/audit/core-gateway-telemetry/core-gateway-telemetry.xml | 認証方式、tid/oid、任意のazp、利用枠、正本API、request ID、モデルを関連付ける。token・key・本文を記録しない |
 | fragments/authentication/core-credential-connection/・credential-login/*.xml・[credential-broker](../../apps/credential-broker/) | Bearer本人を初回取引からcallback・業務利用・更新・logout/disconnectまで照合。キーとユーザーcs2は相互流用せず、確認済み接続はtid+oidで再利用。SQL v4・Broker・XMLを揃えて更新し、既存キーv2契約を維持 |
 | realtime-create/observer/hangup・live・非同期結果取得 | 本人と利用枠をticket・call・結果所有者へ結び付ける。旧購読所有の契約も維持 |
@@ -404,7 +404,7 @@ Responsesのinput欠落・文字列/配列以外という理由だけの403も�
 |---|---|
 | 共通処理から戻った後の要求情報・認証結果・query観測 | [APIテンプレート](../../apps/api-gateway/policies/api-templates/README.md)、`fragments/request/core-query-observation/core-query-observation.xml`／同名C# |
 | モデルの入力・機能・ツール形式を制限する処理 | `rest/rest.xml`等の本文検査。function以外のtool拒否、保存済み状態・ファイル参照・include制限などを別々に判断 |
-| 利用枠・トークン数・購読または社員の扱い | [subscription-profile snippet](../../apps/api-gateway/policies/snippets/quota/subscription-profile/README.md)、[core-entra-user-profile](../../apps/api-gateway/policies/fragments/quota/core-entra-user-profile/README.md)、[core-rate-limit](../../apps/api-gateway/policies/fragments/quota/core-rate-limit/README.md)、[core-token-limits](../../apps/api-gateway/policies/fragments/quota/core-token-limits/README.md)の同名XML／C# |
+| 利用枠・トークン数・購読または社員の扱い | `subscription-profile snippet`、[core-entra-user-profile](../../apps/api-gateway/policies/fragments/quota/core-entra-user-profile/README.md)、[core-rate-limit](../../apps/api-gateway/policies/fragments/quota/core-rate-limit/README.md)、[core-token-limits](../../apps/api-gateway/policies/fragments/quota/core-token-limits/README.md)の同名XML／C# |
 | CMの本人接続・外部API向けトークン取得 | `fragments/authentication/core-credential-connection/`、`fragments/authentication/core-credential-session-use/`、`credential-login/`、該当API／操作ポリシー |
 | 個別操作・生成ポリシー | `api-publication.bicep`、`policies/operation-policies/document-analysis/document-analysis.xml`、`policies/operation-policies/document-analysis/document-analysis-status.xml`、`policies/operation-policies/realtime/`、`policies/fragments/authentication/core-realtime-observer/`等 |
 
@@ -473,7 +473,7 @@ MOD-68はローカル実装・関連検証済みである。HTTPの`gatewayCrede
 
 MOD-67はローカル実装・関連検証済みである。HTTP InboundのCM設定非空による再判定を削除し、CM宣言があるAPIは既存の接続確認→セッション使用確認を直接呼び出す。CM宣言がないAPIは既存のBicep生成分岐で宣言済みの通常下流認証へ置換する。設定setter・生成区画marker・CM本体の本人、期限、失効、無効設定、取得障害による停止・資格情報の除去・固定接続先・利用枠・受付監査は維持する。HTTP OutboundとProtocol／MCPは変更しない。関連73件が全件成功した（35.159s、失敗・スキップなし）。実Bicep生成と保護source一致、容量余裕、標準Graphと追加HTTPのCM無効時の直接呼出しと通常認証へのfallbackなし、CM有効・非CMの認証と操作別backend、資格情報の除去、実CM式の無効・本人・セッション不備等の既存停止、Razor・Chat／Document／回数枠の処理順を確認した。MOD-66の164件（33.446s）とは別実行である。CM未設定HTTPにも残る空の設定setterは今回は維持し、次の別候補とする。Azure未反映・工程1全体は未完了である。
 
-MOD-66はローカル実装・検証済みである。SQL利用枠の取得不備503の直前へ、既存telemetryの`policy-error`／`LIMIT_PROFILE_UNAVAILABLE`／503を追加した。正本は[subscription-profile snippet](../../apps/api-gateway/policies/snippets/quota/subscription-profile/README.md)の同名XML／C#へ移し、`gatewayFetchedProfile`の取得応答検査式だけをC#が所有する。cache・社員分岐・取得要求・応答はXMLに保持し、APIへinline展開する方式を維持する。新しいAzure登録fragmentは作らない。関連164件が全件成功した（33.446s、失敗・スキップなし）。実C#・実503分岐・正本telemetryで取得失敗51対照、正常・明示null等の取得成功8対照、cache hit・disabled・免除等の4対照を確認し、監査1回・認証済み呼出者・要求ID・本文や診断の非出力・後段停止・既存503とヘッダー・30秒cacheを検証した。全HTTP・WebSocket・外部MCPの実Bicep配備と保護source生成は完成snippetと一致し、同名所有・Razor・説明保持・利用枠有効化検査も成功した。独立レビューでも取得検査式は旧実装と同一、XMLの変更は監査4ノードだけと確認した。SQLから受け取る値の購読照合・型・範囲・期間・明示nullと、cache・固定取得契約・社員優先・免除は、後段へ有効な枠を渡すために必要と確認した。同じ要求内で確認済みの社員設定とは異なる供給経路であり、削除を推奨できる重複検査はない。この取得snippetのローカルInbound棚卸は一区切りとする。実SQL経路の受入はAzureまとめ反映後に確認する。Azure未反映であり、工程1全体の完了とは区別する。
+MOD-66はローカル実装・検証済みである。SQL利用枠の取得不備503の直前へ、既存telemetryの`policy-error`／`LIMIT_PROFILE_UNAVAILABLE`／503を追加した。正本は`subscription-profile snippet`の同名XML／C#へ移し、`gatewayFetchedProfile`の取得応答検査式だけをC#が所有する。cache・社員分岐・取得要求・応答はXMLに保持し、APIへinline展開する方式を維持する。新しいAzure登録fragmentは作らない。関連164件が全件成功した（33.446s、失敗・スキップなし）。実C#・実503分岐・正本telemetryで取得失敗51対照、正常・明示null等の取得成功8対照、cache hit・disabled・免除等の4対照を確認し、監査1回・認証済み呼出者・要求ID・本文や診断の非出力・後段停止・既存503とヘッダー・30秒cacheを検証した。全HTTP・WebSocket・外部MCPの実Bicep配備と保護source生成は完成snippetと一致し、同名所有・Razor・説明保持・利用枠有効化検査も成功した。独立レビューでも取得検査式は旧実装と同一、XMLの変更は監査4ノードだけと確認した。SQLから受け取る値の購読照合・型・範囲・期間・明示nullと、cache・固定取得契約・社員優先・免除は、後段へ有効な枠を渡すために必要と確認した。同じ要求内で確認済みの社員設定とは異なる供給経路であり、削除を推奨できる重複検査はない。この取得snippetのローカルInbound棚卸は一区切りとする。実SQL経路の受入はAzureまとめ反映後に確認する。Azure未反映であり、工程1全体の完了とは区別する。
 
 MOD-65までの承認分はローカル実装・関連検証済みである。社員利用枠の取得部品の構造・必須項目・型・範囲・期間の再検査を先行共通認証へ集約し、社員JSON解析・limits取得・既存JSON返却の3処理を維持する。設定不備は共通認証が500で停止し、取得失敗は無制限へ補完せず既存on-errorへ渡す。関連125件が全件成功した（29.737s、失敗・スキップなし）。実C#で12件の人工取得値対照と同じ設定の共通認証500先行停止を分け、取得失敗7対照・変数非アクセス・同じ有限枠と明示null・計数キー・免除を確認した。実Bicepコンパイル・生成一致・同名所有・Razor・説明保持と既存転送先・診断も成功した。この取得部品のローカルInbound棚卸は一区切りとし、当時は次の対象をSQL利用枠の供給元としていた。MOD-64の元設定照合撤去と123件（25.556s）、MOD-63の社員ID再照合撤去と122件（28.680s）、MOD-62の認証成功再確認撤去・正本移設と121件（36.106s）は変更前の別記録である。回数・トークン部品もローカルInbound棚卸を一区切りにしており、MOD-61の88件（31.368s）とMOD-60の85件（26.796s）も別実行である。Azure未反映であり、工程1全体の完了や全APIの実受入とは区別する。MOD-66とSQL取得snippetの確認後に残る範囲を次の4群に整理する。
 
@@ -741,52 +741,11 @@ Entra同意、Key Vaultでの署名、Graph実接続と追加認証は実環境�
 
 ## 工程3：egakumi-portalの分離
 
-| 作業 | 対象・条件 |
-|---|---|
-| 新Portalアプリ | 認証EntraにSingle tenant／Web。redirectはhttps://<PORTAL_HOST>/api/auth/callback/microsoft。Implicit grant／Public client flowsはOFF |
-| Graph権限 | 現行管理機能のGroupMember.Read.All・User.ReadBasic.Allを新アプリへ設定し管理者同意。全Graph操作で権限不足がないことを確認 |
-| 証明書認証 | Azure側Key VaultでPortal認証専用の非exportable証明書・鍵を生成し、公開証明書だけを認証Entraへ登録 |
-| 専用identity | Portal本体と定期照合Jobは、実行用IDとは別にPortal証明書の署名用IDを使う。署名用IDの権限は対象鍵の読取り・署名に絞る |
-| 独立設定 | portal.authenticationに認証tenant/clientとversion付き鍵参照・対応thumbprintを追加。既存portalAuthenticationのSQL性能・backup設定は保持 |
-| コード | auth-options.tsのclientSecretをasync clientAssertionへ変更。GraphはClientAssertionCredentialへ変更。KV署名を共通化しkeyvault-keysを直接依存へ追加 |
-| 配備 | deploy_portal.py、application.bicep、database.bicep、group-reconciliation-job.bicep、ローカル準備からCM共用secret依存を外す |
+Coreの公開証明書を専用のPortalアプリへ登録し、サインインとAPI試用のWeb戻り先、OIDCの委任許可、Gateway.Invokeと管理者同意を設定する。Portalの認証で使用する鍵は、Key Vaultの対象鍵に絞って読み取り・署名を許可する。サインインとログアウト、異なる利用者やテナントを拒否する条件を配備後に確認する。[登録手順](../setup/09-egakumi-portal.md)
 
-Better Auth 1.7.14のMicrosoft providerと@azure/identity 4.13.0はclient assertionの足場を持つ。事前の合成検証は実Key Vault／Entra／Graphの受入を代替しない。
+## 工程4：Portalで本人のBearerを使って試す
 
-**受入：** 同一・別tenant構成で署名→認証コード交換→Portalログイン→Graph管理→定期jobを確認。provider=microsoft、tid+oidによる既存ユーザー・所有権・CM状態を維持し、client変更で変わるsubを移行キーにしない。
-
-BETTER_AUTH_SECRETと既存の暗号化資材は保持する。AppGW向けexportable TLS証明書を認証へ流用しない。証明書versionとthumbprintを組で固定し、新公開証明書の先行登録→配備切替→確認→旧証明書回収の順に更新する。
-
-ローカルで実認証を試す場合は開発用アプリ・鍵を使用する。Azure CLI credentialはAzure側Key Vault署名の認可にだけ使用し、CLIのユーザーtokenをPortalのclient assertionへ転用しない。端末からprivate endpointへ届かなければAzure上の検証Portalで確認する。
-
-**戻し方：** 旧アプリ・旧secret参照・旧読取権限を受入まで残し、イメージと構成を組で戻す。切替中のOAuth取引は期限待ち／無効化する。新旧のtokenを別clientへ転用しない。旧Portal専用grant・redirectの撤去は確認後に明示的に行い、CM用secretとCM redirectは保持する。
-
-## 工程4：Portalでキー／アクセストークンを選んで試す
-
-Portalログインを維持したまま「アクセストークンで試す」を選んだときに、API向けの認証を行う。追加同意・再認証が必要な間もPortalログインとキー管理は利用できる。
-
-| 作業 | 実装内容・完了条件 |
-|---|---|
-| API用OAuth | egakumi-portalへGateway.Invokeの委任権限を追加。必要なoffline_access。サーバー管理のAuthorization Code＋PKCEで取得 |
-| API認証callback | Portalログインから独立したcallbackでコードを一回だけ交換し、Portalログインと同じ本人であることを確認 |
-| 本人照合 | openidとAPI scopeを要求。nonce・一回限りstate・PKCE・固定callbackをPortal sessionへ束縛。署名・issuer・audienceを検証したID tokenのtid/oidとPortal本人を比較。API tokenの単純decodeで本人を確定しない |
-| API token保存 | CM接続とは別の暗号化SQL保存。Portal session、tid/oid、client、resource/scopeを紐付け、保存期限・削除・鍵versionを管理。tokenが有効でも毎要求でPortal SQL sessionの有効性を確認 |
-| 更新 | DB時刻の共有lease、revision・失効世代・有効状態による比較更新。lease喪失／disconnect後の遅延応答を保存しない。外部token交換中にSQL transactionを保持しない。invalid_grantと通信障害を区別 |
-| 実行依存 | apiKeyId必須の契約を認証方式別に分ける。同じ登録済みAPIのURLへ、サーバーでapi-keyまたはAuthorizationを送る |
-| 全Try機能 | Text、Embedding、Rerank、Image、Speech、Document、PII、Graph、MCP、Realtime等を対象一覧と照合。GraphのCM session client、非同期結果ticket、call所有者も対応 |
-| UI | shadcn/uiの認証方式選択。秘密値の入力・表示を標準導線にしない。日本語・英語の状態・再認証案内を同時追加 |
-
-[API認証route](../../apps/portal/app/api/api-auth/)と[API用取引・暗号化保存](../../apps/portal/lib/api-auth/)を使い、Tryのサーバー処理が選択した方式を同じGateway操作に渡す。
-
-API tokenの暗号化は専用用途・鍵versionで管理する。既存CM保存の索引をそのまま流用しない。AAD／保存索引には認証方式・本人・利用枠を含め、他人の行・別resourceのtokenを利用できないことを確認する。
-
-**受入：** 全Try対象でキー／tokenの正常利用、期限切れ・更新競合・logout・別本人callback・scope不足を確認。token・key・refresh tokenをブラウザー、URL、ログ、例外本文へ出さない。ID tokenやGraph管理tokenをAPIMへ送らない。
-
-ブラウザーのWebSocketへBearerをURL queryで埋め込まない。既存のサーバーrelayから送る。SSE途中やツール実行後の認証失敗で、要求を自動再送してモデル課金・副作用を二重にしない。WebRTC終了・非同期結果取得まで同じ所有者を確認する。
-
-WebSocketのAuthorizationは確立後に更新できない。接続上限・再接続と、複数instanceでPortal sessionのlogout／disconnectを反映する通知または共有世代確認・最大遅延を定義する。SSE・WebSocket・WebRTCのどこまでをPortal側で終了できるかを試験し、Portal保存の失効とEntra token自体の失効を区別する。
-
-**戻し方：** UIのtoken機能と新規追加認証を無効化し、キー機能を継続。API token保存は失効・期限に従って処理する。SQLを追加互換のまま保持し、コードrollbackで旧runtimeが新形式を誤使用しないことを確認する。
+ログインとは別のAuthorization Code＋PKCE取引で `Gateway.Invoke` を取得し、Portalと同じ本人であることを確認する。取得したトークンは専用鍵で暗号化してサーバー側のSQLに保存する。JSON、SSE、MCP、文書、音声、非同期取得、Graph OBOを代表する操作で、認証、更新、ログアウト、別アカウントの拒否を配備後に確認する。[Portalの受入](../setup/12-deploy-portal.md#受入確認)
 
 ## 工程5：egakumi-toolsの分離とGraph OBO
 
@@ -821,7 +780,7 @@ CredentialアプリはWeb・Single tenantで登録し、`https://<GATEWAY_HOST>/
 3. 旧経路の利用と更新が止まったことを確認し、承認された対象に限って旧接続・権限・戻り先・資格情報・リソース参照を回収する。旧アプリの削除は、他の利用先がなく切り戻しが不要になってからEntra担当者が行う。
 4. 移行後の通常更新と空環境からの初回構築は、それぞれの記録で確認する。
 
-購読管理は共通のAPIアプリと専用Portalアプリを使う。APIアプリで委任スコープ `Subscription.Manage` を公開し、Portalクライアントへ許可する。 [購読管理とプロファイル照会の受入](network-security-validation.md#購読管理とプロファイル照会の分離)
+購読キーの例外発行・停止は基盤管理者がAPIMで行う。[運用手順](../operations/access-and-keys.md)
 
 ## 採用済みの設計と実環境での判断事項
 

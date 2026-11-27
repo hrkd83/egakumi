@@ -55,7 +55,8 @@ class WafProbeTests(unittest.TestCase):
         self.assertIn(("gateway", "POST", "/tools/pii-v1-mcp/mcp"), expected)
         self.assertIn(("gateway", "GET", "/auth/connections/browser/callback"), expected)
         self.assertIn(("portal", "GET", "/api/auth/callback/microsoft"), expected)
-        self.assertIn(("portal", "PUT", "/api/api-keys/00000000-0000-4000-8000-000000000000/limits"), expected)
+        self.assertIn(("portal", "POST", "/api/api-auth/start"), expected)
+        self.assertIn(("portal", "POST", "/api/tools/graph/profile"), expected)
         self.assertIn(("portal", "GET", "/en/login"), expected)
 
     def test_corpus_is_large_unique_deterministic_and_includes_meaningful_families(self):

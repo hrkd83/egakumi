@@ -1,7 +1,7 @@
 import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
-import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
+import type { GatewayActor } from "./api-auth/gateway-credential.ts";
 import { apiAuthenticationFailure, resolveGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
 import type { PortalBearer } from "./api-auth/service.ts";
 import { getEmbeddingModels } from "./model-catalog.ts";
@@ -18,10 +18,9 @@ const paths = { embeddings: "/models/openai-embeddings/v1/embeddings", "cohere-e
 
 /** 認証と通信を差し替えて、実際の入力制約・認可・応答制約を検証するための依存です。 */
 export type EmbeddingGatewayDependencies = {
-  readSession: () => Promise<ApiKeyActor | null>;
+  readSession: () => Promise<GatewayActor | null>;
   readPortalOrigin: () => string;
   readGatewayEnvironment?: () => Promise<ModelGatewayEnvironment>;
-  resolveSubscriptionKey?: (actor: ApiKeyActor, apiKeyId: string, apiId: string) => Promise<string>;
   resolveBearer?: () => Promise<PortalBearer>;
   readModels?: () => readonly EmbeddingModel[] | Promise<readonly EmbeddingModel[]>;
   fetch?: typeof globalThis.fetch;
@@ -35,14 +34,14 @@ function failure(code: ModelGatewayErrorCode, status: number, details: Omit<Text
 
 /**
  * 認証済みの同一オリジンPOSTを、許可された埋め込み操作へ一度だけ転送します。
- * @remarks 台帳IDから毎回利用権限を確認し、購読キーはサーバー内だけで使います。自動再試行は行いません。
+ * @remarks 本人のBearer認可を確認し、アクセストークンはサーバー内だけで使います。自動再試行は行いません。
  */
 export async function handleEmbeddings(request: Request, dependencies: EmbeddingGatewayDependencies): Promise<Response> {
   let portalOrigin: string;
   try { portalOrigin = new URL(dependencies.readPortalOrigin()).origin; } catch { return failure("GatewayNotConfigured", 503); }
   const site = request.headers.get("sec-fetch-site");
   if (request.method !== "POST" || request.headers.get("origin") !== portalOrigin || (site && site !== "same-origin")) return failure("RequestNotAllowed", 403);
-  let actor: ApiKeyActor | null;
+  let actor: GatewayActor | null;
   try { actor = await dependencies.readSession(); if (!actor) return failure("AuthenticationRequired", 401); } catch { return failure("AuthenticationUnavailable", 503); }
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
@@ -65,12 +64,11 @@ export async function handleEmbeddings(request: Request, dependencies: Embedding
   } catch { return failure("GatewayNotConfigured", 503); }
   let credential: GatewayCredential;
   try {
-    credential = await resolveGatewayCredential(request, actor, input, model.apiId, gateway.origin,
-      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+    credential = await resolveGatewayCredential(request, actor, gateway.origin, dependencies.resolveBearer);
   } catch (error) {
     const apiAuth = apiAuthenticationFailure(error);
     if (apiAuth) return failure(apiAuth.code, apiAuth.status);
-    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
+    return failure("ApiAuthenticationUnavailable", 503); }
   const timeout = modelDeadline(dependencies.timeoutMs);
   const signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();

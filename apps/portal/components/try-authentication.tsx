@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import { z } from "zod";
-import { SubscriptionManagementConnection } from "@/components/subscription-management-connection";
 import { Button } from "@/components/ui/button";
 import { startPortalApiAuthorization } from "@/lib/api-auth/browser";
 import type { TryCredential } from "@/lib/api-auth/try-credential";
@@ -12,32 +11,32 @@ import type { Locale } from "@/lib/i18n/config";
 
 const statusResponse = z.object({ status: z.enum(["disconnected", "connected", "busy", "reauthentication_required"]) });
 type ConnectionStatus = z.infer<typeof statusResponse>["status"] | "loading" | "disabled" | "unavailable";
-type Selection = { mode: "api-key" | "bearer"; status: ConnectionStatus; error: boolean; submitting: boolean };
+type ConnectionState = { status: ConnectionStatus; error: boolean; submitting: boolean };
 
 const messages = {
   ja: {
-    label: "試用の認証方式", key: "APIキー", bearer: "アクセストークン", start: "APIに接続", renew: "再認証",
+    label: "API試用の接続", start: "APIに接続", renew: "再認証",
     disconnect: "API接続を解除", connected: "APIに接続済み", busy: "認証を更新しています",
-    unavailable: "API接続状態を確認できません", failed: "API接続を完了できませんでした",
+    disabled: "API試用は構成されていません", unavailable: "API接続状態を確認できません", failed: "API接続を完了できませんでした",
   },
   en: {
-    label: "Try authentication", key: "API key", bearer: "Access token", start: "Connect to API", renew: "Reauthenticate",
+    label: "API trial connection", start: "Connect to API", renew: "Reauthenticate",
     disconnect: "Disconnect API", connected: "Connected to API", busy: "Refreshing authentication",
-    unavailable: "Couldn't check the API connection", failed: "Couldn't complete the API connection",
+    disabled: "API trials are unavailable", unavailable: "Couldn't check the API connection", failed: "Couldn't complete the API connection",
   },
 } as const;
 
 /** 各Try画面の選択と接続状態だけを保持し、Bearer値をブラウザーへ出しません。 */
-export function useTryAuthentication(keyId: string | undefined) {
-  const [store] = useState(() => createStore<Selection>(() => ({
-    mode: "api-key", status: "loading", error: false, submitting: false,
+export function useTryAuthentication() {
+  const [store] = useState(() => createStore<ConnectionState>(() => ({
+    status: "loading", error: false, submitting: false,
   })));
   const selection = useStore(store);
   useEffect(() => {
     const cancellation = new AbortController();
     const outcome = new URL(window.location.href).searchParams.get("api-auth");
     if (outcome === "connected" || outcome === "failed") {
-      store.setState({ mode: "bearer", error: outcome === "failed" });
+      store.setState({ error: outcome === "failed" });
     }
     async function refresh() {
       try {
@@ -50,23 +49,20 @@ export function useTryAuthentication(keyId: string | undefined) {
       }
     }
     void refresh();
-    const timer = window.setInterval(() => { if (store.getState().mode === "bearer") void refresh(); }, 5_000);
+    const timer = window.setInterval(refresh, 5_000);
     return () => { cancellation.abort(); window.clearInterval(timer); };
   }, [store]);
 
-  const credential: TryCredential | undefined = selection.mode === "api-key"
-    ? keyId ? { apiKeyId: keyId } : undefined
-    : selection.status === "connected" ? { authentication: "bearer" } : undefined;
+  const credential: TryCredential | undefined = selection.status === "connected" ? { authentication: "bearer" } : undefined;
   return { store, selection, credential };
 }
 
-/** 選択と追加認証・接続解除を提供します。既存のキー選択は呼出側に残します。 */
-export function TryAuthenticationPicker({ model, locale, disabled = false, onModeChange }: {
-  model: ReturnType<typeof useTryAuthentication>; locale: Locale; disabled?: boolean; onModeChange?: () => void;
+/** 試用に必要なBearer接続の開始、追加認証、解除を提供します。 */
+export function TryAuthenticationControl({ model, locale, disabled = false, onDisconnect }: {
+  model: ReturnType<typeof useTryAuthentication>; locale: Locale; disabled?: boolean; onDisconnect?: () => void;
 }) {
   const { store, selection } = model;
   const labels = messages[locale];
-  const keyConnection = selection.mode === "api-key" ? <SubscriptionManagementConnection locale={locale} disabled={disabled} /> : null;
 
   async function start() {
     store.setState({ submitting: true, error: false });
@@ -80,30 +76,18 @@ export function TryAuthenticationPicker({ model, locale, disabled = false, onMod
     try {
       const response = await fetch("/api/api-auth/disconnect", { method: "POST" });
       if (!response.ok) throw new Error();
-      onModeChange?.();
+      onDisconnect?.();
       store.setState({ status: "disconnected" });
     } catch { store.setState({ error: true }); }
     finally { store.setState({ submitting: false }); }
   }
 
-  function select(mode: Selection["mode"]) {
-    if (mode === selection.mode) return;
-    onModeChange?.();
-    store.setState({ mode, error: false });
-  }
-
   const updating = disabled || selection.submitting;
-  return <>{selection.status !== "disabled" && selection.status !== "loading" && <fieldset className="mb-3 space-y-2">
+  if (selection.status === "loading") return null;
+  return <fieldset className="mb-3 space-y-2">
     <legend className="text-sm font-medium">{labels.label}</legend>
     <div className="flex flex-wrap items-center gap-2">
-      <Button type="button" size="sm" variant={selection.mode === "api-key" ? "default" : "outline"}
-        disabled={updating} aria-pressed={selection.mode === "api-key"}
-        onClick={() => select("api-key")}>{labels.key}</Button>
-      <Button type="button" size="sm" variant={selection.mode === "bearer" ? "default" : "outline"}
-        disabled={updating} aria-pressed={selection.mode === "bearer"}
-        onClick={() => select("bearer")}>{labels.bearer}</Button>
-    </div>
-    {selection.mode === "bearer" && <div className="flex flex-wrap items-center gap-2">
+      {selection.status === "disabled" && <span role="status" className="text-sm text-muted-foreground">{labels.disabled}</span>}
       {selection.status === "connected" && <>
         <span role="status" className="text-sm text-muted-foreground">{labels.connected}</span>
         <Button type="button" variant="outline" size="sm" disabled={updating} onClick={disconnect}>{labels.disconnect}</Button>
@@ -116,6 +100,6 @@ export function TryAuthenticationPicker({ model, locale, disabled = false, onMod
           {selection.status === "disconnected" ? labels.start : labels.renew}
         </Button>}
       {selection.error && <span role="alert" className="text-sm text-destructive">{labels.failed}</span>}
-    </div>}
-  </fieldset>}{keyConnection}</>;
+    </div>
+  </fieldset>;
 }

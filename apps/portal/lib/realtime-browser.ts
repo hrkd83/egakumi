@@ -45,8 +45,7 @@ async function waitFor(check: () => boolean, targets: { target: EventTarget; eve
  */
 export async function startRealtimeConversation(options: { model: RealtimeModel; input: RealtimeInput; signal: AbortSignal; onEvent(event: RealtimeStreamEvent): void; onPlaybackBlocked?(blocked: boolean): void } & TryCredential): Promise<RealtimeConversation> {
   const { model, input, signal, onEvent, onPlaybackBlocked } = options;
-  const selection: TryCredential = options.authentication === "bearer"
-    ? { authentication: "bearer" } : { apiKeyId: options.apiKeyId };
+  const selection: TryCredential = { authentication: options.authentication };
   signal.throwIfAborted();
   if (!globalThis.navigator?.mediaDevices?.getUserMedia || typeof WebSocket === "undefined" || model.transport === "webrtc" && typeof RTCPeerConnection === "undefined") throw new RealtimeBrowserError("BrowserUnsupported");
   const started = performance.now(); const elapsed = () => Math.max(0, Math.round(performance.now() - started));

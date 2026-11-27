@@ -69,7 +69,7 @@ class NsgRulePriorityTests(unittest.TestCase):
                 'auditStorageFoundryPrivateIps': sets['auditStorageFoundry'],
                 'managementPrivateIp': ips['management'], 'firewallPublicIpAddress': ips['firewallPublic'],
                 'appGatewayPublicIpAddress': ips['appGatewayPublic'], 'apimPrivateIp': ips['apim'],
-                'staticIp': ips['aca'], 'acaPrivateIp': ips['aca'], 'acaPrefix': subnets['aca'],
+                'staticIp': ips['aca'], 'acaPrefix': subnets['aca'],
                 'brokerPrivateIp': ips['broker'], 'brokerPrefix': subnets['broker'],
                 'apimPrefix': subnets['apim'], 'agwPrefix': subnets['agw'], 'managementPrefix': subnets['management'],
                 'entraLoginHost': 'login.microsoftonline.com',
@@ -196,7 +196,7 @@ class NsgRulePriorityTests(unittest.TestCase):
                 sources = {name: [parameters['acaPrefix'], parameters['brokerPrefix']] for name in purposes}
                 self._application_rule_tuples(actual['rules'], purposes, sources)
 
-    def test_aca_firewall_arm_allows_portal_and_broker(self):
+    def test_aca_firewall_arm_allows_only_broker(self):
         resource = self.templates['credential-broker-network']['resources']['rules']
         self.assertNotIn('condition', resource)
         self.assertEqual(resource['properties']['priority'], 360)
@@ -211,7 +211,7 @@ class NsgRulePriorityTests(unittest.TestCase):
                 self.assertEqual(actual['ruleCollectionType'], 'FirewallPolicyFilterRuleCollection')
                 purposes = {
                     'allow-aca-entra-login': ['login.microsoftonline.com'],
-                    'allow-aca-arm': ['management.azure.com'],
+                    'allow-broker-arm': ['management.azure.com'],
                 }
                 self.assertEqual(len(actual['rules']), 3)
                 self.assertEqual({r['name'] for r in actual['rules']},
@@ -219,8 +219,14 @@ class NsgRulePriorityTests(unittest.TestCase):
                 owned_rules = [r for r in actual['rules'] if r['name'] in purposes]
                 self._application_rule_tuples(owned_rules, purposes, {
                     'allow-aca-entra-login': [parameters['acaPrefix'], parameters['brokerPrefix']],
-                    'allow-aca-arm': [parameters['acaPrefix'], parameters['brokerPrefix']],
+                    'allow-broker-arm': [parameters['brokerPrefix']],
                 })
+                nsgs = self.compiled_rules(parameters)
+                broker_arm = canonical(nsgs['broker']['allow-arm-https-egress'])
+                self.assertEqual(broker_arm['source'], [parameters['brokerPrefix']])
+                self.assertEqual(broker_arm['destination'], ['AzureResourceManager'])
+                self.assertFalse(any('AzureResourceManager' in canonical(rule)['destination']
+                                     for rule in nsgs['aca'].values()))
 
     def compiled_rules(self, parameters):
         result = {g: {} for g in GROUPS}
@@ -239,7 +245,6 @@ class NsgRulePriorityTests(unittest.TestCase):
             ('portal-network-bindings', 'managementPortalHttpsOut', 'management', 'allow-aca-https-egress'),
             ('credential-broker-network', 'sqlIn', 'pep', 'allow-aca-sql-1433-ingress'),
             ('credential-broker-network', 'managementSqlIn', 'pep', 'allow-mgmt-vm-sql-1433-ingress'),
-            ('credential-broker-network', 'portalOut', 'apim', 'allow-aca-https-egress'),
             ('credential-broker-network', 'brokerOut', 'apim', 'allow-broker-https-egress'),
             ('credential-broker-network', 'acaSqlOut', 'aca', 'allow-sql-1433-egress'),
             ('credential-broker-network', 'brokerSqlOut', 'broker', 'allow-sql-1433-egress'),
@@ -311,12 +316,10 @@ class NsgRulePriorityTests(unittest.TestCase):
             (('AzureLoadBalancer',), ('30000-32767',)),
             ((subnet['broker'],), ('*',)),
         })
-        private_routes = {name: canonical(rules['apim'][name])['destination']
-                          for name in ('allow-aca-https-egress', 'allow-broker-https-egress')}
-        self.assertEqual(private_routes, {
-            'allow-aca-https-egress': [parameters['__ips']['aca'] + '/32'],
-            'allow-broker-https-egress': [parameters['__ips']['broker'] + '/32'],
-        })
+        self.assertEqual(canonical(rules['apim']['allow-broker-https-egress'])['destination'],
+                         [parameters['__ips']['broker'] + '/32'])
+        portal_ingress = [canonical(rule) for rule in rules['aca'].values() if rule['direction'] == 'Inbound']
+        self.assertFalse(any(subnet['apim'] in rule['source'] for rule in portal_ingress))
         self.assertTrue(all(subnet['aca'] not in rule['destination'] for rule in broker if rule['direction'] == 'Outbound'))
 
     def test_retired_flags_and_external_address_overrides_cannot_change_initial_rules(self):
@@ -381,7 +384,7 @@ class NsgRulePriorityTests(unittest.TestCase):
 
         cases = (
             ('Inbound', 'Tcp', firewall, aca, 31443, 'Allow'),
-            ('Inbound', 'Tcp', parameters['apimPrivateIp'], aca, 443, 'Allow'),
+            ('Inbound', 'Tcp', parameters['apimPrivateIp'], aca, 443, 'Deny'),
             ('Inbound', 'Tcp', parameters['managementPrivateIp'], aca, 443, 'Allow'),
             ('Inbound', 'Tcp', load_balancer_ip, aca, 32123, 'Allow'),
             ('Inbound', 'Tcp', load_balancer_ip, aca, 1433, 'Deny'),

@@ -16,9 +16,9 @@
 | --- | --- |
 | Gateway認証 | 正規の購読キーと、`Gateway.Invoke`を持つ利用者のBearerで、対象APIの実応答を確認する。無効な認証が拒否されることも確認する |
 | Gateway経由のGraph | キー経路でCredential本人確認とToolsのCM接続を確認し、Bearer経路ではAPIアプリを使うOBOで実際に利用者のGraph情報を取得する |
-| Portal認証 | Microsoftサインインとサインアウト、管理画面、Graphを使う所属・定期照合を確認する |
-| PortalでのAPI試用 | 購読キーと利用者のBearerをそれぞれ選んでAPIを呼ぶ。別個のOAuth戻り先とセッションを確認する |
-| 購読管理 | `Subscription.Manage`の委任で発行・一覧・失効を確認し、所属外の操作の拒否とAPIMからの制限照会を確認する |
+| Portal認証 | Microsoftサインインとサインアウト、許可されていないテナントの拒否を確認する |
+| PortalでのAPI試用 | 利用者のBearerでAPIを呼ぶ。ログインと試用のOAuth戻り先、同一人物の照合、ログアウト後の失効を確認する |
+| 例外発行の購読キー | APIMのDeveloper Portalが無効であることを確認する。基盤管理者が検証用の限定スコープで発行したキーで外部クライアントから呼び、対象外APIと停止後の利用が拒否されることを確認する |
 
 対象APIの通常HTTP・SSE・WebSocket・MCPは、使う方式ごとに応答を確認します。App GatewayからFirewallを経由したAPIM／ACAへのHTTPS 443、TLS検査、入口証明なしの拒否も照合します。 [統合試験の手順](../testing/integration-tests.md) · [Portal認証の試験](../testing/portal-authentication-tests.md)
 

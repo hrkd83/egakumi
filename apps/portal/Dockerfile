@@ -23,14 +23,10 @@ COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_m
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
-COPY --from=build --chown=node:node /app/scripts/migrate-auth.ts /app/scripts/auth-migrations.ts /app/scripts/auth-runtime-grants.ts /app/scripts/api-key-group-config.ts /app/scripts/api-key-administration-config.ts ./scripts/
-COPY --from=build --chown=node:node /app/scripts/reconcile-api-key-groups.ts ./scripts/
-COPY --from=build --chown=node:node /app/scripts/api-key-subscription-import.ts /app/scripts/bootstrap-api-key-subscriptions.ts ./scripts/
+COPY --from=build --chown=node:node /app/scripts/migrate-auth.ts /app/scripts/auth-migrations.ts /app/scripts/auth-runtime-grants.ts ./scripts/
 COPY --from=build --chown=node:node /app/lib ./lib
 COPY --from=build --chown=node:node /app/scripts/serve-portal.ts ./scripts/
 COPY --from=build --chown=node:node /app/sql ./sql
-COPY --from=build --chown=node:node /app/services/subscription-admin/server.mjs /app/subscription-admin/
-COPY --from=build --chown=node:node /app/services/subscription-profile/server.mjs /app/subscription-profile/
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

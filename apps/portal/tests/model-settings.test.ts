@@ -21,10 +21,10 @@ function realtimeScope(family: (typeof realtime)[number]["family"]) { return mod
 function revisit(portal: ReturnType<typeof createPortalStore>, family: (typeof realtime)[number]["family"]) {
   const models = realtime.filter((entry) => entry.family === family), scope = realtimeScope(family);
   const selected = resolveInitialModel(models, portal.getState().modelSelections[scope])!;
-  return { input: restoreModelSettings("realtime", defaultRealtimeInput(selected), portal.getState().modelSettings.realtime[scope], (input) => validateRealtimeInput(selected, input)), apiKeyId: "", connected: false, turns: [] };
+  return { input: restoreModelSettings("realtime", defaultRealtimeInput(selected), portal.getState().modelSettings.realtime[scope], (input) => validateRealtimeInput(selected, input)), connected: false, turns: [] };
 }
 
-test("ページ破棄後も4シリーズの設定を独立して復元し、会話や購読は復元しない", () => {
+test("ページ破棄後も4シリーズの設定を独立して復元し、会話や接続は復元しない", () => {
   const portal = createPortalStore();
   for (const family of ["realtime", "voice-live", "live", "transcription"] as const) {
     const selected = realtime.find((entry) => entry.family === family && (family !== "realtime" || entry.modelId.endsWith("-mini")))!;
@@ -32,9 +32,9 @@ test("ページ破棄後も4シリーズの設定を独立して復元し、会�
     const scope = realtimeScope(family), options = getRealtimeVoiceOptions(selected);
     const input: RealtimeInput = { ...defaultRealtimeInput(selected), ...(selected.maxOutputTokens !== null ? { maxOutputTokens: family === "realtime" ? 16 : 1 } : {}), ...(options.length ? { voice: options.at(-1)!.id } : {}) };
     portal.getState().rememberModelSelection(scope, { id: selected.id }); portal.getState().setModelSettings("realtime", scope, input);
-    const discarded = { input, apiKeyId: "synthetic-ledger", connected: true, turns: ["synthetic prior turn"] }, restored = revisit(portal, family);
+    const discarded = { input, connected: true, turns: ["synthetic prior turn"] }, restored = revisit(portal, family);
     assert.notEqual(restored.input, discarded.input); assert.deepEqual(restored.input, input);
-    assert.equal(restored.apiKeyId, ""); assert.equal(restored.connected, false); assert.deepEqual(restored.turns, []);
+    assert.equal(restored.connected, false); assert.deepEqual(restored.turns, []);
   }
   assert.equal(revisit(portal, "realtime").input.maxOutputTokens, 16); assert.equal(revisit(portal, "voice-live").input.maxOutputTokens, 1);
   assert.equal(revisit(portal, "live").input.maxOutputTokens, undefined); assert.equal(revisit(portal, "transcription").input.maxOutputTokens, undefined);
@@ -50,9 +50,9 @@ test("ページ再読み込みに相当する新しいストアでは先頭モ�
 
 test("実モデル・方式を変えれば最大へ戻り、同一選択の再訪と廃止モデルを区別する", () => {
   const previous = realtime.find((entry) => entry.family === "realtime" && entry.modelId.endsWith("-mini"))!, next = realtime.find((entry) => entry.family === "realtime" && entry.transport === "webrtc")!;
-  const current = { input: { modelId: previous.id, maxOutputTokens: 16 }, apiKeyId: "synthetic-ledger" };
+  const current = { input: { modelId: previous.id, maxOutputTokens: 16 } };
   assert.equal(updateRealtimeModelSelection(current, previous, previous).input.maxOutputTokens, 16);
-  const changed = updateRealtimeModelSelection(current, previous, next); assert.deepEqual(changed.input, defaultRealtimeInput(next)); assert.equal(changed.apiKeyId, "");
+  const changed = updateRealtimeModelSelection(current, previous, next); assert.deepEqual(changed.input, defaultRealtimeInput(next));
   const portal = createPortalStore(), scope = realtimeScope("realtime"); portal.getState().rememberModelSelection(scope, { id: next.id }); portal.getState().setModelSettings("realtime", scope, changed.input);
   assert.deepEqual(revisit(portal, "realtime").input, changed.input);
   assert.deepEqual(restoreModelSettings("realtime", defaultRealtimeInput(next), { modelId: "synthetic-removed-model", maxOutputTokens: 16 }, (input) => validateRealtimeInput(next, input)), defaultRealtimeInput(next));
@@ -92,13 +92,13 @@ test("リランクは件数だけを復元し、候補数・現モデルと不�
   assert.deepEqual(restoreModelSettings("rerank", defaultRerankInput(model), { modelId: model.id, topN: model.maxTopN + 1 }, (input) => buildRerankRequest(model, input)), defaultRerankInput(model));
 });
 
-test("許可リストは本文・ファイル・キー・接続状態を除き、後からの変更も共有しない", () => {
-  const portal = createPortalStore(), scope = "synthetic-scope", extra = { modelId: "synthetic-model", apiKeyId: "synthetic-ledger", handle: "synthetic-handle", connected: true, microphone: {}, result: {}, file: {}, text: "synthetic text", texts: ["synthetic text"], prompt: "synthetic prompt", query: "synthetic query", documents: ["synthetic doc"] };
+test("許可リストは本文・ファイル・資格情報・接続状態を除き、後からの変更も共有しない", () => {
+  const portal = createPortalStore(), scope = "synthetic-scope", extra = { modelId: "synthetic-model", accessToken: "fixture".repeat(4), handle: "synthetic-handle", connected: true, microphone: {}, result: {}, file: {}, text: "synthetic text", texts: ["synthetic text"], prompt: "synthetic prompt", query: "synthetic query", documents: ["synthetic doc"] };
   const rt = { ...extra, maxOutputTokens: 16, voice: "marin" }; portal.getState().setModelSettings("realtime", scope, rt); rt.maxOutputTokens = 32;
   const embedding = { ...extra, dimensions: 512, inputType: null }; portal.getState().setModelSettings("embeddings", scope, embedding);
   const image = { ...extra, size: "1024x1024", quality: "low", outputFormat: "png" as const, width: 1024, height: 1024 }; portal.getState().setModelSettings("image", scope, image);
   const speech = { ...extra, voice: "ja-JP-NanamiNeural" as const, rate: "0%" as const }; portal.getState().setModelSettings("speech", scope, speech);
   const rerank = { ...extra, topN: 1 }; portal.getState().setModelSettings("rerank", scope, rerank);
   assert.deepEqual(portal.getState().modelSettings.realtime[scope], { modelId: "synthetic-model", voice: "marin", maxOutputTokens: 16 });
-  for (const drafts of Object.values(portal.getState().modelSettings)) for (const forbidden of ["apiKeyId", "handle", "connected", "microphone", "result", "file", "text", "texts", "prompt", "query", "documents"]) assert.equal(Object.hasOwn(drafts[scope], forbidden), false, forbidden);
+  for (const drafts of Object.values(portal.getState().modelSettings)) for (const forbidden of ["accessToken", "handle", "connected", "microphone", "result", "file", "text", "texts", "prompt", "query", "documents"]) assert.equal(Object.hasOwn(drafts[scope], forbidden), false, forbidden);
 });

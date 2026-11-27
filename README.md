@@ -6,7 +6,7 @@
 
 Egakumiは、AIを企業・組織の「働き手」として迎え、既存の業務環境・権限・運用につなぐための構想と共通基盤です。人がAIに相談する体験から、AIが働きかけるバディ、専門AIチームへの業務委託へと発展する体験を目指します。
 
-このリポジトリでは、その土台となる **Egakumi Core** を公開しています。企業でAIを利用するための接続、APIの保護と認証、利用制限、APIキー管理、監視・監査を、Azure上で構築・運用するための資材です。将来の体験構想と、このCoreが提供する機能の範囲は区別して説明します。
+このリポジトリでは、その土台となる **Egakumi Core** を公開しています。企業でAIを利用するための接続、APIの保護と認証、利用制限、監視・監査を、Azure上で構築・運用するための資材です。将来の体験構想と、このCoreが提供する機能の範囲は区別して説明します。
 
 [勉強会動画](docs/videos.md) · [初回構築の手順](#新規クローンから構築する) · [Apache 2.0](LICENSE) · [素材・商標の扱い](MEDIA-LICENSES.md)
 
@@ -26,7 +26,7 @@ APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。公開例の`<
 
 HTTP・WebSocket・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra Bearer認可を追加する公開資材を実装しています。対象はAPI正本・生成MCP・設定済みCM保護入口から自動生成し、ブラウザーの一時取引認証は専用経路に保持します。Entra設定を省略した旧構成はキー方式を維持します。この全API対応の変更はAzureへ再配備しておらず、実接続の受入は対象環境ごとに確認します。[認可設定と確認範囲](docs/setup/07-params.md)を参照してください。
 
-公開入力71主項目の配置整理も資材に実装しています。Graph登録はparamsの`credentialProviders.graphDelegated`、表示名・scope・poolとログイン共通設定はconfigへ分けます。Portalは管理グループと全標準製品から内部承認・検証購読を生成し、configの`portalApiKeys.verificationMaxSubscriptions`（初期5）を適用します。旧入力・既存非標準値を無断変換せず、現在のアプリID・secret・認証方式とfallbackを保持します。この一括改修のAzure反映・全環境再構築E2Eは未実施です。[判断記録と移行条件](docs/setup/07-params.md#公開入力71主項目の判断記録)を確認してください。
+PortalはEntraサインインと本人のBearerによるAPI試用を提供します。OAuthの `Gateway.Invoke` を標準のクライアント接続とし、必要な場合だけ基盤管理者がAzureポータルでAPIM購読キーを発行します。[購読キーの運用](docs/operations/access-and-keys.md)
 
 ## 新規クローンから構築する
 
@@ -45,7 +45,7 @@ HTTP・WebSocket・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra 
 | 09 | [Core構築後のEntra登録](docs/setup/09-egakumi-portal.md) | `egakumi-api` にGraph OBO用証明書を登録し、`egakumi-portal` を作成・証明書登録してparamsを追記 |
 | 10 | [ハブ＆スポーク接続（任意）](docs/setup/10-hub-spoke.md) | 必要な環境でピアリング・DNS・経路・Firewallを整え、Gateway・Portalの配備前に通信を確認 |
 | 11 | [Gatewayを個別配備する](docs/setup/11-deploy-gateway.md) | `deploy_gateway.py` でBroker・CMと、APIMのAPI・ポリシー・バックエンド・製品を配備 |
-| 12 | [Portalを個別配備する](docs/setup/12-deploy-portal.md) | `deploy_portal.py` でDB・SQL権限・購読管理等を配備し、Portal本体で初期サンプルを置き換え |
+| 12 | [Portalを個別配備する](docs/setup/12-deploy-portal.md) | `deploy_portal.py` で認証DB・SQL権限・Portal本体を配備し、Portal本体で初期サンプルを置き換え |
 | 13 | [初回構築を受け入れる](docs/setup/13-verify-deployment.md) | 公開DNS・TLS、Gatewayのキー／Bearer、Portalのヘルス・サインインと必要な機能を確認 |
 
 検証・本番の標準configはそのまま使います。既定値を確認したい場合や、変更が必要な場合に参照してください。 [configリファレンス](docs/reference/config-options.md)

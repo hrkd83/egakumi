@@ -23,7 +23,7 @@ def contract():
         'productId':'model-users','subscriptionKeyHeader':'api-key',
         'operations':[{'name':'chat-completions','displayName':'Chat','method':'POST',
             'urlTemplate':'/chat/completions','templateParameters':[]}],
-        'keySubscriptions':[], 'authorization':{'mode':'subscriptionKey',
+        'authorization':{'mode':'subscriptionKey',
             'operationConstraints':{'chat-completions':dict(constraint,modelSettings=settings)}}}
 
 class ApiContractConfigurationTests(unittest.TestCase):

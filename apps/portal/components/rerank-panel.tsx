@@ -1,11 +1,10 @@
 "use client";
 
-import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+import { TryAuthenticationControl, useTryAuthentication } from "@/components/try-authentication";
 
 import { useFieldIds } from "@/lib/use-field-ids";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { Check, Copy, LoaderCircle, Play, Plus, Square, Trash2 } from "lucide-react";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
@@ -19,7 +18,6 @@ import { restoreModelSettings } from "@/lib/model-settings";
 import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
 import { getRerankDictionary } from "@/lib/i18n/rerank";
 import { INTEGRATION_LANGUAGES, type IntegrationLanguage } from "@/lib/model-integration";
-import { loadModelKeyChoices, type ModelKeyChoice } from "@/lib/model-key-choices";
 import { ModelResponseError } from "@/lib/model-response";
 import type { TextGenerationFailure } from "@/lib/model-request";
 import { buildRerankRequest, defaultRerankInput, getRerankEndpoint, getRerankHeaders, getRerankIntegrationExample, getRerankRequestSchema, getRerankResponseSchema } from "@/lib/rerank-integration";
@@ -29,9 +27,9 @@ import type { RerankModel } from "@/lib/rerank-types";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { Locale } from "@/lib/i18n/config";
 
-/** 試行中の入力と表示状態です。秘密の購読キーは保存しません。 */
+/** 試行中の入力と表示状態です。試用資格情報はサーバーで扱います。 */
 type PanelState = {
-  input: RerankInput; apiKeyId: string; language: IntegrationLanguage | "json";
+  input: RerankInput; language: IntegrationLanguage | "json";
   tab: "request" | "schema" | "response"; loading: boolean;
   result: RerankResult | null; failure: TextGenerationFailure | null; cancelled: boolean;
 };
@@ -45,29 +43,21 @@ function CodeBlock({ code, title, dictionary }: { code: string; title: string; d
   return <div className="overflow-hidden rounded-xl border border-border bg-muted/30"><div className="flex items-center justify-between gap-3 border-b border-border bg-white px-4 py-2"><span className="text-sm font-semibold">{title}</span><Button type="button" variant="ghost" size="sm" onClick={copy}>{copied === "complete" ? <Check className="size-4" /> : <Copy className="size-4" />}{copied === "complete" ? dictionary.modelGateway.copied : dictionary.modelGateway.integration.copyCode}</Button></div><pre className="whitespace-pre-wrap break-words p-5 font-mono text-[14px] leading-7"><code>{code}</code></pre>{copied === "failed" && <p role="status" className="px-4 pb-3 text-sm text-destructive">{dictionary.modelGateway.copyFailed}</p>}</div>;
 }
 
-/** リランクの組み込みガイド、API仕様、本人の購読キーによる試用を提供します。 */
+/** リランクの組み込みガイド、API仕様、本人のBearerによる試用を提供します。 */
 export function RerankPanel({ models, dictionary, locale, gatewayOrigin }: { models: RerankModel[]; dictionary: Dictionary; locale: Locale; gatewayOrigin: string | null }) {
   const fieldId = useFieldIds();
   const { scope, initialModel, rememberModel } = useModelSelection("rerank", models);
   const savedSettings = usePortalStore((state) => state.modelSettings.rerank[scope]), rememberSettings = usePortalStore((state) => state.setModelSettings);
-  const [store] = useState(() => createStore<PanelState>(() => ({ input: restoreModelSettings("rerank", initialModel ? defaultRerankInput(initialModel) : { modelId: "", query: "", documents: [""], topN: 1 }, savedSettings, (input) => { if (initialModel) buildRerankRequest(initialModel, input); }), apiKeyId: "", language: "json", tab: "request", loading: false, result: null, failure: null, cancelled: false })));
+  const [store] = useState(() => createStore<PanelState>(() => ({ input: restoreModelSettings("rerank", initialModel ? defaultRerankInput(initialModel) : { modelId: "", query: "", documents: [""], topN: 1 }, savedSettings, (input) => { if (initialModel) buildRerankRequest(initialModel, input); }), language: "json", tab: "request", loading: false, result: null, failure: null, cancelled: false })));
   const state = useStore(store), model = models.find((entry) => entry.id === state.input.modelId) ?? models[0];
   const text = dictionary.modelGateway, guide = text.integration, rerank = getRerankDictionary(locale), number = new Intl.NumberFormat(locale);
-  const [choices, setChoices] = useState<{ status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] }>({ status: "loading", keys: [] });
-  const [refresh, setRefresh] = useState(0), requestRef = useRef<AbortController | null>(null);
-  const apiId = model?.apiId ?? "", selectedKey = choices.status === "ready" ? choices.keys.find((entry) => entry.id === state.apiKeyId) : undefined;
-  const authentication = useTryAuthentication(selectedKey?.id);
+  const requestRef = useRef<AbortController | null>(null);
+  const authentication = useTryAuthentication();
   const parsed = rerankInputSchema.safeParse(state.input);
   let payload: Record<string, unknown> | null = null;
   try { if (model && parsed.success) { const value = buildRerankRequest(model, parsed.data); if (new TextEncoder().encode(JSON.stringify(value)).length <= model.maxRequestBytes) payload = value; } } catch { /* 同じ検証結果で、コード例と実行ボタンを無効にします。 */ }
 
   useEffect(() => () => deactivatePanelRequest(requestRef, (pending) => store.setState({ loading: false, ...(pending ? { cancelled: true } : {}) })), [store]);
-  useEffect(() => {
-    if (!apiId) return;
-    const controller = new AbortController();
-    void loadModelKeyChoices(apiId, controller.signal).then((keys) => { if (!controller.signal.aborted) setChoices({ status: "ready", keys }); }).catch(() => { if (!controller.signal.aborted) setChoices({ status: "error", keys: [] }); });
-    return () => controller.abort();
-  }, [apiId, refresh]);
 
   /** 文書を減らした場合だけ返却件数も候補数以下へ調整し、編集中の内容を保ちます。 */
   function updateInput(patch: Partial<RerankInput>) {
@@ -76,7 +66,6 @@ export function RerankPanel({ models, dictionary, locale, gatewayOrigin }: { mod
     rememberSettings("rerank", scope, input); store.setState({ input, result: null, failure: null, cancelled: false });
   }
   /** 現在の所属で参照できるキー候補を読み直します。 */
-  function refreshKeys() { setChoices({ status: "loading", keys: [] }); setRefresh((value) => value + 1); }
   /** 入力を一度だけBFFへ送り、元文書との対応を検証した結果を表示します。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -103,9 +92,8 @@ export function RerankPanel({ models, dictionary, locale, gatewayOrigin }: { mod
   return <ApiDocumentationLayout locale={locale} value={state.tab} onValueChange={(tab) => store.setState({ tab })} busy={state.loading}
     selection={<div className="max-w-xl space-y-2"><label htmlFor={fieldId("rerank-model")} className="block text-sm font-medium">{text.model}</label><Select value={model.id} disabled={state.loading} onValueChange={(value) => { const selected = models.find((entry) => entry.id === value); if (selected) { rememberModel({ id: selected.id }); updateInput({ modelId: selected.id, topN: Math.min(selected.maxTopN, state.input.documents.length) }); } }}><SelectTrigger id={fieldId("rerank-model")} className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{models.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.label}</SelectItem>)}</SelectContent></Select></div>}
     settings={<form onSubmit={execute} className="space-y-5">
-        <TryAuthenticationPicker model={authentication} locale={locale} disabled={state.loading} />
+        <TryAuthenticationControl model={authentication} locale={locale} disabled={state.loading} />
 
-      <div className="space-y-2 rounded-lg border border-border p-3" hidden={authentication.selection.mode === "bearer"}><div className="flex items-center justify-between gap-3"><label htmlFor={fieldId("rerank-key")} className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || choices.status === "loading"} onClick={refreshKeys}>{guide.refreshKeys}</Button></div><Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => store.setState({ apiKeyId })}><SelectTrigger id={fieldId("rerank-key")} className="w-full bg-white"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}>{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</SelectItem>)}</SelectContent></Select><p className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>{choices.status === "loading" && <p role="status" className="text-sm">{guide.loadingKeys}</p>}{choices.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}{choices.status === "ready" && !choices.keys.length && <p role="status" className="text-sm">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="text-primary underline">{guide.manageKeys}</Link></p>}</div>
       <div className="space-y-2"><label htmlFor={fieldId("rerank-query")} className="text-sm font-medium">{rerank.query}</label><Textarea id={fieldId("rerank-query")} rows={3} required maxLength={MAX_RERANK_TEXT_CHARACTERS} disabled={state.loading} value={state.input.query} onChange={(event) => updateInput({ query: event.target.value })} className="bg-white" /></div>
       <div className="space-y-4">{state.input.documents.map((document, index) => <div key={index} className="space-y-2"><div className="flex items-center justify-between gap-2"><label htmlFor={fieldId(`rerank-document-${index}`)} className="text-sm font-medium">{rerank.document} {index + 1}</label><Button type="button" size="sm" variant="ghost" disabled={state.loading || state.input.documents.length <= 1} aria-label={`${rerank.removeDocument} ${index + 1}`} onClick={() => updateInput({ documents: state.input.documents.filter((_, position) => position !== index) })}><Trash2 className="size-4" />{rerank.removeDocument}</Button></div><Textarea id={fieldId(`rerank-document-${index}`)} rows={3} required maxLength={MAX_RERANK_TEXT_CHARACTERS} disabled={state.loading} value={document} onChange={(event) => updateInput({ documents: state.input.documents.map((value, position) => position === index ? event.target.value : value) })} className="bg-white" /></div>)}<Button type="button" variant="outline" size="sm" disabled={state.loading || state.input.documents.length >= model.maxDocuments} onClick={() => updateInput({ documents: [...state.input.documents, ""] })}><Plus className="size-4" />{rerank.addDocument}</Button></div>
       <div className="space-y-2"><label htmlFor={fieldId("rerank-top-n")} className="block text-sm font-medium">{rerank.topN}</label><Select value={String(state.input.topN)} disabled={state.loading} onValueChange={(value) => updateInput({ topN: Number(value) })}><SelectTrigger id={fieldId("rerank-top-n")} className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: Math.min(model.maxTopN, state.input.documents.length) - model.minTopN + 1 }, (_, index) => index + model.minTopN).map((value) => <SelectItem key={value} value={String(value)}>{value}</SelectItem>)}</SelectContent></Select></div>

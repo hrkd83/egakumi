@@ -37,14 +37,14 @@ test("コード例の接続先とヘッダーは公開固定パスと環境変�
   assert.equal(getRerankEndpoint(model, "https://gateway.example.invalid"), "https://gateway.example.invalid/models/cohere/v1/rerank");
   for (const origin of ["http://other.invalid", "https://user:pass@other.invalid", "https://other.invalid/path", "https://other.invalid?x=1", "https://other.invalid#x"]) assert.throws(() => getRerankEndpoint(model, origin));
   assert.throws(() => getRerankEndpoint({ ...model, path: "//attacker.invalid" }, "https://gateway.example.invalid"));
-  assert.equal(getRerankHeaders()["api-key"], "${GATEWAY_API_KEY}");
+  assert.equal(getRerankHeaders()["Authorization"], "Bearer ${GATEWAY_ACCESS_TOKEN}");
 });
 
 test("全言語の例が同じ入力を使い、埋め込み引用符や改行でコードを壊さない", () => {
   const edited = { ...input, query: "'''\nJSON\n$(never-run) \\ path", documents: ['"""', "日本語 'quotes'", "line\nline"] };
   for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) {
     const code = getRerankIntegrationExample(language, model, edited, "https://gateway.example.invalid");
-    assert.ok(code.includes("GATEWAY_API_KEY"));
+    assert.ok(code.includes("GATEWAY_ACCESS_TOKEN"));
     assert.ok(code.includes(model.id));
     assert.ok(code.includes("/models/cohere/v1/rerank"));
     assert.equal(code.includes("base64"), false);

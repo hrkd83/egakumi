@@ -20,7 +20,7 @@ import secrets
 import stat
 import subprocess
 
-from deployment.helpers.configuration import load_configuration, _read_protected_file
+from deployment.helpers.configuration import load_configuration
 from deployment.helpers.paths import REPOSITORY, local_paths, private_parent
 from deployment.helpers.portal_auth_certificate import deployment_authentication
 
@@ -105,19 +105,16 @@ def write_new_pair(documents: dict[Path, dict[str, str]], root: Path) -> None:
         raise
 
 
-def expected_settings(configuration: dict) -> dict[str, str]:
-    """既存のEntraアプリ参照からローカル用の公開設定だけを組み立てる。"""
-    profile = configuration["portalAuthentication"]["credentialProviderName"]
-    providers = [item for item in configuration["credentialProviders"] if item["name"] == profile]
-    authentication = configuration.get("portal", {}).get("authentication")
-    if not authentication and len(providers) != 1:
-        raise PreparationError("The Portal Entra credential profile must match exactly one configured provider")
-    provider = providers[0] if not authentication else {"clientId": authentication["clientId"], "oauthTenantId": authentication["tenantId"]}
+def expected_settings(configuration: dict, authentication: dict) -> dict[str, str]:
+    """専用Portalアプリの固定証明書とローカルSQLの設定を組み立てる。"""
     return {
-        **({"PORTAL_AUTH_KEY_ID": authentication["keyId"], "PORTAL_AUTH_CERTIFICATE_THUMBPRINT": authentication["certificateThumbprint"], "PORTAL_AUTH_SIGNING_MODE": "azure-cli", "AZURE_TENANT_ID": configuration["azureTenantId"]} if authentication else {}),
+        "PORTAL_AUTH_KEY_ID": authentication["keyId"],
+        "PORTAL_AUTH_CERTIFICATE_THUMBPRINT": authentication["certificateThumbprint"],
+        "PORTAL_AUTH_SIGNING_MODE": "azure-cli",
+        "AZURE_TENANT_ID": configuration["azureTenantId"],
         "BETTER_AUTH_URL": "http://localhost:3000",
-        "MICROSOFT_CLIENT_ID": provider["clientId"],
-        "MICROSOFT_TENANT_ID": provider["oauthTenantId"],
+        "MICROSOFT_CLIENT_ID": authentication["clientId"],
+        "MICROSOFT_TENANT_ID": authentication["tenantId"],
         "PORTAL_SQL_AUTH": "local-sql",
         "PORTAL_SQL_SERVER": "127.0.0.1",
         "PORTAL_SQL_HOST": "127.0.0.1",
@@ -145,7 +142,7 @@ def reject_legacy_settings(root: Path) -> None:
 
 
 def prepare(configuration: dict, root: Path, *, execute: bool, accept_sql_eula: bool) -> dict:
-    """実行時だけ既存Entra secretを読み、管理用・アプリ用を分けて保護保存する。"""
+    """固定証明書の参照を照合し、管理用・アプリ用のSQL設定を分けて保護保存する。"""
     reject_legacy_settings(root)
     runtime_path, admin_path = environment_paths(configuration, root)
     paths = (runtime_path, admin_path)
@@ -169,16 +166,8 @@ def prepare(configuration: dict, root: Path, *, execute: bool, accept_sql_eula: 
         raise PreparationError("SQL Server Developer EULA consent is required: review it, then pass --accept-sql-eula")
     if any(existing) and not all(existing):
         raise PreparationError("Only one local settings file exists; review it before creating the pair. No files were changed")
-    if configuration.get('portal', {}).get('authentication') and not configuration['portal']['authentication'].get('keyId'):
-        configuration['portal']['authentication'] = deployment_authentication(configuration, local_paths(configuration, root))
-    expected = expected_settings(configuration)
-    if not configuration.get("portal", {}).get("authentication"):
-        profile = configuration["portalAuthentication"]["credentialProviderName"]
-        provider = next(item for item in configuration["credentialProviders"] if item["name"] == profile)
-        client_secret = _read_protected_file(provider["clientSecretFile"], "Portal Entra client secret")
-        if not client_secret or any(c in client_secret for c in "\r\n\0"):
-            raise PreparationError("The existing Entra client secret must be a non-empty, single-line value")
-        expected["MICROSOFT_CLIENT_SECRET"] = client_secret
+    authentication = deployment_authentication(configuration, local_paths(configuration, root))
+    expected = expected_settings(configuration, authentication)
     if all(existing):
         for path in paths:
             private_parent(path, root)
@@ -186,7 +175,7 @@ def prepare(configuration: dict, root: Path, *, execute: bool, accept_sql_eula: 
         admin = read_environment(admin_path)
         required_runtime = set(expected) | {"BETTER_AUTH_SECRET", "PORTAL_SQL_PASSWORD"}
         # 後から手元で追加したGateway接続設定だけを許容し、認証設定とともに変更せず再利用する。
-        optional_runtime = {"PORTAL_GATEWAY_URL", "PORTAL_GATEWAY_SUBSCRIPTION_KEY_FILE"}
+        optional_runtime = {"PORTAL_GATEWAY_URL"}
         if not required_runtime <= set(runtime) <= required_runtime | optional_runtime:
             raise PreparationError("Existing Portal settings differ from the generated local format; no files were changed")
         if any(runtime.get(key) != value for key, value in expected.items()):

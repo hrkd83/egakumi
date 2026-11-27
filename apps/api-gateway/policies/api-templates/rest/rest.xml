@@ -259,7 +259,11 @@
       var kind = (string)JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;])[&quot;kind&quot;];
       return kind == &quot;realtimeHangup&quot; || (kind == &quot;a2aJsonRpc&quot; &amp;&amp; (string)context.Request.Body.As&lt;JObject&gt;(preserveContent: true)[&quot;method&quot;] == &quot;tasks/cancel&quot;);
     }" />
-    __SUBSCRIPTION_PROFILE_XML__
+    <choose>
+      <when condition="@((string)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;method&quot;] == &quot;user&quot;)">
+        <include-fragment fragment-id="core-entra-user-profile" />
+      </when>
+    </choose>
     <include-fragment fragment-id="core-rate-limit" />
     __TOKEN_LIMIT_XML__
     <!-- ========== Chatの保存指定の無効化（core-chat-store-disabled） ========== -->

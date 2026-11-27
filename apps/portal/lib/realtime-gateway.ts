@@ -18,7 +18,7 @@ export type RealtimeConversationDiagnostic = {
   family: RealtimeModel["family"]; transport: "websocket"; elapsedMs: number; inputAudioBytes: number;
   frameBytes?: number; availableBytes?: number; bufferedBytes?: number;
 };
-/** 上流接続・単調増加時計・試験用期限を差し替えます。本人・購読認可はbridgeの接続開始時に行います。 */
+/** 上流接続・単調増加時計・試験用期限を差し替えます。本人のBearer認可はbridgeの接続開始時に行います。 */
 export type RealtimeConversationDependencies = { connect?: (url: string, options: ClientOptions) => WebSocket; now?: () => number; timeoutMs?: number; stopTimeoutMs?: number; diagnose?: (value: RealtimeConversationDiagnostic) => void };
 
 const PCM_BYTES_PER_SECOND = 24_000 * 2;
@@ -31,20 +31,18 @@ export class RealtimeConversationError extends Error { readonly code: ModelGatew
 
 /**
  * 認可済みのPortal接続とGateway WSSを中継し、利用者の停止まで複数の発話を扱います。
- * @remarks Nextの内部認可routeで検証したmodel・endpoint・キーだけを受け取るサーバー専用処理です。
+ * @remarks Nextの内部認可routeで検証したmodel・endpoint・Bearerだけを受け取るサーバー専用処理です。
  * 応答完了ではソケットを閉じません。音声・イベント・時間・送信待ちには明示的な上限を設けます。
  */
-export async function runRealtimeConversation(model: RealtimeModel, input: RealtimeInput, endpoint: string, credential: string | GatewayCredential,
+export async function runRealtimeConversation(model: RealtimeModel, input: RealtimeInput, endpoint: string, credential: GatewayCredential,
   signal: AbortSignal, emit: (event: RealtimeStreamEvent) => void, registerInput: RegisterRealtimeInput, dependencies: RealtimeConversationDependencies = {}): Promise<void> {
   if (typeof window !== "undefined") throw new RealtimeConversationError("RequestNotAllowed");
   validateRealtimeModel(model); realtimeInputSchema.parse(input);
   const url = new URL(endpoint); const origin = `${url.protocol === "wss:" ? "https:" : "http:"}//${url.host}`;
   resolveRealtimeOutputTokens(model, input);
   resolveRealtimeVoice(model, input);
-  const key = typeof credential === "string" ? credential : credential.value;
-  const header = typeof credential === "string" ? { "api-key": credential } : credential.headers;
-  const validCredential = typeof credential !== "string" && credential.scheme === "bearer"
-    ? /^[A-Za-z0-9._~+\/-]{16,16384}={0,2}$/.test(key) : /^[!-~]{16,512}$/.test(key);
+  const { value: accessToken, headers: header } = credential;
+  const validCredential = /^[A-Za-z0-9._~+/\-]{16,16384}={0,2}$/.test(accessToken);
   if (model.transport !== "websocket" || input.modelId !== model.id || getRealtimeEndpoint(model, origin) !== endpoint || !validCredential) throw new RealtimeConversationError("InvalidRequest");
   const now = dependencies.now ?? (() => performance.now());
   const started = now(); const protocol = new RealtimeProtocol(model); const elapsed = () => Math.max(0, Math.round(now() - started));
@@ -138,7 +136,7 @@ export async function runRealtimeConversation(model: RealtimeModel, input: Realt
         try {
           if (binary) throw new Error("Unexpected binary upstream message");
           const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data);
-          if (bytes.length > 262144 || bytes.includes(Buffer.from(key))) throw new Error("Unsafe upstream message");
+          if (bytes.length > 262144 || bytes.includes(Buffer.from(accessToken))) throw new Error("Unsafe upstream message");
           const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); const wasReady = protocol.ready;
           for (const event of protocol.accept(value, elapsed())) {
             if (model.family === "transcription" && event.type === "transcript" && event.final) transcriptionPending = Math.max(0, transcriptionPending - 1);

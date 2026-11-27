@@ -99,7 +99,7 @@ python3 -B scripts/operations/nsg_dns.py --config "$DEPLOY_PARAMS_FILE" --execut
 ローカルロックは別端末の同時変更に対する原子的な排他を保証しない。
 
 この操作は過去の資材で作成した環境に限る。
-[現在の固定集合と移行順序](network-security-groups.md#新規構築と既存環境の移行)を参照する。
+[現在の固定集合と移行順序](network-security-groups.md#新規構築と構築の再開)を参照する。
 
 ## AppGWの重複する送信規則を回収する
 
@@ -186,7 +186,6 @@ API公開へ進む。途中で失敗しても追加許可が既に反映され�
   "productId": "connection-users",
   "released": true,
   "subscriptionKeyHeader": "api-key",
-  "keySubscriptions": [],
   "operations": [{
     "name": "read-metadata",
     "displayName": "Read public cloud metadata",

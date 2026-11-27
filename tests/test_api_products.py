@@ -19,13 +19,13 @@ class ProductSubscriptionDeploymentTests(unittest.TestCase):
         cls.products = [item for item in (resources.values() if isinstance(resources, dict) else resources)
                         if item["type"] == "Microsoft.ApiManagement/service/products"]
 
-    def test_every_business_product_requires_approved_subscription(self):
+    def test_every_business_product_uses_admin_issued_subscriptions(self):
         product = self.template['resources']['protectedProducts']
         self.assertEqual([item for item in self.products if item['properties']['subscriptionRequired']], [product])
         props = product["properties"]
         self.assertTrue(props["subscriptionRequired"])
         self.assertTrue(props["approvalRequired"])
-        self.assertEqual(props["state"], "published")
+        self.assertEqual(props["state"], "notPublished")
         self.assertNotIn("tokenEntryProduct", self.template["resources"])
         self.assertNotIn("tokenEntryApiLinks", self.template["resources"])
 

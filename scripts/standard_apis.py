@@ -200,6 +200,4 @@ def resolve_publication_configuration(raw_source: dict, state: dict) -> dict:
             api["credentialConnection"]["providerName"] = "graph-delegated"
         api["subscriptionKeyHeader"] = foundation["gateway"]["authentication"]["subscriptionKeyHeader"]
         # APIの登録と利用者の購読発行を分け、例に含まれる試験用キーを発行しない。
-        # 明示APIのkeySubscriptionsは上の分岐で、そのまま利用者設定として扱う。
-        api["keySubscriptions"] = []
     return normalize_configuration(result)

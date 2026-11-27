@@ -4,7 +4,7 @@ import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 import { containsModelCredential } from "./model-credential.ts";
 
-import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
+import type { GatewayActor } from "./api-auth/gateway-credential.ts";
 import { apiAuthenticationFailure, gatewayExecutionHeaders, resolveGatewayCredential, type GatewayCredential } from "./api-auth/gateway-credential.ts";
 import type { PortalBearer } from "./api-auth/service.ts";
 import { getSpeechModels } from "./model-catalog.ts";
@@ -19,10 +19,9 @@ const responseHeaders = { "Cache-Control": "no-store", "X-Content-Type-Options":
 
 /** 音声操作の外部依存です。テストで差し替えても、実際の入力・音声・権限の検査を通します。 */
 export type SpeechDependencies = {
-  readSession: () => Promise<ApiKeyActor | null>; readPortalOrigin: () => string;
+  readSession: () => Promise<GatewayActor | null>; readPortalOrigin: () => string;
   readModels?: () => readonly SpeechModel[] | Promise<readonly SpeechModel[]>;
   readGatewayEnvironment?: () => Promise<{ origin: string }>;
-  resolveSubscriptionKey?: (actor: ApiKeyActor, keyId: string, apiId: string) => Promise<string>;
   resolveBearer?: () => Promise<PortalBearer>;
   fetch?: typeof globalThis.fetch; timeoutMs?: number;
 };
@@ -31,7 +30,7 @@ export type SpeechDependencies = {
 function failure(code: ModelGatewayErrorCode, status: number, details: Omit<TextGenerationFailure, "error"> = {}): Response { return Response.json({ error: { code }, ...details }, { status, headers: responseHeaders }); }
 
 /**
- * 選択した購読の権限を確認し、入力文または検証済みのアップロード音声を1回だけAPIへ送ります。
+ * 本人のBearer認可を確認し、入力文または検証済みのアップロード音声を1回だけAPIへ送ります。
  * @remarks 上流のTTSはWAV、Azure STTはWAV本文、OpenAI STTはfileだけのmultipartです。自動再試行はしません。
  */
 export async function handleSpeech(request: Request, dependencies: SpeechDependencies): Promise<Response> {
@@ -39,7 +38,7 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
   try { portalOrigin = new URL(dependencies.readPortalOrigin()).origin; } catch { return failure("GatewayNotConfigured", 503); }
   const site = request.headers.get("sec-fetch-site");
   if (request.method !== "POST" || request.headers.get("origin") !== portalOrigin || site && site !== "same-origin") return failure("RequestNotAllowed", 403);
-  let actor: ApiKeyActor | null;
+  let actor: GatewayActor | null;
   try { actor = await dependencies.readSession(); if (!actor) return failure("AuthenticationRequired", 401); } catch { return failure("AuthenticationUnavailable", 503); }
   const incomingContentType = request.headers.get("content-type") ?? "";
   const multipart = incomingContentType.split(";", 1)[0].trim().toLowerCase() === "multipart/form-data";
@@ -85,12 +84,11 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
   catch { return failure("GatewayNotConfigured", 503); }
   let credential: GatewayCredential;
   try {
-    credential = await resolveGatewayCredential(request, actor, input, model.apiId, new URL(endpoint).origin,
-      dependencies.resolveSubscriptionKey, dependencies.resolveBearer);
+    credential = await resolveGatewayCredential(request, actor, new URL(endpoint).origin, dependencies.resolveBearer);
   } catch (error) {
     const apiAuth = apiAuthenticationFailure(error);
     if (apiAuth) return failure(apiAuth.code, apiAuth.status);
-    return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
+    return failure("ApiAuthenticationUnavailable", 503); }
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   const timeout = modelDeadline(dependencies.timeoutMs); const signal = AbortSignal.any([request.signal, timeout]); const started = performance.now(); let requestId: string | undefined;
   try {

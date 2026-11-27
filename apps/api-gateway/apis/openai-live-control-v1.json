@@ -17,7 +17,6 @@
       "templateParameters": []
     }
   ],
-  "keySubscriptions": [],
   "authorization": {
     "mode": "subscriptionKey",
     "operationConstraints": {

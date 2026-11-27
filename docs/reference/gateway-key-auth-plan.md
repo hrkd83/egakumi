@@ -8,17 +8,17 @@
 
 | 場所 | 担当すること |
 | --- | --- |
-| Portal | Entraサインイン、現在のグループ所属に基づくキーの管理・利用、利用者別の本人接続状態を管理する |
-| Portalのサーバー処理・APIクライアント | 有効な購読キーを秘密保管先から取得し、Gatewayの公開APIへ付ける |
+| Portal | Entraサインイン、本人の `Gateway.Invoke` BearerによるAPI試用 |
+| 外部APIクライアント | OAuthを優先し、特別に発行された購読キーを使う場合は保護された秘密保管先から取得する |
 | APIM共通ポリシー | 信頼した入口経路を確認し、キー提示時は検証済み購読、キーなしBearer時は検証済みEntra本人を確認する |
-| API・Operation | 操作・モデル・入力・出力上限、購読プロファイル、必要な本人接続を検査する |
+| API・Operation | 操作ごとの経路、モデル設定、必要な本人接続を適用する |
 | APIMの下流接続 | Foundry等にはマネージドID、本人のGraphにはCMの委任tokenを使う |
 
 ```mermaid
 flowchart TD
   C["クライアント<br/>同じ正本APIのURL"] --> A["APIM API<br/>subscriptionRequired=true"]
   A -->|キー提示| K["APIM標準<br/>active・API / Product / all-APIs / service範囲"]
-  K -->|有効| S["検証済み購読ID<br/>既存Product文脈・利用枠"]
+  K -->|有効| S["検証済み購読ID<br/>購読スコープ・Product文脈"]
   K -->|無効・停止・範囲外| X["open Product fallbackでも<br/>キー提示 + Subscriptionなしは401"]
   A -->|キーなし| P["専用open Product<br/>core-entra-model-users / baseのみ"]
   P --> T["global / API<br/>対象API・操作・Entra JWT検証"]
@@ -29,7 +29,7 @@ flowchart TD
   B --> M["入口資格情報を除去<br/>MI／CM等で対象backendを呼ぶ"]
 ```
 
-購読キーはAPIの利用範囲と利用枠を表します。Portalへログインした本人や、Graphを利用する本人をキーだけで識別しません。キー・pollSecret・本人接続セッションはサーバー側で保持し、ブラウザーのJavaScript・URL・公開設定へ埋め込みません。
+購読キーはAPIの利用範囲を表します。Graphで本人を識別する場合は下流への認証が必要です。キー・pollSecret・本人接続セッションは保護し、ブラウザーのJavaScript、URL、公開設定へ埋め込みません。
 
 ## 受信するキー
 
@@ -46,7 +46,7 @@ Content-Type: application/json
 
 APIM標準の購読検証と、共通ポリシーの`context.Subscription.Id`確認を使います。空値・重複や、URL queryでのキー提示を拒否します。キーも有効なBearerもない要求は拒否します。`Authorization: Bearer <APIキー>`は標準ヘッダーと自動的に同じものとして扱いません。別のクライアントを接続するときは送信するヘッダー、公開パス、要求・応答方式を契約に合わせます。
 
-検証済み購読の存在と購読IDの空値、キー用ヘッダーの空・空白と値の数は共通認証で確認し、HTTP・protocol・MCPのAPIテンプレートでは再検査しません。各APIは`<base/>`で共通認証を実行し、完了を確認してから検証済みIDを利用枠・監査・API固有の処理へ渡します。空値やAPIM上の値数が1以外のキーは共通側で401を返し、有効なBearerを同時に送っても救済しません。MCPからRESTへの転送は別要求なので、REST側の共通認証は維持します。
+検証済み購読の存在と購読IDの空値、キー用ヘッダーの空・空白と値の数は共通認証で確認し、HTTP・protocol・MCPのAPIテンプレートでは再検査しません。各APIは`<base/>`で共通認証を実行し、完了を確認してから検証済みIDを監査・API固有の処理へ渡します。空値やAPIM上の値数が1以外のキーは共通側で401を返し、有効なBearerを同時に送っても救済しません。MCPからRESTへの転送は別要求なので、REST側の共通認証は維持します。
 
 キー用には専用のヘッダー名を使います。`x-ms-client-request-id`は各APIが要求IDへ書き換え、`x-appgw-trace-id`はAppGWの相関に使うため、配備前の設定検査でキー用への指定を拒否します。既定の`api-key`、`Ocp-Apim-Subscription-Key`、内部処理と衝突しない独自のヘッダーは引き続き利用できます。
 
@@ -56,13 +56,9 @@ Entra設定を持つ構成では、HTTP・WebSocket・MCP・Realtime・CMを含�
 
 入口のキーやAuthorizationは下流へ引き継がず、対象サービス用の認証を設定します。匿名healthとブラウザー認証の一時取引は用途を限定した経路です。業務APIの購読認可を解除して実装しません。
 
-## ProductとPortalのキー管理
+## Productと購読キー
 
-通常のPortal発行キーは`released-apis`へ所属します。標準APIは各定義の`released`に従って関連付けられます。用途別の`model-users`・`pii-users`・`connection-users`も登録されますが、利用可否は実際の購読scope・Product/API関連付け・APIの公開操作で判断します。
-
-PortalはEntraグループをキーの所有者として管理し、現在の所属により発行・閲覧・更新・停止・移管・削除を認可します。APIMが業務呼出しごとに所有グループの所属を再照会する構成ではありません。配布済みのキーを止める場合は購読の停止やキー交換も行います。
-
-primaryとsecondaryは同じ購読ID・利用枠・音声セッションの所有主体を使います。APIキーの値はPortal SQLの正本データとして保存しません。台帳とAPIMの同期は [Portal](../setup/12-deploy-portal.md)の管理機能で行い、配備資材の`keySubscriptions`を通常のキー台帳へ置き換えません。
+基盤管理者がAzureポータルから例外の購読を作成します。利用範囲はAPIMの購読スコープ、製品とAPIの関連付け、現在の購読状態で決まります。同じ購読の主キーと副キーは、同じ購読IDとリアルタイム音声セッションの所有主体を使います。[購読キーの運用](../operations/access-and-keys.md)
 
 社員経路は既存APIの購読必須設定を変えず、固定ID `core-entra-model-users`・所有marker `core-owned-entra-model-users-v1`の専用open Productへ業務API正本・生成MCP・設定済みCM保護入口を自動的に追加します。CMブラウザー入口は含めません。専用Productは`subscriptionRequired=false`ですが、APIはtrueです。これにより有効キーの標準検証と既存Product policyを維持します。API／all-APIs／serviceキーにProduct policyが適用されない既存仕様も保持します。キーなしでは専用Productのbaseからglobal/APIのJWT検証を継承します。専用Productに所属させるAPI集合は配備処理で自動生成・読戻し照合し、要求ごとのBearer分岐条件には埋め込みません。
 
@@ -72,19 +68,18 @@ Bearer要求のProductの存在と専用ProductのIDは、共通認証で一度�
 
 ## 本人接続が必要なAPI
 
-Graph `/me`は、入口のキーまたはBearer認可に加えて`X-Core-Connection-Session`を要求します。CMはMicrosoftのaccess/refresh tokenを保管・更新し、BrokerとSQLが確認済み本人、CM接続、呼出所有者、期限、失効、更新世代を管理します。Bearer経路は検証済みtid+oidを初回取引から固定し、CM本人確認tenantがGateway認証tenantと違うprofileを拒否します。
+標準の `GET /tools/graph/v1/me` には2つの認証経路があります。
 
-未接続時は409 `ConnectionRequired`と認証案内を返します。Portalのサーバー処理は仮セッションと取引を保存し、利用者へ`loginUrl`を案内します。statusは状態・本人・期限のメタデータを返し、セッション平文を再発行しません。確認した本人がPortalのログイン本人と一致した場合に、保存済みセッションで元の要求を再開します。
+- **購読キー**。クライアントは対象APIに有効な `api-key` と、本人の `X-Core-Connection-Session` を送ります。未接続時の `409 ConnectionRequired` を受けたクライアントは、仮セッションと取引をサーバーに保存し、利用者にMicrosoftサインインを案内します。本人の一致を確認してから元の要求を再開します。Graph用トークンはAPIM Credential Manager（CM）が保管・更新します。
+- **Bearer**。クライアントは本人の `Gateway.Invoke` アクセストークンを送ります。BrokerがEntraのOBOで本人のGraph用トークンへ交換します。この経路ではCMの接続セッションは不要です。PortalのGraph試用もこの経路を使います。
 
-現在の本人接続はv2です。無操作期限・最長期限・日次更新、共有保存先の排他・世代比較、logout・全失効・接続解除を別々に扱います。契約は [CM接続手順](credential-manager-login.md)、[プールとセッション](credential-pool-design.md)、[クライアント実装](connection-session-clients.md)を参照してください。
-
-キー用とユーザー用のcs2セッションは相互流用せず、Bearerへ切り替えるときはCM startから別セッションを取得します。同じtid+oidの既存CM接続は再利用できます。この変更にはSQL migration v4・Brokerイメージ・CMポリシーの更新が必要で、実SQL移行とBearer CMサインインの受入は未実施です。
+CMを使う業務APIでは、BrokerとSQLが本人・呼出主体・CM接続・期限・失効・更新世代を管理します。キー用とBearer用のCMセッションはそれぞれの呼出主体に結び付きます。 [CM接続手順](credential-manager-login.md) · [クライアント実装](connection-session-clients.md)
 
 ## 音声セッションと利用上限
 
-Realtimeの作成・終了・observerは、キー経路は検証済み購読ID、Bearer経路は検証済みtid+oidのcaller IDを所有者とし、署名ticket・call ID・期限を照合します。既存キーticket v3を保持し、ユーザーticket v4は別人・別tenant・キーとの相互流用を拒否します。同じ共有キーを使うPortal利用者間の分離は、Portalが保持する実行とログイン本人の対応でも確認します。
+Realtimeの作成・終了・observerは、キー経路は検証済み購読ID、Bearer経路は検証済みtid+oidのcaller IDを所有者とし、署名ticket・call ID・期限を照合します。キーticket v3とユーザーticket v4の間で流用を拒否します。
 
-HTTP・SSE・WebSocketの接続開始には、対象ポリシーの購読単位の利用上限を適用します。Portalの購読プロファイルと共通設定の扱いは [購読単位の制限・観測](../testing/subscription-limits.md)を参照してください。WebSocket接続後のframeとWebRTCメディアは、APIMのHTTP本文検査・要求回数とは別の境界です。
+購読キーの共通上限は標準資材で設定しません。Bearerの接続開始には既存の利用者単位の上限を適用します。WebSocket接続後のframeとWebRTCメディアは別の境界です。 [購読単位の観測](../testing/subscription-limits.md)
 
 追加する社員の業務API利用は基本無制限とし、`userLimits.tokensPerMinute`・`tokenQuota`を`null`で明示的に無効化します。3つの制限項目をすべて指定し、`requestRate`も`null`で無効化できます。欠落・空object・未知項目・不正値を無制限へ変換せず、非nullには有限の正整数等を要求します。有効な制限はAPI・clientをまたいで検証済み`tid+oid`で計数し、既存キーのcounterは維持します。
 

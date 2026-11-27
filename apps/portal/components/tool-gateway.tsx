@@ -62,8 +62,8 @@ export function ToolGateway({ locale, dictionary }: { locale: Locale; dictionary
     </TabsContent>)}
     </Tabs>
     <p className="mt-7 text-sm leading-7 text-muted-foreground">{ja
-      ? "APIキーによる認可を共通で利用します。Microsoft Graph /meでは、アクセスする本人のMicrosoft認証も必要です。"
-      : "All APIs use API-key authorization. Microsoft Graph /me also requires the requesting user's Microsoft authentication."}</p>
+      ? "Microsoft Entraでサインインし、各ツールの試用画面でAPIに接続します。"
+      : "Sign in with Microsoft Entra and connect to the API from the tool trial panel."}</p>
     <span className="sr-only">{dictionary.catalog.titles.tools}</span>
   </div>;
 }

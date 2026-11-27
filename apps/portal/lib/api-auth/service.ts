@@ -3,8 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { apiTokenSchema, authorizationRequestSchema, PortalApiOAuth } from "./oauth.ts";
-import { ApiAuthenticationError, ApiAuthCryptography, apiAuthenticationEnabled, newAuthorizationSecret, readApiAuthenticationSettings, sha256, subscriptionManagementConfigured, type ApiAuthenticationSettings } from "./settings.ts";
-import type { ApiAuthPurpose } from "./purpose.ts";
+import { ApiAuthenticationError, ApiAuthCryptography, apiAuthenticationEnabled, newAuthorizationSecret, readApiAuthenticationSettings, sha256, type ApiAuthenticationSettings } from "./settings.ts";
 import type { ApiAuthSession } from "./session.ts";
 import { bindApiAuthSession, getApiAuthStore, type ApiAuthBinding, type ApiAuthContext, type ApiAuthorizationTransaction, type ApiAuthStore } from "./store.ts";
 
@@ -230,23 +229,18 @@ export class PortalApiAuthentication {
   }
 }
 
-const services = new Map<ApiAuthPurpose, PortalApiAuthentication>();
+let service: PortalApiAuthentication | undefined;
 
 /** 起動時や静的ビルド時にAzureへ通信しません。 */
-export function getPortalApiAuthentication(purpose: ApiAuthPurpose = "gateway"): PortalApiAuthentication {
-  const service = services.get(purpose) ??
-    new PortalApiAuthentication(readApiAuthenticationSettings(purpose), getApiAuthStore(purpose));
-  services.set(purpose, service);
-  return service;
+export function getPortalApiAuthentication(): PortalApiAuthentication {
+  return service ??= new PortalApiAuthentication(readApiAuthenticationSettings(), getApiAuthStore());
 }
+
 let nextCleanup = 0;
 
 /** 通常のヘルス確認を止めず、同じプロセスで期限切れの回収を1分に1回まで開始します。 */
 export function scheduleApiAuthCleanup(): void {
-  const gateway = apiAuthenticationEnabled();
-  const management = subscriptionManagementConfigured();
-  if ((!gateway && !management) || Date.now() < nextCleanup) return;
+  if (!apiAuthenticationEnabled() || Date.now() < nextCleanup) return;
   nextCleanup = Date.now() + 60_000;
-  if (gateway) void Promise.resolve().then(() => getPortalApiAuthentication().collectExpired()).catch(() => undefined);
-  if (management) void Promise.resolve().then(() => getPortalApiAuthentication("subscription-management").collectExpired()).catch(() => undefined);
+  void Promise.resolve().then(() => getPortalApiAuthentication().collectExpired()).catch(() => undefined);
 }

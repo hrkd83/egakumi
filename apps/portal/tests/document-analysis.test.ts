@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DOCUMENT_ANALYSIS_API_VERSION, DOCUMENT_MODELS, MAX_DOCUMENT_BYTES, documentAnalysisInputSchema, getDocumentAnalysisEndpoint, inspectDocument, parseDocumentAnalysisResult, readDocumentAnalysisResponse, DocumentAnalysisResponseError } from "../lib/document-analysis-contracts.ts";
+import { DOCUMENT_ANALYSIS_API_VERSION, DOCUMENT_MODELS, documentAnalysisInputSchema, getDocumentAnalysisEndpoint, inspectDocument, parseDocumentAnalysisResult, readDocumentAnalysisResponse, DocumentAnalysisResponseError } from "../lib/document-analysis-contracts.ts";
 import { getDocumentAnalysisExample, getDocumentAnalysisRequestSchema, getDocumentAnalysisResponseSchema } from "../lib/document-analysis-integration.ts";
 
 /** Azureの文書解析結果に含まれる主要属性を備えた、個人情報を含まない試験データです。 */
@@ -27,7 +27,7 @@ test("ファイルのMIMEとシグネチャが一致する5形式だけを受け
 });
 
 test("Portal入力はモデルと接続先を固定し、URL入力・任意モデル・秘密の追加入力を拒否する", () => {
-  const input = { model: "prebuilt-read", apiKeyId: "portal-11111111-1111-4111-8111-111111111111" };
+  const input = { model: "prebuilt-read", authentication: "bearer" };
   assert.equal(documentAnalysisInputSchema.safeParse(input).success, true);
   for (const extra of [{ model: "custom-model" }, { url: "https://untrusted.invalid/file" }, { apiKey: "secret" }, { pages: "1" }, { headers: {} }]) assert.equal(documentAnalysisInputSchema.safeParse({ ...input, ...extra }).success, false);
   for (const origin of ["http://gateway.example.invalid", "https://gateway.example.invalid/path", "https://user:pass@gateway.example.invalid", "https://gateway.example.invalid?other=1"]) assert.throws(() => getDocumentAnalysisEndpoint(origin, "prebuilt-read"));
@@ -67,7 +67,7 @@ test("ブラウザーはBFFの検証済み結果と固定失敗コードだけ�
 test("5言語の例は選択モデル・raw file送信とバックエンド秘密を使う", () => {
   for (const model of DOCUMENT_MODELS) for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) {
     const code = getDocumentAnalysisExample(language, "https://gateway.example.invalid", model);
-    assert.ok(code.includes(`/tools/documents/v1/analyze?model=${model}`)); assert.ok(code.includes("GATEWAY_API_KEY")); assert.ok(code.includes("input.pdf")); assert.ok(code.includes("application/pdf"));
+    assert.ok(code.includes(`/tools/documents/v1/analyze?model=${model}`)); assert.ok(code.includes("GATEWAY_ACCESS_TOKEN")); assert.ok(code.includes("input.pdf")); assert.ok(code.includes("application/pdf"));
     assert.equal(code.includes("urlSource"), false);
   }
   assert.equal(getDocumentAnalysisRequestSchema("ja").properties.file.format, "binary");

@@ -36,9 +36,9 @@ class ApiStorageKeyTests(unittest.TestCase):
             },
         }
 
-    def test_subscription_management_can_use_the_dedicated_identity_without_trial_bearer(self):
+    def test_bearer_trial_uses_the_dedicated_identity_when_enabled(self):
         self.assertEqual(
-            deployment_settings(self.config, self.outputs, self.identity_scope, management=True),
+            deployment_settings(self.config, self.outputs, self.identity_scope),
             {
                 "identity": self.identity,
                 "scope": "api://synthetic-api/Gateway.Invoke",
@@ -48,19 +48,15 @@ class ApiStorageKeyTests(unittest.TestCase):
 
         self.config["portal"]["apiAuthentication"]["enabled"] = False
         self.assertEqual(deployment_settings(self.config, self.outputs, self.identity_scope), {})
-        self.assertEqual(
-            deployment_settings(self.config, self.outputs, self.identity_scope, management=True),
-            {"identity": self.identity, "scope": "", "previousKeyVersions": ["a" * 32]},
-        )
 
-    def test_subscription_management_rejects_mismatched_foundation_identity_and_tenant(self):
+    def test_bearer_trial_rejects_mismatched_foundation_identity_and_tenant(self):
         wrong_identity = {"apiAuthIdentity": {**self.identity, "id": self.identity["id"] + "-other"}}
         with self.assertRaisesRegex(ValueError, "dedicated identity"):
-            deployment_settings(self.config, wrong_identity, self.identity_scope, management=True)
+            deployment_settings(self.config, wrong_identity, self.identity_scope)
 
         self.config["portal"]["authentication"]["tenantId"] = "different-entra"
         with self.assertRaisesRegex(ValueError, "dedicated identity"):
-            deployment_settings(self.config, self.outputs, self.identity_scope, management=True)
+            deployment_settings(self.config, self.outputs, self.identity_scope)
 
     def test_missing_explicit_storage_key_version_stops_before_any_creation(self):
         self.config.update({

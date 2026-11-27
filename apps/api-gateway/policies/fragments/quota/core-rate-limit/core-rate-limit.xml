@@ -1,10 +1,8 @@
 <fragment>
   <!-- ========== 利用回数枠の準備と計数（core-rate-limit） ========== -->
-  <!-- 目的：認証済みの購読または社員の利用回数枠を選び、入口で要求を数えます。 -->
+  <!-- 目的：認証済みEntraユーザーの利用回数枠を選び、入口で要求を数えます。 -->
   <!-- 処理：同名C#でgatewayRateDecisionを準備し、有効な枠だけrate-limit-by-keyを適用します。 -->
   <!-- 社員IDは確認済みのgatewayDecisionから引き継ぎ、既存の計数キーを維持します。 -->
-  <!-- API固有の本人確認やCM接続・OBOで使うトークンは、購読の計数枠を変更しません。 -->
-  <!-- core-subscription-profile-v1: 接続有効化後の保存はSQL更新だけで適用されます。 -->
 
   <set-variable name="gatewayRateDecision" value="@{
       __CORE_RATE_LIMIT_CSHARP__

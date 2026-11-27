@@ -175,19 +175,19 @@ def finish_worker(ctx, state):
 
 
 def verify_runtime(ctx, certificate, image):
-    """Portal本体・Graph定期ジョブが同じ固定証明書を使うことを現物で確認します。"""
+    """Portal本体が指定した固定証明書を使うことを現物で確認します。"""
     prefix = '/subscriptions/' + ctx.config['subscriptionId'] + '/resourceGroups/' + ctx.config['resourceGroupNames']['svc'] + '/providers/Microsoft.App/'
     stem = ctx.config['resourceStem']
     expected = {'PORTAL_AUTH_KEY_ID': certificate['keyId'], 'PORTAL_AUTH_CERTIFICATE_THUMBPRINT': certificate['certificateThumbprint'],
                 'MICROSOFT_CLIENT_ID': ctx.config['portal']['authentication']['clientId'], 'MICROSOFT_TENANT_ID': ctx.config['portal']['authentication']['tenantId']}
-    for kind, name in (('containerApps', 'ca-' + stem + '-portal'), ('jobs', 'caj-' + stem + '-psync')):
-        value = ctx.verify_resource(prefix + kind + '/' + name, APP_API, 'Microsoft.App/' + kind)
-        containers = value.get('properties', {}).get('template', {}).get('containers', [])
-        if len(containers) != 1 or containers[0].get('image', '').split('@')[-1] != image:
-            raise OperationError('Portal or reconciliation job image differs from the selected release')
-        env = {item['name']: item.get('value') for item in containers[0].get('env', [])}
-        if any(env.get(key) != val for key, val in expected.items()) or 'MICROSOFT_CLIENT_SECRET' in env:
-            raise OperationError('Portal or reconciliation job authentication differs from the selected certificate')
+    application = prefix + 'containerApps/ca-' + stem + '-portal'
+    value = ctx.verify_resource(application, APP_API, 'Microsoft.App/containerApps')
+    containers = value.get('properties', {}).get('template', {}).get('containers', [])
+    if len(containers) != 1 or containers[0].get('image', '').split('@')[-1] != image:
+        raise OperationError('Portal image differs from the selected release')
+    env = {item['name']: item.get('value') for item in containers[0].get('env', [])}
+    if any(env.get(key) != val for key, val in expected.items()) or 'MICROSOFT_CLIENT_SECRET' in env:
+        raise OperationError('Portal authentication differs from the selected certificate')
 
 
 def deploy(ctx, slot, image):

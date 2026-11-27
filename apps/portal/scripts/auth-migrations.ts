@@ -1,7 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { sql, type Kysely } from "kysely";
-import { ZodError } from "zod";
 
 /** 正式ジョブのDDL前に、秘密やDB名を含まない初期状態を取得します。 */
 export async function observeAuthSchemaBeforeMigration(database: Kysely<Record<string, unknown>>) {
@@ -38,9 +37,6 @@ export async function migrateAuth(database: Kysely<Record<string, unknown>>) {
 
 /** SQL診断には番号だけを表示し、接続先・SQL本文・資格情報は表示しません。 */
 export function sqlFailure(error: unknown): string {
-  if (error instanceof ZodError && error.issues.some((issue) => issue.path.includes("groupNamePattern"))) {
-    return "Invalid portalApiKeys.groupNamePattern: specify a non-empty RE2-compatible regular expression";
-  }
   if (error && typeof error === "object" && "number" in error && typeof error.number === "number") {
     return `SQL error ${error.number}`;
   }

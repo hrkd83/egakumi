@@ -67,7 +67,6 @@ def policy_expressions():
                             policy_fixture_path(POLICIES, "credential-login/logout.xml"),
                             policy_fixture_path(POLICIES, "credential-login/session-commit.xml"),
                             POLICIES / "snippets/authentication/credential-caller-error/credential-caller-error.xml",
-                            policy_fixture_path(POLICIES, "subscription-profile.xml"),
                             policy_fixture_path(POLICIES, "rate-limit-error.xml"),
                             policy_fixture_path(POLICIES, "mcp-rate-cleanup.xml"),
                             policy_fixture_path(POLICIES, "core-model-limits.xml")])):
@@ -171,13 +170,6 @@ class PolicyRazorSyntaxTests(unittest.TestCase):
         cases = [case for case in self.cases if case["id"].startswith("core-entra-user-profile.xml:")]
         self.assertEqual(len(cases), 1)
         self.assertEqual(self.results[cases[0]["id"]], [])
-
-    def test_subscription_profile_expressions_are_checked_from_the_canonical_snippet(self):
-        cases = [case for case in self.cases if case["id"].startswith("subscription-profile.xml:")]
-        self.assertTrue(any('gatewayProfileResponse' in case['body'] for case in cases))
-        self.assertTrue(any(case['body'].strip() == 'return 503;' for case in cases))
-        for case in cases:
-            self.assertEqual(self.results[case['id']], [])
 
     def test_audit_detects_legal_csharp_that_razor_rejects(self):
         for case_id in ("invalid-if-foreach", "invalid-loop", "invalid-else"):

@@ -24,7 +24,7 @@ python3 -I -B scripts/prepare_registration.py --config "$DEPLOY_PARAMS_FILE"
 ## Graphの委任アクセス許可を設定する
 
 1. 「APIのアクセス許可」を開き、「Microsoft Graph → 委任されたアクセス許可 → `User.Read`」があることを確認します。なければ「アクセス許可の追加」で追加します。
-2. 標準のGraphデータアクセス許可は委任 `User.Read` です。アプリケーションのアクセス許可、`Gateway.Invoke`、`Subscription.Manage` は追加しません。
+2. 標準のGraphデータアクセス許可は委任 `User.Read` です。アプリケーションのアクセス許可と`Gateway.Invoke` は追加しません。
 3. 実行時はCredential Managerの標準設定が `openid profile email offline_access https://graph.microsoft.com/User.Read` を要求します。認証テナントで事前同意が必要な場合は、Microsoft Graphの「委任されたアクセス許可」でこの4つのOIDCスコープも追加し、対象を確認して「管理者の同意を与えます」を選びます。付与後は状態欄を確認します。 [MicrosoftのOIDCスコープ](https://learn.microsoft.com/en-us/entra/identity-platform/scopes-oidc)
 4. 利用者ごとのCredential Manager接続は、Gateway配備後に本人のサインインで作成します。
 

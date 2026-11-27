@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { BookOpen, Braces, Play } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Locale } from "@/lib/i18n/config";
@@ -32,7 +31,7 @@ export function ApiDocumentationLayout({ locale, value, onValueChange, selection
       <TabsContent value="request" className="m-0 space-y-7">
         {executable && <ol className="grid gap-4 rounded-xl border border-border bg-white p-5 sm:grid-cols-3 sm:p-6">
           {[
-            [ja ? "APIキーを用意" : "Prepare an API key", <span key="key"><Link href={`/${locale}/api-keys`} className="font-medium text-primary underline underline-offset-4">{ja ? "APIキー管理" : "API key management"}</Link>{ja ? "で、このAPIにアクセスできるキーを確認します。" : " lists the keys that grant access to this API."}</span>],
+            [ja ? "APIに接続" : "Connect to the API", ja ? "試用画面からMicrosoft Entraで認証し、APIを試用できるようにします。" : "Use Microsoft Entra from the trial panel to connect to the API."],
             [ja ? "アプリへ組み込む" : "Integrate with your app", ja ? "下のコード例を参考に、アプリのバックエンドから呼び出します。" : "Use the examples below to call the API from your app’s backend."],
             [ja ? "応答を確認" : "Check the response", ja ? "API仕様で返却形式を確認できます。「試す」では実際にリクエストできます。" : "Review response formats in the API reference, or send a real request in Try it."],
           ].map(([title, description], index) => <li key={index} className="flex gap-3"><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{index + 1}</span><div><h2 className="font-semibold">{title}</h2><p className="mt-2 text-sm leading-7 text-muted-foreground">{description}</p></div></li>)}

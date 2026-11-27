@@ -42,7 +42,7 @@ Entraのアプリ登録を担当できるアカウントで、社員の認証先
 
 [![APIアプリのClient IDを使ったApplication ID URIを設定する画面](../images/entra-api-setup/05-api-uri.png)](../images/entra-api-setup/05-api-uri.png)
 
-## 3. Gateway.InvokeとSubscription.Manageを公開する
+## 3. Gateway.Invokeを公開する
 
 「APIの公開」→「スコープの追加」を開き、次を設定します。
 
@@ -67,20 +67,6 @@ Entraのアプリ登録を担当できるアカウントで、社員の認証先
 [![APIの公開で追加したGateway.Invokeを確認する画面](../images/entra-api-setup/07-expose-api.png)](../images/entra-api-setup/07-expose-api.png)
 
 **「管理者のみ」は、同意できる人を定める設定です。** [第09章のPortalアプリ登録](09-egakumi-portal.md)で委任アクセス許可を追加し、管理者がPortalアプリへ同意を付与します。
-
-同じ画面で購読管理のスコープも追加します。
-
-| 入力欄 | 設定 |
-| --- | --- |
-| スコープ名 | `Subscription.Manage` |
-| 同意できるユーザー | 管理者のみ（Admins only）。manifestでは`type: "Admin"` |
-| 管理者の同意の表示名 | `Manage egakumi subscriptions` |
-| 管理者の同意の説明 | `Allows the Portal to use and manage egakumi subscriptions with the signed-in user's permissions.` |
-| 状態 | 有効（Enabled） |
-
-完全な名前は`api://<API_APP_CLIENT_ID>/Subscription.Manage`です。この委任許可は[Portalクライアント](09-egakumi-portal.md)に追加します。購読管理サービスはこのスコープのトークンを検証し、操作ごとに現在の本人権限を確認します。
-
-**「管理者のみ」は、同意できる人を定める設定です。** 後続工程で各クライアントアプリに必要な委任アクセス許可を追加し、管理者が対象クライアントへ同意を付与します。この段階ではクライアントの事前承認も追加しません。
 
 ## 4. v2アクセストークンを要求する
 
@@ -116,7 +102,6 @@ OBO証明書を手動更新する場合は、同じ証明書名で新しい非�
 | --- | --- |
 | 認証テナントとAPIのClient ID | APIMのtenant・issuer・audience検証 |
 | Application ID URIとGateway.Invoke | Portalの委任アクセス許可、管理者同意、要求scope |
-| Subscription.Manage | Portalから購読管理に使う委任アクセス許可と管理者同意 |
 | 単一テナント・scope・token versionの保存後確認 | アプリ登録の受入。接続試験の結果とは別に記録 |
 
 **APIのClient IDを`credentialProviders.graphDelegated.clientId`や追加providerの`clientId`へ設定しません。** そこはCMの下流OAuthクライアント用です。[paramsの認可設定](07-params.md)の`gateway.authentication.entra.audience`へ引き継ぐ値です。公開paramsには`audience`を置き、共通`userLimits`はconfigへ移設しました。委任scopeは資材固定の`Gateway.Invoke`で、公開`requiredScope`入力は廃止しています。有効化・対象API・クライアント許可リストは入力しません。専用Productの所属を閉じた配備段階で資材を照合し、対象環境での実APIMの検証・公開・接続受入を別に確認します。既存の共用アプリを回収する条件は[移行手順](../reference/entra-app-rollout-plan.md#工程8旧共用アプリと移行設定を撤去する)で確認します。

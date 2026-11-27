@@ -14,7 +14,6 @@ param brokerPrefix string
 param brokerNsgName string
 param apimPrefix string
 param apimNsgName string
-param acaPrivateIp string
 param brokerPrivateIp string
 param firewallPolicyName string
 param managementPrefix string
@@ -70,16 +69,10 @@ resource managementSqlIn 'Microsoft.Network/networkSecurityGroups/securityRules@
   name: 'allow-mgmt-vm-sql-1433-ingress'
   properties: allowRule('allow-mgmt-vm-sql-1433-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-sql-1433-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(ips, ip => '${ip}/32'), ['1433']).properties
 }
-resource portalOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
-  parent: apimNsg
-  name: 'allow-aca-https-egress'
-  properties: allowRule('allow-aca-https-egress', nsgPriorities.groups.apim.rules['allow-aca-https-egress'].priority, 'Outbound', 'Tcp', [apimPrefix], ['${acaPrivateIp}/32'], ['443']).properties
-}
 resource brokerOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: apimNsg
   name: 'allow-broker-https-egress'
   properties: allowRule('allow-broker-https-egress', nsgPriorities.groups.apim.rules['allow-broker-https-egress'].priority, 'Outbound', 'Tcp', [apimPrefix], ['${brokerPrivateIp}/32'], ['443']).properties
-  dependsOn: [portalOut]
 }
 resource acaSqlOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: acaNsg
@@ -103,11 +96,11 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
   properties: {
     priority: 360
     ruleCollections: [
-      // APIM→ACA、ACA→SQL/Key Vault PE は VNet 内の直接経路です。
+      // APIM→Broker、PortalとBroker→SQL/Key Vault PE は VNet 内の直接経路です。
       // Firewall を通過しないため、この規則群には登録せず各サブネットの NSG で許可します。
       { name: 'credential-broker-azure', priority: 200, ruleCollectionType: 'FirewallPolicyFilterRuleCollection', action: { type: 'Allow' }, rules: [
         { name: 'allow-aca-entra-login', ruleType: 'ApplicationRule', sourceAddresses: [acaPrefix, brokerPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['login.microsoftonline.com'], terminateTLS: false }
-        { name: 'allow-aca-arm', ruleType: 'ApplicationRule', sourceAddresses: [acaPrefix, brokerPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['management.azure.com'], terminateTLS: false }
+        { name: 'allow-broker-arm', ruleType: 'ApplicationRule', sourceAddresses: [brokerPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['management.azure.com'], terminateTLS: false }
         { name: 'allow-mgmt-vm-python-build', ruleType: 'ApplicationRule', sourceAddresses: [managementPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['pypi.org', 'files.pythonhosted.org', 'packages.microsoft.com', 'deb.debian.org', 'security.debian.org'], terminateTLS: false }
       ] }
     ]

@@ -623,7 +623,6 @@ module credentialNetwork 'modules/network/credential-broker-network.bicep' = if 
     acaPrefix: network!.outputs.subnetPrefixes.aca
     apimPrefix: network!.outputs.subnetPrefixes.apim
     apimNsgName: network!.outputs.nsgNames.apim
-    acaPrivateIp: portal!.outputs.staticIp
     brokerPrivateIp: brokerEnvironment!.outputs.platform.privateIp
     firewallPolicyName: network!.outputs.firewallPolicyName
     managementPrefix: network!.outputs.subnetPrefixes.management

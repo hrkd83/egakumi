@@ -20,7 +20,7 @@ export type DecisionQuestion =
   | { type: "choice"; instructions: string; criteria: Record<string, string> }
   | { type: "score"; instructions: string; criteria: string[] };
 
-/** 購読の秘密値を含まない、意思決定の入力です。 */
+/** 認証情報を含まない、意思決定の入力です。 */
 export type DecisionInput = { modelId: string; state: Record<string, DecisionJson>; questions: Record<string, DecisionQuestion> };
 
 /** 元の質問名と対応する、表示用の判定と確率です。 */

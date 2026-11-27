@@ -1,12 +1,11 @@
 "use client";
 
-import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+import { TryAuthenticationControl, useTryAuthentication } from "@/components/try-authentication";
 
 import { useFieldIds } from "@/lib/use-field-ids";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import { Check, Copy, LoaderCircle, Play, Square } from "lucide-react";
@@ -19,7 +18,6 @@ import { usePortalStore } from "@/components/portal-store-provider";
 import { useModelSelection } from "@/components/use-model-selection";
 import { restoreModelSettings } from "@/lib/model-settings";
 import { getImageGenerationDictionary } from "@/lib/i18n/image-generation";
-import { loadModelKeyChoices, type ModelKeyChoice } from "@/lib/model-key-choices";
 import { ModelResponseError } from "@/lib/model-response";
 import { MAX_IMAGE_PROMPT_CHARACTERS, imageGenerationInputSchema, type ImageGenerationInput, type ImageGenerationResult } from "@/lib/image-request";
 import { imageExternalUrl, imagePreviewSource, imageResponsePreview, readImageResponse } from "@/lib/image-response";
@@ -31,7 +29,7 @@ import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { Locale } from "@/lib/i18n/config";
 
 /** 表示状態をパネルごとのZustandに閉じ、画像と他パネルの実行結果を混在させません。 */
-type ImagePanelState = { input: ImageGenerationInput; apiKeyId: string; language: IntegrationLanguage | "json"; tab: "request" | "schema" | "response"; loading: boolean; result: ImageGenerationResult | null; failure: TextGenerationFailure | null; cancelled: boolean };
+type ImagePanelState = { input: ImageGenerationInput; language: IntegrationLanguage | "json"; tab: "request" | "schema" | "response"; loading: boolean; result: ImageGenerationResult | null; failure: TextGenerationFailure | null; cancelled: boolean };
 const languageNames = { typescript: "TypeScript", python: "Python", php: "PHP", csharp: "C#", curl: "cURL" };
 
 /** 表示を短縮した場合も、コピーには省略前の完全なJSONを使います。 */
@@ -51,34 +49,22 @@ export function ImageGenerationPanel({ models, dictionary, locale, gatewayOrigin
   const guide = text.integration;
   const imageText = getImageGenerationDictionary(locale);
   const draft = usePortalStore((state) => state.modelDrafts.imagePrompt), updateDrafts = usePortalStore((state) => state.updateModelDrafts);
-  const [store] = useState(() => createStore<ImagePanelState>(() => ({ input: { ...restoreModelSettings("image", initialModel ? defaultImageInput(initialModel) : { modelId: "", width: 1024, height: 1024, size: "", quality: "", outputFormat: "png" as const, prompt: SAMPLE_IMAGE_PROMPT }, savedSettings, (input) => { if (initialModel) buildImageGenerationRequest(initialModel, input); }), ...(draft !== null ? { prompt: draft } : {}) }, apiKeyId: "", language: "json", tab: "request", loading: false, result: null, failure: null, cancelled: false })));
+  const [store] = useState(() => createStore<ImagePanelState>(() => ({ input: { ...restoreModelSettings("image", initialModel ? defaultImageInput(initialModel) : { modelId: "", width: 1024, height: 1024, size: "", quality: "", outputFormat: "png" as const, prompt: SAMPLE_IMAGE_PROMPT }, savedSettings, (input) => { if (initialModel) buildImageGenerationRequest(initialModel, input); }), ...(draft !== null ? { prompt: draft } : {}) }, language: "json", tab: "request", loading: false, result: null, failure: null, cancelled: false })));
   const state = useStore(store);
   const controller = useRef<AbortController | null>(null);
-  const [keyState, setKeyState] = useState<{ apiId: string; status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] }>({ apiId: "", status: "loading", keys: [] });
-  const [refresh, setRefresh] = useState(0);
   const model = models.find((entry) => entry.id === state.input.modelId) ?? models[0];
-  const apiId = model?.apiId ?? "";
-  const keysReady = keyState.apiId === apiId && keyState.status === "ready";
-  const selectedKey = keysReady ? keyState.keys.find((key) => key.id === state.apiKeyId) : undefined;
-  const authentication = useTryAuthentication(selectedKey?.id);
+  const authentication = useTryAuthentication();
   const parsed = imageGenerationInputSchema.safeParse(state.input);
   let payload: Record<string, unknown> | null = null;
   try { if (model && parsed.success) payload = buildImageGenerationRequest(model, parsed.data); } catch { /* 入力途中の値は送信せず、フォームのエラーとして表示します。 */ }
   const origin = gatewayOrigin ?? "https://gateway.example.com";
   useEffect(() => () => controller.current?.abort(), []);
-  useEffect(() => {
-    if (!apiId) return;
-    const abort = new AbortController();
-    void loadModelKeyChoices(apiId, abort.signal).then((keys) => { if (!abort.signal.aborted) setKeyState({ apiId, status: "ready", keys }); }).catch(() => { if (!abort.signal.aborted) setKeyState({ apiId, status: "error", keys: [] }); });
-    return () => abort.abort();
-  }, [apiId, refresh]);
   if (!model) return null;
 
   /** 所属権限が変わった古いキー一覧を使わず、候補を読み直します。 */
-  function refreshKeys() { setKeyState({ apiId, status: "loading", keys: [] }); setRefresh((value) => value + 1); }
   /** パラメーターを更新すると、同じ設定からコード例とJSONを作り直します。 */
   function updateInput(value: Partial<ImageGenerationInput>) { if (value.prompt !== undefined) updateDrafts({ imagePrompt: value.prompt }); const input = { ...store.getState().input, ...value }; rememberSettings("image", scope, input); store.setState({ input, result: null, failure: null, cancelled: false }); }
-  /** 表示したプロンプトと設定を送り、接続先とキーはサーバーで解決します。 */
+  /** 表示したプロンプトと設定を送り、接続先とBearerはサーバーで解決します。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (controller.current || !payload || !authentication.credential || !parsed.success) return;
@@ -103,16 +89,8 @@ export function ImageGenerationPanel({ models, dictionary, locale, gatewayOrigin
     </>}
     settings={
       <form onSubmit={execute} className="space-y-5">
-        <TryAuthenticationPicker model={authentication} locale={locale} disabled={state.loading} />
+        <TryAuthenticationControl model={authentication} locale={locale} disabled={state.loading} />
 
-      <div className="space-y-2 rounded-lg border border-border bg-white p-3" hidden={authentication.selection.mode === "bearer"}>
-        <div className="flex items-center justify-between gap-3"><label htmlFor={fieldId("image-api-key")} className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || keyState.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button></div>
-        <Select value={selectedKey?.id ?? ""} disabled={state.loading || !keysReady || !keyState.keys.length} onValueChange={(apiKeyId) => store.setState({ apiKeyId })}><SelectTrigger id={fieldId("image-api-key")} aria-describedby={fieldId("image-key-help")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{keyState.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block min-w-0 truncate" title={[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}>{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
-        <p id={fieldId("image-key-help")} className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
-        {(keyState.apiId !== apiId || keyState.status === "loading") && <p role="status" className="text-sm text-muted-foreground">{guide.loadingKeys}</p>}
-        {keyState.apiId === apiId && keyState.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
-        {keysReady && !keyState.keys.length && <p className="text-sm leading-6 text-muted-foreground">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="text-primary underline underline-offset-4">{guide.manageKeys}</Link></p>}
-      </div>
       <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><label htmlFor={fieldId("image-format")} className="text-sm font-medium">{imageText.format}</label><Select value={state.input.outputFormat} disabled={state.loading} onValueChange={(value) => { if (value === "png" || value === "jpeg") updateInput({ outputFormat: value }); }}><SelectTrigger id={fieldId("image-format")} className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{model.formats.map((format) => <SelectItem key={format} value={format}>{format.toUpperCase()}</SelectItem>)}</SelectContent></Select></div></div>
       <div className="grid gap-4 sm:grid-cols-2">{model.operationId === "image-generate" ? <>{([ ["size", imageText.size, model.sizes], ["quality", imageText.quality, model.qualities] ] as const).map(([field, label, choices]) => <div key={field} className="space-y-2"><label htmlFor={fieldId(`image-${field}`)} className="text-sm font-medium">{label}</label><Input id={fieldId(`image-${field}`)} list={fieldId(`image-${field}-choices`)} value={state.input[field]} disabled={state.loading} onChange={(event) => updateInput({ [field]: event.target.value })} className="h-10 bg-white text-sm" /><datalist id={fieldId(`image-${field}-choices`)}>{choices.map((value) => <option key={value} value={value} />)}</datalist></div>)}</> : <>{([ ["width", imageText.width, model.minWidth, model.maxWidth], ["height", imageText.height, model.minHeight, model.maxHeight] ] as const).map(([field, label, min, max]) => <div key={field} className="space-y-2"><label htmlFor={fieldId(`image-${field}`)} className="text-sm font-medium">{label}</label><Input id={fieldId(`image-${field}`)} type="number" min={min} max={max === Number.MAX_SAFE_INTEGER ? undefined : max} step={1} required disabled={state.loading} value={Number.isFinite(state.input[field]) ? state.input[field] : ""} onChange={(event) => updateInput({ [field]: event.target.valueAsNumber })} aria-describedby={fieldId(`image-${field}-range`)} className="h-10 bg-white text-sm" /><p id={fieldId(`image-${field}-range`)} className="text-sm text-muted-foreground">{max === Number.MAX_SAFE_INTEGER ? imageText.providerDimensions : range(min, max)}</p></div>)}</>}</div>
       <div className="space-y-2"><label htmlFor={fieldId("image-count")} className="text-sm font-medium">{imageText.count}</label><Input id={fieldId("image-count")} type="number" min={model.minImages ?? 1} max={model.maxImages ?? 1} step={1} value={state.input.count ?? 1} disabled={state.loading || model.maxImages === 1} onChange={(event) => updateInput({ count: event.target.valueAsNumber })} /></div>

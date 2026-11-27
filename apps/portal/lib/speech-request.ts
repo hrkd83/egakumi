@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MAX_BUFFERED_BODY_BYTES, MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
-import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
+import { tryBearerFields } from "./api-auth/try-credential.ts";
 import { AZURE_SPEECH_TTS_VOICE_IDS } from "./speech-voices.ts";
 
 /** TTS本文の文字数上限です。SSML化後のバイト数もAPIごとに検査します。 */
@@ -15,11 +15,11 @@ export const speechInputSchema = z.object({
   rate: z.enum(["-20%", "0%", "+20%"]),
 }).strict();
 
-/** Portalの表示設定です。購読キーの実値は含みません。 */
+/** Portalの表示設定です。認証情報は含みません。 */
 export type SpeechInput = z.infer<typeof speechInputSchema>;
 
-/** 実行時だけ、本人に認可された購読の台帳IDを指定します。 */
-export const speechExecutionSchema = z.union([speechInputSchema.safeExtend(tryApiKeyFields), speechInputSchema.safeExtend(tryBearerFields)]);
+/** 実行時は固定のBearer認可を指定します。 */
+export const speechExecutionSchema = speechInputSchema.safeExtend(tryBearerFields);
 
 /** 音声・文字起こしを中継する経路と実行環境の技術上限です。 */
 export const MAX_SPEECH_AUDIO_BYTES = MAX_BUFFERED_BODY_BYTES;

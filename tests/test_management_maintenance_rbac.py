@@ -172,8 +172,9 @@ class ManagementMaintenanceRbacTests(unittest.TestCase):
         self.assertIn('outputs.databaseId.value', gateway['sqlDatabaseIds'][0])
         self.assertIn('outputs.databaseId.value', portal['sqlDatabaseIds'][0])
         self.assertIn("if(parameters('deployApplication')", portal['applicationIds'])
-        self.assertIn("if(parameters('deployApplication')", portal['jobIds'])
-        self.assertIn("outputs.id.value", portal['jobIds'])
+        job_id, = portal["jobIds"]
+        self.assertIn("portal-schema-job", job_id)
+        self.assertIn("outputs.id.value", job_id)
 
 if __name__ == '__main__':
     unittest.main()

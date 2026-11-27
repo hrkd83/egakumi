@@ -3,8 +3,7 @@ import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { Kysely, MssqlAdapter, MssqlIntrospector, MssqlQueryCompiler, sql,
   type CompiledQuery, type DatabaseConnection, type Driver, type QueryResult } from "kysely";
-import { assertRuntimePrincipal, parseMigrationSqlIdentities, parseRuntimeIdentity, portalManagementPermissions,
-  portalManagementProcedures, portalRuntimePermissions, reconcilePortalSqlPermissions } from "../scripts/auth-runtime-grants.ts";
+import { assertRuntimePrincipal, parseMigrationSqlIdentities, parseRuntimeIdentity, portalRuntimePermissions, reconcilePortalSqlPermissions } from "../scripts/auth-runtime-grants.ts";
 import { createLocalSqlTestDatabase, localSqlTest } from "./helpers/local-sql.ts";
 
 const environment = {
@@ -29,21 +28,14 @@ test("初期化に必要なIDの欠落・ゼロ値・SQL識別子の混入を拒
   ]) assert.throws(() => parseRuntimeIdentity(values));
 });
 
-test("AzureのDDL・公開Portal・購読管理・照会に、別々のIDとSQLユーザー名を使う", () => {
-  const azure = { ...environment, AZURE_CLIENT_ID: randomUUID(),
-    PORTAL_SQL_MANAGEMENT_CLIENT_ID: randomUUID(), PORTAL_SQL_MANAGEMENT_USER_NAME: "subscription-admin-test",
-    PORTAL_SQL_PROFILE_CLIENT_ID: randomUUID(), PORTAL_SQL_PROFILE_USER_NAME: "subscription-profile-test" };
-  const identities = parseMigrationSqlIdentities(azure);
-  assert.deepEqual(identities.runtime, parseRuntimeIdentity(environment));
-  assert.equal(identities.management.clientId, azure.PORTAL_SQL_MANAGEMENT_CLIENT_ID);
-  assert.equal(identities.profile.clientId, azure.PORTAL_SQL_PROFILE_CLIENT_ID);
+test("Azure SQLのDDLとPortalの実行は別のIDを使用する", () => {
+  const azure = { ...environment, AZURE_CLIENT_ID: randomUUID() };
+  assert.deepEqual(parseMigrationSqlIdentities(azure).runtime, parseRuntimeIdentity(environment));
   for (const values of [
     { ...azure, AZURE_CLIENT_ID: undefined },
     { ...azure, AZURE_CLIENT_ID: "00000000-0000-0000-0000-000000000000" },
     { ...azure, AZURE_CLIENT_ID: environment.PORTAL_SQL_RUNTIME_CLIENT_ID.toUpperCase() },
-    { ...azure, PORTAL_SQL_PROFILE_CLIENT_ID: azure.PORTAL_SQL_MANAGEMENT_CLIENT_ID },
-    { ...azure, PORTAL_SQL_PROFILE_USER_NAME: azure.PORTAL_SQL_MANAGEMENT_USER_NAME.toUpperCase() },
-    { ...environment, AZURE_CLIENT_ID: azure.AZURE_CLIENT_ID },
+    { AZURE_CLIENT_ID: azure.AZURE_CLIENT_ID },
   ]) assert.throws(() => parseMigrationSqlIdentities(values), /identities must be nonzero and distinct/);
 });
 
@@ -57,20 +49,6 @@ test("既存のSQLユーザーが別のIDなら権限を付与せず停止する
     { ...principal, type: "S" },
     { ...principal, name: "another-user" },
   ]) assert.throws(() => assertRuntimePrincipal(identity, [changed]));
-});
-
-test("公開Portalは認証用テーブルと管理者判定用の設定だけを参照・更新する", () => {
-  assert.equal(portalRuntimePermissions.portalApiKeyAdministration, "SELECT");
-  assert.equal(portalRuntimePermissions.portalConnectionState, "SELECT, INSERT, UPDATE");
-  const shared = Object.keys(portalManagementPermissions).filter((object) => Object.hasOwn(portalRuntimePermissions, object));
-  assert.deepEqual(shared, ["portalApiKeyAdministration", "portalSchemaVersions"]);
-  assert.equal(portalManagementPermissions.portalApiKey, "SELECT, INSERT, UPDATE");
-  assert.equal(portalManagementPermissions.portalApiKeyAudit, "SELECT, INSERT");
-  assert.equal(portalManagementPermissions.portalApiKeyLimit, "SELECT, INSERT, UPDATE");
-  assert.equal(portalManagementPermissions.portalApiKeyTransferAudit, "SELECT, INSERT");
-  assert.equal(portalManagementPermissions.portalApiKeyImportAudit, "INSERT");
-  assert.equal(portalManagementPermissions.portalCompany, "SELECT, INSERT, UPDATE");
-  assert.deepEqual(portalManagementProcedures, ["portalObserveApiKeyGroup", "portalEnsureApiKeyGroup"]);
 });
 
 /** 権限付与のSQLと既存権限の取り扱いを、実際のMSSQLコンパイラー経由で確認します。 */
@@ -92,70 +70,35 @@ function grantFixture(permissions: object[] = [], inherited = false) {
   return { commands, database };
 }
 
-test("旧公開Portalの台帳・グループ権限を付与元ごとに解除し、再実行では変更しない", async () => {
-  const plain = (object: string, permission: string, grantor = "dbo") => ({ permission, object, grantor, isPlainGrant: true, isObject: true });
-  const current = Object.entries(portalRuntimePermissions).flatMap(([name, values]) => values.split(", ").map((value) => plain(name, value)));
-  const database = grantFixture([...current, plain("portalApiKey", "UPDATE"), plain("portalApiKey", "UPDATE", "other-grantor"),
-    plain("portalApiKeyAudit", "INSERT"), plain("portalEnsureApiKeyGroup", "EXECUTE")]);
-  const repeated = grantFixture(current);
-  try {
-    await reconcilePortalSqlPermissions(database.database, "portal-runtime", "runtime");
-    assert.deepEqual(database.commands, [
-      "REVOKE UPDATE ON OBJECT::dbo.[portalApiKey] FROM [portal-runtime] AS [dbo]",
-      "REVOKE UPDATE ON OBJECT::dbo.[portalApiKey] FROM [portal-runtime] AS [other-grantor]",
-      "REVOKE INSERT ON OBJECT::dbo.[portalApiKeyAudit] FROM [portal-runtime] AS [dbo]",
-      "REVOKE EXECUTE ON OBJECT::dbo.[portalEnsureApiKeyGroup] FROM [portal-runtime] AS [dbo]",
-    ]);
-    await reconcilePortalSqlPermissions(repeated.database, "portal-runtime", "runtime");
-    assert.deepEqual(repeated.commands, []);
-  } finally { await Promise.all([database.database.destroy(), repeated.database.destroy()]); }
+test("実行IDには認証用テーブルの必要な権限だけを付与する", async () => {
+  const principal = environment.PORTAL_SQL_RUNTIME_USER_NAME;
+  const { commands, database } = grantFixture();
+  await reconcilePortalSqlPermissions(database, principal);
+  assert.deepEqual(commands, Object.entries(portalRuntimePermissions).map(([table, operations]) =>
+    `GRANT ${operations} ON OBJECT::dbo.[${table}] TO [${principal}]`));
+
+  const alreadyGranted = Object.entries(portalRuntimePermissions).flatMap(([object, permissions]) =>
+    permissions.split(", ").map((permission) => ({ permission, object, isPlainGrant: true, isObject: true })));
+  const retry = grantFixture(alreadyGranted);
+  await reconcilePortalSqlPermissions(retry.database, principal);
+  assert.deepEqual(retry.commands, []);
 });
 
-test("照会IDは専用プロシージャだけを実行でき、既存の広域権限やテーブル参照を拒否する", async () => {
-  const profile = grantFixture();
-  const unexpected = grantFixture([{ object: "portalApiKey", permission: "SELECT", isPlainGrant: true, isObject: true }]);
-  const inherited = grantFixture([], true);
-  try {
-    await reconcilePortalSqlPermissions(profile.database, "portal-profile", "profile");
-    assert.deepEqual(profile.commands, ["GRANT EXECUTE ON OBJECT::dbo.[portalReadSubscriptionProfile] TO [portal-profile]"]);
-    await assert.rejects(reconcilePortalSqlPermissions(unexpected.database, "portal-profile", "profile"), /grants outside its role/);
-    await assert.rejects(reconcilePortalSqlPermissions(inherited.database, "portal-profile", "profile"), /must not inherit/);
-    assert.deepEqual([...unexpected.commands, ...inherited.commands], []);
-  } finally { await Promise.all([profile.database.destroy(), unexpected.database.destroy(), inherited.database.destroy()]); }
+test("継承したロールや期待範囲外の権限を検出したら付与を中止する", async () => {
+  const principal = environment.PORTAL_SQL_RUNTIME_USER_NAME;
+  for (const fixture of [
+    grantFixture([], true),
+    grantFixture([{ permission: "DELETE", object: "portalSchemaVersions", isPlainGrant: true, isObject: true }]),
+    grantFixture([{ permission: "CREATE TABLE", object: null, isPlainGrant: true, isObject: false }]),
+  ]) {
+    await assert.rejects(reconcilePortalSqlPermissions(fixture.database, principal));
+    assert.deepEqual(fixture.commands, []);
+  }
 });
 
-test("SQLは旧公開ユーザーの購読権限を解除し、照会ユーザーにはテーブルの読み取りを許さない", localSqlTest, async (context) => {
-  const { admin } = await createLocalSqlTestDatabase(context, false);
-  await sql`CREATE USER [portal_runtime_test] WITHOUT LOGIN;
-    CREATE USER [portal_management_test] WITHOUT LOGIN;
-    CREATE USER [portal_profile_test] WITHOUT LOGIN;
-    GRANT SELECT, UPDATE ON OBJECT::dbo.portalApiKey TO [portal_runtime_test];
-    GRANT EXECUTE ON OBJECT::dbo.portalEnsureApiKeyGroup TO [portal_runtime_test];`.execute(admin);
-  await admin.transaction().execute(async (transaction) => {
-    await reconcilePortalSqlPermissions(transaction, "portal_runtime_test", "runtime");
-    await reconcilePortalSqlPermissions(transaction, "portal_management_test", "management");
-    await reconcilePortalSqlPermissions(transaction, "portal_profile_test", "profile");
-    await reconcilePortalSqlPermissions(transaction, "portal_runtime_test", "runtime");
-  });
-  await admin.connection().execute(async (connection) => {
-    await sql`EXECUTE AS USER=N'portal_runtime_test'`.execute(connection);
-    try {
-      await sql`SELECT TOP(0) id FROM dbo.portalSession`.execute(connection);
-      await assert.rejects(sql`SELECT TOP(0) id FROM dbo.portalApiKey`.execute(connection));
-      const result = await sql<{ allowed: number }>`SELECT HAS_PERMS_BY_NAME(N'dbo.portalEnsureApiKeyGroup',N'OBJECT',N'EXECUTE') AS allowed`.execute(connection);
-      assert.notEqual(result.rows[0]?.allowed, 1);
-    } finally { await sql`REVERT`.execute(connection); }
-    await sql`EXECUTE AS USER=N'portal_management_test'`.execute(connection);
-    try {
-      const result = await sql<{ allowed: number }>`SELECT HAS_PERMS_BY_NAME(N'dbo.portalApiKey',N'OBJECT',N'UPDATE') AS allowed`.execute(connection);
-      assert.equal(result.rows[0]?.allowed, 1);
-      await assert.rejects(sql`SELECT TOP(0) id FROM dbo.portalSession`.execute(connection));
-    } finally { await sql`REVERT`.execute(connection); }
-    await sql`EXECUTE AS USER=N'portal_profile_test'`.execute(connection);
-    try {
-      const result = await sql`EXEC dbo.portalReadSubscriptionProfile @tenantId=${randomUUID()}, @apimSubscriptionId='unregistered'`.execute(connection);
-      assert.deepEqual(result.rows, []);
-      await assert.rejects(sql`SELECT TOP(0) id FROM dbo.portalApiKey`.execute(connection));
-    } finally { await sql`REVERT`.execute(connection); }
-  });
+test("実行IDは認証用SQLを読め、DDLを実行できない", localSqlTest, async (context) => {
+  const { runtime } = await createLocalSqlTestDatabase(context);
+  await sql`SELECT TOP(0) id FROM dbo.portalUser`.execute(runtime);
+  const result = await sql<{ allowed: number }>`SELECT HAS_PERMS_BY_NAME(DB_NAME(),'DATABASE','CREATE TABLE') AS allowed`.execute(runtime);
+  assert.equal(result.rows[0]?.allowed, 0);
 });

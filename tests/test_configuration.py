@@ -835,7 +835,6 @@ class ConfigurationTests(unittest.TestCase):
     def test_pii_rest_and_generated_mcp_share_registered_key_contract(self):
         actual = self.normalize(pii_key_fixture())["apiDefinitions"][0]
         self.assertEqual(actual["authorization"]["mode"], "subscriptionKey")
-        self.assertEqual(actual["keySubscriptions"][0]["subscriptionId"], "pii-system")
         self.assertNotIn("oauthScopes", actual["mcp"])
         self.assertEqual(set(actual["authorization"]), {"mode", "operationConstraints"})
 
@@ -1351,7 +1350,7 @@ class UnknownConfigurationFieldTests(unittest.TestCase):
         from configuration_fixtures import public_fixture
         public_schema = local_schema_validator(json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8")))
         for location in ((), ("services",), ("gateway", "authentication"),
-                         ("credentialProviders", "graphDelegated"), ("portalApiKeys",)):
+                         ("credentialProviders", "graphDelegated")):
             with self.subTest(public_location=location):
                 raw, options = public_fixture()
                 target = raw

@@ -89,7 +89,7 @@ Gateway・Portalの配備コマンドは、初回配備と個別の更新・再�
 | --- | --- | --- |
 | 構築入力・試験定義の準備 | `configure_trial.py`、`prepare_coverage.py`、`prepare_registration.py` | 設定・公開IDやURLの差込み・登録情報をローカルファイルへ保存。Entraアプリの自動作成ではない |
 | 前提条件の一覧確認 | `preparation_inventory.py` | ローカル設定の一覧化、指定した場合のみAzure情報の読取 |
-| Gatewayの初回配備・更新 | `deploy_gateway.py`（[手順](../docs/setup/11-deploy-gateway.md)） | 同じparamsから計画を作成。`--execute`で管理VM上のイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、認証窓口・照合ジョブ、API・バックエンド・製品・購読・ポリシーを順に配備。PCのDocker・Actionsは不要 |
+| Gatewayの初回配備・更新 | `deploy_gateway.py`（[手順](../docs/setup/11-deploy-gateway.md)） | 同じparamsから計画を作成。`--execute`で管理VM上のイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、認証窓口・照合ジョブ、API・バックエンド・製品・ポリシーを順に配備。PCのDocker・Actionsは不要 |
 | API定義の準備・移行 | `standard_apis.py`、`catalog_publication.py`、`api_migration.py` | `apps/api-gateway/apis/`で1 API 1ファイルに分けた標準19 APIの展開、カタログ文書、明示したAPI定義の変換を支援する。統合配備の内部処理は`apps/api-gateway/deploy/`にある |
 | Portalの初回配備・更新 | `deploy_portal.py`（[手順](../docs/setup/12-deploy-portal.md)） | 同じparamsから計画を作成。`--execute`で管理VM上のイメージ作成・非公開ACR登録、Portal専用DB作成、手動ジョブでのテーブル・実行用権限の設定、既存Container Appの更新・公開ヘルス確認を実行。作成済みの共通基盤を再利用。端末側のDockerは不要 |
 | Portalのローカル起動 | `run_portal_local.py`（[手順](../docs/testing/portal-local-auth.md)） | 環境別の保護設定を子プロセスだけへ読み込み、`apps/portal`でコマンドを実行。SQL管理作業だけ`--admin`を指定 |
@@ -106,4 +106,4 @@ Gateway・Portalの配備コマンドは、初回配備と個別の更新・再�
 
 疎通試験は実APIを呼ぶため、推論等の利用料金が発生する場合があります。API登録の明示実行はAzure設定を変更します。各ファイル先頭の説明とCLIの`--help`で対象と実行条件を確認してください。
 
-公開入力71主項目の配置と移行条件は[paramsの判断記録](../docs/setup/07-params.md#公開入力71主項目の判断記録)を参照してください。Graph登録はparams、共通表示名・scope・poolとセッション設定はconfigに置き、既存Client ID・秘密参照・identity省略時fallbackを配置整理だけで変更しません。Portal初回対話はplatformGroupIdとgroupNamePatternだけを保存し、内部承認・検証購読はAPI正本とconfig上限5から生成します。既存非標準値を自動移行せず、今回のAzure反映・全環境再構築E2Eは未実施として扱います。未解決APIMマーカーを通常入力として受け付けず、初回prepare以外で再生成しません。
+公開入力71主項目の配置と移行条件は[paramsの判断記録](../docs/setup/07-params.md#公開入力71主項目の判断記録)を参照してください。Graph登録はparams、共通表示名・scope・poolとセッション設定はconfigに置き、既存Client ID・秘密参照・identity省略時fallbackを配置整理だけで変更しません。既存非標準値を自動移行せず、今回のAzure反映・全環境再構築E2Eは未実施として扱います。未解決APIMマーカーを通常入力として受け付けず、初回prepare以外で再生成しません。

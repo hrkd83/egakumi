@@ -24,7 +24,7 @@ from deployment.helpers.credential_pools import resource_names as broker_resourc
 from deployment.helpers.management_client_assets import expected_maintenance_environments, matches_maintenance_environment
 from deployment.helpers.management_maintenance import management_maintenance_inputs
 from deployment.helpers.paths import REPOSITORY
-from deployment.helpers.portal_resources import resource_names, subscription_app_names
+from deployment.helpers.portal_resources import resource_names
 from deployment.lifecycle import ArmTransport, DeploymentError, run
 from operations.common import OperationContext, OperationError
 
@@ -343,24 +343,7 @@ class MaintenanceUpgrade:
                     resource = self.context.verify_resource(svc + kind + '/' + name, '2025-01-01', 'Microsoft.App/' + kind)
                     if not matches_maintenance_environment(resource.get('properties'), environments[component]):
                         raise OperationError('A maintenance app or job is outside its constructed ACA environment')
-        service_names = subscription_app_names(self.config)
-        constructed_services = []
-        for name in service_names.values():
-            service = self._optional(svc + 'containerApps/' + name, 'Microsoft.App/containerApps', '2025-01-01')
-            if service is None:
-                continue
-            props = service.get('properties', {})
-            tags = service.get('tags', {})
-            if not isinstance(props, dict) or not isinstance(tags, dict):
-                raise OperationError('A subscription service has incomplete ownership or runtime information')
-            if (not matches_maintenance_environment(props, environments['portal'])
-                    or props.get('provisioningState') != 'Succeeded' or service.get('name') != name
-                    or any(tags.get(key) != value for key, value in nsg._initial_nsg_tags(self.config).items())):
-                raise OperationError('A subscription service is not ready in the constructed ACA environment')
-            constructed_services.append(name)
-        if (constructed_services or len(environment_ids) == 2) and len(constructed_services) != len(service_names):
-            raise OperationError('The constructed subscription services are incomplete')
-        app_names = [*applications['portal'], *applications['gateway'], *constructed_services]
+        app_names = [*applications['portal'], *applications['gateway']]
         job_names = [*jobs['portal'], *jobs['gateway']]
         sql_server = groups['svc'] + '/providers/Microsoft.Sql/servers/sql-' + stem
         if str(outputs['portal'].get('sharedSqlServerId', '')).casefold() != sql_server.casefold():

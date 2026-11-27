@@ -244,15 +244,14 @@ class ProtocolConfigurationTests(unittest.TestCase):
                 self.normalize(raw)
             self.assertNotIn("SENTINEL_PROVIDER_SECRET", str(caught.exception))
 
-    def test_shared_product_and_identical_subscription_are_valid_but_conflicts_fail(self):
+    def test_multiple_apis_can_share_one_native_key_product(self):
         raw = api_fixture()
         second = copy.deepcopy(raw["apiDefinitions"][0])
         second.update(name="models-second", path="models/second/v1")
         raw["apiDefinitions"].append(second)
-        self.normalize(raw)
-        second["keySubscriptions"][0]["displayName"] = "conflicting subscription"
-        with self.assertRaisesRegex(configuration.ConfigurationError, "identical settings"):
-            self.normalize(raw)
+        apis = self.normalize(raw)["apiDefinitions"]
+        self.assertEqual(len(apis), 2)
+        self.assertEqual(apis[0]["productId"], apis[1]["productId"])
 
     def test_provider_keys_are_only_external_key_vault_references(self):
         raw = bound_external_coverage()

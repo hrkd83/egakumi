@@ -65,7 +65,7 @@ class StandardApiTests(unittest.TestCase):
                 result = standard_apis.resolve_publication_configuration(self.raw, self.state)
                 self.assertIs(result["publishApis"], flag)
 
-    def test_api_products_and_mcp_remain_canonical_without_trial_subscriptions(self):
+    def test_api_products_and_mcp_remain_canonical(self):
         result = standard_apis.resolve_publication_configuration(self.raw, self.state)
         apis = {api["name"]: api for api in result["apiDefinitions"]}
         canonical = {api["name"]: api for path in standard_apis.DEFINITION_FILES
@@ -74,7 +74,6 @@ class StandardApiTests(unittest.TestCase):
                          {name: api["productId"] for name, api in canonical.items()})
         self.assertEqual(apis["graph-profile-v1"]["productId"], "connection-users")
         self.assertEqual(apis["pii-v1"]["mcp"]["name"], "pii-v1-mcp")
-        self.assertTrue(all(api["keySubscriptions"] == [] for api in apis.values()))
         self.assertTrue(all(api["released"] is True for api in apis.values()))
 
     def test_backends_and_speech_defaults_use_selected_foundry(self):
@@ -115,7 +114,6 @@ class StandardApiTests(unittest.TestCase):
             result = standard_apis.resolve_publication_configuration(raw, {})
         self.assertEqual(result, configuration.normalize_configuration(raw))
         self.assertEqual(raw, before)
-        self.assertEqual(result["apiDefinitions"][0]["keySubscriptions"][0]["subscriptionId"], "system-a")
 
     def test_missing_cm_provider_or_shared_login_fails_without_dropping_graph(self):
         for remove in ("provider", "login"):
@@ -198,7 +196,6 @@ class StandardApiTests(unittest.TestCase):
             with self.subTest(path=path.name):
                 api = json.loads(path.read_text(encoding="utf-8"))
                 self.assertEqual(path.stem, api["name"])
-                self.assertEqual(api["keySubscriptions"], [])
                 self.assertTrue({"services", "gateway", "network", "credentialProviders", "apiDefinitions"}.isdisjoint(api))
         directory_apis = standard_apis.load_api_definitions(standard_apis.API_DEFINITION_DIRECTORY)
         self.assertEqual({api["name"] for api in directory_apis}, standard_apis.STANDARD_API_NAMES)

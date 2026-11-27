@@ -222,14 +222,10 @@ policies/
     │   │   ├── README.md
     │   │   ├── mcp-rate-cleanup.cs
     │   │   └── mcp-rate-cleanup.xml
-    │   ├── rate-limit-error/
-    │   │   ├── README.md
-    │   │   ├── rate-limit-error.cs
-    │   │   └── rate-limit-error.xml
-    │   └── subscription-profile/
+    │   └── rate-limit-error/
     │       ├── README.md
-    │       ├── subscription-profile.cs
-    │       └── subscription-profile.xml
+    │       ├── rate-limit-error.cs
+    │       └── rate-limit-error.xml
     ├── request/
     │   └── mcp-metadata-guard/
     │       ├── README.md
@@ -256,7 +252,6 @@ policies/
 | `snippets/request/mcp-metadata-guard/` | MCPの予約メタデータパスだけを共通認証前に404で終了する。生成MCP・外部MCP・公開時の固定構造検査が同じXML正本を使う |
 | `snippets/authentication/realtime-owner-context/` | 確認済みcallerとチケット表現、TTLの受取りを3経路へ生成時にinline展開する。Azure fragmentは追加しない |
 | `snippets/authentication/credential-challenge/` | 本人再認証が必要なCM業務要求へ安全な一時URLを案内する。既存部品へinline展開し、外部応答の状態・秘密・URL・期限を検査する |
-| `snippets/quota/subscription-profile/` | SQL購読profileを共有APIへinlineで差し込む。XMLはフロー全体、同名C#はgatewayFetchedProfileの受入検査式だけを管理する |
 | `snippets/quota/rate-limit-error/` | `core-rate-limit`の上限超過だけを監査・本文なし429へ揃える。Retry-Afterの1式を同名C#で管理し、API・操作へinline展開する |
 | `snippets/quota/mcp-rate-cleanup/` | 外部MCPの終了・取消形式を読み、利用回数枠の免除だけを選ぶ。同名XML／C#をinline展開し、本人・下流所有者の確認は維持する |
 | `operation-policies/document-analysis/` | 開始4区画・状態取得3区画を同名C#から展開する。固定提供元・所有者チケット・公開結果・監査のフローと単式はXMLが所有する |
@@ -311,21 +306,17 @@ WebSocketと外部MCPは`shared/stream.cs`、生成MCPは`mcp/generated.cs`の�
 
 ## 利用回数枠を選び計数する
 
-[core-rate-limit](fragments/quota/core-rate-limit/README.md)の同名XML／C#が、確認済みの社員または購読IDと準備済みの利用枠を使い、既存の計数キーで回数を数える。本人情報・元設定の再読取りや再照合は行わない。SQLの回数枠を使うキー要求では、その値を直接選び、結果に使わない埋込み設定の復元・購読別検索を省く。
-
-社員／購読ごとの枠、設定の優先順位、回数・期間、明示`null`による無制限、取消・切断の免除とAPIM標準429を維持する。SQL障害を無制限として扱わない。
+[core-rate-limit](fragments/quota/core-rate-limit/README.md)は認証済みEntraユーザーをテナントIDとユーザーIDで計数します。設定した回数・期間、明示`null`による無制限、取消・切断の免除とAPIM標準429を扱います。購読キーはAzureポータルのAPIMで例外発行し、初期配備の共通回数枠とトークン枠は設定しません。
 
 ## トークン利用枠を計数する
 
-[core-token-limits](fragments/quota/core-token-limits/README.md)の同名XML／C#が、確認済み社員IDまたは購読IDから従来と同じカウンターIDを作る。準備済みの利用枠を使い、社員JSON・元設定・認証成功の重複検査は行わない。毎分／累積トークン枠、期間、明示`null`、免除と標準ポリシーへの値の引き渡しを維持する。
+[core-token-limits](fragments/quota/core-token-limits/README.md)の同名XML／C#が、認証済みEntraユーザーIDから従来と同じカウンターIDを作る。準備済みの利用枠を使い、社員JSON・元設定・認証成功の重複検査は行わない。毎分／累積トークン枠、期間、明示`null`、免除と標準ポリシーへの値の引き渡しを維持する。
 
 対象は操作の実効接続先で選び、`backendOverride`を含むFoundry OpenAI向けHTTP Chat／Responsesへ適用する。モデル一覧には依存せず、WebSocket・MCP・他形式へ広げない。内部対象一覧を読めない場合は、対象なしに補完せず既存on-errorへ渡す。Chatの利用量監査とAPI LLM診断も同じ実効接続先へ揃え、監査対象の現行範囲と本文収集量0を維持する。
 
 ## 利用枠の取得元
 
 [core-entra-user-profile](fragments/quota/core-entra-user-profile/README.md)は、共通認証が検査済みの社員情報JSONから利用枠を取り出し、後段へ渡す。本人・元設定・項目・型・範囲の再検査は行わない。内部情報を取得できない場合は無制限へ補完せず、既存on-errorへ渡す。
-
-[subscription-profile](snippets/quota/subscription-profile/README.md)はAPIへ生成時に埋め込む処理であり、SQL応答を独立した外部入力として検査する。購読ID・形式・項目・型・範囲、30秒キャッシュ、明示`null`と設定の優先順位を維持する。接続・読取り・検査に失敗した場合は、`policy-error`／`LIMIT_PROFILE_UNAVAILABLE`を監査へ渡し、503・`Retry-After: 5`・no-storeで停止する。
 
 ## CMの本人接続と下流認証
 

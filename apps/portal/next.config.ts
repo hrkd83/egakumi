@@ -4,8 +4,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Next.js標準の本番用サーバーを内部HTTPとして使い、同じコンテナーの窓口が音声WebSocketを処理します。
   output: "standalone",
-  // RE2のWASMはNode側で読み込み、ブラウザー用バンドルへ含めません。
-  serverExternalPackages: ["re2-wasm"],
   experimental: {
     agentFeedback: true,
   },

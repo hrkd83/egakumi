@@ -108,7 +108,7 @@ def controller_fixture():
     inventory = copy.deepcopy(base.inventory)
     inventory.pop(plan["deploymentId"])
     inventory[apim + "/policies/policy"] = response(apim + "/policies/policy", {"format": "rawxml", "value": prior_global})
-    for kind in ("apis", "policyFragments", "backends", "products", "namedValues", "subscriptions", "loggers", "diagnostics"):
+    for kind in ("apis", "policyFragments", "backends", "products", "namedValues", "loggers", "diagnostics"):
         inventory[apim + "/" + kind] = response(apim + "/" + kind, value=[])
     source = {"schemaVersion": 2, "apis": [], "policies": [], "backends": [], "namedValues": [], "apiChildren": []}
     for api in plan["parameters"]["apiDefinitions"]["value"]:
@@ -131,7 +131,7 @@ class BootstrapControllerTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(publish, "verify_common_authentication", return_value=authentication))
             stack.enter_context(mock.patch.object(publish, "source_checkpoint", side_effect=transaction_checkpoint))
             stack.enter_context(mock.patch.object(publish, "merge_firewall", return_value=({}, False, '"unchanged"')))
-            for name in ("verify_subscription_products", "verify_credential_login", "verify_websocket_diagnostics", "initialize_profile_settings"):
+            for name in ("verify_subscription_products", "verify_credential_login", "verify_websocket_diagnostics"):
                 stack.enter_context(mock.patch.object(publish, name))
             for name in ("reconcile_unreleased_apis", "enable_websocket_diagnostics", "finalize_descriptions", "cleanup_default_samples"):
                 stack.enter_context(mock.patch.object(publish, name, return_value={}))
@@ -247,15 +247,11 @@ class BootstrapControllerTests(unittest.TestCase):
                 ("namedValues", "MODEL-BACKEND-AUDIENCE"),
                 ("namedValues", "MODEL-BACKEND-SECRET"),
                 ("namedValues", "OP-ALIAS-BACKEND-SECRET"),
-                ("subscriptions", "EXAMPLE"),
                 ("loggers", "AZUREMONITOR"),
                 ("diagnostics", "AZUREMONITOR")):
             for uppercase_scope in (False, True):
                 with self.subTest(kind=kind, uppercase_scope=uppercase_scope):
                     base, plan, authentication, transport = controller_fixture()
-                    if kind == "subscriptions":
-                        plan["parameters"]["apiDefinitions"]["value"][0]["keySubscriptions"] = [
-                            {"subscriptionId": "example"}]
                     resource_id = plan["apimId"] + "/" + kind + "/" + name
                     if uppercase_scope:
                         resource_id = resource_id.upper()
@@ -283,7 +279,7 @@ class BootstrapControllerTests(unittest.TestCase):
 
     def test_fresh_stage_rejects_duplicate_case_aliases_in_every_inventory(self):
         for kind in ("apis", "policyFragments", "backends", "products", "namedValues",
-                     "subscriptions", "loggers", "diagnostics"):
+                     "loggers", "diagnostics"):
             with self.subTest(kind=kind):
                 base, plan, authentication, transport = controller_fixture()
                 resource_id = plan["apimId"] + "/" + kind + "/unrelated-fixture"
@@ -300,7 +296,11 @@ class BootstrapControllerTests(unittest.TestCase):
         resource_id = (plan["apimId"] + "/products/unrelated-fixture").upper()
         transport.inventory[plan["apimId"] + "/products"]["body"]["value"].append(
             {"id": resource_id})
-        publication.read_fresh_publication(plan, transport)
+        subscriptions = plan["apimId"] + "/subscriptions"
+        transport.inventory[subscriptions] = {"statusCode": 403, "body": {}}
+        snapshot = publication.read_fresh_publication(plan, transport)
+        self.assertNotIn(subscriptions, snapshot)
+        self.assertFalse(any(call[1] == subscriptions for call in transport.calls))
         self.assertTrue(all(call[0] == "GET" for call in transport.calls))
 
     def test_stage_failure_stays_closed_and_never_records_source(self):

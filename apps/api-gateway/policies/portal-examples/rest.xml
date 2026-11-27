@@ -59,16 +59,12 @@
       </when>
     </choose>
     <set-variable name="gatewayRateLimitExempt" value="@(false)" />
-    __SUBSCRIPTION_PROFILE_XML__
-    <include-fragment fragment-id="core-rate-limit" />
-    <!-- SQL未管理の購読に共通の回数枠がなければ、手動APIの枠を操作共通で使います。 -->
     <choose>
-      <when condition="@((string)context.Variables[&quot;gatewayManualAuthMethod&quot;] == &quot;subscriptionKey&quot; &amp;&amp; !(bool)JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;])[&quot;enabled&quot;])">
-        <set-variable name="gatewayRateDecision" value="@{ var rate = JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;]); rate[&quot;renewalPeriodSeconds&quot;] = __RATE_INTERVAL__; return rate.ToString(Newtonsoft.Json.Formatting.None); }" />
-        <rate-limit-by-key id="manual-key-rate-limit" calls="__RATE_CALLS__" renewal-period="__RATE_INTERVAL__"
-          counter-key="@(&quot;manual-api-rate-v1:&quot; + context.Api.Id + &quot;:&quot; + context.Subscription.Id)" retry-after-variable-name="gatewayRateRetryAfter" />
+      <when condition="@((string)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;method&quot;] == &quot;user&quot;)">
+        <include-fragment fragment-id="core-entra-user-profile" />
       </when>
     </choose>
+    <include-fragment fragment-id="core-rate-limit" />
     <!-- 入口の資格情報を外してから、固定接続先の認証を付けます。 -->
     <set-header name="Authorization" exists-action="delete" />
     <set-header name="{{core-subscription-key-header}}" exists-action="delete" />
@@ -80,8 +76,6 @@
     <set-header name="X-Core-Connection-Session" exists-action="delete" />
     <set-header name="X-Core-Connection-Poll" exists-action="delete" />
     <set-header name="X-Core-Connection-Transaction" exists-action="delete" />
-    <set-header name="X-Core-Profile-Key" exists-action="delete" />
-    <set-header name="X-Core-Profile-Subscription" exists-action="delete" />
     <set-header name="X-Core-Agent-Parent-Id" exists-action="delete" />
     <set-header name="X-Egakumi-Profile" exists-action="delete" />
     <set-query-parameter name="api-key" exists-action="delete" />

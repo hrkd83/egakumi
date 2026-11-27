@@ -66,7 +66,7 @@ class ApiFoundationProjectionTests(unittest.TestCase):
             'name': 'company-tools', 'displayName': 'Company tools', 'apiType': 'mcp', 'path': 'tools/company/v2',
             'backendService': 'external', 'backendUrl': 'https://tools.example.com', 'backendAudience': 'https://tools.example.com',
             'backendAuthentication': {'mode': 'managedIdentity'}, 'productId': 'company-users',
-            'subscriptionKeyHeader': 'api-key', 'keySubscriptions': [],
+            'subscriptionKeyHeader': 'api-key',
             'operations': [{'name': 'invoke', 'displayName': 'Invoke', 'method': 'POST', 'urlTemplate': '/', 'templateParameters': []}],
             'authorization': {'mode': 'subscriptionKey', 'operationConstraints': {
                 'invoke': {'kind': 'registeredOperation', 'bodyFormat': 'none', 'maxRequestBytes': 65536}}},

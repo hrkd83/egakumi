@@ -52,12 +52,12 @@ export function getTextGenerationEndpoint(model: Pick<TextGenerationModel, "path
   return endpoint.href;
 }
 
-/** APIキーは例の中でも環境変数として表現し、実値を受け取る引数を設けません。 */
+/** アクセストークンは例の中でも環境変数として表現し、実値を受け取る引数を設けません。 */
 export function getTextGenerationHeaders(stream: boolean): Record<string, string> {
   return {
     "Content-Type": "application/json",
     Accept: stream ? "text/event-stream" : "application/json",
-    "api-key": "${GATEWAY_API_KEY}",
+    "Authorization": "Bearer ${GATEWAY_ACCESS_TOKEN}",
   };
 }
 
@@ -171,15 +171,15 @@ function typescriptExample(url: string, body: string, stream: boolean): string {
   return `import process from "node:process";
 
 // Node.jsのサーバー側で実行します。キーをブラウザーへ渡さないでください。
-const apiKey = process.env.GATEWAY_API_KEY;
-if (!apiKey) throw new Error("GATEWAY_API_KEY is required");
+const accessToken = process.env.GATEWAY_ACCESS_TOKEN;
+if (!accessToken) throw new Error("GATEWAY_ACCESS_TOKEN is required");
 
 const response = await fetch(${JSON.stringify(url)}, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
     Accept: "${stream ? "text/event-stream" : "application/json"}",
-    "api-key": apiKey,
+    "Authorization": "Bearer " + accessToken,
   },
   body: JSON.stringify(${body}),
   redirect: "error",
@@ -208,7 +208,7 @@ function pythonExample(url: string, body: string, stream: boolean): string {
 import os
 ${stream ? "import sys\n" : ""}import urllib.request
 
-api_key = os.environ["GATEWAY_API_KEY"]
+access_token = os.environ["GATEWAY_ACCESS_TOKEN"]
 payload = json.loads(r'''
 ${pythonJson}
 ''')
@@ -224,7 +224,7 @@ request = urllib.request.Request(
     headers={
         "Content-Type": "application/json",
         "Accept": "${stream ? "text/event-stream" : "application/json"}",
-        "api-key": api_key,
+        "Authorization": "Bearer " + access_token,
     },
     method="POST",
 )
@@ -240,8 +240,8 @@ ${stream ? `    # SSEの生データを確認します。空行がイベント�
 /** PHPのサーバー側で環境変数とcURLを使う組み込み例です。 */
 function phpExample(url: string, body: string, stream: boolean): string {
   return `<?php
-$apiKey = getenv('GATEWAY_API_KEY');
-if (!$apiKey) { throw new RuntimeException('GATEWAY_API_KEY is required'); }
+$accessToken = getenv('GATEWAY_ACCESS_TOKEN');
+if (!$accessToken) { throw new RuntimeException('GATEWAY_ACCESS_TOKEN is required'); }
 $body = <<<'JSON'
 ${body}
 JSON;
@@ -251,7 +251,7 @@ curl_setopt_array($curl, [
     CURLOPT_HTTPHEADER => [
         'Content-Type: application/json',
         'Accept: ${stream ? "text/event-stream" : "application/json"}',
-        'api-key: ' . $apiKey,
+        'Authorization: Bearer ' . $accessToken,
     ],
     CURLOPT_POSTFIELDS => $body,
     CURLOPT_FOLLOWLOCATION => false,
@@ -276,13 +276,13 @@ function csharpExample(url: string, body: string, stream: boolean): string {
 using System.Text;
 using System.Threading;
 ${stream ? "" : "using System.Text.Json;\n"}
-var apiKey = Environment.GetEnvironmentVariable("GATEWAY_API_KEY")
-    ?? throw new InvalidOperationException("GATEWAY_API_KEY is required");
+var accessToken = Environment.GetEnvironmentVariable("GATEWAY_ACCESS_TOKEN")
+    ?? throw new InvalidOperationException("GATEWAY_ACCESS_TOKEN is required");
 using var cancellation = new CancellationTokenSource();
 using var handler = new HttpClientHandler { AllowAutoRedirect = false };
 using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
 using var request = new HttpRequestMessage(HttpMethod.Post, ${JSON.stringify(url)});
-request.Headers.Add("api-key", apiKey);
+request.Headers.Add("Authorization", "Bearer " + accessToken);
 request.Headers.Add("Accept", "${stream ? "text/event-stream" : "application/json"}");
 request.Content = new StringContent("""
 ${body}
@@ -301,13 +301,13 @@ Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { W
 
 /** コマンドラインで同じ本文を送信する例です。キーは履歴に直書きしません。 */
 function curlExample(url: string, body: string, stream: boolean): string {
-  return `: "\${GATEWAY_API_KEY:?GATEWAY_API_KEY is required}"
+  return `: "\${GATEWAY_ACCESS_TOKEN:?GATEWAY_ACCESS_TOKEN is required}"
 curl --silent --show-error --fail-with-body${stream ? " --no-buffer" : ""} \\
   --connect-timeout 10 \\
   ${shellQuote(url)} \\
   --header 'Content-Type: application/json' \\
   --header 'Accept: ${stream ? "text/event-stream" : "application/json"}' \\
-  --header "api-key: $GATEWAY_API_KEY" \\
+  --header "Authorization: Bearer $GATEWAY_ACCESS_TOKEN" \\
   --data-binary @- <<'JSON'
 ${body}
 JSON

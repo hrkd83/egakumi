@@ -196,7 +196,7 @@ for (const family of ["realtime", "voice-live"] as const) test(`${family}のWS�
   const fixture = installBrowserFixture("websocket"), controller = new AbortController(), events: RealtimeStreamEvent[] = [];
   const model = { ...rtcModel, family, transport: "websocket" as const };
   try {
-    const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: (event) => events.push(event) });
+    const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: (event) => events.push(event) });
     const second = btoa("\0".repeat(48000));
     for (let index = 0; index < 30; index++) fixture.socket().emit({ type: "audio", delta: second, sampleRate: 24000 });
     fixture.socket().emit({ type: "event", eventType: "response.done", elapsedMs: 1 });
@@ -215,7 +215,7 @@ test("WSの累積PCMが旧境界を超えても継続し、利用者の停止で
   const fixture = installBrowserFixture("websocket"), controller = new AbortController(), events: RealtimeStreamEvent[] = [];
   try {
     const model = { ...rtcModel, transport: "websocket" as const };
-    const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: (event) => events.push(event) });
+    const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: (event) => events.push(event) });
     const packet = btoa("\0".repeat(250_000));
     let total = 0;
     while (total < REALTIME_MAX_AUDIO_BYTES) {
@@ -240,7 +240,7 @@ test("長いWS応答への割込みは予約済み音声と未予約PCMを両方
   const fixture = installBrowserFixture("websocket"), controller = new AbortController();
   try {
     const model = { ...rtcModel, transport: "websocket" as const };
-    const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: () => undefined });
+    const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: () => undefined });
     for (let index = 0; index < 30; index++) fixture.socket().emit({ type: "audio", delta: btoa("\0".repeat(48000)), sampleRate: 24000 });
     await new Promise((resolve) => setTimeout(resolve, 20));
     fixture.socket().emit({ type: "event", eventType: "input_audio_buffer.speech_started", elapsedMs: 1 });
@@ -258,7 +258,7 @@ for (const transport of ["webrtc", "websocket"] as const) test(`${transport}は�
   const fixture = installBrowserFixture(transport); const controller = new AbortController();
   const model = { ...rtcModel, transport }; const events: RealtimeStreamEvent[] = [];
   try {
-    const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: (event) => events.push(event) });
+    const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: (event) => events.push(event) });
     assert.equal(fixture.facts.permissionCalls, 1); assert.equal(fixture.mic.enabled, true);
     conversation.setMuted(true); assert.equal(fixture.mic.enabled, false); conversation.setMuted(false); assert.equal(fixture.mic.enabled, true);
     if (transport === "webrtc") {
@@ -287,7 +287,7 @@ for (const transport of ["webrtc", "websocket"] as const) test(`${transport}は�
   let queuedCapture: ((event: MessageEvent) => void) | null = null;
   try {
     const model = { ...rtcModel, transport };
-    const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: (event) => events.push(event) });
+    const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: (event) => events.push(event) });
     if (transport === "websocket") {
       fixture.context().currentTime = 0.2; queuedCapture = fixture.capture().port.onmessage;
       queuedCapture?.(new MessageEvent("message", { data: { pcm: new ArrayBuffer(4_800), capturedAt: 0.2 } }));
@@ -321,7 +321,7 @@ test("許可待ち後や音声再生時のWorkletまとめ配送でも、古い�
   const fixture = installBrowserFixture("websocket", "pending"), controller = new AbortController(), events: RealtimeStreamEvent[] = [];
   try {
     const model = { ...rtcModel, family: "voice-live" as const, transport: "websocket" as const };
-    const pending = startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: (event) => events.push(event) });
+    const pending = startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: (event) => events.push(event) });
     fixture.context().currentTime = 50; fixture.permit(); const conversation = await pending;
     fixture.socket().emit({ type: "audio", delta: btoa("\0".repeat(4_800)), sampleRate: 24_000 }); await new Promise((resolve) => setTimeout(resolve, 5));
     fixture.context().currentTime = 50.5;
@@ -337,7 +337,7 @@ test("許可待ち後や音声再生時のWorkletまとめ配送でも、古い�
 test("RTCは応答中だけ取消を送り、無応答中と取消待ちのクリックで会話を止めない", async () => {
   const fixture = installBrowserFixture("webrtc"), controller = new AbortController();
   try {
-    const conversation = await startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: () => undefined });
+    const conversation = await startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: () => undefined });
     const cancellations = () => fixture.facts.dataFrames.filter((frame) => frame.type === "response.cancel");
     conversation.cancelResponse(); assert.equal(cancellations().length, 0);
     fixture.channel().emit({ type: "response.created" }); conversation.cancelResponse(); conversation.cancelResponse(); assert.equal(cancellations().length, 1);
@@ -351,7 +351,7 @@ test("RTCは応答中だけ取消を送り、無応答中と取消待ちのク�
 for (const withEventId of [true, false]) test(`RTCは明示取消と完了の競合だけを許容し、次の応答を続ける（相関ID${withEventId ? "あり" : "省略"}）`, async () => {
   const fixture = installBrowserFixture("webrtc"), controller = new AbortController(), events: RealtimeStreamEvent[] = [];
   try {
-    const conversation = await startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: (event) => events.push(event) });
+    const conversation = await startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: (event) => events.push(event) });
     fixture.channel().emit({ type: "response.created" }); conversation.cancelResponse();
     const cancellation = fixture.facts.dataFrames.find((frame) => frame.type === "response.cancel")!;
     fixture.channel().emit({ type: "response.done", response: { status: "completed" } });
@@ -366,7 +366,7 @@ for (const withEventId of [true, false]) test(`RTCは明示取消と完了の競
 for (const scenario of ["not-requested", "wrong-code", "wrong-event", "consumed", "new-turn", "expired"] as const) test(`RTCは取消競合に該当しないエラーを握りつぶさず接続を解放する（${scenario}）`, async (context) => {
   const fixture = installBrowserFixture("webrtc"), controller = new AbortController(), events: RealtimeStreamEvent[] = [];
   try {
-    const conversation = await startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: (event) => events.push(event) });
+    const conversation = await startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: (event) => events.push(event) });
     fixture.channel().emit({ type: "response.created" });
     if (scenario !== "not-requested") conversation.cancelResponse();
     const cancellation = fixture.facts.dataFrames.find((frame) => frame.type === "response.cancel");
@@ -382,25 +382,25 @@ for (const scenario of ["not-requested", "wrong-code", "wrong-event", "consumed"
 
 test("マイク許可を拒否した場合は秘密の例外文を出さず、WS接続を作らない", async () => {
   const fixture = installBrowserFixture("webrtc", "deny");
-  try { await assert.rejects(startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: new AbortController().signal, onEvent: () => undefined }), (error: unknown) => error instanceof RealtimeBrowserError && error.reason === "MicrophoneDenied" && !error.message.includes("private")); assert.equal(fixture.facts.frames.length, 0); }
+  try { await assert.rejects(startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, authentication: "bearer", signal: new AbortController().signal, onEvent: () => undefined }), (error: unknown) => error instanceof RealtimeBrowserError && error.reason === "MicrophoneDenied" && !error.message.includes("private")); assert.equal(fixture.facts.frames.length, 0); }
   finally { fixture.restore(); }
 });
 
 test("許可ダイアログ中に中止し、後から許可されてもマイクを使わず直ちに解放する", async () => {
   const fixture = installBrowserFixture("webrtc", "pending"), controller = new AbortController();
-  try { const pending = startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: () => undefined }); controller.abort(); await assert.rejects(pending); fixture.permit(); await new Promise((resolve) => setTimeout(resolve, 5)); assert.equal(fixture.facts.micStops, 1); assert.equal(fixture.facts.frames.length, 0); }
+  try { const pending = startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: () => undefined }); controller.abort(); await assert.rejects(pending); fixture.permit(); await new Promise((resolve) => setTimeout(resolve, 5)); assert.equal(fixture.facts.micStops, 1); assert.equal(fixture.facts.frames.length, 0); }
   finally { fixture.restore(); }
 });
 
 test("開始前に中止済みならマイクの許可も接続も要求しない", async () => {
   const fixture = installBrowserFixture("webrtc"), controller = new AbortController(); controller.abort();
-  try { await assert.rejects(startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: () => undefined })); assert.equal(fixture.facts.permissionCalls, 0); }
+  try { await assert.rejects(startRealtimeConversation({ model: rtcModel, input: { modelId: rtcModel.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: () => undefined })); assert.equal(fixture.facts.permissionCalls, 0); }
   finally { fixture.restore(); }
 });
 
 test("予期しない制御切断でもマイクと受信音声を停止し、自動再接続しない", async () => {
   const fixture = installBrowserFixture("websocket"), controller = new AbortController();
-  try { const model = { ...rtcModel, transport: "websocket" as const }; const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, apiKeyId: "test-key", signal: controller.signal, onEvent: () => undefined }); fixture.socket().close(); const result = await conversation.completion; assert.equal(result.stopStatus, "unconfirmed"); assert.equal(fixture.facts.micStops, 1); assert.equal(fixture.facts.contextClosed, 1); assert.equal(fixture.facts.frames.filter((frame) => frame.type === "start").length, 1); }
+  try { const model = { ...rtcModel, transport: "websocket" as const }; const conversation = await startRealtimeConversation({ model, input: { modelId: model.id, maxOutputTokens: 256 }, authentication: "bearer", signal: controller.signal, onEvent: () => undefined }); fixture.socket().close(); const result = await conversation.completion; assert.equal(result.stopStatus, "unconfirmed"); assert.equal(fixture.facts.micStops, 1); assert.equal(fixture.facts.contextClosed, 1); assert.equal(fixture.facts.frames.filter((frame) => frame.type === "start").length, 1); }
   finally { controller.abort(); fixture.restore(); }
 });
 

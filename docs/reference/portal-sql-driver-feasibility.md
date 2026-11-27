@@ -1,5 +1,7 @@
 # PortalのSQL接続方式：標準APIの調査と比較
 
+これは旧Portalの実装を対象にした調査記録です。現在は購読同期を撤去しており、SQLはログインとBearer試用を保持します。[現行のSQL構成](sql-proxy-decision.md)
+
 状態：共有SQLのProxy維持とRedirect変更の取りやめを決定済み。PortalのTedious/Kysely接続層と既存のSQL認証を維持し、ODBC移行・独自native採用・driver試作は取りやめます。AzureへRedirectを反映していないため、Azure切戻し操作は不要です。Networkの取消コミット`5f72d83`をローカルへ取り込み、SQL/NSGと証明書資材の保持を確認しました。以下の調査結果を記録として保全し、未実施の認証・接続・Redirect・性能確認を成功扱いにしません。保護退避済みの試作は変更・削除しません。
 
 ## 採用方針と調査の位置付け
@@ -35,7 +37,7 @@ ODBC18の標準MSI認証について、公式ACA REST仕様は`IDENTITY_ENDPOINT
 
 `kysely-typeorm` 0.3.0にはMSSQL対応があり、placeholderを`@0`から生成する処理、結果行と影響行数の変換、QueryRunnerを使う接続層があります。TypeORMのSQL Server driverには標準のdriver-module差し替え設定があり、`extra.connectionString`からconfigオブジェクトへraw ODBC文字列を渡す候補があります。node-mssqlのstring overloadを同等の伝達経路とは扱いません。これらを組み合わせる候補が存在するため、「既存アダプターが一切ない」とは判断しません。
 
-ただし、固定版TypeORM 0.3.28のSQL Server QueryRunnerでは、`connect()`は物理接続を取得しません。トランザクション外のqueryはpoolへRequestを作ります。現在のPortalの[同期処理](../../apps/portal/lib/subscription-sync/repository.ts)は、`connection().execute()`全体で同じ物理接続を保持し、Session所有のapplockを取得・外部HTTP処理・解放まで維持します。QueryRunnerという同じオブジェクトを使うだけでは、この契約を満たしません。
+ただし、固定版TypeORM 0.3.28のSQL Server QueryRunnerでは、`connect()`は物理接続を取得しません。トランザクション外のqueryはpoolへRequestを作ります。現在のPortalの`同期処理`は、`connection().execute()`全体で同じ物理接続を保持し、Session所有のapplockを取得・外部HTTP処理・解放まで維持します。QueryRunnerという同じオブジェクトを使うだけでは、この契約を満たしません。
 
 この公開アダプターを使う案でも、同一物理接続の確保、失敗時の破棄、lock解放、型・UTC・精度、SQLエラー、影響行数、既存transactionの回帰が必要です。HTTP処理までDB transactionへ入れて接続固定を代用する変更も、未判断のまま採用しません。TypeORM等の追加依存も含めて保守範囲を評価します。
 
@@ -83,4 +85,4 @@ Proxy維持で、Managed Identity・SQLのTLS検証・Private Endpoint・Portal�
 - [node-mssql 12.8.1](https://registry.npmjs.org/mssql/12.8.1)：msnodesqlv8用ConnectionPoolの接続文字列伝達を調査
 - [Kysely-TypeORM 0.3.0](https://registry.npmjs.org/kysely-typeorm/0.3.0)、[TypeORM 0.3.28](https://registry.npmjs.org/typeorm/0.3.28)：MSSQL QueryCompiler、Driver、SqlServerDriver、SqlServerQueryRunnerを調査
 - 最新版の追加確認：[Kysely 0.29.9](https://registry.npmjs.org/kysely/0.29.9)、[Tedious 20.4.1](https://registry.npmjs.org/tedious/20.4.1)、[TypeORM 1.1.3](https://registry.npmjs.org/typeorm/1.1.3)。配布integrityを照合し、MSSQL Driver、routing、SQL Server QueryRunnerの対象箇所を調査
-- 現行Portal：[SQL認証と接続設定](../../apps/portal/lib/auth-database.ts)、[Session applock](../../apps/portal/lib/subscription-sync/repository.ts)
+- 現行Portal：[SQL認証と接続設定](../../apps/portal/lib/auth-database.ts)、`Session applock`

@@ -357,7 +357,7 @@ def main(argv=None):
         'imageReuseVerificationPending': not args.execute and not args.image_digest,
         'steps': (['build-and-deploy-audit-workloads'] if evidence is not None else [])
                  + ['build-or-reuse-image', 'prepare-database-and-credential-manager', 'initialize-sql',
-                  'update-broker-and-apim-settings', 'publish-apis-products-subscriptions', 'reconcile-released-api-membership', 'remove-default-apim-samples']
+                  'update-broker-and-apim-settings', 'publish-apis-products', 'reconcile-released-api-membership', 'remove-default-apim-samples']
                  + (['configure-gateway-identity-callback-waf'] if login_enabled else [])
                  + (['configure-gateway-speech-waf'] if speech_content_type_paths(config) else [])
                  + (['configure-gateway-document-waf'] if document_upload_limit(config) is not None else [])

@@ -3,22 +3,20 @@
 import { useFieldIds } from "@/lib/use-field-ids";
 import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
 
-import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
-import { ArrowUpRight, Check, CheckCircle2, Code2, Copy, LoaderCircle, Play, ShieldCheck } from "lucide-react";
+import { Check, CheckCircle2, Code2, Copy, LoaderCircle, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ApiDocumentationLayout, ApiSchemaReference } from "@/components/api-documentation-layout";
-import { TryAuthenticationPicker, useTryAuthentication } from "@/components/try-authentication";
+import { TryAuthenticationControl, useTryAuthentication } from "@/components/try-authentication";
 import { startPortalApiAuthorization } from "@/lib/api-auth/browser";
 import type { GraphToolDictionary } from "@/lib/i18n/graph-tool";
 import type { Locale } from "@/lib/i18n/config";
-import { GRAPH_TOOL_PATH, GRAPH_TOOL_PROFILE_FIELDS, graphToolProfileValue, type GraphToolKey } from "@/lib/graph-tool-contracts";
-import { checkGraphToolConnection, executeGraphTool, GraphToolResponseError, loadGraphToolKeys } from "./graph-tool-client";
-import { canResumeGraphTool, createGraphToolStore, type GraphToolViewState } from "./graph-tool-store";
-import { createGraphToolPoller } from "./graph-tool-poller";
-import { getGraphToolExample, graphToolAuthenticationContract, graphToolRequestContract, graphToolSuccessContract } from "./graph-tool-examples";
+import { GRAPH_TOOL_PATH, GRAPH_TOOL_PROFILE_FIELDS, graphToolProfileValue } from "@/lib/graph-tool-contracts";
+import { executeGraphTool, GraphToolResponseError } from "./graph-tool-client";
+import { createGraphToolStore, type GraphToolViewState } from "./graph-tool-store";
+import { getGraphToolExample, graphToolRequestContract, graphToolSuccessContract } from "./graph-tool-examples";
 
 /** 秘密値を含まない実装例・公開応答を、コピー可能なコード枠で表示します。 */
 function CodeBlock({ title, code, text }: { title: string; code: string; text: GraphToolDictionary }) {
@@ -40,139 +38,63 @@ const languages = { curl: "cURL", nextjs: "Next.js / TypeScript", fastapi: "Fast
 
 /**
  * Graphを最初に呼び出し、必要な本人認証とプロフィール応答までを確認します。
- * @remarks 秘密情報はBFFが保持します。画面を閉じると通信を中止し、ポーリングでセッション期限を延長しません。
+ * @remarks 秘密情報はBFFが保持します。画面を閉じるか本人のAPI接続が失効すると、通信を中止します。
  */
 export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToolDictionary; locale: Locale; gatewayOrigin: string | null }) {
   const formId = useFieldIds();
   const [store] = useState(createGraphToolStore);
   const state = useStore(store);
   const [view, setView] = useState<"request" | "schema" | "response">("request");
-  const [keys, setKeys] = useState<{ status: "loading" | "ready" | "error"; items: GraphToolKey[] }>({ status: "loading", items: [] });
-  const [keyRefresh, setKeyRefresh] = useState(0);
   const [reauthenticating, setReauthenticating] = useState(false);
   const [reauthenticationFailed, setReauthenticationFailed] = useState(false);
   const request = useRef<AbortController | null>(null);
-  const pollNow = useRef<(() => void) | null>(null);
-  const selectedKey = keys.status === "ready" ? keys.items.find((key) => key.id === state.apiKeyId) : undefined;
-  const authentication = useTryAuthentication(selectedKey?.id);
-  const authSelection = authentication.store;
-  const bearerMode = authentication.selection.mode === "bearer";
-  const bearerConnected = authentication.selection.status === "connected";
+  const authentication = useTryAuthentication();
+  const authState = authentication.store;
   const running = state.phase === "running";
 
-  useEffect(() => () => deactivatePanelRequest(request, (pending) => { if (pending) store.getState().selectKey(store.getState().apiKeyId); }), [store]);
+  useEffect(() => () => deactivatePanelRequest(request, (pending) => { if (pending) store.getState().reset(); }), [store]);
 
-  useEffect(() => authSelection.subscribe((current, previous) => {
-    if (current.mode === previous.mode &&
-      !(current.mode === "bearer" && previous.status === "connected" && current.status !== "connected")) return;
-    deactivatePanelRequest(request, () => store.getState().selectKey(store.getState().apiKeyId));
-  }), [authSelection, store]);
+  useEffect(() => authState.subscribe((current, previous) => {
+    if (previous.status === "connected" && current.status !== "connected") {
+      deactivatePanelRequest(request, () => store.getState().reset());
+    }
+  }), [authState, store]);
 
-  useEffect(() => {
-    if (view !== "response" || bearerMode) return;
-    const controller = new AbortController();
-    void loadGraphToolKeys(controller.signal).then((items) => {
-      if (controller.signal.aborted) return;
-      setKeys({ status: "ready", items });
-      const previous = store.getState().apiKeyId;
-      if (previous && !items.some((key) => key.id === previous)) store.getState().selectKey("");
-    }).catch(() => { if (!controller.signal.aborted) setKeys({ status: "error", items: [] }); });
-    return () => controller.abort();
-  }, [bearerMode, keyRefresh, store, view]);
-
-  /** APIへの通常要求は1回だけ送り、認証完了後の読み取りだけを一度再開します。 */
-  const execute = useCallback(async (resuming = false) => {
-    if (request.current) return;
-    const apiKeyId = store.getState().apiKeyId;
-    const selected = authSelection.getState();
-    const credential = selected.mode === "bearer"
-      ? selected.status === "connected" ? { authentication: "bearer" as const } : undefined
-      : apiKeyId || undefined;
-    if (!credential) return;
+  /** Portalの本人Bearerを使って、Graphの固定APIを試用します。 */
+  async function execute() {
+    const credential = authentication.credential;
+    if (request.current || !credential || !gatewayOrigin) return;
     setReauthenticationFailed(false);
     const controller = new AbortController();
     request.current = controller;
-    const revision = store.getState().begin();
+    store.getState().begin();
+    setView("response");
     try {
-      const result = await executeGraphTool(credential, gatewayOrigin, controller.signal);
-      if (controller.signal.aborted) return;
-      if (resuming && result.status === "need_login") throw new GraphToolResponseError({ error: { code: "GraphReauthenticationRequired" } });
-      store.getState().receive(revision, result, Date.now());
+      const result = await executeGraphTool(credential, controller.signal);
+      if (!controller.signal.aborted) store.getState().receive(result);
     } catch (error) {
-      if (!controller.signal.aborted) store.getState().fail(revision, error instanceof GraphToolResponseError ? error.failure : { error: { code: "GatewayUnavailable" } });
+      if (!controller.signal.aborted) store.getState().fail(error instanceof GraphToolResponseError ? error.failure : { error: { code: "GatewayUnavailable" } });
     } finally { if (request.current === controller) request.current = null; }
-  }, [authSelection, gatewayOrigin, store]);
-
-  useEffect(() => {
-    if (state.phase !== "waiting" || state.deadline === null) return;
-    const timer = setTimeout(() => store.getState().expire(state.revision), Math.max(0, state.deadline - Date.now()));
-    return () => clearTimeout(timer);
-  }, [state.phase, state.deadline, state.revision, store]);
-
-  useEffect(() => {
-    if (state.phase !== "waiting" || state.deadline === null || state.pollFailed || (bearerMode && !bearerConnected)) return;
-    const credential = bearerMode ? { authentication: "bearer" as const } : state.apiKeyId;
-    const poller = createGraphToolPoller({
-      deadline: state.deadline,
-      poll: (signal) => checkGraphToolConnection(credential, signal),
-      visible: () => document.visibilityState === "visible",
-      onComplete: () => { if (canResumeGraphTool(store.getState(), state.revision, state.apiKeyId)) return execute(true); },
-      onExpired: () => store.getState().expire(state.revision),
-      onFailure: (error) => {
-        if (error instanceof GraphToolResponseError && ["ConnectionIdentityMismatch", "ApiAuthenticationRequired"].includes(error.failure.error.code)) store.getState().fail(state.revision, error.failure);
-        else store.getState().markPollFailed(state.revision, true);
-      },
-    });
-    pollNow.current = poller.requestNow;
-    document.addEventListener("visibilitychange", poller.requestNow);
-    poller.requestNow();
-    return () => { poller.stop(); if (pollNow.current === poller.requestNow) pollNow.current = null; document.removeEventListener("visibilitychange", poller.requestNow); };
-  }, [bearerConnected, bearerMode, state.phase, state.deadline, state.apiKeyId, state.revision, state.pollFailed, execute, store]);
-
-  /** キー変更時は進行中の旧要求を取り消し、以前の認証URL・応答を破棄します。 */
-  function selectKey(id: string) {
-    request.current?.abort(); request.current = null;
-    store.getState().selectKey(id);
   }
-
-  /** 権限を再確認する間は古い候補で実行しないよう、一覧を読み込み状態にします。 */
-  function refreshKeys() { setKeys({ status: "loading", items: [] }); setKeyRefresh((value) => value + 1); }
 
   /** Graphが要求した追加条件で、試用のEntra認証だけを取り直します。 */
   async function reauthenticateGraph(claims: string) {
     setReauthenticating(true);
     setReauthenticationFailed(false);
-    try { await startPortalApiAuthorization(window.location.pathname, "gateway", claims); }
+    try { await startPortalApiAuthorization(window.location.pathname, claims); }
     catch { setReauthenticationFailed(true); }
     finally { setReauthenticating(false); }
   }
 
-  const claims = bearerMode ? state.failure?.claims : undefined;
+  const claims = state.failure?.claims;
   const result = state.result;
   const settings = <div className="space-y-5">
     <section className="space-y-5">
-      <TryAuthenticationPicker model={authentication} locale={locale} />
-      {!bearerMode && <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3"><label htmlFor={formId("graph-api-key")} className="text-xs font-medium">{text.key}</label><Button variant="ghost" size="sm" disabled={running || state.phase === "waiting" || keys.status === "loading"} className="h-7 text-xs" onClick={refreshKeys}>{text.refreshKeys}</Button></div>
-        <Select value={selectedKey?.id ?? ""} disabled={running || keys.status !== "ready" || !keys.items.length} onValueChange={selectKey}>
-          <SelectTrigger id={formId("graph-api-key")} className="h-10 w-full min-w-0 bg-white text-xs" aria-describedby={formId("graph-api-key-help")}><SelectValue placeholder={text.chooseKey} className="min-w-0 flex-1 overflow-hidden text-left" /></SelectTrigger>
-          <SelectContent>{keys.items.map((key) => <SelectItem key={key.id} value={key.id}><span className="block min-w-0 truncate text-left" title={[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}>{key.displayName}<span className="text-muted-foreground"> · {[key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></span></SelectItem>)}</SelectContent>
-        </Select>
-        <p id={formId("graph-api-key-help")} className="text-xs leading-6 text-muted-foreground">{text.keyHelp}</p>
-        {keys.status === "loading" && <p role="status" className="text-xs text-muted-foreground">{text.loadingKeys}</p>}
-        {keys.status === "error" && <p role="alert" className="text-xs text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
-        {keys.status === "ready" && !keys.items.length && <p role="status" className="text-xs leading-6 text-muted-foreground">{text.noKeys} <Link href={`/${locale}/api-keys`} className="font-medium text-primary underline underline-offset-4">{text.manageKeys}</Link></p>}
-      </div>}
+      <TryAuthenticationControl model={authentication} locale={locale} />
       <div className="space-y-2 rounded-lg border border-border bg-white p-3"><h3 className="flex items-center gap-2 text-xs font-semibold"><Code2 className="size-4 text-primary" />{text.fixedRequest}</h3><p className="break-all font-mono text-xs leading-6"><span className="mr-2 font-semibold text-primary">GET</span>{gatewayOrigin ?? "https://gateway.example.com"}{GRAPH_TOOL_PATH}</p><p className="text-xs leading-6 text-muted-foreground">{text.fixedNote}</p></div>
-      <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-xl text-xs leading-6 text-muted-foreground">{text.loginNote}</p><Button type="button" size="sm" disabled={!authentication.credential || running || reauthenticating || state.phase === "waiting"} onClick={() => { void execute(); }}>{running ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}{running ? text.running : text.execute}</Button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-xl text-xs leading-6 text-muted-foreground">{text.loginNote}</p><Button type="button" size="sm" disabled={!authentication.credential || !gatewayOrigin || running || reauthenticating} onClick={() => { void execute(); }}>{running ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}{running ? text.running : text.execute}</Button></div>
     </section>
 
-    {state.phase === "waiting" && state.loginUrl && <section className="space-y-4 rounded-xl border border-blue-200 bg-blue-50/60 p-5" aria-live="polite">
-      <p className="flex gap-2 text-sm font-medium text-blue-950"><ShieldCheck className="mt-0.5 size-4 shrink-0" />{text.waiting}</p>
-      <div className="flex flex-wrap items-center gap-3"><Button asChild size="sm"><a href={state.loginUrl} target="_blank" rel="noopener noreferrer">{text.login}<ArrowUpRight className="size-4" /></a></Button><Button variant="outline" size="sm" type="button" onClick={() => { if (state.pollFailed) store.getState().markPollFailed(state.revision, false); else pollNow.current?.(); }}>{text.check}</Button></div>
-      {state.pollFailed && <p role="status" className="text-xs leading-6 text-amber-800">{text.timedOut}</p>}
-    </section>}
-    {state.phase === "expired" && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-900">{text.expired}</p>}
     {state.failure && <div role="alert" className="space-y-2 rounded-xl border border-destructive/20 bg-destructive/4 p-4 text-sm leading-7 text-destructive"><p>{text.errors[state.failure.error.code]}</p>{state.failure.requestId && <p className="break-all font-mono text-xs">{text.requestId}: {state.failure.requestId}</p>}
       {claims && <Button size="sm" variant="outline" type="button" disabled={reauthenticating}
         onClick={() => { void reauthenticateGraph(claims); }}>{text.reauthenticate}</Button>}
@@ -186,37 +108,23 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
           <p className="text-xs text-muted-foreground">HTTP 200 · {text.duration}: {(result.durationMs / 1_000).toFixed(2)} s</p>
           <CodeBlock code={JSON.stringify(result.profile, null, 2)} title="application/json" text={text} />
           {result.requestId && <p className="break-all font-mono text-xs text-muted-foreground">{text.requestId}: {result.requestId}</p>}
-          {result.sessionUpdatePending && <p role="status" className="rounded-lg bg-amber-50 p-3 text-xs leading-6 text-amber-900">{text.sessionUpdatePending}</p>}
         </> : <p className="flex min-h-36 items-center justify-center gap-2 rounded-xl border border-dashed border-border p-5 text-center text-sm leading-7 text-muted-foreground">{running && <LoaderCircle className="size-4 shrink-0 animate-spin" />}{running ? text.running : text.noResponse}</p>}
       </div>;
   const guide = <div className="space-y-6">
         <section className="space-y-3"><h2 className="text-base font-semibold">{text.fixedRequest}</h2><div className="rounded-xl border border-border bg-muted/20 px-5 py-4 font-mono text-sm leading-7"><span className="mr-3 font-semibold text-primary">GET</span><code className="break-all">{gatewayOrigin ?? "https://gateway.example.com"}{GRAPH_TOOL_PATH}</code></div><p className="text-sm leading-7 text-muted-foreground">{text.fixedNote}</p><CodeBlock title={text.upstreamSelect} code={`GET https://graph.microsoft.com/v1.0${graphToolRequestContract.upstream}`} text={text} /><p className="text-sm leading-7 text-muted-foreground">{text.attributesNote}</p><p className="text-sm leading-7 text-muted-foreground">{text.permissionsNote} <a href="https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-4">{text.permissionsReference}</a></p></section>
         <p className="text-sm leading-7">{text.guideIntro}</p><ol className="list-decimal space-y-2 pl-5 text-sm leading-7 text-muted-foreground">{text.steps.map((step) => <li key={step}>{step}</li>)}</ol>
-        <div className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs leading-7 text-blue-950"><p>{text.lifetime}</p><p>{text.rotation}</p></div>
         <div className="flex items-center justify-between gap-3"><label htmlFor={formId("graph-language")} className="text-xs font-semibold">{text.languages}</label><Select value={state.language} onValueChange={(value) => { if (value in languages) state.setLanguage(value as GraphToolViewState["language"]); }}><SelectTrigger id={formId("graph-language")} className="w-52 bg-white text-xs"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(languages).map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select></div>
         <p className="text-xs leading-7 text-muted-foreground">{state.language === "curl" ? text.curlNote : state.language === "dify" ? text.difyNote : text.boundary}</p><CodeBlock key={state.language} code={getGraphToolExample(state.language, gatewayOrigin)} title={languages[state.language]} text={text} />
       </div>;
   const requestSchema = {
     type: "object", required: ["method", "path", "headers"], properties: {
       method: { type: "string", const: graphToolRequestContract.method }, path: { type: "string", const: graphToolRequestContract.path },
-      headers: { type: "object", description: text.requestHeaders, required: ["api-key"], properties: {
-        "api-key": { type: "string", description: text.subscriptionHeader },
-        "X-Core-Connection-Session": { type: "string", description: text.sessionHeader },
+      headers: { type: "object", description: text.requestHeaders, required: ["Authorization"], properties: {
+        Authorization: { type: "string", description: "Bearer <GATEWAY_ACCESS_TOKEN>" },
       } }, body: { type: "null", description: text.noRequestBody },
     },
   };
-  const authenticationSchema = {
-    type: "object", required: ["error", "authentication"], properties: {
-      error: { type: "object", description: text.connectionRequired, required: ["code"], properties: { code: { type: "string", const: graphToolAuthenticationContract.error.code } } },
-      authentication: { type: "object", description: text.authenticationData, required: Object.keys(graphToolAuthenticationContract.authentication), properties: {
-        protocolVersion: { type: "integer", const: 2 }, status: { type: "string", const: "need_login" },
-        loginUrl: { type: "string", format: "uri" }, provisionalConnectionSession: { type: "string" },
-        transactionId: { type: "string" }, pollSecret: { type: "string" },
-        statusUrl: { type: "string", format: "uri" }, expiresIn: { type: "integer", minimum: 1 },
-      } },
-    },
-  };
   const successSchema = { ...graphToolSuccessContract, properties: Object.fromEntries(Object.entries(graphToolSuccessContract.properties).map(([field, definition]) => [field, field in text.profileFields ? { ...definition, description: text.profileFields[field as keyof typeof text.profileFields] } : definition])) };
-  const schema = <div className="space-y-6"><p className="text-sm leading-7 text-muted-foreground">{text.secretNotice}</p><ApiSchemaReference locale={locale} title={text.requestSchema} schema={requestSchema} /><ApiSchemaReference locale={locale} title={text.successSchema} schema={successSchema} /><p className="text-sm leading-7 text-muted-foreground">{text.attributesNote}</p><ApiSchemaReference locale={locale} title={text.authenticationSchema} schema={authenticationSchema} /></div>;
-  return <ApiDocumentationLayout locale={locale} value={view} onValueChange={setView} settings={settings} request={guide} schema={schema} response={response} busy={running || state.phase === "waiting"} />;
+  const schema = <div className="space-y-6"><p className="text-sm leading-7 text-muted-foreground">{text.secretNotice}</p><ApiSchemaReference locale={locale} title={text.requestSchema} schema={requestSchema} /><ApiSchemaReference locale={locale} title={text.successSchema} schema={successSchema} /><p className="text-sm leading-7 text-muted-foreground">{text.attributesNote}</p></div>;
+  return <ApiDocumentationLayout locale={locale} value={view} onValueChange={setView} settings={settings} request={guide} schema={schema} response={response} busy={running} />;
 }

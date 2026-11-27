@@ -184,7 +184,7 @@ def _merge_group(target: str, sources: list[dict]) -> dict:
     if sources[0]["name"] != target:
         result["displayName"] = target.replace("-", " ").title()
     result["operations"] = []
-    result["keySubscriptions"] = []
+    result.pop("keySubscriptions", None)
     result["authorization"] = {
         "mode": sources[0]["authorization"]["mode"],
         "operationConstraints": {},
@@ -198,12 +198,6 @@ def _merge_group(target: str, sources: list[dict]) -> dict:
             raise MigrationError("Merged APIs must have the same product")
         if target != "azure-speech-v1" and _backend(api) != default_backend:
             raise MigrationError("Merged APIs require compatible registered backends")
-        for subscription in api.get("keySubscriptions", []):
-            existing = next((s for s in result["keySubscriptions"] if s["subscriptionId"] == subscription["subscriptionId"]), None)
-            if existing is not None and existing != subscription:
-                raise MigrationError("Conflicting key subscription definitions")
-            if existing is None:
-                result["keySubscriptions"].append(deepcopy(subscription))
         auth = api["authorization"]
         if auth["mode"] != "subscriptionKey":
             raise MigrationError("APIs must use subscription key authorization")
@@ -283,7 +277,9 @@ def migrate_api_definitions(api_definitions: list[dict]) -> list[dict]:
         if target not in CANONICAL_APIS:
             if api.get("serviceClass") != "platform":
                 raise MigrationError("Custom APIs require an explicit serviceClass")
-            custom.append(deepcopy(api))
+            definition = deepcopy(api)
+            definition.pop("keySubscriptions", None)
+            custom.append(definition)
         else:
             groups.setdefault(target, []).append(api)
     return [_merge_group(name, groups[name]) for name in CANONICAL_APIS if name in groups] + custom

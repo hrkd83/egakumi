@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
-import { tryApiKeyFields, tryBearerFields } from "./api-auth/try-credential.ts";
+import { tryBearerFields } from "./api-auth/try-credential.ts";
 
 /** 単独フィールドの安全上限です。本文全体はGatewayのUTF-8バイト上限でも検査します。 */
 export const MAX_RERANK_TEXT_CHARACTERS = MAX_RUNTIME_STRING_CHARACTERS;
@@ -17,8 +17,8 @@ export const rerankInputSchema = z.object({
 /** リランク画面とBFFが共有する入力型です。 */
 export type RerankInput = z.infer<typeof rerankInputSchema>;
 
-/** 実行時だけ台帳IDを受け取り、現在の所属・購読権限をサーバー側で再確認します。 */
-export const rerankExecutionSchema = z.union([rerankInputSchema.safeExtend(tryApiKeyFields), rerankInputSchema.safeExtend(tryBearerFields)]);
+/** 実行時は本人のBearer認可の指定も受け取ります。 */
+export const rerankExecutionSchema = rerankInputSchema.safeExtend(tryBearerFields);
 
 /** 元の候補文書との対応を失わないリランク応答です。 */
 export const rerankResultSchema = z.object({

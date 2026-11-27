@@ -5,22 +5,22 @@ import type { Locale } from "./i18n/config.ts";
 /** 公開APIで利用できる原本ファイル送信の例を、Portal内のmultipart入口とは分けて案内します。 */
 export function getDocumentAnalysisExample(language: IntegrationLanguage, origin: string, model: DocumentAnalysisModel): string {
   const url = getDocumentAnalysisEndpoint(origin, model);
-  if (language === "curl") return `# Run on your backend; never expose the subscription key or ticket to a browser.
+  if (language === "curl") return `# Run on your backend; never expose the access token or ticket to a browser.
 response=$(curl --silent --show-error --fail-with-body --max-redirs 0 '${url}' \\
-  --header "api-key: \${GATEWAY_API_KEY}" --header 'Content-Type: application/pdf' --data-binary '@input.pdf')
+  --header "Authorization: Bearer \${GATEWAY_ACCESS_TOKEN}" --header 'Content-Type: application/pdf' --data-binary '@input.pdf')
 path=$(printf '%s' "$response" | jq -r '.statusPath')
 ticket=$(printf '%s' "$response" | jq -r '.ticket')
 # Validate that path is /tools/documents/v1/operations/<UUID> before using it.
 while true; do
   sleep 2
   result=$(curl --silent --show-error --fail-with-body --max-redirs 0 "${origin}$path" \\
-    --header "api-key: \${GATEWAY_API_KEY}" --header "X-Core-Document-Ticket: $ticket") || exit 1
+    --header "Authorization: Bearer \${GATEWAY_ACCESS_TOKEN}" --header "X-Core-Document-Ticket: $ticket") || exit 1
   printf '%s' "$result" | jq -e '.analyzeResult' && break
 done`;
   if (language === "typescript") return `import { readFile } from "node:fs/promises";
 import { setTimeout as wait } from "node:timers/promises";
 
-const headers = { "api-key": process.env.GATEWAY_API_KEY! };
+const headers = { "Authorization": "Bearer " + process.env.GATEWAY_ACCESS_TOKEN! };
 let response = await fetch("${url}", { method: "POST", redirect: "error", headers: { ...headers, "Content-Type": "application/pdf" }, body: await readFile("input.pdf") });
 if (!response.ok) throw new Error(\`HTTP \${response.status}\`);
 const job = await response.json();
@@ -38,7 +38,7 @@ console.log((await response.json()).analyzeResult);
 from pathlib import Path
 import requests
 
-headers = {"api-key": os.environ["GATEWAY_API_KEY"]}
+headers = {"Authorization": "Bearer " + os.environ["GATEWAY_ACCESS_TOKEN"]}
 response = requests.post("${url}", headers={**headers, "Content-Type": "application/pdf"}, data=Path("input.pdf").read_bytes(), allow_redirects=False)
 response.raise_for_status()
 job = response.json()
@@ -55,7 +55,7 @@ print(response.json()["analyzeResult"])
 function callGateway(string $url, ?string $body, array $extra = []): array {
     $curl = curl_init($url);
     curl_setopt_array($curl, [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => false,
-        CURLOPT_HTTPHEADER => array_merge(['api-key: ' . getenv('GATEWAY_API_KEY')], $extra)]);
+        CURLOPT_HTTPHEADER => array_merge(['Authorization: Bearer ' . getenv('GATEWAY_ACCESS_TOKEN')], $extra)]);
     if ($body !== null) curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body]);
     $raw = curl_exec($curl); $status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE); curl_close($curl);
     if ($raw === false || $status < 200 || $status >= 300) throw new RuntimeException('Gateway request failed');
@@ -73,7 +73,7 @@ using System.Text.Json;
 
 using var handler = new HttpClientHandler { AllowAutoRedirect = false };
 using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
-client.DefaultRequestHeaders.Add("api-key", Environment.GetEnvironmentVariable("GATEWAY_API_KEY"));
+client.DefaultRequestHeaders.Add("Authorization", "Bearer " + Environment.GetEnvironmentVariable("GATEWAY_ACCESS_TOKEN"));
 using var content = new ByteArrayContent(await File.ReadAllBytesAsync("input.pdf"));
 content.Headers.ContentType = new("application/pdf");
 var response = await client.PostAsync("${url}", content);

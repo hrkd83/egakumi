@@ -91,7 +91,7 @@ ACAの公開HTTPSでは、NSGの`Internet`タグを固定`0.0.0.0/0` UDRと組�
 | 規則名 | 種別・通信 | 送信元 → 宛先 | 通信ID・用途 | 対応NSG・採用理由 |
 | --- | --- | --- | --- | --- |
 | `allow-aca-entra-login` | A・HTTPS443 | Portal用ACA → `login.microsoftonline.com` | [`FLOW-ACA-ENTRA`](network-communication-requirements.md#flow-aca-entra)。Portal用環境のEntra接続。Broker用環境のEntra通信は`AzureActiveDirectory`タグのNetwork Ruleを使う | Portal用ACA `allow-entra-egress` |
-| `allow-aca-arm` | A・HTTPS443 | Portal用・Broker用のACA → `management.azure.com` | [`FLOW-ACA-ARM`](network-communication-requirements.md#flow-aca-arm)。購読管理とCredential Manager等の管理API | 両環境の`allow-arm-https-egress` |
+| `allow-broker-arm` | A・HTTPS443 | Broker用ACA → `management.azure.com` | [`FLOW-ACA-ARM`](network-communication-requirements.md#flow-aca-arm)。Credential Managerの管理API | Broker用の`allow-arm-https-egress` |
 | `allow-mgmt-vm-python-build` | A・HTTPS443 | 管理VM → `PYTHON-BUILD`宛先群 | [`FLOW-MGMT-PYTHON-BUILD`](network-communication-requirements.md#flow-mgmt-python-build)。BrokerのPython依存・build | 管理VM `allow-internet-egress`。Node／Docker側の配布先と用途を分離 |
 
 Brokerは初期構築の常設構成要素とし、`credentialProfiles`が空であることを理由にこのRCGを不作成にはしない。Gatewayの内部 `deployApplication` はDB初期化→アプリ配備という工程の段階を表すもので、公開のBroker／FW作成スイッチではない。[Gateway配備入口](../../apps/api-gateway/deploy/main.bicep)
@@ -191,7 +191,6 @@ TLS検査によるURLの記録は、取り込み前の変換を通るLog Analyti
 
 | 通信ID | 通信 | Firewall規則を作成しない理由 |
 | --- | --- | --- |
-| [`FLOW-APIM-ACA`](network-communication-requirements.md#flow-apim-aca) | APIM → Portal用ACAの購読プロファイル照会、HTTPS443 | VNetの直接経路。APIM送信／Portal用ACA受信NSGで許可 |
 | [`FLOW-APIM-BROKER`](network-communication-requirements.md#flow-apim-broker) | APIM → Broker専用ACA、HTTPS443 | 専用VIPへVNetで直接接続。APIM送信／Broker受信NSGで許可 |
 | [`FLOW-ACA-SQL`](network-communication-requirements.md#flow-aca-sql) | ACA App／Job → SQL PE、TCP1433 | PEの直接到達。ACA送信／PE受信NSGとSQL認可で制御 |
 | [`FLOW-ACA-KV`](network-communication-requirements.md#flow-aca-kv) | ACA → Key Vault PE、HTTPS443 | PEの直接到達。ACA送信／PE受信NSGとVault認可で制御 |

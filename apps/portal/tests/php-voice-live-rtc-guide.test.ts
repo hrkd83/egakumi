@@ -16,7 +16,7 @@ test("PHP Voice Live RTC uses the same verified Swoole transport as conversation
   assert.match(code, /"ssl_verify_peer" => true/);
   assert.match(code, /"ssl_host_name" => \$url\["host"\]/);
   assert.match(code, /"ssl_allow_self_signed" => false/);
-  assert.match(code, /setHeaders\(\["api-key" => \$key\]\)/);
+  assert.match(code, /setHeaders\(\["Authorization" => "Bearer " \. \$key\]\)/);
   assert.ok(code.includes('parse_url("wss://gateway.example.invalid/models/voice-live/v1/webrtc/")'));
   assert.doesNotMatch(code, /phrity|vendor\/autoload|new WebSocket\\Client/);
 });

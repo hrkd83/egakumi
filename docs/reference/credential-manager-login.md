@@ -66,6 +66,8 @@ Gatewayの個別配備でSQL・Broker・APIMのAPIとポリシーを用意する
 
 ## 初回認証
 
+標準のGraph /meでこの手順を使うのは購読キー経路です。BearerでGraph /meを呼ぶ場合は、本人の `Gateway.Invoke` アクセストークンでOBOを使います。
+
 1. バックエンドから業務APIへ購読キーまたは`Authorization: Bearer <GATEWAY_ACCESS_TOKEN>`を付ける。保存済みの接続セッションは`X-Core-Connection-Session`で送る。
 2. 有効な場合は、CMのトークンとGraph本人IDを照合し、そのまま業務APIを実行する。
 3. 認証が必要な場合はHTTP409の`authentication`を受け取る。

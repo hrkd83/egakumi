@@ -16,8 +16,7 @@ Portal専用EntraアプリはKV内の非exportable自己署名鍵によるclient
 既存CLIのテナントは対象プロファイルのEntraテナントと一致している必要がある。
 Graphでアプリの資格情報を管理できない場合は停止し、新しい権限・同意は自動付与しない。
 
-1. 対象の論理プロファイル、Client ID、全物理CM provider、共有KV、Broker・Portal・
-   Portal同期ジョブの参照を確認する。旧credentialのkey ID・有効期限を非秘密metadataで
+1. 対象の論理プロファイル、Client ID、全物理CM provider、共有KVとBroker・CM照合ジョブの参照を確認する。旧credentialのkey ID・有効期限を非秘密metadataで
    特定する。Valueとkey IDを取り違えず、新旧を併存できる期間内に作業する。
 2. 同じ環境の新規保存先を選ぶ。receiptは`state/operations/`、新Valueは`secrets/`内とし、
    既存の`clientSecretFile`へ新規作成結果を直接上書きしない。
@@ -57,9 +56,7 @@ Entra画面等で新Valueを既に作成した場合は、新しいreceiptを選
    通常30分以内に新版を取得し、該当環境変数を使うactive revisionが自動再起動する。
    取得待ちは他の読取・記録作業と並行する。再起動だけを新版取得の証拠にしない。
    [Microsoftの参照仕様](https://learn.microsoft.com/en-us/azure/container-apps/manage-secrets#key-vault-secret-uri-and-secret-rotation)
-6. 新しいブラウザセッションでPortalへ正規サインインし、グループ照会・APIキー画面を
-   確認する。対象profileで新しい本人接続を認証して実APIを取得する。全CM providerの
-   設定、Broker・Portalと新版取得後の同期ジョブも確認する。キャッシュ済みトークンの
+6. 新しいブラウザセッションでPortalへ正規サインインし、Bearerによる試用を確認する。CM経路は外部クライアントで対象profileの新しい本人接続を認証して実APIを取得する。全CM provider、Broker、CM照合ジョブも確認する。キャッシュ済みトークンの
    一回の成功だけを切替完了にしない。
 7. 上記を自分で確認した担当者だけが、次を計画・反映する。2フラグは担当者の確認申告であり、
    スクリプトが本人認証を自動実証した証拠ではない。切替receiptと現在の保護入力を照合し、
