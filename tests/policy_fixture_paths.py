@@ -65,8 +65,9 @@ for _suffix in (".xml", ".cs"):
 for _suffix in (".xml", ".cs"):
     for _operation in ("start", "status", "session-commit", "logout", "logout-all", "disconnect"):
         _PRIMARY_FILES["credential-login/" + _operation + _suffix] = Path("operation-policies/credential-login") / (_operation + _suffix)
-for _template in ("gateway.xml", "protocol.xml", "mcp.xml"):
-    _PRIMARY_FILES[_template] = Path("api-templates") / _template
+_PRIMARY_FILES["rest.xml"] = Path("api-templates/rest/rest.xml")
+_PRIMARY_FILES["stream.xml"] = Path("api-templates/shared/stream.xml")
+_PRIMARY_FILES["generated.xml"] = Path("api-templates/mcp/generated.xml")
 _PRIMARY_FILES["credential-login/launch.xml"] = Path("operation-policies/credential-login/launch.xml")
 _PRIMARY_FILES["credential-login/launch-post.xml"] = Path("operation-policies/credential-login/launch-post.xml")
 _PRIMARY_FILES["credential-login/identity-callback.xml"] = Path("operation-policies/credential-login/identity-callback.xml")

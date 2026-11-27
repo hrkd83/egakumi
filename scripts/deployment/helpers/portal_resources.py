@@ -9,3 +9,12 @@ def resource_names(configuration: dict) -> dict:
         "schemaJob": f"caj-{stem}-psql",
         "reconcileJob": f"caj-{stem}-psync",
     }
+
+
+def subscription_app_names(configuration: dict) -> dict:
+    """最大長stemでも32文字に収まる、購読管理用の固定アプリ名を返す。"""
+    stem = configuration['resourceStem']
+    return {
+        'subscriptionAdmin': f'ca-{stem}-sub-admin',
+        'subscriptionProfileReader': f'ca-{stem}-sub-profile',
+    }

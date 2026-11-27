@@ -7,8 +7,10 @@ param bindings object
 @description('Internal live inventory. Rule presence is fixed and is not a configuration switch.')
 param existingNetworkSecurityGroupNames array
 
-var catalog = loadJsonContent('../nsg-rule-priorities.json')
-var groups = items(catalog.groups)
+var catalog = loadJsonContent('../nsg-rule-priorities.json').groups
+var auditCatalog = loadJsonContent('../audit-evidence-nsg.json').groups
+var activeCatalog = contains(bindings.subnets, 'audit') ? union(catalog, auditCatalog) : catalog
+var groups = filter(items(activeCatalog), group => contains(bindings.subnets, group.key))
 var missing = filter(groups, group => !contains(existingNetworkSecurityGroupNames, 'nsg-${resourcePrefix}-${group.value.suffix}'))
 
 func resolveAddresses(tokens array, addresses object) array => flatten(map(tokens, token => startsWith(token, 'literal:') ? [substring(token, 8)] : startsWith(token, 'tag:') ? [substring(token, 4)] : startsWith(token, 'subnet:') ? [addresses.subnets[substring(token, 7)]] : startsWith(token, 'ip:') ? ['${addresses.ips[substring(token, 3)]}/32'] : map(addresses.ipSets[substring(token, 4)], ip => '${ip}/32')))

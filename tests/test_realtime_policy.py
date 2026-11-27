@@ -324,7 +324,7 @@ class PolicyStructureTests(unittest.TestCase):
         通常のC#コンパイルだけではこの制約を検出できないため、全公開XMLも調べる。
         """
         constructors = []
-        for path in [*POLICIES.glob("*.xml"), *(POLICIES / "api-templates").glob("*.xml"),
+        for path in [*POLICIES.glob("*.xml"), *(POLICIES / "api-templates").rglob("*.xml"),
                      *(policy_fixture_path(POLICIES, name) for name in
                        ("realtime-create.xml", "realtime-hangup.xml", "realtime-observer.xml", "realtime-owner-context.xml"))]:
             for name in re.findall(r"\bthrow\s+new\s+([A-Za-z_][A-Za-z0-9_.]*)\s*\(", render_audit_policy(path.read_text(encoding="utf-8"))):

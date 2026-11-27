@@ -6,7 +6,7 @@
 
 ## 1. 対象テナント・名前・保持範囲を決める
 
-1. Microsoft Entra管理センターで、[共用アプリ](../setup/02-entra.md)とPortalの認証用テナントを選びます。Azureの構築先テナントと異なる場合も、ユーザーとグループは認証先に準備します。
+1. Microsoft Entra管理センターで、[基盤用アプリ](../../README.md#新規クローンから構築する)の認証用テナントを選びます。Azureの構築先テナントと異なる場合も、ユーザーとグループは認証先に準備します。
 2. **Entra ID → ドメイン名**で、UPNへ使用するドメインがそのテナントで検証済みであることを確認します。以下の`example.com`は架空の説明用であり、入力時は選択可能な自社の検証済みドメインへ置き換えます。
 3. ユーザー一覧・グループ一覧で候補名の既存利用を調べます。既存を使う場合はObject ID・用途・現在の所属を照合してから採用し、同名という理由だけで更新しません。
 4. 今回新規作成する対象、既存を保持する対象、試験後に回収する対象を非公開の対応表へ記録します。ユーザー作成はユーザー管理者、グループ準備はグループ管理者等、必要な権限を持つ担当者が行います。試験ユーザー自身へその管理ロールを付与する手順ではありません。
@@ -48,14 +48,14 @@
 
 [Microsoft公式のグループ作成・所属管理手順](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-manage-groups)に従い、対象を1つずつ設定します。
 
-1. **Entra ID → グループ → すべてのグループ**を開きます。既存のG-ADMINは、[PortalのAPIキー所有グループ](../setup/04-params.md#portalのapiキー所有グループportalapikeys)で控えたObject IDと照合します。
+1. **Entra ID → グループ → すべてのグループ**を開きます。既存のG-ADMINは、[PortalのAPIキー所有グループ](../setup/07-params.md#portalのapiキー所有グループportalapikeys)で控えたObject IDと照合します。
 2. 新規のグループは**新しいグループ**から、種類を**セキュリティ（Security）**、メンバーシップを**割り当て済み（Assigned）**にします。予定した名前・用途の説明を設定します。ロール割り当て可能なグループは使わず、その設定が表示される場合は**いいえ**を選びます。
 3. **メンバー**から表のユーザーをUPN・Object IDで照合して選びます。**所有者**だけを設定してMember追加の代わりにしません。対象テナント・グループ名・種類・予定メンバーを見直して**作成**します。
 4. 既存グループへ追加する場合は、そのグループの**メンバー → メンバーの追加**で表の対象者だけを選んで保存します。既存G-ADMINの他の所属や所有者を削除しません。
 5. 保存後に**概要／プロパティ**でObject ID・Security・Assignedを照合し、**メンバー**一覧で表の所属と非所属を確認します。U-Cが別の適格グループへ間接所属していないことも確認します。G-Hは通常利用や既存管理者のグループと混用しません。
-6. [paramsのPortal設定](../setup/04-params.md#portalのapiキー所有グループportalapikeys)へ渡すG-ADMINの実Object IDと表示名正規表現を非公開の設定表へまとめます。公開paramsへ入力するのはplatformGroupIdとgroupNamePatternだけです。G-ADMINの内部承認製品は標準API正本の全製品、共通上限はconfigのverificationMaxSubscriptions（初期5）から生成するため、初回対話でProductや件数を入力しません。通常グループG-A等のカタログとは別に確認します。G-A・G-B・G-Hの適格性とG-Nの非適格性を同じ正規表現で照合し、GUID書式や`configuration.py validate`の成功だけで実在・所属・正規表現の確認に代えません。
+6. [paramsのPortal設定](../setup/07-params.md#portalのapiキー所有グループportalapikeys)へ渡すG-ADMINの実Object IDと表示名正規表現を非公開の設定表へまとめます。公開paramsへ入力するのはplatformGroupIdとgroupNamePatternだけです。G-ADMINの内部承認製品は標準API正本の全製品、共通上限はconfigのverificationMaxSubscriptions（初期5）から生成するため、初回対話でProductや件数を入力しません。通常グループG-A等のカタログとは別に確認します。G-A・G-B・G-Hの適格性とG-Nの非適格性を同じ正規表現で照合し、GUID書式や`configuration.py validate`の成功だけで実在・所属・正規表現の確認に代えません。
 
-今回の公開入力整理は[71主項目の判断記録](../setup/04-params.md#公開入力71主項目の判断記録)に従います。旧groups・verificationSubscriptions入力は空でも拒否し、既存の追加所有者・製品subset・独自IDは無断移行しません。準備値の配置変更だけでアプリClient IDや認証方式・既存fallbackを切り替えません。Azure一括反映・全環境再構築E2Eは未実施です。
+今回の公開入力整理は[71主項目の判断記録](../setup/07-params.md#公開入力71主項目の判断記録)に従います。旧groups・verificationSubscriptions入力は空でも拒否し、既存の追加所有者・製品subset・独自IDは無断移行しません。準備値の配置変更だけでアプリClient IDや認証方式・既存fallbackを切り替えません。Azure一括反映・全環境再構築E2Eは未実施です。
 
 ## 4. 保存後の確認と画面エビデンス
 
@@ -126,5 +126,5 @@ U-Xは許可外テナントの試験を実施するときに、使用権限の�
 
    終了コードと作成応答のObject IDを確認して控えます。失敗・応答消失時は作成の成否を調べる前にPOSTを繰り返しません。作成済みならそのID・用途・所有者を照合して再利用し、同名の別物を更新しません。
 5. 作成応答だけで判定せず、`GET /groups/{id}?$select=id,displayName,mailNickname,groupTypes,mailEnabled,securityEnabled,visibility,resourceBehaviorOptions,resourceProvisioningOptions`で実ID・表示名・mailNickname・`groupTypes`・`mailEnabled`・`securityEnabled:false`・Private・作成時オプションを確認します。作成時オプションは通常GETの既定応答に含まれると仮定せず、`$select`で明示します。`GET /groups/{id}/owners`と[Member一覧](https://learn.microsoft.com/en-us/graph/api/group-list-members?view=graph-rest-1.0)で期待するObject IDだけが含まれることを確認し、ページングがあれば全ページを照合します。小さな読取結果も同じ保護領域へ保存します。保存後のGUI確認は補助であり、種類名だけで`securityEnabled:false`を代用しません。
-6. グループ名が現行の`groupNamePattern`に一致しなければ、それだけではSecurity条件の拒否を分離できません。隔離した設定分岐で、元の正規表現と既存の許可対象を控え、この専用名の完全一致だけを許可候補へ追加します。同じparamsを使う[Portalの正式な設定反映](../setup/06-deploy.md#gatewayとportalの個別更新再試行)後、名前一致／不一致とSecurity true／falseの組合せを比較します。名前が一致しても非Securityグループがキー所有・移管候補へ出ず、適格なSecurityグループは候補に出ることを実測します。終了後は元の正規表現を正式手順で反映し、元の候補と拒否条件へ戻ったことを確認します。
+6. グループ名が現行の`groupNamePattern`に一致しなければ、それだけではSecurity条件の拒否を分離できません。隔離した設定分岐で、元の正規表現と既存の許可対象を控え、この専用名の完全一致だけを許可候補へ追加します。同じparamsを使う[Portalの正式な設定反映](../operations.md#同じ環境を更新する)後、名前一致／不一致とSecurity true／falseの組合せを比較します。名前が一致しても非Securityグループがキー所有・移管候補へ出ず、適格なSecurityグループは候補に出ることを実測します。終了後は元の正規表現を正式手順で反映し、元の候補と拒否条件へ戻ったことを確認します。
 7. 保持するか回収するかを事前の方針どおりに処理します。回収する場合は今回の作成記録・所有者・Member・実IDを再照合し、[グループ削除](https://learn.microsoft.com/en-us/graph/api/group-delete?view=graph-rest-1.0)の`DELETE /groups/{id}`でこの1件だけを削除します。現行グループのGET 404と、削除済み項目の状態を記録します。Microsoft 365グループの30日間の復元可能な論理削除保持と、稼働中グループの消失を区別し、既存G-A／G-B／G-H／G-N／G-ADMINや別グループを名前検索で一括削除しません。

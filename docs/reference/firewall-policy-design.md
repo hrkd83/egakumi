@@ -78,8 +78,8 @@ NSGの `allow-internet-egress` がTCP80／443を許可していても、Firewall
 | `portal-azure-monitor`（150） | `allow-aca-monitor` | N・TCP443 | ACA → `AzureMonitor`タグ | [`FLOW-ACA-MONITOR`](network-communication-requirements.md#flow-aca-monitor)。ACAの監視依存 | ACA `allow-monitor-egress`。他のAzureタグ用途と名前を分離 |
 | `portal-azure-monitor`（150） | `allow-aca-entra` | N・TCP443 | ACA → `AzureActiveDirectory`タグ | [`FLOW-ACA-ENTRA`](network-communication-requirements.md#flow-aca-entra)。ACAの認証基盤依存 | ACA `allow-entra-egress`。Monitor許可と同じportでも別規則にする |
 | `portal-platform-and-probe`（200） | `allow-aca-mcr` | A・HTTPS443 | ACA → `MCR`宛先群 | [`FLOW-ACA-MCR`](network-communication-requirements.md#flow-aca-mcr)。Microsoft Container Registryのimage取得 | ACA `allow-mcr-egress`。構築したACR PEへの接続と区別 |
-| `portal-platform-and-probe`（200） | `allow-aca-platform-packages` | A・HTTPS443 | ACA → `ACA-PACKAGES`宛先群 | [`FLOW-ACA-PLATFORM-PACKAGES`](network-communication-requirements.md#flow-aca-platform-packages)。ACA基盤のpackage依存 | ACA `allow-afd-first-party-egress`と`allow-firewall-routed-public-https-egress`。CDNを含む公開HTTPSは固定UDRでFirewallへ転送し、ここで列挙したFQDNに絞る |
-| `portal-platform-and-probe`（200） | `allow-aca-managed-identity` | A・HTTPS443 | ACA → `ACA-IDENTITY`宛先群 | [`FLOW-ACA-MANAGED-IDENTITY-UPSTREAM`](network-communication-requirements.md#flow-aca-managed-identity-upstream)。ACA基盤のidentity依存 | ACAのEntra向け許可とFirewall経由の公開TCP443枠を使う。SDKから`IDENTITY_ENDPOINT`へのローカル取得は別経路 |
+| `portal-platform-and-probe`（200） | `allow-aca-platform-packages` | A・HTTPS443 | ACA → `ACA-PACKAGES`宛先群 | [`FLOW-ACA-PLATFORM-PACKAGES`](network-communication-requirements.md#flow-aca-platform-packages)。ACA基盤のpackage依存 | ACA `allow-afd-first-party-egress`。必要FQDNを明示し、任意Internet許可にしない |
+| `portal-platform-and-probe`（200） | `allow-aca-managed-identity` | A・HTTPS443 | ACA → `ACA-IDENTITY`宛先群 | [`FLOW-ACA-MANAGED-IDENTITY-UPSTREAM`](network-communication-requirements.md#flow-aca-managed-identity-upstream)。ACA基盤のidentity依存 | ACAのARM／Entra等の仕様上の明示許可。SDK→`IDENTITY_ENDPOINT`ローカル取得そのものをFW通信へ読み替えない |
 | `portal-runner`（300） | `allow-mgmt-vm-github-docker-node-build` | A・HTTPS443 | 管理VM → `APP-BUILD`宛先群 | [`FLOW-MGMT-APP-BUILD`](network-communication-requirements.md#flow-mgmt-app-build)。Git取得、Docker／Node／npmによる配備・build | 管理VM `allow-internet-egress`。必要配布先の共用CDN範囲を含め、TLS inspectionなしで既存配備到達性を維持 |
 
 ACAの公開HTTPSでは、NSGの`Internet`タグを固定`0.0.0.0/0` UDRと組み合わせ、構築Firewallが許可するFQDNまたはサービスタグへ宛先を限定する。ルートと拒否の実証は[受入条件](network-security-validation.md#実環境の受入確認)を参照する。
@@ -90,8 +90,8 @@ ACAの公開HTTPSでは、NSGの`Internet`タグを固定`0.0.0.0/0` UDRと組�
 
 | 規則名 | 種別・通信 | 送信元 → 宛先 | 通信ID・用途 | 対応NSG・採用理由 |
 | --- | --- | --- | --- | --- |
-| `allow-aca-entra-login` | A・HTTPS443 | ACA → `login.microsoftonline.com` | [`FLOW-ACA-ENTRA`](network-communication-requirements.md#flow-aca-entra)。Brokerを含むACAのEntra接続 | ACA `allow-entra-egress`。上記タグのNetwork Ruleと範囲が重なる場合もFQDN用途を明記し、当規則hitを保証しない |
-| `allow-aca-arm` | A・HTTPS443 | ACA → `management.azure.com` | [`FLOW-ACA-ARM`](network-communication-requirements.md#flow-aca-arm)。BrokerのCredential Manager等の管理API利用 | ACA `allow-arm-https-egress`。Entraと同じportでも管理API用途を別記録 |
+| `allow-aca-entra-login` | A・HTTPS443 | Portal用ACA → `login.microsoftonline.com` | [`FLOW-ACA-ENTRA`](network-communication-requirements.md#flow-aca-entra)。Portal用環境のEntra接続。Broker用環境のEntra通信は`AzureActiveDirectory`タグのNetwork Ruleを使う | Portal用ACA `allow-entra-egress` |
+| `allow-aca-arm` | A・HTTPS443 | Portal用・Broker用のACA → `management.azure.com` | [`FLOW-ACA-ARM`](network-communication-requirements.md#flow-aca-arm)。購読管理とCredential Manager等の管理API | 両環境の`allow-arm-https-egress` |
 | `allow-mgmt-vm-python-build` | A・HTTPS443 | 管理VM → `PYTHON-BUILD`宛先群 | [`FLOW-MGMT-PYTHON-BUILD`](network-communication-requirements.md#flow-mgmt-python-build)。BrokerのPython依存・build | 管理VM `allow-internet-egress`。Node／Docker側の配布先と用途を分離 |
 
 Brokerは初期構築の常設構成要素とし、`credentialProfiles`が空であることを理由にこのRCGを不作成にはしない。Gatewayの内部 `deployApplication` はDB初期化→アプリ配備という工程の段階を表すもので、公開のBroker／FW作成スイッチではない。[Gateway配備入口](../../apps/apim/deploy/main.bicep)
@@ -126,10 +126,10 @@ Brokerは初期構築の常設構成要素とし、`credentialProfiles`が空で
 | --- | --- | --- | --- | --- |
 | `allow-mgmt-vm-certificate-validation` | A・HTTP80、HTTPS443 | `CERT-VALIDATION`（7宛先） | [`FLOW-MGMT-CERTIFICATE-VALIDATION`](network-communication-requirements.md#flow-mgmt-certificate-validation)。保守処理の証明書／PKI確認 | `allow-internet-egress`。既存の互換到達性を維持し、全7宛先の必須利用とは区別 |
 | `allow-mgmt-vm-linux-packages` | A・HTTP80、HTTPS443 | `LINUX-PACKAGES` | [`FLOW-MGMT-LINUX-PACKAGES`](network-communication-requirements.md#flow-mgmt-linux-packages)。Ubuntu、PowerShell、Azure CLI等の準備 | `allow-internet-egress`。初期構築から保守clientを再現する配布依存 |
-| `allow-mgmt-vm-aca-dev-https` | A・HTTPS443 | 構築リージョンの `<region>.azurecontainerapps.dev` | [`FLOW-MGMT-ACA-DEV`](network-communication-requirements.md#flow-mgmt-aca-dev)。ACA App／Jobのログ、exec等のDev gateway接続 | `allow-internet-egress`。単一リージョンの共用gatewayへ接続し、対象App／Jobの操作は保守担当者本人への一時RBACで制御 |
+| `allow-mgmt-vm-aca-dev-https` | A・HTTPS443 | 構築リージョンの `<region>.azurecontainerapps.dev` | [`FLOW-MGMT-ACA-DEV`](network-communication-requirements.md#flow-mgmt-aca-dev)。ACA App／Jobのログ、exec等のDev gateway接続 | `allow-internet-egress`。単一リージョンの共用gatewayへ接続し、対象App／Job操作は本人のAzure RBACで制限 |
 | `allow-mgmt-vm-approved-services` | A・HTTPS443 | `MGMT-SERVICES` | [`FLOW-MGMT-APPROVED-SERVICES`](network-communication-requirements.md#flow-mgmt-approved-services)。ACME発行、配布、ARM、構築した公開Hostの保守確認 | `allow-internet-egress`、該当するARMタグ許可。自由な宛先追加入力を廃止し、共通配布先と構築Hostから生成 |
 
-送信元は全件管理VMサブネット。ACA Dev gatewayはリージョン共用であり、当Firewall規則だけで接続対象のApp／Jobを限定しない。ログ閲覧、exec、環境token、Jobログ等のMI／RBACとclient/APIの条件は[通信要件](network-communication-requirements.md)で別に管理する。
+送信元は全件管理VMサブネット。ACA Dev gatewayはリージョン共用であり、当Firewall規則だけで接続対象のApp／Jobを限定しない。ログ閲覧、exec、環境token、Jobログ等の本人認証とAzure RBACの条件は[通信要件](network-communication-requirements.md)で別に管理する。
 
 ## FQDN宛先群の定義
 
@@ -166,9 +166,11 @@ ACME directoryは業務の証明書発行設定と共有する。productionで�
 
 公開入力の `network.firewall.apimAllowedFqdns`、`network.firewall.managementAllowedFqdns`、`network.firewall.dnsServers`等の旧自由入力は廃止し、空でも検査で拒否する。初期の標準DNS、APIM NTP、管理VMのホスト時刻同期、Broker常設、gRPC撤去に関する作成有無の入力を再導入しない。
 
-Firewallとポリシーは全環境でPremiumを使う。IDPSはDeny（Alert and Deny）で開始し、テスト環境で通常通信と誤検知を確認する。中間CAと専用IDの準備は [セットアップ](../setup/05-config.md#firewallのtls検査を準備する) を参照する。
+Firewallとポリシーは全環境でPremiumを使う。IDPSはDeny（Alert and Deny）で開始し、テスト環境で通常通信と誤検知を確認する。中間CAと専用IDの準備は [セットアップ](config-options.md#firewallのtls検査を準備する) を参照する。
 
-Premiumでは、構築CLIがRFC1918と構築VNetのCIDRからAppGWサブネットだけを差し引く。Firewallを経由するAppGWから内部APIMなどへの通信を受信方向のシグネチャの対象にする。ネットワーク規則のSNAT用範囲、IDPSモード、許可経路は従来の設定を維持する。 [AppGWをFirewallの前段に置く構成のIDPS設計](https://learn.microsoft.com/en-us/azure/architecture/example-scenario/gateway/firewall-application-gateway#application-gateway-in-front-of-azure-firewall)
+構築CLIは、RFC1918と構築VNetのCIDRからAppGWサブネットだけを差し引き、IDPSの内部分類を生成する。このポリシーではAppGWから内部APIM／Portalへの通信が受信方向となり、受信方向専用のシグネチャが適用対象になる。ネットワーク規則のSNAT除外は`IANAPrivateRanges`と構築VNetの範囲を維持する。 [AppGWをFirewallの前段に置く構成のIDPS設計](https://learn.microsoft.com/en-us/azure/architecture/example-scenario/gateway/firewall-application-gateway#application-gateway-in-front-of-azure-firewall)
+
+TLS検査によるURLの記録は、取り込み前の変換を通るLog Analyticsへ送る。アプリケーション規則とThreatIntelの対象URLを保存前に除去する。ネットワーク規則とIDPS署名の送信先は従来どおりとする。[ログの確認手順](../testing/log-privacy.md)
 
 ## 判断記録
 
@@ -189,7 +191,8 @@ Premiumでは、構築CLIがRFC1918と構築VNetのCIDRからAppGWサブネッ�
 
 | 通信ID | 通信 | Firewall規則を作成しない理由 |
 | --- | --- | --- |
-| [`FLOW-APIM-ACA`](network-communication-requirements.md#flow-apim-aca) | APIM → ACA Broker、HTTPS443 | 同一VNetの直接経路。APIM送信／ACA受信NSGで許可 |
+| [`FLOW-APIM-ACA`](network-communication-requirements.md#flow-apim-aca) | APIM → Portal用ACAの購読プロファイル照会、HTTPS443 | VNetの直接経路。APIM送信／Portal用ACA受信NSGで許可 |
+| [`FLOW-APIM-BROKER`](network-communication-requirements.md#flow-apim-broker) | APIM → Broker専用ACA、HTTPS443 | 専用VIPへVNetで直接接続。APIM送信／Broker受信NSGで許可 |
 | [`FLOW-ACA-SQL`](network-communication-requirements.md#flow-aca-sql) | ACA App／Job → SQL PE、TCP1433 | PEの直接到達。ACA送信／PE受信NSGとSQL認可で制御 |
 | [`FLOW-ACA-KV`](network-communication-requirements.md#flow-aca-kv) | ACA → Key Vault PE、HTTPS443 | PEの直接到達。ACA送信／PE受信NSGとVault認可で制御 |
 | [`FLOW-ACA-ACR`](network-communication-requirements.md#flow-aca-acr) | ACA → 構築ACR PE、HTTPS443 | PEの直接到達。MCR外部取得とは異なる経路 |
@@ -211,6 +214,7 @@ Premiumでは、構築CLIがRFC1918と構築VNetのCIDRからAppGWサブネッ�
 | 検証対象 | 判定条件 | 検証資材 |
 | --- | --- | --- |
 | 固定集合・NSGとの対応 | Bicep生成後の名称、規則種別、action、source、destination、protocol／port、priorityを定義と照合 | [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py)、[test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py) |
+| IDPSの方向判定 | 正式CLIで生成した範囲からAppGWの全アドレスだけが除外され、Bicepがその範囲を必須とし、SNAT除外が維持されることを照合 | [test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py)、[test_fixed_parameter_materials.py](../../tests/test_fixed_parameter_materials.py) |
 | 時刻とDNS | APIMのFW UDP123宛先`*`・NSG328・Internet制限、管理VM用UDP123規則の不存在、VNet／FW上流DNS固定を照合。管理VMのPHC選択・同期はguestで別判定 | [test_firewall_diagnostics.py](../../tests/test_firewall_diagnostics.py)、[test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py)、[test_management_linux.py](../../tests/test_management_linux.py) |
 | ACA Azure依存とDev接続 | Monitor／Entra、Entra login／ARMの分離、ipify除外、単一リージョンDev FQDNを照合 | [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py) |
 | 外部業務宛先の更新 | approved-servicesの生成・name移行・他collection保持・反復時同一結果・競合拒否・読戻し条件を照合 | [test_publish_apis.py](../../tests/test_publish_apis.py) |

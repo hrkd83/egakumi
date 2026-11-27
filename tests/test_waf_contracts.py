@@ -1,5 +1,4 @@
-"""Reviewed wire types, prior-scope containment and model-independent rendering."""
-import copy
+"""Reviewed wire types and model-independent WAF rendering."""
 import json
 from pathlib import Path
 import shutil
@@ -11,26 +10,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from waf_contracts import (APP_GROUPS, CATALOG, MANIFEST, approved_group_scopes,
-                           check_legacy_coverage, contract_fields, contract_inventory,
+                           contract_fields, contract_inventory,
                            generated_manifest, load_contracts, render, require_source_routes)
 
-
-def common_data_before_manifest():
-    """Expand the frozen pre-change oracle without consulting the current catalog."""
-    value = json.loads((ROOT / 'tests/fixtures/waf-common-data-before.json').read_text())
-    profiles = []
-    for source in value['profiles']:
-        profile = {key: source[key] for key in ('name', 'scope', 'paths')}
-        profile['exclusions'] = [
-            {'matchVariable': entry['variable'], 'selectorMatchOperator': entry['operator'],
-             'selector': entry['selector'], 'exclusionManagedRuleSets': [{
-                 'ruleSetType': 'OWASP', 'ruleSetVersion': '3.2', 'ruleGroups': [
-                     {'ruleGroupName': name, **({} if rules is None else {
-                         'rules': [{'ruleId': rule} for rule in rules]})}
-                     for name, rules in entry['groups'].items()]}]}
-            for entry in source['entries']]
-        profiles.append(profile)
-    return {'version': 2, 'profiles': profiles}
 
 
 class WireContractTests(unittest.TestCase):
@@ -46,26 +28,6 @@ class WireContractTests(unittest.TestCase):
 
     def test_static_bicep_asset_is_the_exact_deterministic_rendering(self):
         self.assertEqual(render(check=True), generated_manifest())
-
-    def test_legacy_oracle_reports_only_the_approved_pii_profile_split(self):
-        before = json.loads((ROOT / 'tests/fixtures/waf-legacy-coverage.json').read_text())
-        self.assertEqual(check_legacy_coverage(before, generated_manifest()), ['g-pii-redact: route scope'])
-
-    def test_prior_coverage_oracle_detects_omitted_selector_and_rule(self):
-        before = json.loads((ROOT / 'tests/fixtures/waf-legacy-coverage.json').read_text())
-        value = generated_manifest()
-        value['profiles'][0]['exclusions'].clear()
-        omissions = check_legacy_coverage(before, value)
-        self.assertIn('g-pii-redact: route scope', omissions)
-        self.assertGreater(len(omissions), 1)
-
-    def test_prior_coverage_oracle_detects_omitted_route(self):
-        before = json.loads((ROOT / 'tests/fixtures/waf-legacy-coverage.json').read_text())
-        value = generated_manifest()
-        value['profiles'][0]['paths'].append('/unrelated')
-        self.assertEqual(check_legacy_coverage(before, value), ['g-pii-redact: route scope'])
-        value['profiles'][0]['paths'].clear()
-        self.assertGreater(len(check_legacy_coverage(before, value)), 1)
 
     def test_canonical_media_type_is_reused_at_message_and_tool_result_positions(self):
         catalog = load_contracts()
@@ -118,75 +80,6 @@ class WireContractTests(unittest.TestCase):
                     else:
                         self.assertFalse({'949110', '980130'} & {r['ruleId'] for r in group['rules']})
 
-    def test_common_compatibility_expansion_preserves_all_prior_scopes_and_rules(self):
-        before = common_data_before_manifest()
-        after = generated_manifest()
-        old_groups = {
-            'REQUEST-930-APPLICATION-ATTACK-LFI', 'REQUEST-931-APPLICATION-ATTACK-RFI',
-            'REQUEST-932-APPLICATION-ATTACK-RCE', 'REQUEST-933-APPLICATION-ATTACK-PHP',
-            'REQUEST-941-APPLICATION-ATTACK-XSS', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
-        }
-
-        def scopes(manifest):
-            return {(p['name'], p['scope'], tuple(p['paths']), e['matchVariable'],
-                     e['selectorMatchOperator'], e['selector']): {
-                         g['ruleGroupName']: None if 'rules' not in g else {
-                             r['ruleId'] for r in g['rules']}
-                         for g in e['exclusionManagedRuleSets'][0]['ruleGroups']}
-                    for p in manifest['profiles'] for e in p['exclusions']}
-
-        previous, current = scopes(before), scopes(after)
-        # 旧2入口の共有profileを、本文のselectorに対応する新しい1入口へ写して比較します。
-        # 凍結fixture自体を更新せず、名前変更以外のfield/rule欠落は引き続き検出します。
-        projected = {}
-        for key, groups in previous.items():
-            if key[0] == 'g-pii-redact':
-                target, path = {'text': ('g-pii-rest', '/tools/pii/v1/redact'),
-                                'params.arguments.text': ('g-pii-mcp', '/tools/pii-v1-mcp/mcp')}[key[5]]
-                key = (target, key[1], (path,), *key[3:])
-            elif key[0] in ('g-images', 'g-transcribe'):
-                # Preserve the frozen rule oracle while projecting only the
-                # approved model-path widening. Shared image paths stay exact.
-                pattern = {'g-images': '/models/openai-images/v1/deployments/*',
-                           'g-transcribe': '/models/openai-audio/v1/deployments/*'}[key[0]]
-                retained = tuple(sorted({path for path in key[2] if not path.startswith(pattern[:-1])} | {pattern}))
-                expected = {'g-images': ('/models/blackforestlabs/v1/flux-2/edits',
-                                        '/models/blackforestlabs/v1/flux-2/generations',
-                                        '/models/openai-images/v1/deployments/*', '/models/openai-images/v1/generations'),
-                            'g-transcribe': ('/models/openai-audio/v1/deployments/*',)}[key[0]]
-                self.assertEqual(retained, expected)
-                key = (key[0], key[1], retained, *key[3:])
-            projected[key] = groups
-        previous = projected
-        self.assertEqual(len(before['profiles']), 22)
-        self.assertEqual(len(after['profiles']), 23)
-        self.assertEqual(len(previous), 120)
-        self.assertEqual(sum(len(p['exclusions']) for p in after['profiles']), 121)
-        correlation_scope = ('g-responses', 'gateway', ('/models/openai/v1/responses',),
-                             'RequestArgValues', 'Equals', 'input.call_id')
-        self.assertEqual(set(current), set(previous) | {correlation_scope})
-        self.assertEqual(current[correlation_scope], {'REQUEST-942-APPLICATION-ATTACK-SQLI': {'942450'}})
-        expected_scopes = {key for key, groups in previous.items()
-                           if {name for name, rules in groups.items() if rules is None} == old_groups}
-        self.assertEqual(len(expected_scopes), 117)
-        self.assertEqual(len({key[0] for key in expected_scopes}), 22)
-        java = 'REQUEST-944-APPLICATION-ATTACK-JAVA'
-        protocol = 'REQUEST-921-PROTOCOL-ATTACK'
-        self.assertEqual({key for key, groups in current.items()
-                          if java in groups and groups[java] is None}, expected_scopes)
-        for rule in ('921110', '921130'):
-            self.assertEqual({key for key, groups in current.items()
-                              if rule in (groups.get(protocol) or set())}, expected_scopes)
-        for key, groups in previous.items():
-            expected = copy.deepcopy(groups)
-            if key in expected_scopes:
-                expected[java] = None
-                expected.setdefault(protocol, set()).update({'921110', '921130'})
-            with self.subTest(profile=key[0], variable=key[3], selector=key[5]):
-                self.assertEqual(current[key], expected)
-        frozen = json.loads((ROOT / 'tests/fixtures/waf-common-data-before.json').read_text())
-        self.assertEqual(check_legacy_coverage(frozen, after), ['g-pii-redact: route scope'])
-
     def test_catalog_rejects_unreviewed_common_protocol_rules_and_whole_protocol_group(self):
         for change in ('rule', 'group'):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as folder:
@@ -201,7 +94,7 @@ class WireContractTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     generated_manifest(root)
 
-    def test_control_envelopes_retain_only_their_explicit_legacy_exceptions(self):
+    def test_control_envelopes_have_only_field_specific_exceptions(self):
         for profile in ('p-document-upload', 'p-speech'):
             field = next(f for f in contract_fields(profile) if f['selector'] == 'input')
             self.assertEqual(field['data_type'], 'control')

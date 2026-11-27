@@ -171,8 +171,10 @@ class SpeechSsmlGuardPublicationTests(unittest.TestCase):
             if item.get('copy', {}).get('name') == 'operationPolicies')
 
     def evaluate(self, entry):
+        parameters = {name: definition['defaultValue'] for name, definition in self.template['parameters'].items()
+                      if 'defaultValue' in definition}
         return PolicyExpression(self.policy['properties']['value'], self.template['variables'],
-            cache={'operationEntries': [entry]}, functions=self.template['functions']).evaluate({})
+            cache={'operationEntries': [entry]}, functions=self.template['functions']).evaluate(parameters)
 
     def entry(self):
         return {'apiName': SPEECH['name'], 'operation': next(operation for operation in SPEECH['operations'] if operation['name'] == 'tts'),

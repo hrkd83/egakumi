@@ -22,6 +22,7 @@ EXPECTED = {
     "apiCenterName": "apic-test-egakumi",
     "gatewayOrigin": "https://gateway.example.com",
     "credentialManagerRedirectUri": "https://authorization-manager.consent.azure-apim.net/redirect/apim/apim-test-egakumi-k7m2q9",
+    "credentialIdentityRedirectUri": "https://gateway.example.com/auth/connections/browser/identity-callback",
     "apiCenterPortalRedirectUri": "https://apic-test-egakumi.portal.eastus.azure-apicenter.ms",
 }
 

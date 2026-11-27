@@ -141,6 +141,7 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         svc = groups['svc'] + '/providers/Microsoft.App/'
         application = 'ca-' + stem + '-portal'
         environment = 'cae-' + stem
+        environment_id = svc + 'managedEnvironments/' + environment
         sql_server = groups['svc'] + '/providers/Microsoft.Sql/servers/sql-' + stem
         self.transport.add(sql_server, 'Microsoft.Sql/servers', {})
         for alias in ('credentials', 'portal'):
@@ -150,7 +151,8 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         broker_jobs = ['caj-' + stem + '-schema', 'caj-' + stem + '-recon']
         for kind, names in (('containerApps', [application, broker_application]),
                             ('jobs', [*maintenance.resource_names(config).values(), *broker_jobs])):
-            for name in names: self.transport.add(svc + kind + '/' + name, 'Microsoft.App/' + kind, {})
+            for name in names:
+                self.transport.add(svc + kind + '/' + name, 'Microsoft.App/' + kind, {'environmentId': environment_id})
         workspace_id = groups['monitor'] + '/providers/Microsoft.OperationalInsights/workspaces/law-' + stem
         self.transport.add(workspace_id, 'Microsoft.OperationalInsights/workspaces',
                            {'customerId': '11111111-1111-4111-8111-111111111142'})
@@ -183,6 +185,43 @@ class MaintenanceUpgradeTests(unittest.TestCase):
                           self.context.workspace.root.parent / 'other' / 'state.json'):
             with self.assertRaises(OperationError): self.context.save_private(candidate, {'synthetic': True})
 
+    def test_subscription_services_are_included_only_when_both_belong_to_the_constructed_environment(self):
+        groups, stem, _ = maintenance.nsg._scope(self.context.config)
+        svc = groups['svc'] + '/providers/Microsoft.App/'
+        environment = svc + 'managedEnvironments/cae-' + stem
+        expected = ['ca-' + stem + suffix for suffix in ('-sub-admin', '-sub-profile')]
+        admin, profile = [svc + 'containerApps/' + name for name in expected]
+        self.transport.add(admin, 'Microsoft.App/containerApps', {'environmentId': environment})
+        with self.assertRaisesRegex(OperationError, 'services are incomplete'):
+            self.operation.preflight()
+        self.transport.add(profile, 'Microsoft.App/containerApps', {'environmentId': environment + '-other'})
+        with self.assertRaisesRegex(OperationError, 'constructed ACA environment'):
+            self.operation.preflight()
+        self.transport.resources[profile]['properties']['environmentId'] = environment
+        plan = self.operation.preflight()
+        self.assertTrue(set(expected) <= set(plan['applicationNames']))
+        self.assertTrue({admin, profile} <= set(self.operation.client_inventory(plan)['applications']))
+        self.assertFalse(self.transport.mutations())
+
+    def test_split_environment_inventory_verifies_components_in_their_own_aca(self):
+        groups, stem, _ = maintenance.nsg._scope(self.context.config)
+        svc = groups['svc'] + '/providers/Microsoft.App/'
+        portal = svc + 'managedEnvironments/cae-' + stem
+        broker = portal + '-broker'
+        self.context.state['outputs']['brokerPlatform'] = {'environmentName': broker.rsplit('/', 1)[-1], 'environmentId': broker}
+        for name in maintenance.subscription_app_names(self.context.config).values():
+            self.transport.add(svc + 'containerApps/' + name, 'Microsoft.App/containerApps', {'environmentId': portal})
+        for kind, names in (('containerApps', ['ca-' + stem + '-credentials']),
+                            ('jobs', ['caj-' + stem + '-schema', 'caj-' + stem + '-recon'])):
+            for name in names:
+                self.transport.resources[svc + kind + '/' + name]['properties']['environmentId'] = broker
+        plan = self.operation.preflight()
+        self.assertEqual(self.operation.client_inventory(plan)['environments'], [portal, broker])
+        self.transport.resources[svc + 'jobs/caj-' + stem + '-recon']['properties']['environmentId'] = portal
+        with self.assertRaisesRegex(OperationError, 'outside its constructed ACA'):
+            self.operation.preflight()
+        self.assertFalse(self.transport.mutations())
+
     def test_unavailable_constructed_database_stops_upgrade_without_writes(self):
         target = self.context.state['outputs']['portal']['sharedSqlServerId'] + '/databases/sqldb-' + self.context.config['resourceStem'] + '-credentials'
         for state in ('Paused', None):
@@ -201,6 +240,7 @@ class MaintenanceUpgradeTests(unittest.TestCase):
                   if '/deployments/' in call['path'] else 'nsg' for call in writes]
         self.assertEqual(stages, ['endpoints', 'nsg', 'nsg', 'nsg', 'nsg', 'dns', 'link', 'roles', 'client'])
         self.assertTrue(all('/deployments/' in call['path'] or '/securityRules/' in call['path'] for call in writes))
+        self.assertFalse(any('/roleAssignments' in call['path'] for call in self.transport.calls))
         for identity, value in original.items():
             if any(marker in identity for marker in ('/storageAccounts/', '/virtualMachines/', '/Microsoft.ApiManagement/service/')):
                 self.assertEqual(self.transport.resources[identity], value)
@@ -208,6 +248,22 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         self.assertEqual(set(saved['outputs']['managementMaintenance']['roleDefinitionIds']),
                          {'appLogs', 'appExec', 'environmentLogs', 'jobLogs'})
         self.assertEqual(saved['outputs']['managementClientInventory']['managementPrincipalId'], PRINCIPAL)
+
+    def test_apply_keeps_exact_previous_platform_rules_and_creates_missing_foundry_rules(self):
+        self.transport.deploy_fixed()
+        previous = self.transport.use_previous_platform_audit_rule_names()
+        self.transport.resources.update({endpoint['id']: endpoint for endpoint in self.transport.endpoints.values()})
+        for group in ('management', 'pep'):
+            parent = self.transport.resources[self.transport.nsg_id(group)]
+            parent['properties']['securityRules'] = [child for child in parent['properties']['securityRules']
+                                                     if 'audit-storage-foundry' not in child['name']]
+        expected = {child['id']: copy.deepcopy(child) for child in previous}
+        self.assertEqual(self.operation.apply(), {'status': 'assets-applied', 'runtimeVerified': False})
+        nsg_requests = [call for call in self.transport.mutations() if '/securityRules/' in call['path']]
+        self.assertEqual(len(nsg_requests), 2)
+        self.assertTrue(all('audit-storage-foundry' in call['path'] and call['method'] == 'PUT' for call in nsg_requests))
+        for child in previous:
+            self.assertEqual(child, expected[child['id']])
 
     def test_apply_keeps_exact_previous_platform_rules_and_creates_missing_foundry_rules(self):
         self.transport.deploy_fixed()

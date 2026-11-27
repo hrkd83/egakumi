@@ -40,6 +40,10 @@ class SyntheticArm:
                        for k in ('id', 'svc', 'maint')}
         self.vm = self.groups['maint'] + '/providers/Microsoft.Compute/virtualMachines/vm-' + config['resourceStem'] + '-mgmt'
         self.vault = self.groups['svc'] + '/providers/Microsoft.KeyVault/vaults/kv-' + config['resourceStem']
+        self.portal_certificate = self.vault + '/certificates/' + config['portal']['certificate']['certificateName']
+        self.issue_role = (self.groups['svc'] + '/providers/Microsoft.Authorization/roleDefinitions/'
+                           '22222222-2222-4222-8222-222222222222')
+        self.issue_scope = self.portal_certificate
         self.principal = '33333333-3333-4333-8333-333333333333'
         self.calls = []
         self.stages = {}
@@ -56,6 +60,9 @@ class SyntheticArm:
             'identity': {'principalId': self.principal}, 'properties': {'provisioningState': 'Succeeded'}}
         self.objects[self.vault] = {'id': self.vault, 'type': 'Microsoft.KeyVault/vaults',
             'properties': {'provisioningState': 'Succeeded', 'enableRbacAuthorization': True}}
+        self.objects[self.issue_role] = {'id': self.issue_role, 'type': 'Microsoft.Authorization/roleDefinitions',
+            'properties': {'type': 'CustomRole', 'assignableScopes': [self.groups['svc']],
+                'permissions': [{'dataActions': sorted(initial.CERTIFICATE_ISSUE_ACTIONS)}]}}
         portal = self.groups['svc'] + '/providers/Microsoft.App/containerApps/ca-' + config['resourceStem'] + '-portal'
         self.objects[portal] = {'id': portal, 'type': 'Microsoft.App/containerApps', 'properties': {
             'provisioningState': 'Succeeded', 'managedEnvironmentId': self.groups['svc'] + '/providers/Microsoft.App/managedEnvironments/cae-' + config['resourceStem']}}
@@ -84,9 +91,9 @@ class SyntheticArm:
             if self.stages[path]['name'] == self.failure:
                 observed['properties']['provisioningState'] = 'Failed'
             return {'statusCode': 200, 'body': observed}
-        if method == 'GET' and path == self.vault + '/providers/Microsoft.Authorization/roleAssignments':
+        if method == 'GET' and path == self.portal_certificate + '/providers/Microsoft.Authorization/roleAssignments':
             return {'statusCode': 200, 'body': {'value': [{'properties': {'principalId': self.principal,
-                'roleDefinitionId': '/providers/Microsoft.Authorization/roleDefinitions/' + initial.CERTIFICATES_OFFICER}}]}}
+                'roleDefinitionId': initial._canonical_role_id(self.issue_role), 'scope': self.issue_scope}}]}}
         if method == 'GET' and path in self.objects:
             observed = copy.deepcopy(self.objects[path])
             if self.canonical_roles and observed.get('type') == 'Microsoft.Authorization/roleDefinitions':
@@ -132,6 +139,16 @@ class InitializationTests(unittest.TestCase):
 
     def run_initial(self, execute=False):
         return initial.initialize(self.ctx, execute=execute, compiler=self.compiler)
+
+    def test_broad_or_unscoped_certificate_role_is_rejected_before_deployment(self):
+        for scope, extra in ((self.arm.vault, []), (self.arm.portal_certificate, ['Microsoft.KeyVault/vaults/certificates/delete'])):
+            with self.subTest(scope=scope, permissions=extra):
+                self.arm.issue_scope = scope
+                definition = self.arm.objects[self.arm.issue_role]['properties']['permissions'][0]
+                definition['dataActions'] = sorted(initial.CERTIFICATE_ISSUE_ACTIONS) + extra
+                with self.assertRaisesRegex(OperationError, 'exact management Portal certificate issue assignment'):
+                    self.run_initial(True)
+                self.assertTrue(all(method == 'GET' for method, _, _ in self.arm.calls))
 
     def receipt(self):
         return json.loads((self.workspace.state / 'portal-auth-initialization.json').read_text(encoding='utf-8'))

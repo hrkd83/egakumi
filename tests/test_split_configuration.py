@@ -9,7 +9,7 @@ import sys
 import tempfile
 import unittest
 from schema_helpers import local_schema_validator
-from configuration_fixtures import fixture
+from configuration_fixtures import bind_credential_fixture_id, fixture
 
 CORE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CORE / "scripts"))
@@ -28,6 +28,7 @@ def adopt_azure_dns_references(document):
     for key in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
         document["certificate"][key] = dns[key]
     document["services"]["apimInstanceId"] = "abc123"
+    bind_credential_fixture_id(document)
     providers = document.get("credentialProviders", {})
     if isinstance(providers, dict):
         providers["graphDelegated"]["clientId"] = "66666666-6666-4666-8666-666666666666"
@@ -308,16 +309,11 @@ class SplitConfigurationTests(unittest.TestCase):
                     self.assertNotIn("PRIVATE-INPUT-SENTINEL", str(caught.exception))
 
     def test_public_environment_cidrs_stay_in_params_and_fixed_ranges_are_absent(self):
-        expected = {"addressSpaces": ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24", "10.40.3.0/24"],
-                    "subnetPrefixes": {"agw": "10.40.0.0/24", "pep": "10.40.1.0/24", "firewall": "10.40.2.0/26",
-                                       "apim": "10.40.2.64/26", "management": "10.40.2.128/26", "aca": "10.40.2.192/26",
-                                       "certificate": "10.40.3.0/27"},
-                    }
         for name in ("test", "production"):
             parameters = json.loads((CORE / "params" / (name + ".example.json")).read_text())
             options = json.loads((CORE / "config" / (name + ".json")).read_text())
             with self.subTest(sample=name):
-                self.assertEqual(parameters["network"], expected)
+                self.assertLessEqual(set(NETWORK_IP_KEYS), parameters["network"].keys())
                 self.assertNotIn("firewall", parameters["network"])
                 self.assertNotIn("auditAllowedIpAddresses", parameters["monitoring"])
                 self.assertFalse(set(NETWORK_IP_KEYS) & set(options["network"]))

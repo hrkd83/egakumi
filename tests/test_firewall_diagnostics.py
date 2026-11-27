@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 import unittest
 
+from configuration_fixtures import fixture
 from deployment.helpers import diagnostics
 from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration
-from configuration_fixtures import fixture
 from test_parameter_ip_ownership import NetworkArmExpression
 
 
@@ -78,6 +78,8 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         dependencies = json.dumps(module["dependsOn"])
         self.assertIn("-network", dependencies)
         self.assertIn("-monitoring", dependencies)
+        bindings, = [item for item in resources if "-portal-network-bindings" in item.get("name", "")]
+        self.assertIn("-firewall-diagnostics", json.dumps(bindings["dependsOn"]))
 
     def test_apim_azure_monitor_event_hubs_dependency_is_allowed_through_nsg_and_firewall(self):
         """Monitor 本体と別の Event Hubs 転送先も、APIM 発の必要 TCP だけを許可する。"""
@@ -153,12 +155,12 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         resources = template["resources"]
         configuration = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "config"))
         prefix = configuration["resourceStem"]
-        expected = {f"nsg-{prefix}-{suffix}" for suffix in ("agw", "apim", "pep", "vm", "aca", "certificate")}
+        expected = {f"nsg-{prefix}-{suffix}" for suffix in ("agw", "apim", "pep", "vm", "aca", "broker", "certificate")}
 
         for existing in (set(), expected, {f"nsg-{prefix}-agw", f"nsg-{prefix}-vm"}):
             with self.subTest(existing=sorted(existing)):
                 parameters = {"resourcePrefix": prefix, "config": configuration["network"],
-                              "existingNetworkSecurityGroupNames": sorted(existing)}
+                              "existingNetworkSecurityGroupNames": sorted(existing), "auditEvidenceEnabled": False}
                 resolver = NetworkArmExpression("[createObject()]", template)
 
                 def expand(resource, property_name="name"):

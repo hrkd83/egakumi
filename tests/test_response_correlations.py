@@ -55,7 +55,7 @@ class ResponseCorrelationTests(unittest.TestCase):
 
     def test_all_xml_early_responses_include_gateway_owned_correlation_header(self):
         count = 0
-        for filename in sorted([*POLICIES.glob("*.xml"), *(POLICIES / "api-templates").glob("*.xml"), SERVICE_POLICY]):
+        for filename in [SERVICE_POLICY, *sorted((POLICIES / "api-templates").rglob("*.xml"))]:
             for response in ET.parse(filename).getroot().iter("return-response"):
                 with self.subTest(filename=filename.name, index=count):
                     self.assert_early_response(response)
@@ -67,7 +67,7 @@ class ResponseCorrelationTests(unittest.TestCase):
         self.assert_header(service.find("outbound"))
         self.assert_header(service.find("on-error"))
         self.assertFalse(service.findall(".//base"))
-        for filename in ("gateway.xml", "protocol.xml", "mcp.xml", "pii.xml"):
+        for filename in ("rest.xml", "stream.xml", "generated.xml", "pii.xml"):
             policy = ET.parse(policy_fixture_path(POLICIES, filename))
             for section in ("outbound", "on-error"):
                 with self.subTest(filename=filename, section=section):

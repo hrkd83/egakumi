@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { PortalShell } from "@/components/portal-shell";
+import { SubscriptionManagementConnection } from "@/components/subscription-management-connection";
+import { subscriptionManagementConfigured } from "@/lib/api-auth/settings";
 import { ApiKeyManagement } from "@/components/api-keys/api-key-management";
 import { requirePortalSession } from "@/lib/auth-session";
 import { hasLocale } from "@/lib/i18n/config";
@@ -20,7 +22,8 @@ async function ApiKeysContent({ params }: { params: Promise<{ lang: string }> })
   const account = await requirePortalSession(lang, `/${lang}/api-keys`);
   const dictionary = await getDictionary(lang);
   const isPlatformAdministrator = await canAdministerApiKeys();
+  const dashboard = <ApiKeyManagement locale={lang} dictionary={dictionary} isPlatformAdministrator={isPlatformAdministrator} />;
   return <PortalShell locale={lang} dictionary={dictionary} section="api-keys" account={account} canAdministerApiKeys={isPlatformAdministrator}>
-    <ApiKeyManagement locale={lang} dictionary={dictionary} isPlatformAdministrator={isPlatformAdministrator} />
+    {subscriptionManagementConfigured() ? <SubscriptionManagementConnection locale={lang}>{dashboard}</SubscriptionManagementConnection> : dashboard}
   </PortalShell>;
 }

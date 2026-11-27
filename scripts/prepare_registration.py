@@ -131,7 +131,10 @@ def prepare_registration(config: dict) -> dict:
         compiled = json.loads(result.stdout)
         parameters = json.loads(compiled["parametersJson"])
         names = parameters["parameters"]["registration"]["value"]
-        if not isinstance(names, dict) or set(names) != {"resourceStem", "apimName", "apiCenterName", "gatewayOrigin", "credentialManagerRedirectUri", "apiCenterPortalRedirectUri"}:
+        if not isinstance(names, dict) or set(names) != {
+            "resourceStem", "apimName", "apiCenterName", "gatewayOrigin", "credentialManagerRedirectUri",
+            "credentialIdentityRedirectUri", "apiCenterPortalRedirectUri",
+        }:
             raise ValueError()
     except (ValueError, KeyError, TypeError):
         raise ValueError("The local Bicep CLI returned an unexpected registration format") from None

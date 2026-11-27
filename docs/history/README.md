@@ -13,6 +13,6 @@
 | [API定義の整理前記録](pre-20261101-api-design-proposal.md) | 整理前の文書全体。初期配備の確認記録と変更時の説明を含む | [Core API・Operation定義](../reference/api-design-proposal.md) |
 | [Portalの整理前検証記録](pre-20261101-portal-validation.md) | 整理前READMEの「検証」節。2026-10-30のnpm audit等の記述 | [Portal README](../../apps/portal/README.md) |
 | [整理前の費用試算](pre-20261101-cost-estimate.md) | READMEの費用節。2026-10-22単価による一部基盤の概算 | [現行構成の費用確認](../../README.md#費用を確認する) |
-| [Portalの旧リソースグループ移行資料](pre-20261101-portal-resource-group-migration.md) | 旧配置・CI・確認APIを前提とする整理前の手順全体 | [現行Portal配備](../setup/portal.md) |
+| [Portalの旧リソースグループ移行資料](pre-20261101-portal-resource-group-migration.md) | 旧配置・CI・確認APIを前提とする整理前の手順全体 | [現行Portal配備](../setup/12-deploy-portal.md) |
 
 各スナップショットは整理開始前に保存した本文から作成しました。相対リンクは配置先へ合わせており、参照先のソースコード・外部資料そのものを当時の版として固定するものではありません。旧実装を調べる場合は本文のrevisionとGit履歴を照合してください。

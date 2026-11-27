@@ -16,6 +16,22 @@
       "maxLength": 4096,
       "description": "パラメーターファイルを直接読む人向けの入力候補・説明です。Azureへは渡しません。"
     },
+    "auditEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "eventHubsSku": { "enum": ["Standard", "Premium"], "default": "Standard" },
+        "payloadImmutabilityMode": { "enum": ["Disabled", "Locked"], "default": "Disabled" },
+        "payloadRetentionDays": { "type": "integer", "minimum": 1, "maximum": 146000 }
+      },
+      "if": {
+        "required": ["payloadImmutabilityMode"],
+        "properties": { "payloadImmutabilityMode": { "const": "Locked" } }
+      },
+      "then": { "properties": { "payloadRetentionDays": { "default": 2557 } } },
+      "else": { "properties": { "payloadRetentionDays": { "maximum": 365, "default": 30 } } }
+    },
     "network": {
       "type": "object",
       "properties": {

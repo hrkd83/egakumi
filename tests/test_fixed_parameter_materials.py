@@ -147,15 +147,13 @@ class FixedParameterMaterialsTests(unittest.TestCase):
             "projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders"})
         grants = [item for item in resources(template)
                   if item["type"] == "Microsoft.Authorization/roleAssignments"]
-        self.assertFalse(any(item.get("copy") for item in grants))
-        parameters = {"names": {"keyVault": "synthetic-kv", "foundry": "synthetic-ai",
+        parameters = {"names": {"keyVault": "synthetic-kv", "publicTlsVault": "synthetic-kv-tls", "foundry": "synthetic-ai",
                                 "apim": "synthetic-apim", "apiCenter": "synthetic-catalog"},
                       "principalIds": {"apim": "11111111-1111-4111-8111-111111111111",
                                        "project": "22222222-2222-4222-8222-222222222222",
                                        "apiCenter": "33333333-3333-4333-8333-333333333333"},
                       "certificateIdentityPrincipalId": "44444444-4444-4444-8444-444444444444",
-                      "managementPrincipalId": "55555555-5555-4555-8555-555555555555",
-                      "grantManagementCertificateAccess": True, "grantApimSecretAccess": True,
+                      "publicCertificateName": "test-tls", "ownerTicketEnabled": False,
                       "speechEnabled": True, "grantApimFoundryModelsAccess": True,
                       "enableApiCenterIntegration": True}
         reader = expression(template)

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { apiKeyIdSchema } from "./api-keys/contracts.ts";
+import { notifySubscriptionManagementRequired } from "./api-auth/browser.ts";
+import { subscriptionManagementRequiredCode, subscriptionManagementRequiredHeader } from "./api-auth/purpose.ts";
 import { ModelResponseError } from "./model-response.ts";
 
 /** 実行時の選択肢に必要な台帳情報です。購読キーの実値は含めません。 */
@@ -21,7 +23,12 @@ export async function loadModelKeyChoices(apiId: string, signal: AbortSignal): P
     const response = await fetch(`/api/models/keys?${new URLSearchParams({ apiId })}`, {
       credentials: "same-origin", cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(45_000)]),
     });
-    if (response.status === 401) throw new ModelResponseError({ error: { code: "AuthenticationRequired" } });
+    if (response.status === 401) {
+      if (response.headers.get(subscriptionManagementRequiredHeader) === "required") {
+        notifySubscriptionManagementRequired(subscriptionManagementRequiredCode);
+      }
+      throw new ModelResponseError({ error: { code: "AuthenticationRequired" } });
+    }
     if (!response.ok) throw new ModelResponseError({ error: { code: "ApiKeyAccessUnavailable" } });
     return modelKeyChoicesSchema.parse(await response.json()).keys;
   } catch (error) {

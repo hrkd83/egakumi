@@ -152,6 +152,20 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         self.assertTrue(all("/roleDefinitions/" not in call["id"] for call in transport.calls))
         self.assertTrue(all("graph.microsoft" not in call["id"] for call in transport.calls))
 
+    def test_postdown_resolves_the_exact_separate_tls_vault_and_preserves_other_names(self):
+        owner = self.svc_rg + "/providers/Microsoft.KeyVault/vaults/kvtls-" + self.configuration["resourceStem"]
+        self.state["serviceResourceIds"]["certificateVault"] = owner
+        self.state["serviceLocations"]["certificateVault"] = self.configuration["location"]
+        current = cleanup._validate_state(self.configuration, self.state)
+        target = cleanup._tombstone(self.configuration, current, "certificateVault")
+        transport = FakeTransport({target: {"id": target, "properties": {"vaultId": owner}}})
+        self.post(transport)
+        self.assertIn(target + "/purge", [call["id"] for call in transport.mutations()])
+        self.state["serviceResourceIds"]["certificateVault"] = owner + "-other"
+        transport = FakeTransport()
+        self.assert_code("invalid-state", lambda: self.post(transport))
+        self.assertFalse(transport.calls)
+
     def test_api_center_empty_list_is_verified_absence_without_purge(self):
         transport = FakeTransport()
         result = self.post(transport)

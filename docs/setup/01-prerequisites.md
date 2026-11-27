@@ -1,6 +1,6 @@
-# 1. 前提要件の準備
+# 01. 事前準備
 
-[READMEへ戻る](../../README.md) · 次：[2. Entraアプリの準備](02-entra.md)
+[READMEへ戻る](../../README.md) · 次：[02. egakumi-apiの登録](02-entra-api.md)
 
 ## このページのゴール
 
@@ -104,13 +104,15 @@ export DEPLOY_PORTAL_FQDN='<Portalの公開FQDN。httpsやパスを含めない>
 
 APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。次節の準備コマンドが、英小文字・数字からなる6文字の`services.apimInstanceId`を生成します。共通部分`<environment>-<product>`が17文字以内ならAPIM名は最大29文字です。他の資源名は製品名・環境名から導出するため、組織内で既存利用と競合しない値を選びます。
 
-ここで決めた非秘密の値は、次節で用意する環境別の`evidence/`内の設定表へ控え、[4. params](04-params.md)にも同じ値を記入します。シェル変数はターミナルを閉じると消えるため、別の日や別ターミナルで続ける場合は自社の設定表から再設定します。secretの値をこの変数群へ追加しません。
+ここで決めた非秘密の値は、次節で用意する環境別の`evidence/`内の設定表へ控え、[07. params](07-params.md)にも同じ値を記入します。シェル変数はターミナルを閉じると消えるため、別の日や別ターミナルで続ける場合は自社の設定表から再設定します。secretの値をこの変数群へ追加しません。
 
 ## 1-5. 環境別のローカル領域を準備する
 
+Toolsアプリの戻り先には予定APIM名が必要です。ここでAPIM識別子を持つparamsのひな型を作り、[第07章](07-params.md)でEntra・DNSの結果を記入して構築用paramsを完成させます。
+
 公開資材はこの1つのcheckoutを正本として使い、実情報はリポジトリルートの`.local/`とazd専用の`.azure/`だけへ保存します。[共通ルール](../../AGENTS.md)に従い、この2領域はGit・公開文書・配布物へ含めません。ルートの`secrets/`・`.state/`、`params/`内の実params、アプリ直下の`.env.local`へ実情報を作らないでください。
 
-初回は、標準構成を`test`または`production`から1つ選んで準備します。次のコマンドはAzure資源を作成せず、公開exampleのconfig・secret参照を環境別保存先へ合わせます。
+選ぶのは標準構成 `test` または `production` です。準備コマンドが選んだconfigへの参照と秘密ファイルの保存先をひな型に設定します。通常の構築ではconfigファイルを編集しません。
 
 ```sh
 umask 077
@@ -124,7 +126,7 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 
 初回の準備コマンドは`services.apimInstanceId`をparamsへ保存します。同じコマンドで再開した場合は既存の値を保持します。構築・更新・撤去には同じ識別子を使い、手作業で変更しません。撤去後の新規構築は[運用手順](../operations.md#撤去後に新しく構築する)で新しい識別子を用意します。
 
-第2章へ進む前に、作成されたparamsの`productName`・`environmentName`・`apiCenterLocation`・`gateway.publicHostName`を、この章で決めた値へ揃えます。Entraへ登録するCM戻り先は、このparamsから計算します。その他の項目は、第2・3章の結果を受け取ってから第4章で設定します。
+第02章へ進む前に、作成されたparamsの`productName`・`environmentName`・`apiCenterLocation`・`gateway.publicHostName`を、この章で決めた値へ揃えます。Entraへ登録するCM戻り先は、このparamsから計算します。その他の項目は、第02〜06章の結果を受け取ってから第07章で設定します。
 
 | 保存先 | 用途 |
 | --- | --- |
@@ -148,4 +150,4 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 - Azure／Entra／DNSの担当・権限、公開名とIP計画が決まっている。
 - 選択したモデルの料金・地域提供・クォータと、組織の購入条件を確認する担当がいる。
 
-次：[2. Entraアプリの準備](02-entra.md)
+次：[02. egakumi-apiの登録](02-entra-api.md)

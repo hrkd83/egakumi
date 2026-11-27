@@ -149,12 +149,16 @@ test("ローカルSQLの偽装フラグでは反映できず、サーバー設�
   await assert.rejects(f.service.preview(actor, [id]), errorCode("CanonicalDatabaseRequired"));
   await assert.rejects(f.service.apply(actor, "anything"), errorCode("CanonicalDatabaseRequired"));
   const sql = { mode: "local-sql" as const, server: "localhost", database: "portal", host: "localhost", port: 14330, trustLocalCertificate: true };
-  const apim = { mode: "managed-identity" as const, apimResourceId: resource };
+  const apim = { mode: "managed-identity" as const, apimResourceId: resource, clientId: actor.objectId };
   assert.equal(syncBinding(sql, apim, { NODE_ENV: "production", PORTAL_SUBSCRIPTION_SYNC_ENABLED: "true", PORTAL_CANONICAL_SQL_SERVER: "localhost", PORTAL_CANONICAL_SQL_DATABASE: "portal" }).writable, false);
-  const azure = { ...sql, server: "sql-test.database.windows.net", mode: "managed-identity" as const, trustLocalCertificate: false };
+  const azure = { ...sql, server: "sql-test.database.windows.net", host: "sql-test.database.windows.net", port: 1433,
+    mode: "managed-identity" as const, clientId: apim.clientId, trustLocalCertificate: false };
   const env = { NODE_ENV: "production", PORTAL_SUBSCRIPTION_SYNC_ENABLED: "true", PORTAL_CANONICAL_SQL_SERVER: azure.server, PORTAL_CANONICAL_SQL_DATABASE: "portal" };
   assert.equal(syncBinding(azure, apim, env).writable, true);
   assert.equal(syncBinding({ ...azure, database: "other" }, apim, env).writable, false);
+  assert.equal(syncBinding({ ...azure, host: azure.host.replace("sql-test", "sql-other") }, apim, env).writable, false);
+  assert.equal(syncBinding({ ...azure, port: 14330 }, apim, env).writable, false);
+  assert.equal(syncBinding(azure, { ...apim, clientId: actor.tenantId }, env).writable, false);
 });
 
 test("HTTPは未認証・CSRF・余分な反映値・大きな本文でサービスを起動しない", async () => {

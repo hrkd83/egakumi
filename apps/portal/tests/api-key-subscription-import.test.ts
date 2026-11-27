@@ -138,15 +138,18 @@ test("配備承認・管理グループ・発行枠を確認し、途中で上�
   }
 });
 
-test("構築用の明示設定だけを受け、APIM実行MIとSQL実行MIを分離する", () => {
+test("構築用の明示設定だけを受け、APIMにスキーマ用MIを渡さない", () => {
   assert.equal(readApiKeyVerificationSubscriptions({}), null);
   const env = { PORTAL_API_KEY_TENANT_ID: tenantId, PORTAL_API_KEY_PLATFORM_GROUP_ID: platformGroupId,
     PORTAL_APIM_RESOURCE_ID: resource, PORTAL_API_KEY_VERIFICATION_SUBSCRIPTIONS: JSON.stringify(verification.subscriptions) };
   assert.deepEqual(readApiKeyVerificationSubscriptions(env), verification);
   assert.throws(() => readApiKeyVerificationSubscriptions({ ...env, PORTAL_API_KEY_VERIFICATION_SUBSCRIPTIONS: '[{"subscriptionId":"master","productId":"model-users","displayName":"x"}]' }));
-  const actual = readApiKeyBootstrapApimEnvironment({ ...env, NODE_ENV: "production", PORTAL_API_KEY_APIM_CLIENT_ID: runtimeClientId, AZURE_CLIENT_ID: otherGroupId });
+  const managed = { ...env, NODE_ENV: "production", AZURE_CLIENT_ID: otherGroupId };
+  const actual = readApiKeyBootstrapApimEnvironment({ ...managed, PORTAL_API_KEY_APIM_CLIENT_ID: runtimeClientId }, runtimeClientId);
   assert.equal(actual.clientId, runtimeClientId); assert.equal(actual.mode, "managed-identity");
-  assert.throws(() => readApiKeyBootstrapApimEnvironment({ ...env, NODE_ENV: "production", AZURE_CLIENT_ID: otherGroupId }));
+  assert.throws(() => readApiKeyBootstrapApimEnvironment(managed, runtimeClientId));
+  assert.throws(() => readApiKeyBootstrapApimEnvironment({ ...managed, PORTAL_API_KEY_APIM_CLIENT_ID: otherGroupId }, runtimeClientId),
+    /dedicated management identity/);
 });
 
 test("台帳登録済みなら移管・削除を巻き戻さず、APIMへの照会や再作成も行わない", async () => {

@@ -62,7 +62,7 @@ Decisionは判断用の追加採用モデルで、確認した版はPreviewで�
 
 ### モデル配備後のAPI公開
 
-`azd up`は上記28モデルと共通基盤を準備し、Gateway工程でAPIを公開してからPortalを配備する。個別のAPI更新には同じ`deploy_gateway.py`を使う。
+`azd up`で上記28モデルと共通基盤を準備する。Entra登録後のGateway個別配備でAPIを公開し、続いてPortalを個別配備する。個別のAPI更新には同じ`deploy_gateway.py`を使う。
 初期28モデルに対応するAPI・接続定義に加え、現在の標準APIは文書解析を含め19件ある。文書解析はこの28モデルへの追加配備ではなく、既存FoundryのDocument Intelligenceを使う。[標準API一覧](api-design-proposal.md)
 次のモデルは、それぞれ異なる公開契約で扱う。実環境への公開時は、モデル別の要求・応答と上流到達を受入する。
 

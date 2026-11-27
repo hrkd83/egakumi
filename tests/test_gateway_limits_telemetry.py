@@ -48,9 +48,9 @@ SUBJECT_EXPRESSION = expression(POLICIES / "service.xml", "./inbound/set-variabl
 # 本番XMLから例外時のstatus式を抽出します。C#で実行し、既定200を成功と誤記しないことを確認します。
 ERROR_STATUS_EXPRESSIONS = {
     name: ET.parse(policy_fixture_path(POLICIES, name)).find("./on-error/set-variable[@name='gatewayAuditStatus']").get("value")
-    for name in ("gateway.xml", "protocol.xml", "mcp.xml")
+    for name in ("rest.xml", "stream.xml", "generated.xml")
 }
-ERROR_STATUS_EXPRESSION = ERROR_STATUS_EXPRESSIONS["gateway.xml"]
+ERROR_STATUS_EXPRESSION = ERROR_STATUS_EXPRESSIONS["rest.xml"]
 if not ERROR_STATUS_EXPRESSION.startswith("@(") or not ERROR_STATUS_EXPRESSION.endswith(")"):
     raise AssertionError("Expected a single-statement APIM error status expression")
 
@@ -63,7 +63,7 @@ def single_expression(value):
 
 
 LIMIT_FAILURE_POLICY = next(
-    node for node in ET.parse(policy_fixture_path(POLICIES, "gateway.xml")).findall("./inbound/choose/when")
+    node for node in ET.parse(policy_fixture_path(POLICIES, "rest.xml")).findall("./inbound/choose/when")
     if "gatewayLimitDecision" in node.get("condition", "")
 )
 LIMIT_AUDIT_NODES = [node for node in LIMIT_FAILURE_POLICY if node.tag == "set-variable"]

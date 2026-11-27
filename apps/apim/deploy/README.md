@@ -1,6 +1,6 @@
-# Gateway
+# Gatewayの統合配備
 
-共通基盤の上へ、APIMのAPI定義と認証窓口を一つの配備単位として配置します。API定義とアプリ本体は別のフォルダーで管理します。
+共通基盤の上へ、APIMのAPI定義と認証窓口を一つの配備単位として配置します。
 
 ```text
 apps/
@@ -8,20 +8,20 @@ apps/
 │   ├── apis/                   標準APIのJSON定義（1 API 1ファイル）
 │   ├── policies/               APIMのXMLポリシー
 │   ├── schemas/                API入出力のスキーマ
-│   ├── waf-*.json              Application GatewayのWAF設定
 │   ├── api-publication.bicep   API・バックエンド・製品・購読
-│   └── deploy/                Gateway配備の入口・APIMとCMのBicep
+│   ├── waf-*.json              GatewayとPortalの入口に適用するWAF契約
+│   └── deploy/                 統合配備とAPIM・CM設定
 └── credential-broker/
     ├── credential_broker/      内部FastAPIアプリ
-    ├── deploy/                認証窓口アプリ・DB・IDのBicepとイメージ作成
     ├── sql/                    本人とCM接続の対応台帳
     ├── tests/
-    └── Dockerfile
+    ├── Dockerfile
+    └── deploy/                 DB・実行用ID・アプリの配備とイメージ構築
 ```
 
 ## 配備する
 
-`azd up`は共通基盤を準備した後、この配備コマンドを呼び出します。今回の公開入力整理のAzure反映と全環境再構築E2Eは未実施です。既存入力の移行は[判断記録](../../../docs/setup/04-params.md#既存入力の移行を確認する)を確認し、非標準値を自動変換しません。個別更新・再試行では、構築済み基盤と同じparamsを使い、リポジトリのルートから実行します。基盤だけを先に作る場合は`azd provision`を使います。
+初回構築では、`azd up`によるCore構築と公開証明書のEntra登録を済ませた後、[Gatewayを個別配備](../../../docs/setup/11-deploy-gateway.md)します。今回の公開入力整理のAzure反映と全環境再構築E2Eは未実施です。既存入力の移行は[判断記録](../../../docs/setup/07-params.md#既存入力の移行を確認する)を確認し、非標準値を自動変換しません。個別更新・再試行では、構築済み基盤と同じparamsを使い、リポジトリのルートから実行します。
 
 ```bash
 python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
@@ -34,7 +34,7 @@ python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 通常のAPIキーは`released-apis`（表示名`Released APIs`）製品に紐づき、リリース済みAPIをまとめて利用します。この製品とAPIとの関連もGateway配備資材に含みます。各API定義の`released: true`を関連付けの正本とし、標準APIはすべて明示しています。追加APIは省略時`false`です。`false`へ変更して配備すると、そのAPIと生成MCPの通常製品との関連を解除します。API本体や既存の検証製品・購読を削除せず、今回指定しなかったAPIにも触れません。
 
-`model-users`・`pii-users`・`connection-users`等の製品と検証用購読は維持します。本人接続の開始・完了確認・終了APIは同じ通常キーで利用できる補助関連を付けます。ブラウザー用の匿名補助APIは製品に含めません。`azd up`では基盤完成後にこのGatewayコマンドを呼んで製品を用意し、その成功後にPortalを配備します。個別コマンドで段階構築・更新する場合も同じ順序です。
+`model-users`・`pii-users`・`connection-users`等の製品と検証用購読は維持します。本人接続の開始・完了確認・終了APIは同じ通常キーで利用できる補助関連を付けます。ブラウザー用の匿名補助APIは製品に含めません。Gateway配備で製品を用意し、その成功を確認してからPortalを個別配備します。
 
 計画は`.local/<environment>/state/gateway-plan.json`、完了結果は`.local/<environment>/state/gateway-deployment.json`に保存します。実際のMicrosoftサインインと各業務APIの疎通は、配備成功後に確認します。
 
@@ -42,7 +42,7 @@ Azure Speechを公開する場合は、SSMLの`/models/azure-speech/v1/synthesiz
 
 PIIのREST／MCP入口は、承認したローカル最終候補ではApp GatewayのWAFを分けます。`g-pii-rest`はRESTの`text`だけ、`g-pii-mcp`はMCPの`params.arguments.text`だけを`RequestArgValues / Equals`のデータ欄除外へ指定し、Portalの`p-pii-redact`は維持します。APIのURL・キー／Bearer認証・モデル機能・OBOは変更しません。実WAF確認とAzure反映は未実施で、query関連棚卸後のまとめ工程で移行します。通常reconcileは旧`g-pii-redact`を移行元として保持し、新policyとpath bindingを反映して正常REST／MCPの実WAF通過を確認した後にだけ退役します。確認失敗時に旧bindingへ戻せるよう、旧ポリシーを残します。[PIIの設定と移行順](../../../docs/testing/waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)
 
-[詳細な配備手順](../../../docs/setup/credential-sql.md)・[API定義](../README.md)・[認証窓口](../../credential-broker/README.md)・[運用と更新](../../../docs/operations.md)
+[詳細な配備手順](../../../docs/setup/11-deploy-gateway.md)・[API定義](../README.md)・[認証窓口](../../credential-broker/README.md)・[運用と更新](../../../docs/operations.md)
 
 ## 継続配備
 

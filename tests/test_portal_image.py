@@ -117,6 +117,9 @@ class PortalImageTests(unittest.TestCase):
         self.assertIn('lib/subscription-sync/service.ts', names)
         self.assertIn('lib/subscription-sync/repository.ts', names)
         self.assertIn('app/api/subscription-sync/route.ts', names)
+        self.assertIn('services/subscription-admin/server.mjs', names)
+        self.assertIn('services/subscription-profile/server.mjs', names)
+        self.assertIn('sql/013_subscription_profile_reader.sql', names)
         for name in ('sql/010_connection_sessions.sql', 'lib/connection-session/client.ts',
                      'lib/connection-session/crypto.ts', 'lib/connection-session/store.ts',
                      'lib/graph-tool-server.ts', 'app/api/tools/graph/keys/route.ts',
@@ -130,6 +133,10 @@ class PortalImageTests(unittest.TestCase):
         for name in image.TOP_LEVEL_FILES | image.EXTRA_FILES:
             path = source / name
             path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'public\r\n')
+        for name in image.SUBSCRIPTION_ENTRYPOINTS:
+            path = source.parent / name
+            path.parent.mkdir(parents=True)
             path.write_bytes(b'public\r\n')
         (source / 'app').mkdir()
         (source / 'app/page.tsx').write_bytes(b'page\r\n')

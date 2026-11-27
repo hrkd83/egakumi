@@ -153,8 +153,9 @@ class SourceTests(unittest.TestCase):
 
     def connection_fixture(self, *, enabled=True):
         current, transport = fixture()
-        host = "ca-test-fixture-portal.internal-fixture.azurecontainerapps.io"
-        app_id = APIM.split("/providers/", 1)[0] + "/providers/Microsoft.App/containerApps/ca-test-fixture-portal"
+        host = ".".join(("ca-test-fixture-sub-profile", "synthetic", "japaneast", "azurecontainerapps.io"))
+        app_provider = APIM.split("/providers/", 1)[0] + "/providers/Microsoft.App/"
+        app_id = app_provider + "containerApps/ca-test-fixture-sub-profile"
         values = {"core-l7-ingress-enabled": "false", "core-l7-ingress-secret": "ingress-disabled",
                   "core-subscription-profile-enabled": "true" if enabled else "false",
                   "core-subscription-profile-url": "https://" + host + "/api/internal/subscription-profile" if enabled else "https://profile.invalid"}
@@ -165,7 +166,10 @@ class SourceTests(unittest.TestCase):
         for name, value in values.items():
             resource_id = APIM + "/namedValues/" + name
             transport.inventory[resource_id] = response(resource_id, {"displayName": name, "secret": False, "value": value})
-        transport.inventory[app_id] = response(app_id, {"configuration": {"ingress": {"fqdn": host}}})
+        transport.inventory[app_id] = response(app_id, {
+            "managedEnvironmentId": app_provider + "managedEnvironments/cae-test-fixture",
+            "configuration": {"ingress": {"fqdn": host, "external": True, "allowInsecure": False}},
+        })
         plan = {"resourceStem": "test-fixture", "parameters": {"names": {"value": {"keyVault": "kv-test-fixture"}},
                 "l7IngressSecretIdentifier": {"value": ""}}, "commonAuthentication": {"core-subscription-key-header": "api-key"}}
         return current, transport, plan, app_id
@@ -175,14 +179,19 @@ class SourceTests(unittest.TestCase):
         manifest = publication.complete_named_value_expectations(current, plan, transport)
         publication.read_policy_graph(manifest, transport)
         self.assertTrue(any(method == "GET" and resource_id == app_id for method, resource_id, *_ in transport.calls))
-        for mutation in ("same-prefix-other-environment", "wrong-owned-resource", "l7-secret"):
+        for mutation in ("same-prefix-other-environment", "wrong-owned-resource", "wrong-cae", "internal-only", "l7-secret"):
             with self.subTest(mutation=mutation):
                 current, transport, plan, app_id = self.connection_fixture()
                 if mutation == "same-prefix-other-environment":
                     transport.inventory[APIM + "/namedValues/core-subscription-profile-url"]["body"]["properties"]["value"] = (
-                        "https://ca-test-fixture-portal.other-fixture.azurecontainerapps.io/api/internal/subscription-profile")
+                        "https://" + transport.inventory[app_id]["body"]["properties"]["configuration"]["ingress"]["fqdn"].replace(
+                            ".synthetic.", ".other-example.") + "/api/internal/subscription-profile")
                 elif mutation == "wrong-owned-resource":
                     transport.inventory[app_id]["body"]["id"] = app_id.replace("rg-fixture", "rg-outside-fixture")
+                elif mutation == "wrong-cae":
+                    transport.inventory[app_id]["body"]["properties"]["managedEnvironmentId"] += "-other"
+                elif mutation == "internal-only":
+                    transport.inventory[app_id]["body"]["properties"]["configuration"]["ingress"]["external"] = False
                 else:
                     transport.inventory[APIM + "/namedValues/core-l7-ingress-secret"]["body"]["properties"]["secret"] = True
                 with self.assertRaises(ValueError):

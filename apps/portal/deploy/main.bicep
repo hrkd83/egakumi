@@ -19,8 +19,8 @@ param databaseSettings object
 param vaultName string
 param credentialProviderName string
 param authentication object = {}
-param apiAuthentication object = {}
 param authIdentity object
+param apiAuthentication object = {}
 param clientId string
 param tenantId string
 param publicOrigin string
@@ -28,6 +28,8 @@ param publicOrigin string
 param gatewayOrigin string
 param networkResourceGroup string
 param acaPrefix string
+param apimSubnetPrefix string
+param subscriptionServiceAudience string
 param expectedEgressIp string
 @secure()
 @description('Portal専用セッション署名鍵。空の場合は既存のKey Vault値を更新しません。')
@@ -35,13 +37,26 @@ param signingSecret string = ''
 @secure()
 @description('Gatewayのプロファイル照会専用鍵。空の場合は既存のKey Vault値を維持します。')
 param profileSecret string = ''
+@secure()
+@description('購読同期計画の署名鍵。空の場合は既存のKey Vault値を維持します。')
+param subscriptionSyncSecret string = ''
 @description('SQL初期化成功後の2回目の配備だけでtrueにします。')
 param deployApplication bool = false
 param imageDigest string
 
+module subscriptionIdentities 'subscription-identities.bicep' = {
+  name: '${stem}-subscription-identities'
+  params: { stem: stem, location: location, tags: tags, registryName: registryName }
+}
+
 module authKeyAccess 'auth-key-access.bicep' = if (!empty(authentication)) {
   name: '${stem}-portal-auth-key-access'
-  params: { vaultName: vaultName, keyName: split(authentication.keyId, '/')[4], authIdentity: authIdentity }
+  params: {
+    vaultName: vaultName
+    keyName: split(authentication.keyId, '/')[4]
+    authIdentity: authIdentity
+    managementIdentity: subscriptionIdentities.outputs.managementIdentity
+  }
 }
 var authRuntimeIdentity = empty(authentication) ? {} : authIdentity
 resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: vaultName }
@@ -66,7 +81,7 @@ module apiKeys 'api-keys.bicep' = {
   name: '${stem}-portal-api-keys'
   params: {
     apimName: apimName
-    runtimeIdentity: runtimeIdentity
+    managementIdentity: subscriptionIdentities.outputs.managementIdentity
   }
 }
 
@@ -80,10 +95,13 @@ module database 'database.bicep' = {
     settings: databaseSettings
     vaultName: vaultName
     runtimeIdentity: runtimeIdentity
+    managementIdentity: subscriptionIdentities.outputs.managementIdentity
+    profileIdentity: subscriptionIdentities.outputs.profileIdentity
     credentialProviderName: credentialProviderName
     certificateAuthentication: !empty(authentication)
     signingSecret: signingSecret
     profileSecret: profileSecret
+    subscriptionSyncSecret: subscriptionSyncSecret
   }
 }
 
@@ -97,6 +115,8 @@ module schema 'schema-job.bicep' = {
     registryName: registryName
     imageDigest: imageDigest
     runtimeIdentity: runtimeIdentity
+    managementIdentity: subscriptionIdentities.outputs.managementIdentity
+    profileIdentity: subscriptionIdentities.outputs.profileIdentity
     schemaIdentity: schemaIdentity
     sqlServer: sqlServer
     database: database.outputs.database
@@ -108,6 +128,32 @@ module schema 'schema-job.bicep' = {
     apimResourceId: apiKeys.outputs.apimResourceId
     apiKeyTenantId: tenantId
   }
+}
+
+module subscriptionServices 'subscription-services.bicep' = if (deployApplication) {
+  name: '${stem}-subscription-services'
+  params: {
+    stem: stem
+    location: location
+    tags: tags
+    environmentName: environmentName
+    registryName: registryName
+    imageDigest: imageDigest
+    managementIdentity: subscriptionIdentities.outputs.managementIdentity
+    profileIdentity: subscriptionIdentities.outputs.profileIdentity
+    apimSubnetPrefix: apimSubnetPrefix
+    apimResourceId: apiKeys.outputs.apimResourceId
+    subscriptionServiceAudience: subscriptionServiceAudience
+    sqlServer: sqlServer
+    database: database.outputs.database
+    clientId: clientId
+    tenantId: tenantId
+    publicOrigin: publicOrigin
+    authentication: authentication
+    profileSecretUri: database.outputs.profileSecretUri
+    subscriptionSyncSecretUri: database.outputs.subscriptionSyncSecretUri
+  }
+  dependsOn: [authKeyAccess]
 }
 
 module application 'application.bicep' = if (deployApplication) {
@@ -132,8 +178,8 @@ module application 'application.bicep' = if (deployApplication) {
     apiAuthentication: apiAuthentication
     signingSecretUri: database.outputs.signingSecretUri
     expectedEgressIp: expectedEgressIp
-    apimResourceId: apiKeys.outputs.apimResourceId
-    profileSecretUri: database.outputs.profileSecretUri
+    subscriptionManagerFqdn: subscriptionServices!.outputs.managementFqdn
+    subscriptionServiceAudience: subscriptionServiceAudience
   }
   dependsOn: [apiAuthReader]
 }
@@ -147,29 +193,32 @@ module groupReconciliation 'group-reconciliation-job.bicep' = if (deployApplicat
     tags: tags
     environmentName: environmentName
     registryName: registryName
-    runtimeIdentity: runtimeIdentity
+    managementIdentity: subscriptionIdentities.outputs.managementIdentity
     imageDigest: imageDigest
     sqlServer: sqlServer
     database: database.outputs.database
     clientId: clientId
     tenantId: tenantId
-    clientSecretUri: database.outputs.clientSecretUri
     authentication: authentication
     authIdentity: authRuntimeIdentity
   }
 }
 
 // URLと鍵参照は配備時だけ更新。有効化はアプリ疎通確認後のスクリプトが行います。
-module profileConnection 'subscription-profile.bicep' = {
+module profileConnection 'subscription-profile.bicep' = if (deployApplication) {
   name: '${stem}-portal-subscription-profile'
   params: {
-    stem: stem
     apimName: apimName
-    environmentName: environmentName
+    profileFqdn: subscriptionServices!.outputs.profileFqdn
     profileSecretUri: database.outputs.profileSecretUri
     vaultName: vaultName
   }
 }
+
+var adminAppName = 'ca-${stem}-sub-admin'
+var profileAppName = 'ca-${stem}-sub-profile'
+var adminAppId = resourceId('Microsoft.App/containerApps', adminAppName)
+var profileAppId = resourceId('Microsoft.App/containerApps', profileAppName)
 
 output migrationJob string = schema.outputs.name
 output applicationName string = 'ca-${stem}-portal'
@@ -177,9 +226,21 @@ output databaseId string = database.outputs.databaseId
 output apimResourceId string = apiKeys.outputs.apimResourceId
 output managementMaintenance object = {
   sqlDatabaseIds: [database.outputs.databaseId]
-  applicationIds: deployApplication ? [application!.outputs.id] : []
+  applicationIds: deployApplication ? [application!.outputs.id, adminAppId, profileAppId] : []
   jobIds: deployApplication ? [schema.outputs.id, groupReconciliation!.outputs.id] : [schema.outputs.id]
   environmentIds: [schema.outputs.environmentId]
+}
+output subscriptionAdmin object = {
+  name: adminAppName
+  id: adminAppId
+  fqdn: deployApplication ? subscriptionServices!.outputs.managementFqdn : ''
+  identity: subscriptionIdentities.outputs.managementIdentity
+}
+output subscriptionProfileReader object = {
+  name: profileAppName
+  id: profileAppId
+  fqdn: deployApplication ? subscriptionServices!.outputs.profileFqdn : ''
+  identity: subscriptionIdentities.outputs.profileIdentity
 }
 output authentication object = {
   sqlServer: sqlServer

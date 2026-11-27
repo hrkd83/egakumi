@@ -151,7 +151,7 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
                  mock.patch.object(lifecycle, 'run') as cli, mock.patch.object(lifecycle, 'deploy_phase') as deploy:
                 with self.assertRaises(lifecycle.DeploymentError):
                     lifecycle.preprovision(self.config)
-                self.assertEqual(self.run_hook('preup'), 1)
+                self.assertEqual(self.run_hook('preprovision'), 1)
                 with self.assertRaises(lifecycle.DeploymentError):
                     lifecycle._save_deployment_state(self.config, self.outputs())
             local.assert_not_called()

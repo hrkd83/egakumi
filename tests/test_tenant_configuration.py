@@ -5,7 +5,7 @@ import unittest
 from schema_helpers import local_schema_validator
 from unittest import mock
 
-from configuration_fixtures import CORE, fixture, connection_fixture, pii_fixture
+from configuration_fixtures import CORE, fixture, connection_fixture, pii_fixture, public_fixture
 from deployment.helpers import configuration
 from deployment import lifecycle
 
@@ -44,6 +44,15 @@ class TenantConfigurationTests(unittest.TestCase):
         self.assertEqual(parameters['azureTenantId'], raw['azureTenantId'])
         self.assertEqual(parameters['entraTenantId'], ENTRA)
         self.assertNotIn('tenantId', parameters)
+
+    def test_initial_deployment_rejects_separate_tenants_with_body_audit(self):
+        config = self.normalize(authentication_in(fixture()))
+        config['auditEvidence']['enabled'] = True
+        for command in ('validate', 'preprovision'):
+            with (self.subTest(command=command),
+                  mock.patch.object(lifecycle, 'local_paths', side_effect=AssertionError('Workspace must not be accessed')),
+                  self.assertRaisesRegex(lifecycle.DeploymentError, 'entraTenantId to match azureTenantId')):
+                lifecycle._validate_parameter_registrations(config, CORE / 'params' / 'test.example.json', command)
 
 
     def test_personal_oauth_provider_explicitly_uses_authentication_tenant(self):
@@ -99,7 +108,11 @@ class TenantConfigurationTests(unittest.TestCase):
 
     def test_azd_azure_tenant_environment_is_not_the_authentication_tenant(self):
         config = self.normalize(authentication_in(pii_fixture()))
-        with mock.patch.dict('os.environ', {'AZURE_TENANT_ID': ENTRA, 'AZURE_ENV_NAME': config['environmentName']}, clear=True), mock.patch.object(lifecycle.shutil, 'which', side_effect=AssertionError('Tool must not start')):
+        with (
+            mock.patch.dict('os.environ', {'AZURE_TENANT_ID': ENTRA, 'AZURE_ENV_NAME': config['environmentName']}, clear=True),
+            mock.patch.object(lifecycle, 'load_firewall_tls_inspection', return_value={}),
+            mock.patch.object(lifecycle.shutil, 'which', side_effect=AssertionError('Tool must not start')),
+        ):
             with self.assertRaisesRegex(lifecycle.DeploymentError, 'AZURE_TENANT_ID'):
                 lifecycle.local_preflight(config)
 
@@ -123,10 +136,7 @@ class TenantConfigurationTests(unittest.TestCase):
                 self.assertNotIn('entraTenantId', schema['required'])
                 self.assertNotIn('tenantId', schema['properties'])
                 jsonschema.Draft202012Validator.check_schema(schema)
-                sample = json.loads((CORE / 'params/test.example.json').read_text()) if name == 'params' else fixture()
-                sample['azureTenantId'] = fixture()['azureTenantId']
-                sample['subscriptionId'] = fixture()['subscriptionId']
-                self.assertEqual(sample['gateway']['authentication']['subscriptionKeyHeader'], 'api-key')
+                sample = public_fixture()[0] if name == 'params' else fixture()
                 for tenant in (None, ENTRA):
                     value = copy.deepcopy(sample)
                     if tenant is not None:

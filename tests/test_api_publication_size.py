@@ -36,6 +36,14 @@ def serialized_size(value):
     return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
+def graph_dispatch(policy, section):
+    """生成済みGraphポリシーから、Bearerとキーを分岐する箇所を取得する。"""
+    dispatch, = [choice for choice in policy.findall(f"./{section}/choose")
+                 if choice.find("otherwise") is not None
+                 and choice.find("when").get("condition") == '@((bool)context.Variables["gatewayGraphObo"])']
+    return dispatch
+
+
 def source_without_identity_binding(template):
     """Only the existing APIM identity may be read for generated CM settings.
 
@@ -255,6 +263,19 @@ class ApiPublicationSizeTests(unittest.TestCase):
         expanded = self.assert_split_budgets(copy.deepcopy(self.parameters))["publication"]["expanded"]
         # 公式4MB境界に対して、全outputs・binding・metadata込みで280万B未満に保ちます。
         self.assertEqual(sum(resource["type"] == "Microsoft.ApiManagement/service/apis" for resource in expanded["resources"]), len(self.parameters["apiDefinitions"]) + sum("mcp" in api for api in self.parameters["apiDefinitions"]))
+
+    def test_strict_audit_and_entra_with_credential_login_fit_expanded_budget(self):
+        parameters = copy.deepcopy(self.parameters)
+        parameters.update(entraAuthentication={"enabled": True}, credentialLogin=self.credential_login,
+                          auditRelay={"url": "https://relay.example.invalid", "audience": "api://example-relay"})
+        result = self.assert_split_budgets(parameters)
+        source = result["source"]["expanded"]["outputs"]["entraPublicationSource"]["value"]
+        for kind, name in (("backends", "core-audit-relay"), ("namedValues", "core-audit-relay-audience")):
+            with self.subTest(kind=kind):
+                deployed, = [resource["properties"] for resource in result["publication"]["expanded"]["resources"]
+                             if resource["type"].endswith("/" + kind) and resource["name"].endswith("/" + name)]
+                expected, = [entry["properties"] for entry in source[kind] if entry["suffix"] == f"/{kind}/{name}"]
+                self.assertEqual(deployed, expected)
 
     def test_compiled_browser_exception_keeps_lowercase_csharp_boolean_with_azure_string_behavior(self):
         class AzureBooleanExpression(SizeExpression):
@@ -534,10 +555,12 @@ class ApiPublicationSizeTests(unittest.TestCase):
         self.assertIn("apim-test-fixture/released-apis/pii-v1", links)
         self.assertIn("apim-test-fixture/released-apis/pii-v1-mcp", links)
 
-    def test_graph_api_publishes_once_with_cm_and_key_authorization(self):
-        expanded = expand(self.template, copy.deepcopy(self.parameters))
+    def test_graph_api_publishes_once_with_key_cm_and_bearer_obo(self):
+        parameters = copy.deepcopy(self.parameters)
+        parameters.update(entraAuthentication={"enabled": True}, graphOboEnabled=True)
+        expanded = expand(self.template, parameters)
         graph_names = {"graph-profile-v1"}
-        graphs = [api for api in self.parameters["apiDefinitions"] if api["name"] in graph_names]
+        graphs = [api for api in parameters["apiDefinitions"] if api["name"] in graph_names]
         self.assertEqual({api["name"] for api in graphs}, graph_names)
         for api in graphs:
             self.assertEqual(api["authorization"]["mode"], "subscriptionKey")
@@ -549,21 +572,28 @@ class ApiPublicationSizeTests(unittest.TestCase):
         self.assertEqual(len(graph_policies), 1)
         for policy in graph_policies:
             root = ET.fromstring(policy)
-            connection = root.find('./inbound/include-fragment[@fragment-id="core-credential-connection"]')
-            self.assertIsNotNone(connection)
-            self.assertIsNotNone(root.find('./inbound/include-fragment[@fragment-id="core-credential-session-use"]'))
-            self.assertIsNotNone(root.find('./outbound/include-fragment[@fragment-id="core-credential-connection-outbound"]'))
-            self.assertNotEqual(root.find('./inbound/set-variable[@name="gatewayCredentialConnection"]').get("value"), "")
+            inbound = graph_dispatch(root, "inbound")
+            outbound = graph_dispatch(root, "outbound")
+            key = inbound.find("otherwise")
+            self.assertIsNotNone(key.find('include-fragment[@fragment-id="core-credential-connection"]'))
+            self.assertIsNotNone(key.find('include-fragment[@fragment-id="core-credential-session-use"]'))
+            self.assertNotEqual(key.find('set-variable[@name="gatewayCredentialConnection"]').get("value"), "")
+            self.assertIsNotNone(outbound.find('otherwise/include-fragment[@fragment-id="core-credential-connection-outbound"]'))
+            bearer = inbound.find("when")
+            exchange = bearer.find('.//send-request[@response-variable-name="gatewayGraphOboResponse"]')
+            self.assertEqual(exchange.findtext("set-url"), "{{core-credential-broker-url}}/v1/graph/obo")
+            self.assertIsNone(bearer.find('.//include-fragment[@fragment-id="core-credential-connection"]'))
+            self.assertIsNotNone(outbound.find('when/set-variable[@name="gatewayGraphOboResult"]'))
             self.assertEqual(root.findall('.//validate-azure-ad-token'), [])
         fragment_names = {r["name"].rsplit('/', 1)[-1] for r in expanded["resources"]
                           if r["type"] == "Microsoft.ApiManagement/service/policyFragments"}
         self.assertTrue({"core-credential-connection", "core-credential-connection-outbound"} <= fragment_names)
-        self.assertFalse({"core-obo", "core-obo-outbound"} & fragment_names)
 
     def test_disabled_http_cm_uses_the_same_direct_connection_flow_for_standard_and_additional_apis(self):
         parameters = copy.deepcopy(self.parameters)
         parameters["credentialLogin"] = copy.deepcopy(self.credential_login)
         parameters["entraAuthentication"] = {"enabled": True}
+        parameters["graphOboEnabled"] = True
         graph = next(api for api in parameters["apiDefinitions"] if api["name"] == "graph-profile-v1")
         graph["credentialConnection"]["enabled"] = False
         extra = copy.deepcopy(graph)
@@ -589,12 +619,14 @@ class ApiPublicationSizeTests(unittest.TestCase):
                 self.assertEqual([node.find("value").text for node in inbound.iter("set-header")
                                   if node.get("name").casefold() == "x-ms-client-request-id"],
                                  [text for name, text in api["backendHeaders"].items() if name.casefold() == "x-ms-client-request-id"])
-                configured = inbound.find('set-variable[@name="gatewayCredentialConnection"]')
+                key_inbound = graph_dispatch(root, "inbound").find("otherwise") if api is graph else inbound
+                key_outbound = graph_dispatch(root, "outbound").find("otherwise") if api is graph else root.find("outbound")
+                configured = key_inbound.find('set-variable[@name="gatewayCredentialConnection"]')
                 decoded = json.loads(base64.b64decode(configured.get("value")))
                 self.assertEqual(decoded, api["credentialConnection"])
                 self.assertIs(decoded["enabled"], False)
                 # 無効はCM未設定ではありません。埋めた設定の直後に同じ接続・使用時確認へ進めます。
-                nodes = list(inbound)
+                nodes = list(key_inbound)
                 position = nodes.index(configured)
                 self.assertEqual([(node.tag, node.get("fragment-id")) for node in nodes[position + 1:position + 4]],
                                  [("include-fragment", "core-credential-connection"),
@@ -608,7 +640,7 @@ class ApiPublicationSizeTests(unittest.TestCase):
                                      for node in inbound.iter("when")))
                 self.assertEqual([node.tag for node in inbound.iter() if node.tag.startswith("authentication-")], [])
                 self.assertIsNotNone(inbound.find('set-backend-service[@backend-id="' + api["name"] + '-backend"]'))
-                self.assertIsNotNone(root.find('./outbound/include-fragment[@fragment-id="core-credential-connection-outbound"]'))
+                self.assertIsNotNone(key_outbound.find('include-fragment[@fragment-id="core-credential-connection-outbound"]'))
         # 実配備する共通部品にもenabledの拒否と停止応答が残ることを確認します。
         fragments = {resource["name"].rsplit("/", 1)[-1]: resource["properties"]["value"]
                      for resource in expanded["resources"]

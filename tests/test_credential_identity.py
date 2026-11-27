@@ -192,7 +192,8 @@ class CredentialIdentityConfigurationTests(unittest.TestCase):
         self.assertEqual(prepare_secrets._purpose_label(identity), 'CM本人確認（OIDC）')
         guides = prepare_secrets._storage_guide(config, Path(config['credentialProviders'][0]['clientSecretFile']).parent,
                                                specifications)
-        self.assertIn('APIMと認証窓口用Key Vault', guides[0])
+        self.assertIn('APIM', guides[0])
+        self.assertNotIn('Key Vault', guides[0])
         self.assertIn('認証窓口用Key Vault', guides[1])
         self.assertNotIn('APIM', guides[1])
 
@@ -268,16 +269,18 @@ class CredentialIdentityRotationTests(unittest.TestCase):
         self.assertTrue(any(arg.endswith('deploy_gateway.py') for arg in args))
         self.assertNotIn(SYNTHETIC_SECRET, json.dumps(args))
 
-    def test_cm_rotation_preserves_shared_kv_update_before_gateway(self):
-        ctx = operation_context(normalized())
-        scope = entra_secret.selection(ctx, 'approved-oauth')
-        events = []
-        ctx.run_cli.side_effect = lambda args: events.append('gateway')
-        with mock.patch.object(entra_secret, 'update_shared_cm_secrets', side_effect=lambda *args: events.append('cm')), \
-                mock.patch.object(entra_secret, 'save'):
-            entra_secret.update_consumers(ctx, scope, {}, Path('synthetic-receipt.json'),
-                                         {'approved-oauth': SYNTHETIC_SECRET}, 'switch')
-        self.assertEqual(events, ['cm', 'gateway'])
+    def test_cm_rotation_updates_shared_vault_only_for_shared_login(self):
+        for independent, expected in ((True, ['gateway']), (False, ['cm', 'gateway'])):
+            with self.subTest(independent=independent):
+                ctx = operation_context(normalized(independent=independent))
+                scope = entra_secret.selection(ctx, 'approved-oauth')
+                events = []
+                ctx.run_cli.side_effect = lambda args: events.append('gateway')
+                with mock.patch.object(entra_secret, 'update_shared_cm_secrets', side_effect=lambda *args: events.append('cm')), \
+                        mock.patch.object(entra_secret, 'save'):
+                    entra_secret.update_consumers(ctx, scope, {}, Path('synthetic-receipt.json'),
+                                                 {'approved-oauth': SYNTHETIC_SECRET}, 'switch')
+                self.assertEqual(events, expected)
 
 
 class CredentialIdentityRuntimeTests(unittest.TestCase):

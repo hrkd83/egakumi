@@ -37,6 +37,7 @@ from deployment.helpers.apim_common_authentication import (
     render_common_authentication_fragments,
 )
 from deployment.helpers.credential_login import API_ID as CREDENTIAL_LOGIN_API_ID, OPERATIONS as CREDENTIAL_LOGIN_OPERATIONS
+from deployment.helpers.credential_broker_lifecycle import broker_https_ingress
 from deployment.helpers.paths import REPOSITORY
 
 APIM_API = "2025-09-01-preview"
@@ -912,6 +913,9 @@ def read_stage_shared_resources(manifest, plan, template, transport):
         if api.get('backendAuthentication', {}).get('mode') == 'keyVaultHeader':
             targets['namedValues'].add(apim + '/namedValues/' + name + '-backend-secret')
         operation_backends |= any('backendOverride' in operation for operation in api.get('operations', []))
+    if plan["parameters"].get("auditRelay", {}).get("value"):
+        targets["backends"].add(apim + "/backends/core-audit-relay")
+        targets["namedValues"].add(apim + "/namedValues/core-audit-relay-audience")
     expected = {'policyFragments': manifest.policies, 'backends': manifest.backends, 'namedValues': manifest.named_values}
     for kind in targets:
         expected_aliases = {}
@@ -1121,6 +1125,8 @@ def read_fresh_publication(plan, transport):
     product_names = {api["productId"] for api in definitions} | {ENTRA_OPEN_PRODUCT_ID, "released-apis"}
     subscription_names = {entry["subscriptionId"] for api in definitions for entry in api.get("keySubscriptions", [])}
     named_names = {api["name"] + suffix for api in definitions for suffix in ("-backend-audience", "-backend-secret")}
+    if plan["parameters"].get("auditRelay", {}).get("value"):
+        named_names.add("core-audit-relay-audience")
     for kind, names in (("products", product_names), ("subscriptions", subscription_names),
                         ("namedValues", named_names), ("loggers", {"azuremonitor"}), ("diagnostics", {"azuremonitor"})):
         names = {name.casefold() for name in names}
@@ -1374,14 +1380,26 @@ def complete_named_value_expectations(manifest, plan, transport):
                     if enabled.get("properties", {}).get("value") != "false":
                         raise ValueError("Active profiles must use their configured private connection")
                 else:
-                    app_name = "ca-" + plan["resourceStem"] + ("-portal" if name == "core-subscription-profile-url" else "-credentials")
+                    profile = name == "core-subscription-profile-url"
+                    app_name = "ca-" + plan["resourceStem"] + ("-sub-profile" if profile else "-credentials")
                     expected_path = "/api/internal/subscription-profile" if name == "core-subscription-profile-url" else ""
                     app_id = apim_id.split("/providers/", 1)[0] + "/providers/Microsoft.App/containerApps/" + app_name
                     application = require_success(transport.request("GET", app_id + "?api-version=2025-01-01"),
                                                   "Read owned Core connection application")
                     if not isinstance(application, dict) or str(application.get("id", "")).lower() != app_id.lower():
                         raise ValueError("Core connection application must belong to the selected service group")
-                    fqdn = application.get("properties", {}).get("configuration", {}).get("ingress", {}).get("fqdn")
+                    properties = application.get("properties", {})
+                    ingress = properties.get("configuration", {}).get("ingress", {})
+                    environment_id = app_id.split("/containerApps/", 1)[0] + "/managedEnvironments/cae-" + plan["resourceStem"]
+                    if profile:
+                        if (str(properties.get("managedEnvironmentId", "")).casefold() != environment_id.casefold()
+                                or ingress.get("external") is not True or ingress.get("allowInsecure", False) is not False):
+                            raise ValueError("The subscription profile application must use the selected private environment and HTTPS ingress")
+                    else:
+                        ingress = broker_https_ingress(properties, environment_id + "-broker")
+                        if not ingress:
+                            raise ValueError("The Credential Broker must use its dedicated private environment and HTTPS ingress")
+                    fqdn = ingress.get("fqdn")
                     if (not isinstance(fqdn, str) or not re.fullmatch(r"[a-z0-9.-]+\.azurecontainerapps\.io", fqdn)
                             or not fqdn.startswith(app_name + ".") or parsed.hostname != fqdn
                             or parsed.path != expected_path or parsed.port not in (None, 443)):

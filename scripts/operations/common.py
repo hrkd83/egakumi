@@ -52,6 +52,46 @@ def poll_delay(response: dict, default: float = 5) -> float:
     return max(default, int(digits)) if len(digits) <= 8 else math.inf
 
 
+@contextmanager
+def lock_environment(workspace: LocalPaths):
+    """このcheckoutで同じ環境の運用スクリプトを重ねて実行しない。"""
+    try:
+        path = workspace.checked(workspace.root / ".operations.lock")
+        private_parent(path, workspace.repository)
+        flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
+            created = True
+        except FileExistsError:
+            descriptor = os.open(path, flags)
+            created = False
+    except (ValueError, OSError):
+        raise OperationError("The protected operation lock could not be opened") from None
+    try:
+        if created and os.name == "nt":
+            protect_new_path(path)
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode)
+                or os.name != "nt" and (stat.S_IMODE(info.st_mode) != 0o600
+                                       or info.st_uid != os.geteuid())):
+            raise OperationError("The operation lock is not an owner-only regular file")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                if info.st_size == 0:
+                    os.write(descriptor, b"\0")
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise OperationError("Another operation is already running for this environment") from None
+        yield
+    finally:
+        os.close(descriptor)
+
+
 @dataclass
 class OperationContext:
     """同じ環境のparams・所有state・保存領域を束ねる。通信は必要時だけ開始する。"""
@@ -94,36 +134,9 @@ class OperationContext:
         except (CleanupError, ValueError, OSError, KeyError, TypeError):
             raise OperationError("Check the selected protected inputs and Core state") from None
 
-    @contextmanager
     def locked(self):
-        """このcheckoutで同じ環境の運用スクリプトを重ねて実行しない。"""
-        path = self.output_path(self.workspace.root / ".operations.lock")
-        try:
-            private_parent(path, self.workspace.repository)
-            descriptor = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        except (ValueError, OSError):
-            raise OperationError("The protected operation lock could not be opened") from None
-        try:
-            info = os.fstat(descriptor)
-            if (not stat.S_ISREG(info.st_mode)
-                    or os.name != "nt" and (stat.S_IMODE(info.st_mode) != 0o600
-                                           or info.st_uid != os.geteuid())):
-                raise OperationError("The operation lock is not an owner-only regular file")
-            try:
-                if os.name == "nt":
-                    import msvcrt
-                    if info.st_size == 0:
-                        os.write(descriptor, b"\0")
-                    os.lseek(descriptor, 0, os.SEEK_SET)
-                    msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError:
-                raise OperationError("Another operation is already running for this environment") from None
-            yield
-        finally:
-            os.close(descriptor)
+        """現在の環境に対して共通の運用ロックを取得する。"""
+        return lock_environment(self.workspace)
 
     def _resource_path(self, resource_id: str) -> str:
         """所有5RG内の正確なARMパスだけを受け付ける。任意URLへは広げない。"""
@@ -164,7 +177,7 @@ class OperationContext:
 
     def service_id(self, key: str) -> str:
         """配備記録に保存したサービスのIDを返す。名前の探索は行わない。"""
-        if key not in {"apim", "foundry", "keyVault"}:
+        if key not in {"apim", "foundry", "keyVault", "certificateVault"}:
             raise OperationError("Select a recorded service")
         try:
             return self._resource_path(self.state["serviceResourceIds"][key])

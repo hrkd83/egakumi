@@ -62,6 +62,19 @@
     "subscriptionId": {
       "$ref": "#/$defs/guid"
     },
+    "codex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clientId"
+      ],
+      "description": "既存のCodex設定生成スクリプト向けの互換入力です。基盤構築やCodexの手動設定には不要です。",
+      "properties": {
+        "clientId": {
+          "$ref": "#/$defs/guid"
+        }
+      }
+    },
     "credentialProviders": {
       "type": "object",
       "additionalProperties": false,
@@ -70,7 +83,7 @@
         "graphDelegated": {
           "type": "object",
           "additionalProperties": false,
-          "description": "標準Graph委任接続用Entraアプリの登録情報です。テナントはentraTenantIdから決まります。",
+          "description": "標準Graph委任接続用egakumi-toolsの登録情報です。テナントはentraTenantIdから決まります。",
           "required": [
             "clientId",
             "clientSecretFile"
@@ -141,7 +154,11 @@
         "authentication": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Entra API audienceと任意の接続窓口アプリ登録です。購読キーヘッダーはapi-keyで固定します。",
+          "description": "業務APIのaudienceとOIDC本人確認専用アプリの登録です。購読キーヘッダーはapi-keyで固定します。",
+          "required": [
+            "entra",
+            "credentialLogin"
+          ],
           "properties": {
             "entra": {
               "$ref": "#/$defs/entraAuthentication"
@@ -149,7 +166,10 @@
             "credentialLogin": {
               "type": "object",
               "additionalProperties": false,
-              "description": "独立した接続窓口アプリを使う場合の環境別登録情報です。identityは任意です。",
+              "description": "独立したOIDC本人確認専用アプリの登録情報です。",
+              "required": [
+                "identity"
+              ],
               "properties": {
                 "identity": {
                   "$ref": "#/$defs/credentialLoginIdentity"
@@ -239,6 +259,30 @@
         "azureDnsManagedIdentityResourceId"
       ]
     },
+    "firewallTlsInspection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "managedIdentityResourceId",
+        "intermediateCaSecretId",
+        "rootCaCertificateFile"
+      ],
+      "description": "Firewall TLS検査の専用マネージドID、バージョン付き中間CA参照、App Gateway用ルート証明書。",
+      "properties": {
+        "managedIdentityResourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "intermediateCaSecretId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootCaCertificateFile": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "network": {
       "type": "object",
       "additionalProperties": false,
@@ -263,7 +307,7 @@
               "10.40.3.0/24"
             ]
           ],
-          "description": "VNet全体に登録する重複しないIPv4 CIDRです。公開例の4つ目の/24から証明書用サブネットに/27を割り当てます。サブネットの割当はsubnetPrefixesで別に指定します。"
+          "description": "VNet全体に登録する重複しないIPv4 CIDRです。サブネットの割当はsubnetPrefixesで別に指定します。"
         },
         "subnetPrefixes": {
           "type": "object",
@@ -276,7 +320,7 @@
             "management",
             "aca"
           ],
-          "description": "VNetの各サブネットをaddressSpaces内へ重複なく割り当てます。certificateを省略すると未割当範囲から安定した/27を選びます。",
+          "description": "Portal、Credential Broker、証明書Job、任意の本文監査用の委任サブネットを、VNetのaddressSpaces内へ重複なく割り当てます。",
           "properties": {
             "agw": {
               "type": "string",
@@ -326,6 +370,17 @@
               "examples": [
                 "10.40.3.0/27"
               ]
+            },
+            "audit": {
+              "type": "string",
+              "description": "監査証跡を有効にする場合の専用ACAサブネット。最小/27。Microsoft.App/environmentsへ委任します。"
+            },
+            "broker": {
+              "type": "string",
+              "description": "Credential BrokerのACA環境専用サブネット。最小/27。Microsoft.App/environmentsへ委任します。",
+              "examples": [
+                "10.40.3.128/25"
+              ]
             }
           }
         }
@@ -363,19 +418,16 @@
         "authentication": {
           "type": "object",
           "additionalProperties": false,
-          "description": "初期構築後に手動登録する専用Portalアプリ。通常はtenantId/clientIdだけを入力し、鍵とthumbprintは保護stateから読みます。初期構築では省略できます。",
+          "description": "初回Core構築後に専用Portalアプリを登録し、Portal配備前にClient IDを指定します。テナントはentraTenantId、鍵とthumbprintは通常Coreで作成する保護stateから取得します。",
           "required": [
-            "tenantId",
             "clientId"
           ],
           "properties": {
             "tenantId": {
-              "type": "string",
-              "format": "uuid"
+              "$ref": "#/$defs/guid"
             },
             "clientId": {
-              "type": "string",
-              "format": "uuid"
+              "$ref": "#/$defs/guid"
             },
             "keyId": {
               "type": "string",
@@ -393,6 +445,19 @@
             "certificateThumbprint": [
               "keyId"
             ]
+          }
+        },
+        "apiAuthentication": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ],
+          "description": "基盤用Entraアプリを分離した標準構成では既定でAPI試用を有効化します。",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
           }
         },
         "certificate": {
@@ -418,19 +483,6 @@
               "default": 60
             }
           }
-        },
-        "apiAuthentication": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "enabled"
-          ],
-          "description": "5アプリ構成では既定でAPI試用を有効化します。",
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            }
-          }
         }
       },
       "description": "Core管理ポータルの必須公開ホスト。専用サブネットはnetwork.subnetPrefixes.acaへ指定します。",
@@ -440,43 +492,6 @@
     },
     "portalApiKeys": {
       "$ref": "#/$defs/portalApiKeys"
-    },
-    "firewallTlsInspection": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "managedIdentityResourceId",
-        "intermediateCaSecretId",
-        "rootCaCertificateFile"
-      ],
-      "description": "Firewall TLS検査の専用マネージドID、バージョン付き中間CA参照、App Gateway用ルート証明書。",
-      "properties": {
-        "managedIdentityResourceId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "intermediateCaSecretId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "rootCaCertificateFile": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
-    "codex": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "clientId"
-      ],
-      "description": "最終5アプリ構成で使用するCodexの公開クライアント登録です。",
-      "properties": {
-        "clientId": {
-          "$ref": "#/$defs/guid"
-        }
-      }
     }
   },
   "$defs": {
@@ -521,7 +536,7 @@
         "clientId",
         "clientSecretFile"
       ],
-      "description": "CMの外部API用clientから独立した接続窓口のOIDC本人確認用アプリです。テナントはentraTenantIdから決まります。省略時は選択CM provider由来の現行設定を維持します。",
+      "description": "CMの外部API用clientから独立したegakumi-credentialです。テナントはentraTenantIdから決まります。",
       "properties": {
         "clientId": {
           "$ref": "#/$defs/guid"

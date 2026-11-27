@@ -14,6 +14,7 @@ import uuid
 from management_client import IMDS_ORIGIN, STORAGE_AUDIENCE
 
 from . import certificate_image
+from .configuration import entra_app_separation_enabled
 from .credential_image import checked, checked_response
 from .paths import REPOSITORY
 from .portal_auth_certificate import certificate_record
@@ -87,6 +88,8 @@ def _targets(config, outputs):
                 or b['environmentName'] != f'cae-{stem}-certificate'
                 or environment.casefold() != (app_scope + '/managedEnvironments/' + b['environmentName']).casefold()
                 or not re.fullmatch(r'[a-z0-9][a-z0-9-]{1,23}', cert_vault)
+                or ids['tlsConfig']['keyVaultName'] != cert_vault
+                or ids['tlsConfig']['certificateName'] != config['certificate']['certificateName']
                 or b['certificateSecretUri'].rstrip('/') !=
                     f"https://{cert_vault}.vault.azure.net/secrets/{config['certificate']['certificateName']}"
                 or ids['environmentId'].casefold() != environment.casefold() or ids['registryServer'] != b['registryServer']
@@ -181,7 +184,7 @@ def _arguments(config, mode, action, values):
                 values['rotateFromThumbprint'], str) and re.fullmatch(r'[0-9a-fA-F]{40}', values['rotateFromThumbprint']):
             return values
     else:
-        if action == 'initial' and config.get('codex') and values == {'purpose': 'gateway-obo'}:
+        if action == 'initial' and entra_app_separation_enabled(config) and values == {'purpose': 'gateway-obo'}:
             return values
         expected = {'initial': set(), 'prepare': {'requestId', 'currentKeyId'},
                     'inspect': {'certificateId'}, 'activate': {'certificateId'},
@@ -741,7 +744,7 @@ def complete_initial_certificates(config, outputs, transport, save_json, *, work
                                       action='initial', image_digest=digest, retry_failed=True,
                                       sleep=sleep, monotonic=monotonic)
     issued = {'tls': initial('tls'), 'portal': initial('portal'), 'imageDigest': digest}
-    if config.get('codex') and not config['gateway']['authentication']['entra'].get('obo'):
+    if entra_app_separation_enabled(config) and not config['gateway']['authentication']['entra'].get('obo'):
         issued['gatewayObo'] = run_certificate_action(
             config, outputs, transport, save_json, workspace=workspace, mode='portal', action='initial',
             arguments={'purpose': 'gateway-obo'}, image_digest=digest, retry_failed=True,

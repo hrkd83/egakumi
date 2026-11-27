@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { ApiKeyError, type ApiKeyActor, type ApiKeyOverview, type ApiKeyRecord } from "../lib/api-keys/contracts.ts";
+import { subscriptionManagementRequiredCode, subscriptionManagementRequiredHeader } from "../lib/api-auth/purpose.ts";
 import { handleModelKeyChoices, type ModelKeyChoiceDependencies } from "../lib/model-key-access.ts";
 import { loadModelKeyChoices, type ModelKeyChoice } from "../lib/model-key-choices.ts";
 import { ModelResponseError } from "../lib/model-response.ts";
@@ -147,6 +148,16 @@ test("所属拒否・Graph障害・壊れた公開候補は詳細を伏せたエ
   await expectServerFailure(await handleModelKeyChoices(request(), dependencies({ readChoices: async () => ({
     groups: [{ id: groupId, displayName: "ORG_Test team", products: [] }], keys: [record(1, { id: "unmanaged-subscription" })],
   }) })), 503, "ApiKeyAccessUnavailable");
+});
+
+test("購読管理用の再認証が必要な候補照会だけに、ブラウザーへの再接続通知を付ける", async () => {
+  const readChoices = async () => { throw new ApiKeyError(subscriptionManagementRequiredCode, 401); };
+  const response = await handleModelKeyChoices(request(), dependencies({ readChoices }));
+  assert.equal(response.headers.get(subscriptionManagementRequiredHeader), "required");
+  await expectServerFailure(response, 401, subscriptionManagementRequiredCode);
+  const ordinary = await handleModelKeyChoices(request(), dependencies({ readActor: async () => null }));
+  assert.equal(ordinary.headers.get(subscriptionManagementRequiredHeader), null);
+  await expectServerFailure(ordinary, 401, "AuthenticationRequired");
 });
 
 test("候補ローダーは同一オリジンの限定GETをキャッシュせず、API識別子をクエリへエンコードする", async () => {

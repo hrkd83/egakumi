@@ -2,7 +2,7 @@ import "server-only";
 import { isAllowedPortalQuery } from "./portal-query.ts";
 
 import { ApiKeyError, type ApiKeyActor, type ApiKeyOverview } from "./api-keys/contracts.ts";
-import { getApiKeyService } from "./api-keys/service.ts";
+import { getPortalApiKeyService } from "./subscription-service/client.ts";
 import { apiAuthenticationFailure, assertGatewayCredential, resolveGatewayCredential, watchGatewayCredential,
   type GatewayCredential } from "./api-auth/gateway-credential.ts";
 import { decodeApiClaims } from "./api-auth/oauth.ts";
@@ -177,7 +177,7 @@ async function client(request: Request, dependencies: GraphToolDependencies, own
   }
   let credential: { subscriptionId: string; key: string };
   try {
-    credential = await (dependencies.resolveCredential ?? ((person, id, target) => getApiKeyService().executionCredential(person, id, target)))(owner, selection.apiKeyId, apiId);
+    credential = await (dependencies.resolveCredential ?? ((person, id, target) => getPortalApiKeyService().executionCredential(person, id, target)))(owner, selection.apiKeyId, apiId);
   } catch (error) {
     const denied = error instanceof ApiKeyError && error.status < 500;
     return failure(denied ? "ApiKeyUnavailable" : "ApiKeyAccessUnavailable", denied ? 403 : 503);
@@ -198,7 +198,7 @@ export async function handleGraphToolKeys(request: Request, dependencies: GraphT
   if (owner instanceof Response) return owner;
   if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   try {
-    const overview = await (dependencies.readChoices ?? ((person, target) => getApiKeyService().executionChoices(person, target)))(owner, apiId);
+    const overview = await (dependencies.readChoices ?? ((person, target) => getPortalApiKeyService().executionChoices(person, target)))(owner, apiId);
     const groups = new Map(overview.groups.map((group) => [group.id.toLowerCase(), group.displayName]));
     const keys = overview.keys.filter((key) => key.state === "active" && groups.has(key.groupId.toLowerCase())).map((key) => ({
       id: key.id, displayName: key.displayName, companyName: key.companyName, groupName: groups.get(key.groupId.toLowerCase())!,

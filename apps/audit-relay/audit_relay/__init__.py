@@ -1,0 +1,1 @@
+"""Selected gateway payload evidence."""

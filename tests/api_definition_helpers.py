@@ -22,5 +22,6 @@ def configured_base():
     value["gateway"]["authentication"]["credentialLogin"] = deepcopy(
         public["gateway"]["authentication"]["credentialLogin"]
     )
+    value["gateway"]["authentication"]["credentialLogin"].pop("identity", None)
     value["services"]["modelDeployments"] = json.loads((CORE / "config/test.json").read_text(encoding="utf-8"))["services"]["modelDeployments"]
     return value

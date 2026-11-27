@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 
+from configuration_fixtures import bind_credential_fixture_id
 
 CORE = Path(__file__).resolve().parents[1]
 SCRIPTS = CORE / "scripts"
@@ -39,13 +40,12 @@ class SplitCliTests(unittest.TestCase):
         shutil.copytree(SCRIPTS, self.root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copytree(CORE / "apps/apim", self.root / "apps/apim",
                         ignore=shutil.ignore_patterns("__pycache__"))
-        for name in ("waf-input-contracts.json", "waf-data-exclusions.json"):
-            shutil.copyfile(CORE / "apps/apim/deploy" / name, self.root / "apps/apim/deploy" / name)
         (self.root / "infra").mkdir()
         shutil.copyfile(CORE / "infra/log-privacy.json", self.root / "infra/log-privacy.json")
         shutil.copyfile(CORE / "infra/nsg-rule-priorities.json", self.root / "infra/nsg-rule-priorities.json")
         self.options = json.loads((CORE / "config/test.json").read_text())
         self.parameters = json.loads((CORE / "params/test.example.json").read_text())
+        bind_credential_fixture_id(self.parameters)
         self.parameters.update(subscriptionId=SUBSCRIPTION, azureTenantId=TENANT, entraTenantId=TENANT,
                                configFile="../../platform/config/options.json")
         self.assertNotIn("subscriptionKeyHeader", self.parameters["gateway"]["authentication"])

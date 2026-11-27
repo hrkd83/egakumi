@@ -1,6 +1,6 @@
 # Core API・Operation定義
 
-初期配備28モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../apps/apim/apis/)と [モデル設定](../../config/test.json)。`azd up`は共通基盤の完了後、GatewayのAPI公開とPortal配備まで実行する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
+初期配備28モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../apps/apim/apis/)と [モデル設定](../../config/test.json)。初回は`azd up`で共通基盤を構築し、Entra登録後にGatewayとPortalを個別に配備する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
 
 入口認可と本人接続の分担は[Gatewayの購読キー認証](gateway-key-auth-plan.md)を参照する。現行の標準19 APIでは、共通入口の購読キー検証と、個人向けAPIの本人OAuth接続を分けて設計する。
 
@@ -212,9 +212,9 @@ TTSはAzure Speech、PII分析はAzure Languageを使う。文書OCRは既存Fou
 
 API登録処理が全体ポリシーのXMLとETagを確認し、API登録の成功後に共通キー認可を適用する。通常のキーはリリース済みAPIをまとめた`released-apis`へ所属する。検証用製品はモデル・音声の`model-users`、PII・文書解析の`pii-users`、本人接続の`connection-users`を維持する。本人接続APIは、購読とCMセッションの所有者・接続・期限を照合する。
 
-Graph等の本人接続APIは、セッション未指定・期限切れ・CM再認証時にHTTP 409 `ConnectionRequired`と認証URL・完了確認用の情報を返す。基盤がMicrosoft認証・CM・SQLを担当し、呼び出しアプリはURL表示・完了確認・利用者ごとのセッション保存・元要求の1回再実行を行う。[本人接続の利用手順](../setup/credential-manager-login.md)
+Graph等の本人接続APIは、セッション未指定・期限切れ・CM再認証時にHTTP 409 `ConnectionRequired`と認証URL・完了確認用の情報を返す。基盤がMicrosoft認証・CM・SQLを担当し、呼び出しアプリはURL表示・完了確認・利用者ごとのセッション保存・元要求の1回再実行を行う。[本人接続の利用手順](credential-manager-login.md)
 
-`azureTenantId`はAzure配置・Key Vault・RBAC・構築用認証、`entraTenantId`はCMの本人認証テナントとして扱う。後者の省略時は前者を使う。CMは購読ID・provider・確認済み本人・期限に結び付けた接続セッションを参照する。BFFはログイン利用者と保存セッションを対応付ける。[Entraの準備](../setup/02-entra.md#azureとentraのテナントを決める)
+`azureTenantId`はAzure配置・Key Vault・RBAC・構築用認証、`entraTenantId`はCMの本人認証テナントとして扱う。後者の省略時は前者を使う。CMは購読ID・provider・確認済み本人・期限に結び付けた接続セッションを参照する。BFFはログイン利用者と保存セッションを対応付ける。[Entraの準備](../setup/07-params.md#同一テナントと別テナントの指定)
 
 すべてのXMLポリシーに、各処理の目的・入力・適用条件・失敗時の応答が分かる日本語コメントを付ける。
 
@@ -230,7 +230,7 @@ Graph等の本人接続APIは、セッション未指定・期限切れ・CM再�
 | 6 | 接続クライアントの確認 | profileヘッダーなしのモデル選択と新しい音声イベントを扱うクライアントから受入 |
 | 7 | ローカル試験・Azureでの受入 | 件数・モデル対応・権限・通常／SSE／音声の正常終端を確認し、APIMへ公開 |
 
-モデル配備とAPI登録は内部工程を分ける。`azd up`が共通基盤とFoundryモデルを準備し、続くGateway工程がDB・Brokerの準備とAPI・Operation・バックエンド・Product・ポリシーを登録してからPortalを配備する。個別更新も同じ`deploy_gateway.py`を使う。
+`azd up`で共通基盤とFoundryモデルを準備する。Entra登録後のGateway個別配備でDB・Brokerを準備し、API・Operation・バックエンド・Product・ポリシーを登録する。個別更新も同じ`deploy_gateway.py`を使う。
 
 ## 受入条件と実施結果
 

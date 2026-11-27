@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createAuthDatabase } from "../lib/auth-database.ts";
 import { getSqlEnvironment } from "../lib/auth-environment.ts";
 import { migrateAuth, sqlFailure } from "./auth-migrations.ts";
-import { portalRuntimePermissions, grantRuntimeProcedureAccess } from "./auth-runtime-grants.ts";
+import { grantLocalDevelopmentAccess } from "./auth-runtime-grants.ts";
 import { configureApiKeyGroups, readApiKeyGroupConfiguration } from "./api-key-group-config.ts";
 import { configureApiKeyAdministration, readApiKeyAdministrationConfiguration } from "./api-key-administration-config.ts";
 
@@ -38,10 +38,7 @@ async function main() {
     if (administration) await configureApiKeyAdministration(database, administration);
     await sql`IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name=N'portal_app')
       CREATE USER [portal_app] FOR LOGIN [portal_app];`.execute(database);
-    for (const [table, permissions] of Object.entries(portalRuntimePermissions)) {
-      await sql.raw(`GRANT ${permissions} ON OBJECT::dbo.[${table}] TO [portal_app]`).execute(database);
-    }
-    await grantRuntimeProcedureAccess(database, runtime.user);
+    await grantLocalDevelopmentAccess(database, runtime.user);
   } finally {
     await database.destroy();
   }

@@ -60,6 +60,8 @@ var location = configuration.location
 var tags = union(configuration.tags, { product: product, environment: environmentName, 'azd-env-name': environmentName })
 var groupKinds = ['id', 'nw', 'monitor', 'svc', 'maint']
 var deployCore = phase == 'core'
+var auditEvidenceConfig = configuration.?auditEvidence ?? {}
+var deployAuditEvidence = deployCore && (auditEvidenceConfig.?enabled ?? false)
 var servicesConfig = configuration.services
 var managementConfig = configuration.management
 var monitoringConfig = configuration.monitoring
@@ -188,6 +190,7 @@ module network 'modules/network.bicep' = if (deployCore) {
     portalPublicHostName: portalConfig.publicHostName
     existingNetworkSecurityGroupNames: existingNetworkSecurityGroupNames
     existingRouteTableRoutes: existingRouteTableRoutes
+    auditEvidenceEnabled: deployAuditEvidence
   }
 }
 
@@ -386,6 +389,7 @@ module serviceBindings 'modules/service-bindings.bicep' = if (deployCore) {
   dependsOn: [networkBindings]
 }
 
+
 // 共通SQLサーバーとスキーマ管理IDだけをCoreが所有します。
 // Gatewayの接続台帳DB・実行ID・CM定義はアプリ配備工程で作成します。
 module credentialIdentities 'modules/shared-sql-identity.bicep' = if (deployCore) {
@@ -452,7 +456,7 @@ module portalAuthIdentity '../apps/portal/deploy/auth-identity.bicep' = if (depl
   scope: idGroup
   params: { stem: stem, location: location, tags: tags }
 }
-module portalApiAuthIdentity '../apps/portal/deploy/auth-identity.bicep' = if (deployCore && entraRolloutEnabled) {
+module portalApiAuthIdentity '../apps/portal/deploy/auth-identity.bicep' = if (deployCore) {
   name: '${stem}-portal-api-auth-identity'
   scope: idGroup
   params: { stem: stem, location: location, tags: tags, purpose: 'portal-api-auth' }
@@ -486,6 +490,8 @@ module portalNetwork 'modules/portal-network.bicep' = if (deployCore) {
     managementPrivateIp: management!.outputs.managementVm.privateIp
     acaNsgName: network!.outputs.nsgNames.aca
     acaPrefix: network!.outputs.subnetPrefixes.aca
+    brokerNsgName: network!.outputs.nsgNames.broker
+    brokerPrefix: network!.outputs.subnetPrefixes.broker
     firewallPolicyName: network!.outputs.firewallPolicyName
     pepNsgName: network!.outputs.nsgNames.pep
   }
@@ -504,6 +510,30 @@ module portal 'modules/portal-platform.bicep' = if (deployCore) {
     subnetId: network!.outputs.subnetIds.aca
     registryName: portalRegistry!.outputs.name
     pullIdentityId: portalPullIdentity!.outputs.id
+  }
+}
+
+module brokerEnvironment 'modules/broker-platform.bicep' = if (deployCore) {
+  name: '${stem}-broker-platform'
+  scope: svcGroup
+  params: {
+    stem: stem
+    location: location
+    tags: tags
+    subnetId: network!.outputs.subnetIds.broker
+    diagnosticSettingProperties: diagnosticSettingProperties.?broker ?? diagnosticSettingProperties
+  }
+  dependsOn: [monitoring, portalNetwork]
+}
+
+module brokerDns 'modules/portal-dns.bicep' = if (deployCore) {
+  name: '${stem}-broker-dns'
+  scope: nwGroup
+  params: {
+    stem: '${stem}-broker'
+    defaultDomain: brokerEnvironment!.outputs.platform.defaultDomain
+    staticIp: brokerEnvironment!.outputs.platform.privateIp
+    vnetId: network!.outputs.vnetId
   }
 }
 
@@ -594,13 +624,101 @@ module credentialNetwork 'modules/credential-broker-network.bicep' = if (deployC
     apimPrefix: network!.outputs.subnetPrefixes.apim
     apimNsgName: network!.outputs.nsgNames.apim
     acaPrivateIp: portal!.outputs.staticIp
+    brokerPrivateIp: brokerEnvironment!.outputs.platform.privateIp
     firewallPolicyName: network!.outputs.firewallPolicyName
     managementPrefix: network!.outputs.subnetPrefixes.management
     acaNsgName: network!.outputs.nsgNames.aca
+    brokerNsgName: network!.outputs.nsgNames.broker
+    brokerPrefix: network!.outputs.subnetPrefixes.broker
     managementNsgName: network!.outputs.nsgNames.management
     managementPrivateIp: management!.outputs.managementVm.privateIp
   }
-  dependsOn: [portalNetworkBindings]
+  dependsOn: [portalNetworkBindings, brokerDns]
+}
+
+var auditRelayName = 'ca-${stem}-audit-relay'
+var auditWorkerName = 'ca-${stem}-audit-store'
+
+module auditEvidenceIdentities 'modules/audit-evidence-identities.bicep' = if (deployAuditEvidence) {
+  name: '${stem}-audit-evidence-identities'
+  scope: idGroup
+  params: {
+    stem: stem
+    location: location
+    tags: tags
+    serviceResourceGroupName: svcGroup.name
+    registryName: portalRegistry!.outputs.name
+    foundryName: serviceNames.foundry
+  }
+  dependsOn: [services]
+}
+
+module auditEvidenceData 'modules/audit-evidence-data.bicep' = if (deployAuditEvidence) {
+  name: '${stem}-audit-evidence-data'
+  scope: monitorGroup
+  params: {
+    stem: stem
+    location: location
+    tags: tags
+    relayPrincipalId: auditEvidenceIdentities!.outputs.identities.relay.principalId
+    workerPrincipalId: auditEvidenceIdentities!.outputs.identities.worker.principalId
+    eventHubsSku: auditEvidenceConfig.eventHubsSku
+    payloadRetentionDays: auditEvidenceConfig.payloadRetentionDays
+    payloadImmutabilityMode: auditEvidenceConfig.?payloadImmutabilityMode ?? 'Disabled'
+    manageAuditImmutabilityPolicies: manageAuditImmutabilityPolicies
+    retainedAuditImmutabilityPolicyIds: retainedAuditImmutabilityPolicyIds
+  }
+}
+
+module auditEvidenceNetwork 'modules/audit-evidence-network.bicep' = if (deployAuditEvidence) {
+  name: '${stem}-audit-evidence-network'
+  scope: nwGroup
+  params: {
+    stem: stem
+    location: location
+    tags: tags
+    data: auditEvidenceData!.outputs.data
+    vnetId: network!.outputs.vnetId
+    pepSubnetId: network!.outputs.subnetIds.pep
+    nsgNames: network!.outputs.nsgNames
+    prefixes: network!.outputs.subnetPrefixes
+    managementPrivateIp: management!.outputs.managementVm.privateIp
+    foundryPrivateIps: endpoints!.outputs.foundryPrivateIps
+    registryPrivateIps: portalNetwork!.outputs.registryPrivateIps
+    blobZoneId: auditPrivateDns!.outputs.privateDnsZoneId
+    firewallPolicyName: network!.outputs.firewallPolicyName
+  }
+  // Serialize network updates shared with the Core and Credential Broker.
+  // The certificate network also writes Private Endpoint NSG children.
+  dependsOn: [credentialNetwork, auditPrivateDnsLink, certificateNetwork]
+}
+
+module auditEvidenceEnvironment 'modules/audit-evidence-environment.bicep' = if (deployAuditEvidence) {
+  name: '${stem}-audit-evidence-environment'
+  scope: svcGroup
+  params: {
+    stem: stem
+    location: location
+    tags: tags
+    subnetId: network!.outputs.subnetIds.audit
+    diagnosticSettingProperties: diagnosticSettingProperties.?auditEvidence ?? diagnosticSettingProperties
+  }
+  dependsOn: [auditEvidenceNetwork]
+}
+
+module auditEvidenceIngress 'modules/audit-evidence-ingress.bicep' = if (deployAuditEvidence) {
+  name: '${stem}-audit-evidence-ingress'
+  scope: nwGroup
+  params: {
+    stem: stem
+    relayName: auditRelayName
+    defaultDomain: auditEvidenceEnvironment!.outputs.platform.environmentDomain
+    privateIp: auditEvidenceEnvironment!.outputs.platform.privateIp
+    vnetId: network!.outputs.vnetId
+    tags: tags
+    nsgNames: network!.outputs.nsgNames
+    prefixes: network!.outputs.subnetPrefixes
+  }
 }
 
 // Coreで実際に構築した対象だけを渡します。App配備は後段で作成したJobを追加します。
@@ -614,7 +732,7 @@ var managementClientInventory = deployCore ? {
   jobs: []
   // App-owned user databases are added from successful Gateway/Portal outputs.
   sqlDatabases: []
-  environments: [portal!.outputs.platform.environmentId]
+  environments: [portal!.outputs.platform.environmentId, brokerEnvironment!.outputs.platform.environmentId]
   workspace: { id: monitoring.outputs.monitoring.workspaceId, customerId: monitoring.outputs.monitoring.workspaceCustomerId }
   auditStorage: map(['collectJapan', 'collectFoundry'], collector => {
     id: monitoring.outputs.storage[collector].id
@@ -687,6 +805,7 @@ output ingressMonitoringPlan object = deployCore ? {
   storage: monitoring.outputs.storage
   apimId: services!.outputs.serviceResourceIds.apim
   firewallId: network!.outputs.firewallId
+  auditEvidenceEventHubsId: deployAuditEvidence ? auditEvidenceData!.outputs.data.eventHubsNamespaceId : ''
   networkResourceIds: network!.outputs.monitoredResourceIds
   resourceGroupIds: [idGroup.id, nwGroup.id, monitorGroup.id, svcGroup.id, maintGroup.id]
   enableLogAlerts: monitoringConfig.enableLogAlerts
@@ -768,7 +887,13 @@ module subscriptionMonitoring 'modules/monitoring-subscription.bicep' = if (depl
 output CORE_DEPLOYMENT_NAME string = deployment().name
 output resourceGroups object = toObject(groupKinds, kind => kind, kind => 'rg-${stem}-${kind}')
 output certificateIdentity object = { id: identity.outputs.id, principalId: identity.outputs.principalId, clientId: identity.outputs.clientId }
-output names object = serviceNames
+output names object = {
+  keyVault: serviceNames.keyVault
+  foundry: serviceNames.foundry
+  project: serviceNames.project
+  apim: serviceNames.apim
+  apiCenter: serviceNames.apiCenter
+}
 output monitoring object = monitoring.outputs.monitoring
 output auditStorage object = monitoring.outputs.storage
 output auditStoragePrivateAccess object = deployCore ? {
@@ -793,7 +918,7 @@ output managementInitialSerialCreation object = deployCore && !empty(managementI
 output AZURE_LOCATION string = location
 output gateway object = {}
 // 通常HTTP(S)の入口保護を常設します。APIM保守は標準FQDNのHTTPSを使用します。
-// 公開証明書URIは、旧gRPC専用domainの所有照合と撤去にだけ使用します。
+// 旧gRPC専用domainの所有照合には旧証明書の固定パスを使用します。
 output ingressSecrets object = deployCore ? {
   enabled: false
   l7IngressEnabled: useIngressSecrets
@@ -827,7 +952,7 @@ output cleanup object = {
 
 output portal object = deployCore ? union(portal!.outputs.platform, {
   authIdentity: portalAuthIdentity!.outputs.identity
-  apiAuthIdentity: entraRolloutEnabled ? portalApiAuthIdentity!.outputs.identity : {}
+  apiAuthIdentity: portalApiAuthIdentity!.outputs.identity
   authCertificateJobId: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.App/jobs', portalCertificateJobName)
   registryName: portalRegistry!.outputs.name
   registryId: portalRegistry!.outputs.id
@@ -848,6 +973,20 @@ output portal object = deployCore ? union(portal!.outputs.platform, {
   sharedSqlPrivateEndpointId: credentialNetwork!.outputs.endpointId
 }) : {}
 
+output brokerPlatform object = deployCore ? brokerEnvironment!.outputs.platform : {}
+output auditEvidence object = deployAuditEvidence ? union(auditEvidenceEnvironment!.outputs.platform, auditEvidenceData!.outputs.data, {
+  location: location
+  tags: tags
+  infrastructureSubnetId: network!.outputs.subnetIds.audit
+  apimSubnetPrefix: network!.outputs.subnetPrefixes.apim
+  apimPrincipalId: services!.outputs.principalIds.apim
+  registryName: portalRegistry!.outputs.name
+  foundryOpenAiEndpoint: services!.outputs.foundryOpenAiEndpoint
+  relay: union(auditEvidenceIdentities!.outputs.identities.relay, { name: auditRelayName })
+  worker: union(auditEvidenceIdentities!.outputs.identities.worker, { name: auditWorkerName })
+  relayFqdn: '${auditRelayName}.${auditEvidenceEnvironment!.outputs.platform.environmentDomain}'
+}) : {}
+
 // Gateway配備が参照する共通基盤の公開メタデータ。アプリ固有リソースや秘密値は含めません。
 output gatewayFoundation object = deployCore ? {
   resourceGroup: svcGroup.name
@@ -861,6 +1000,11 @@ output gatewayFoundation object = deployCore ? {
   sqlPrivateEndpointId: credentialNetwork!.outputs.endpointId
   environmentName: portal!.outputs.platform.environmentName
   environmentDomain: portal!.outputs.defaultDomain
+  brokerEnvironmentName: brokerEnvironment!.outputs.platform.environmentName
+  brokerEnvironmentId: brokerEnvironment!.outputs.platform.environmentId
+  brokerEnvironmentDomain: brokerEnvironment!.outputs.platform.defaultDomain
+  brokerSubnetId: brokerEnvironment!.outputs.platform.infrastructureSubnetId
+  brokerPrivateIp: brokerEnvironment!.outputs.platform.privateIp
   registryName: portalRegistry!.outputs.name
   registryServer: portalRegistry!.outputs.server
   vaultName: serviceNames.keyVault

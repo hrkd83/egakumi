@@ -2,8 +2,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Kysely } from "kysely";
 import { z } from "zod";
-import { createAuthDatabase } from "../lib/auth-database.ts";
-import { getSqlEnvironment } from "../lib/auth-environment.ts";
+import { createAuthDatabase, isCanonicalAzureSqlDatabase } from "../lib/auth-database.ts";
+import { getSqlEnvironment, isCanonicalManagedSqlConfiguration } from "../lib/auth-environment.ts";
 import { ApiKeyError } from "../lib/api-keys/contracts.ts";
 import { GraphApiKeyMembership } from "../lib/api-keys/graph.ts";
 import { SqlApiKeyRepository } from "../lib/api-keys/repository.ts";
@@ -24,8 +24,13 @@ export function readReconciliationDirectoryEnvironment(environment: Readonly<Rec
 /** 登録済み所有グループの観測だけを更新し、成功・不明の件数だけを出力します。 */
 async function main(): Promise<void> {
   const settings = readReconciliationDirectoryEnvironment(process.env);
-  const database = new Kysely<Record<string, unknown>>(createAuthDatabase(getSqlEnvironment()));
+  const sqlSettings = getSqlEnvironment();
+  if (!isCanonicalManagedSqlConfiguration(sqlSettings)) throw new ApiKeyError("ConfigurationUnavailable", 503);
+  const database = new Kysely<Record<string, unknown>>(createAuthDatabase(sqlSettings));
   try {
+    if (!await isCanonicalAzureSqlDatabase(database, sqlSettings.server, sqlSettings.database)) {
+      throw new ApiKeyError("ConfigurationUnavailable", 503);
+    }
     const repository = new SqlApiKeyAdministrationRepository(database);
     const registry = new SqlApiKeyRepository(database);
     const graph = new GraphApiKeyMembership(settings, { readPolicy: () => repository.getSettings(settings.microsoftTenantId) });

@@ -55,6 +55,43 @@ class ApplicationInfrastructureCleanupTests(CleanupFixture, unittest.TestCase):
         self.assertEqual(retried["portal"]["applicationInfrastructure"], self.inventory)
         self.assertEqual(resumed.mutations(), [])
 
+    def test_broker_app_and_its_dedicated_environment_release_both_owned_subnets(self):
+        transport = self.transport()
+        broker_environment_id = self.environment_id + "-broker"
+        broker_subnet_id = self.subnet_id.removesuffix("-aca") + "-broker"
+        broker_managed_group = self.managed_group + "-broker"
+        broker_environment = copy.deepcopy(transport.resources[self.environment_id])
+        broker_environment.update(id=broker_environment_id, name=broker_environment_id.rsplit("/", 1)[-1])
+        broker_environment["properties"]["infrastructureResourceGroup"] = broker_managed_group.rsplit("/", 1)[-1]
+        broker_environment["properties"]["vnetConfiguration"] = {
+            "infrastructureSubnetId": broker_subnet_id, "internal": True,
+        }
+        transport.resources[broker_environment_id] = broker_environment
+        transport.resources[broker_subnet_id] = {"id": broker_subnet_id, "properties": {}}
+        self.state["outputs"]["brokerPlatform"] = {
+            "environmentName": broker_environment["name"], "environmentId": broker_environment_id,
+            "infrastructureSubnetId": broker_subnet_id,
+        }
+        broker_id = self.svc_rg + "/providers/Microsoft.App/containerApps/" + cleanup.resource_names(self.configuration)["application"]
+        transport.resources[broker_id] = {
+            "id": broker_id, "name": broker_id.rsplit("/", 1)[-1], "type": "Microsoft.App/containerApps",
+            "location": broker_environment["location"], "tags": broker_environment["tags"],
+            "properties": {"managedEnvironmentId": self.environment_id, "provisioningState": "Succeeded"},
+        }
+        with self.assertRaises(cleanup.CleanupError):
+            self.pre(transport)
+        self.assertFalse(transport.mutations())
+        transport.resources[broker_id]["properties"]["managedEnvironmentId"] = broker_environment_id
+        inventories = []
+        result = self.pre(transport, checkpoint=inventories.append)
+        deletes = [call["id"] for call in transport.mutations()]
+        self.assertLess(deletes.index(broker_id), deletes.index(broker_environment_id))
+        self.assertEqual(result["portal"]["subnet"]["status"], "released")
+        self.assertEqual(result["portal"]["brokerEnvironment"]["subnet"]["status"], "released")
+        self.assertEqual(inventories, [[*self.inventory, {
+            "environmentId": broker_environment_id, "resourceGroupId": broker_managed_group,
+        }]])
+
     def test_checkpoint_failure_stops_before_any_resource_mutation(self):
         transport = self.transport()
         calls = []
@@ -69,6 +106,34 @@ class ApplicationInfrastructureCleanupTests(CleanupFixture, unittest.TestCase):
         self.assertEqual(transport.mutations(), [])
         self.assertIn(self.environment_id, transport.resources)
 
+    def test_body_audit_apps_are_deleted_before_their_environment(self):
+        transport = self.transport()
+        environment_id = self.environment_id + '-audit'
+        subnet_id = self.subnet_id.removesuffix('-aca') + '-audit'
+        managed_group = self.managed_group + '-audit'
+        environment = copy.deepcopy(transport.resources[self.environment_id])
+        environment.update(id=environment_id, name=environment_id.rsplit('/', 1)[-1])
+        environment['properties'].update(infrastructureResourceGroup=managed_group.rsplit('/', 1)[-1],
+            vnetConfiguration={'infrastructureSubnetId': subnet_id, 'internal': True})
+        transport.resources[environment_id] = environment
+        transport.resources[subnet_id] = {'id': subnet_id, 'properties': {}}
+        self.state['outputs']['auditEvidence'] = {'environmentId': environment_id, 'infrastructureSubnetId': subnet_id}
+        applications = []
+        for role in ('relay', 'store'):
+            name = 'ca-' + self.configuration['resourceStem'] + '-audit-' + role
+            app_id = self.svc_rg + '/providers/Microsoft.App/containerApps/' + name
+            applications.append(app_id)
+            transport.resources[app_id] = {'id': app_id, 'name': name, 'type': 'Microsoft.App/containerApps',
+                'location': environment['location'], 'tags': environment['tags'],
+                'properties': {'managedEnvironmentId': environment_id, 'provisioningState': 'Succeeded'}}
+
+        snapshots = []
+        result = self.pre(transport, checkpoint=snapshots.append)
+        deletes = [call['id'] for call in transport.mutations()]
+        self.assertTrue(all(deletes.index(app) < deletes.index(environment_id) for app in applications))
+        self.assertEqual(result['auditEvidenceEnvironment']['subnet']['status'], 'released')
+        self.assertIn({'environmentId': environment_id, 'resourceGroupId': managed_group}, snapshots[0])
+
     def test_locked_retention_is_checked_before_checkpoint_and_all_mutations(self):
         transport = self.transport()
         transport.resources[self.policy_ids[0]] = self.policy(self.policy_ids[0], mode="Locked")
@@ -76,6 +141,23 @@ class ApplicationInfrastructureCleanupTests(CleanupFixture, unittest.TestCase):
         with self.assertRaises(cleanup.CleanupError) as raised:
             self.pre(transport, checkpoint=snapshots.append)
         self.assertEqual(raised.exception.code, "locked-retention")
+        self.assertEqual(snapshots, [])
+        self.assertEqual(transport.mutations(), [])
+
+    def test_locked_body_evidence_prevents_down_even_when_current_profile_has_worm_disabled(self):
+        transport = self.transport()
+        body_policy = cleanup.evidence_policy_id(self.configuration)
+        self.state['outputs']['auditEvidence'] = {
+            'environmentId': self.environment_id + '-audit',
+            'infrastructureSubnetId': self.subnet_id.removesuffix('-aca') + '-audit',
+            'evidenceContainerId': cleanup.evidence_container_id(self.configuration),
+            'payloadImmutability': {'policyId': body_policy, 'mode': 'Locked', 'retentionInDays': 2557},
+        }
+        transport.resources[body_policy] = self.policy(body_policy, mode='Locked')
+        snapshots = []
+        with self.assertRaises(cleanup.CleanupError) as raised:
+            self.pre(transport, checkpoint=snapshots.append)
+        self.assertEqual((raised.exception.code, raised.exception.resource_id), ('locked-retention', body_policy))
         self.assertEqual(snapshots, [])
         self.assertEqual(transport.mutations(), [])
 

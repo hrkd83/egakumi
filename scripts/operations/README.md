@@ -34,4 +34,4 @@ python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --compon
 - ETagを提供するAPIでは条件付き更新する。APIが提供しない場合の直前比較は、外部操作との原子的な競合防止を保証しない。現物読戻しと、他の保守を同時実行しない前提を守る。
 - `applied`や`completed`はスクリプトの工程完了である。新規サインイン・本人接続・業務API・通知受信等、手順に指定する受入まで自動的にPASSへ変えない。
 
-初期構築は`azd up`、利用終了の撤去は既存の`azd down`手順で行う。通常保守のために基盤全体を作り直さない。
+初回は[共用基盤を構築](../../docs/setup/08-provision-core.md)してからアプリを個別配備する。利用終了の撤去は`azd down`で行う。通常保守のために基盤全体を作り直さない。

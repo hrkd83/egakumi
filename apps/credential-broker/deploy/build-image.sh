@@ -13,7 +13,7 @@ finish() {
     if [ -n "$image" ]; then docker image rm "$image" >/dev/null 2>&1 || true; fi
     if [ -n "$work" ]; then rm -rf -- "$work"; fi
     if [ "$result" -ne 0 ]; then
-        printf 'CORE_CREDENTIAL_IMAGE_RESULT={"status":"failed","stage":"%s"}\n' "$stage"
+        printf '__RESULT_MARKER__{"status":"failed","stage":"%s"}\n' "$stage"
     fi
     exit "$result"
 }
@@ -23,14 +23,14 @@ trap 'exit 143' TERM
 [ "$EUID" = 0 ]
 . /etc/os-release
 [ "$ID" = ubuntu ] && [ "$VERSION_ID" = 24.04 ]
-exec 9>/run/lock/egakumi-credential-image.lock
+exec 9>/run/lock/egakumi-__IMAGE_REPOSITORY__-image.lock
 flock -n 9
-work=$(mktemp -d /var/tmp/egakumi-credential-image.XXXXXXXX)
+work=$(mktemp -d /var/tmp/egakumi-__IMAGE_REPOSITORY__-image.XXXXXXXX)
 export DOCKER_CONFIG="$work/docker"
 mkdir -p "$DOCKER_CONFIG" "$work/source"
 export CORE_BUILD_REGISTRY='__REGISTRY__'
 export CORE_BUILD_TENANT='__TENANT__'
-image="$CORE_BUILD_REGISTRY/credential-broker:__BUILD_TAG__"
+image="$CORE_BUILD_REGISTRY/__IMAGE_REPOSITORY__:__BUILD_TAG__"
 stage=source
 cat > "$work/source.b64" <<'CORE_SOURCE'
 __SOURCE_BASE64__
@@ -46,7 +46,7 @@ with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
         path = pathlib.PurePosixPath(item.name)
         if (not item.isfile() or path.is_absolute() or '..' in path.parts
                 or not (item.name in ('Dockerfile', 'requirements.txt')
-                        or (len(path.parts) == 2 and path.parts[0] in ('credential_broker', 'sql')))):
+                        or (len(path.parts) == 2 and path.parts[0] in __SOURCE_SUBDIRECTORIES__))):
             raise SystemExit(1)
         target = folder / 'source' / item.name
         target.parent.mkdir(exist_ok=True)
@@ -64,10 +64,10 @@ stage=image-build
 # hostネットワークで既存のVM→Firewall経路を使う。Dockerのiptables設定は変更しない。
 DOCKER_BUILDKIT=0 docker build --pull --network host --tag "$image" "$work/source" >"$work/build.log" 2>&1
 stage=image-startup-check
-# 配備時と同じ非rootユーザーでimportとSQL資材の読み取りを確認する。
+# 配備時と同じ非rootユーザーで必要なモジュールを読み込む。
 # Azureの秘密情報は渡さず、ネットワークも切った状態で検査する。
 docker run --rm --network none --entrypoint python "$image" -c \
-    'import os; from pathlib import Path; import credential_broker.cli; import credential_broker.app; assert os.getuid() == 10001; assert "CREATE TABLE broker.Pools" in Path("/app/sql/001_initial.sql").read_text()' \
+    '__STARTUP_CHECK__' \
     >"$work/startup-check.log" 2>&1
 stage=registry-login
 # VM自身のMIでトークンを取得し、標準ACR交換APIへ渡す。
@@ -111,11 +111,11 @@ stage=image-digest
 docker image inspect "$image" --format '{{json .RepoDigests}}' > "$work/digests.json"
 python3 - "$work/digests.json" <<'PY'
 import json, os, re, sys
-prefix = os.environ['CORE_BUILD_REGISTRY'] + '/credential-broker@'
+prefix = os.environ['CORE_BUILD_REGISTRY'] + '/__IMAGE_REPOSITORY__@'
 with open(sys.argv[1]) as source:
     matches = [value[len(prefix):] for value in json.load(source) if value.startswith(prefix)]
 if len(matches) != 1 or not re.fullmatch(r'sha256:[0-9a-f]{64}', matches[0]):
     raise SystemExit(1)
-print('CORE_CREDENTIAL_IMAGE_RESULT=' + json.dumps({
+print('__RESULT_MARKER__' + json.dumps({
     'status': 'built', 'imageDigest': matches[0], 'sourceSha256': '__SOURCE_SHA256__'}))
 PY

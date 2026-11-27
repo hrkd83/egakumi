@@ -36,7 +36,7 @@ Hosted Agent APIとA2Aは準備中です。画像編集はGateway APIで提供�
 ## 使い始める
 
 1. 配備先の`https://portal.<domain>`を開き、許可されたEntraテナントのアカウントでサインインします。
-2. 「管理」のAPIキー管理で、所属グループが所有するキーを確認します。発行可能なグループでは、会社・用途・連絡先を指定して新しいキーを発行できます。
+2. 「管理」のAPIキー管理で、所属グループが所有するキーを確認します。初回は購読管理用の本人認証を完了します。発行可能なグループでは、会社・用途・連絡先を指定して新しいキーを発行できます。
 3. Model GatewayまたはTool Gatewayで対象を選び、使い方とAPI仕様を確認します。「試す」で利用するキーを選び、入力して実行します。
 4. Microsoft Graphの本人接続を求められた場合は、案内されたMicrosoft認証をPortalと同じアカウントで完了します。完了確認後、元の操作へ戻ります。
 
@@ -52,17 +52,17 @@ Hosted Agent APIとA2Aは準備中です。画像編集はGateway APIで提供�
 | 所有グループのメンバー | そのグループのキーの発行・管理。候補グループと発行条件は環境設定に従う |
 | 基盤管理グループのメンバー | グループ健全性、会社情報、購読同期などの管理画面 |
 
-Portalのログインと、Graph等の下流API用の本人接続は別に管理します。本人接続はPortalが確認した利用者と購読に結び付け、Microsoftのトークン管理はCredential Managerが担当します。PortalのAPI実行処理はキーと接続セッションをサーバー側で扱います。
+Portalのログイン、購読管理の`Subscription.Manage`、API試用の`Gateway.Invoke`は用途ごとに管理します。Graphの購読キー経路では本人と購読に結び付いた接続をCredential Managerで管理します。GraphのBearer経路はGatewayのOBOで本人のトークンを取得します。PortalのAPI実行処理はキーと接続セッションをサーバー側で扱います。
 
 通常の新規キーは、リリース済みAPIをまとめた`released-apis`製品を使います。利用範囲はAPIMの製品・APIの関連付けと購読状態で決まり、Portalは操作直前にも現在のグループ所属と所有権を確認します。回数・対応LLMのトークン制限はキー詳細で設定できます。
 
-SQLへ保存するのは、利用者の識別情報・ログインセッション・購読メタデータ・監査・暗号化した本人接続状態です。APIキーの実値はAPIM、MicrosoftのOAuthトークンはCredential Managerが管理し、PortalのSQLへは保存しません。生成内容、アップロードした文書、解析結果、マイク音声をPortalのSQLへ保存する機能はありません。ローカルSQLとAzure SQLのデータは同期しません。
+SQLには利用者の識別情報とログインセッション、購読メタデータと監査、暗号化した本人接続状態と用途別のPortal委任トークンを保存します。APIキーの実値はAPIMが保持します。購読キーで呼び出すGraphの下流トークンはCredential Managerが保持します。生成内容、アップロードした文書、解析結果、マイク音声はPortalのSQL保存の対象外です。ローカルSQLとAzure SQLのデータは同期しません。
 
-購読同期はSQL台帳にAPIMを合わせる管理操作で、購読の再作成・有効化・削除を伴います。差分と確認画面を確認してから実行してください。[配備・権限・同期の詳細](../../docs/setup/portal.md)を参照してください。
+購読同期はSQL台帳にAPIMを合わせる管理操作で、購読の再作成・有効化・削除を伴います。差分と確認画面を確認してから実行してください。[配備・権限・同期の詳細](../../docs/setup/12-deploy-portal.md)を参照してください。
 
 ## Azureへ導入・更新する
 
-新規導入は[Coreの導入手順](../../README.md)に従います。`azd up`が共通基盤とGatewayの準備後にPortalを配備します。Entra、DNS、秘密情報、paramsの準備は[Portal配備手順](../../docs/setup/portal.md)で確認します。
+新規導入は[空の環境からの構築手順](../../docs/setup/08-provision-core.md)に従い、Core、Entraの公開証明書登録、Gateway、Portalの順に配備します。公開Portalと専用の購読管理・プロファイル照会は同じ不変のイメージを使い、別のACA、起動入口、実行IDで動きます。Portalから購読管理へ、APIMからプロファイル照会へ、内部HTTPSで接続します。 [Portal配備手順](../../docs/setup/12-deploy-portal.md)
 
 構築済み環境のPortalだけを更新・再試行する場合は、構築に使用したparamsとstateを使い、リポジトリ直下で計画を確認してから実行します。
 
@@ -71,7 +71,7 @@ python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
 python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
-配備コマンドが管理VMでのイメージ作成、DB初期化、アプリ更新、公開ヘルス確認を行います。手元のDockerや、Portal更新のための基盤再構築は不要です。更新・失敗時の再試行・撤去は[運用手順](../../docs/operations.md)を使います。
+配備コマンドは管理VMでイメージを作成し、SQL初期化後に3つのアプリを配備します。専用アプリの準備と公開ヘルスを確認し、APIM側の内部URLと鍵参照を読み戻して照会を有効にします。更新・失敗時の再試行・撤去は[運用手順](../../docs/operations.md)を使います。
 
 ## ローカルで起動する
 

@@ -164,7 +164,7 @@ class PortalCleanupTests(unittest.TestCase):
         self.assertFalse(transport.mutations())
         self.assertFalse(any(c["id"].endswith("/deployments") for c in transport.calls))
 
-    def test_portal_jobs_are_deleted_before_shared_environment_with_or_without_saved_output(self):
+    def test_portal_jobs_and_subscription_apps_are_deleted_before_shared_environment(self):
         for saved_output in (True, False):
             with self.subTest(saved_output=saved_output):
                 self.state["outputs"]["portal"] = self.portal_output()
@@ -180,11 +180,34 @@ class PortalCleanupTests(unittest.TestCase):
                         'tags': {'product': self.config['productName'], 'environment': self.config['environmentName']},
                         'properties': {'environmentId': self.environment_id}}
                     jobs.append(resource_id)
+                subscriptions = []
+                for key, suffix in (('subscriptionAdmin', 'sub-admin'), ('subscriptionProfileReader', 'sub-profile')):
+                    name = 'ca-' + self.config['resourceStem'] + '-' + suffix
+                    resource_id = self.base.svc_rg + '/providers/Microsoft.App/containerApps/' + name
+                    transport.resources[resource_id] = {'id': resource_id, 'name': name, 'type': 'Microsoft.App/containerApps',
+                        'location': self.config['location'],
+                        'tags': {'product': self.config['productName'], 'environment': self.config['environmentName']},
+                        'properties': {'environmentId': self.environment_id}}
+                    if saved_output:
+                        self.state['outputs']['portal'][key] = {'id': resource_id, 'name': name}
+                    subscriptions.append(resource_id)
                 result = self.pre(transport)
                 self.assertEqual(result['portalJobs'], jobs)
+                self.assertEqual(result['portalSubscriptionApplications'], subscriptions)
                 deleted = [call['id'] for call in transport.mutations()]
-                for job in jobs:
-                    self.assertLess(deleted.index(job), deleted.index(self.environment_id))
+                for child in jobs + subscriptions:
+                    self.assertLess(deleted.index(child), deleted.index(self.environment_id))
+
+    def test_foreign_subscription_endpoint_is_rejected_before_mutations(self):
+        transport = self.transport()
+        name = 'ca-' + self.config['resourceStem'] + '-sub-profile'
+        resource_id = self.base.svc_rg + '/providers/Microsoft.App/containerApps/' + name
+        transport.resources[resource_id] = {'id': resource_id, 'name': name, 'type': 'Microsoft.App/containerApps',
+            'location': self.config['location'],
+            'tags': {'product': self.config['productName'], 'environment': self.config['environmentName']},
+            'properties': {'environmentId': self.environment_id, 'managedEnvironmentId': self.environment_id + '-foreign'}}
+        self.assert_error('portal-owner-mismatch', transport)
+        self.assertFalse(transport.mutations())
 
     def test_foreign_portal_job_is_rejected_before_mutations(self):
         transport = self.transport()

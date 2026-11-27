@@ -139,6 +139,19 @@ class SubscriptionProfileSettingsTests(unittest.TestCase):
         self.assertEqual(transport.inventory, before)
         self.assertTrue(all(call[0] == 'GET' for call in transport.calls))
 
+    def test_activation_requires_the_read_back_dedicated_endpoint(self):
+        endpoint = 'https://profile.example.invalid/api/internal/subscription-profile'
+        inventory = ready_inventory()
+        inventory[named('url')] = {'statusCode': 200, 'body': {'properties': {
+            'secret': False, 'value': 'https://other.example.invalid/api/internal/subscription-profile'}}}
+        transport = ProfileTransport(inventory)
+        with self.assertRaisesRegex(ValueError, 'healthy dedicated application'):
+            profiles.activate_profile_settings(APIM, transport, TARGET_APIS, expected_url=endpoint)
+        self.assertTrue(all(method == 'GET' for method, *_ in transport.calls))
+        transport.inventory[named('url')]['body']['properties']['value'] = endpoint
+        result = profiles.activate_profile_settings(APIM, transport, TARGET_APIS, expected_url=endpoint)
+        self.assertTrue(result['enabled'])
+
     def test_initialization_does_not_overwrite_a_concurrent_creator(self):
         transport = ProfileTransport()
         transport.put_status = 412
@@ -579,7 +592,7 @@ class SubscriptionProfileBicepTests(unittest.TestCase):
         self.assertEqual(len(named_values), 2)
         url = next(resource for resource in named_values if 'profile-url' in resource['name'])
         self.assertIn('/api/internal/subscription-profile', url['properties']['value'])
-        self.assertIn('defaultDomain', url['properties']['value'])
+        self.assertIn('profileFqdn', url['properties']['value'])
         self.assertNotIn('publicOrigin', url['properties']['value'])
         key = next(resource for resource in named_values if 'profile-secret' in resource['name'])
         self.assertTrue(key['properties']['secret'])
@@ -605,21 +618,7 @@ class SubscriptionProfileBicepTests(unittest.TestCase):
         self.assertTrue(any('Microsoft.Authorization/roleAssignments' in dependency
                             for dependency in key['dependsOn']))
 
-    def test_application_uses_reference_and_cannot_output_secret_value(self):
-        application = self.module('-portal-application')
-        self.assertEqual(application['condition'], "[parameters('deployApplication')]")
-        template = application['properties']['template']
-        app = next(resource for resource in self.resources(template) if resource['type'] == 'Microsoft.App/containerApps')
-        settings = app['properties']['configuration']['secrets']
-        profile = next(secret for secret in settings if secret['name'] == 'subscription-profile-secret')
-        self.assertEqual(profile['keyVaultUrl'], "[parameters('profileSecretUri')]")
-        self.assertNotIn('value', profile)
-        env = app['properties']['template']['containers'][0]['env']
-        self.assertIn('PORTAL_SUBSCRIPTION_PROFILE_SECRET', str(env))
-        self.assertIn('subscription-profile-secret', str(env))
-        self.assertNotIn('profileSecret', json.dumps(self.template.get('outputs', {})))
-
-    def test_only_readiness_probe_uses_sql_and_profile_key_readiness_endpoint(self):
+    def test_only_readiness_probe_uses_dependency_readiness_endpoint(self):
         template = self.module('-portal-application')['properties']['template']
         app = next(resource for resource in self.resources(template) if resource['type'] == 'Microsoft.App/containerApps')
         container = app['properties']['template']['containers'][0]

@@ -2,7 +2,7 @@
 
 このフォルダーのJSONは、Gatewayへ実際に配備する標準APIの定義です。`<API名>.json`の1 API 1ファイルで管理し、ファイル名とJSON内の`name`を一致させます。
 
-`scripts/deploy_gateway.py`は19ファイルの標準API正本を常用で読み込みます。公開params/configの`apiDefinitions`・`publishApis`による一覧置換・切替は廃止し、旧項目は空配列やfalseでも拒否します。ディレクトリ内のJSONはAPIオブジェクトだけを持ち、`apiDefinitions`等の包みは付けません。今回の公開入力整理は既存アプリID・secret・認証fallbackの切替を伴わず、Azure反映と全環境再構築E2Eは未実施です。[入力配置と移行](../../../docs/setup/04-params.md#公開入力71主項目の判断記録)を参照してください。
+`scripts/deploy_gateway.py`は19ファイルの標準API正本を常用で読み込みます。公開params/configの`apiDefinitions`・`publishApis`による一覧置換・切替は廃止し、旧項目は空配列やfalseでも拒否します。ディレクトリ内のJSONはAPIオブジェクトだけを持ち、`apiDefinitions`等の包みは付けません。今回の公開入力整理は既存アプリID・secret・認証fallbackの切替を伴わず、Azure反映と全環境再構築E2Eは未実施です。[入力配置と移行](../../../docs/setup/07-params.md#公開入力71主項目の判断記録)を参照してください。
 
 | ファイル | 主な機能 |
 | --- | --- |
@@ -23,7 +23,7 @@
 | [openai-live-ws-v1.json](openai-live-ws-v1.json) | LiveのWebSocket接続 |
 | [openai-transcription-ws-v1.json](openai-transcription-ws-v1.json) | リアルタイム文字起こしのWebSocket接続 |
 | [pii-v1.json](pii-v1.json) | 個人情報の検出・マスキング |
-| [graph-profile-v1.json](graph-profile-v1.json) | CMの本人接続によるMicrosoft Graph /meの12属性取得 |
+| [graph-profile-v1.json](graph-profile-v1.json) | Microsoft Graph /meの12属性取得。キーはCM本人接続、BearerはOBO |
 | [document-analysis-v1.json](document-analysis-v1.json) | PDF・画像の文字認識と文書レイアウト・表の解析 |
 
 ## 埋め込みAPIの入口
@@ -42,7 +42,7 @@ OpenAIの`api-version`例外とCohere Embedのquery禁止を、この入力検�
 
 TTSの対象操作は、既存の`requiresSpeechSsmlGuard`による選択から配備時に`speechSsmlOperationIds`へ生成し、`gatewayControlSettings`に保持します。これはクライアント指定や名前付きの値ではありません。HTTP APIが共有サイズ検査直後、利用枠・下流認証準備・`accepted`監査より前で部品を呼び、結果の監査と400／413応答も担当します。C#へAPI名・操作名による分岐を追加せず、TTS集約時点では未棚卸の形式・転送条件やDocument・JSON処理を変更していません。TTSのAzure反映・読戻しは完了し、キー／Bearerの正常WAV応答とDTD宣言拒否の400、対応する監査照合を実接続で確認しました。実サイズ超過413など残る受入は未実施です。
 
-HTTP操作の入力検査は`operations[].inputContract = {}`で対象を明示します。OpenAI embeddingsを含む従来の13操作はすべてこの指定を使います。Bicepは`gatewayControlSettings.inputContracts`へ対象の操作IDだけを記録し、各値を`{}`にします。空の値は条件不足ではなく、全対象でContent-Type宣言の存在・1値・非空MIME部分という共通条件を使う意味です。MIME一覧比較、C#でのメソッド再確認、query拒否は行いません。操作のmethod・URL登録とAPIMの操作照合は維持し、未指定の操作へ検査を自動追加しません。後段用の`operationConstraints.contentTypes`、query観測・URL資格情報拒否、監査、本文制約・URI書換え・Speechの転送設定・WAFはこの入口検査の整理では変更していません。入口検査のAzure反映・読戻しは完了し、Content-Type未指定の400と対応する拒否監査を一部確認しました。追加のContent-Type異常系や未知メソッドの実APIM照合などは未実施です。[入力検査の使い方](../policies/fragments/request/core-api-input-validation/README.md)を参照してください。
+HTTP操作の入力検査は`operations[].inputContract = {}`で対象を明示します。OpenAI embeddingsを含む従来の13操作はすべてこの指定を使います。Bicepは`gatewayControlSettings.inputContracts`へ対象の操作IDだけを記録し、各値を`{}`にします。空の値は、全対象でContent-Type宣言の存在・1値・非空MIME部分を確認する指定です。WAFの型別ルールが参照するヘッダーの存在を、このAPIMの確認で保証します。MIME一覧比較、C#でのメソッド再確認、query拒否は行いません。操作のmethod・URL登録とAPIMの操作照合は維持し、未指定の操作へ検査を自動追加しません。後段用の`operationConstraints.contentTypes`、query観測・URL資格情報拒否、監査、本文制約・URI書換え・Speechの転送設定・WAFはこの入口検査の整理では変更していません。入口検査のAzure反映・読戻しは完了し、Content-Type未指定の400と対応する拒否監査を一部確認しました。追加のContent-Type異常系や未知メソッドの実APIM照合などは未実施です。[入力検査の使い方](../policies/fragments/request/core-api-input-validation/README.md)を参照してください。
 
 URLクエリの観測対象は、HTTPの`operations[].queryObservation`、生成MCP表口の`mcp.queryObservation`、外部MCPの`mcpProxy.endpoints[].queryObservation`にラベルを指定します。同じラベルを複数の操作・受付で共有でき、未指定の入口は観測対象外です。標準ではLive・Realtimeの作成操作とPIIのMCP表口に、従来の`liveCreate`・`realtimeCreate`・`piiMcp`を指定しています。ラベルはASCII英字で始まる1～64文字の英数字・`_`・`-`とし、小文字の`none`／`unknown`は完全一致で予約します。
 

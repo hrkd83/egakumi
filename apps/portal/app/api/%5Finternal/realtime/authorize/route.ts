@@ -2,7 +2,7 @@ import { getAuthEnvironment } from "@/lib/auth-environment";
 import { readPortalPrincipal } from "@/lib/auth-session";
 import { ApiKeyError } from "@/lib/api-keys/contracts";
 import { apiAuthenticationFailure, readGatewayBearer } from "@/lib/api-auth/gateway-credential";
-import { getApiKeyService } from "@/lib/api-keys/service";
+import { getPortalApiKeyService } from "@/lib/subscription-service/client";
 import { getRealtimeModels } from "@/lib/model-catalog";
 import { getPublicModelGatewayOrigin } from "@/lib/model-public-config";
 import { getRealtimeEndpoint } from "@/lib/realtime-integration";
@@ -31,8 +31,8 @@ export async function POST(request: Request): Promise<Response> {
       const bearer = await readGatewayBearer(request, actor, gatewayOrigin);
       return Response.json({ ...relay, bearer }, { headers });
     }
-    const key = await getApiKeyService().executionKey(actor, input.apiKeyId, model.apiId);
-    if (model.observer && await getApiKeyService().executionKey(actor, input.apiKeyId, model.observer.apiId) !== key) return failure(403);
+    const key = await getPortalApiKeyService().executionKey(actor, input.apiKeyId, model.apiId);
+    if (model.observer && await getPortalApiKeyService().executionKey(actor, input.apiKeyId, model.observer.apiId) !== key) return failure(403);
     // 公開frontはこのURLを全拒否します。キーの送信先は同じコンテナのloopbackプロセスだけです。
     return Response.json({ ...relay, key, apiKeyId: input.apiKeyId }, { headers });
   } catch (error) { return failure(apiAuthenticationFailure(error)?.status ?? (error instanceof ApiKeyError && error.status < 500 ? 403 : 503)); }

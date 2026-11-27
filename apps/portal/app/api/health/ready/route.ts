@@ -3,6 +3,7 @@ import { getApiKeyLimitRepository } from "@/lib/api-keys/limit-repository";
 import { getCompanyRepository } from "@/lib/company-administration/repository";
 import { assertConnectionSessionStoreReady } from "@/lib/connection-session/store";
 import { scheduleApiAuthCleanup } from "@/lib/api-auth/service";
+import { subscriptionManagerOrigin } from "@/lib/subscription-service/client";
 import { connection } from "next/server";
 
 let expiresAt = 0;
@@ -14,9 +15,18 @@ function readiness(): Promise<boolean> {
   expiresAt = Number.POSITIVE_INFINITY;
   check = (async () => {
     try {
-      const settings = getGatewayProfileSettings();
-      await getApiKeyLimitRepository().getGatewayProfile(settings.tenantId, "profile-readiness");
-      await getCompanyRepository().assertReady();
+      const manager = subscriptionManagerOrigin();
+      if (manager) {
+        const response = await fetch(`${manager}/api/health/ready`, {
+          cache: "no-store", redirect: "error", signal: AbortSignal.timeout(5_000),
+        });
+        const body = await response.json();
+        if (!response.ok || body.status !== "ready") return false;
+      } else {
+        const settings = getGatewayProfileSettings();
+        await getApiKeyLimitRepository().getGatewayProfile(settings.tenantId, "profile-readiness");
+        await getCompanyRepository().assertReady();
+      }
       await assertConnectionSessionStoreReady();
       scheduleApiAuthCleanup();
       return true;

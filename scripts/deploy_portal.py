@@ -22,7 +22,7 @@ from deployment.helpers.paths import REPOSITORY, local_paths
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.portal_authentication import prepare_secret
 from deployment.helpers.portal_auth_certificate import deployment_authentication
-from deployment.helpers.portal_resources import resource_names
+from deployment.helpers.portal_resources import resource_names, subscription_app_names
 from deployment.helpers.portal_image import source_bundle, build_image, reusable_image, read_build_receipt
 from deployment.helpers.portal_gateway import configure_portal_callback_waf, require_appgw_backend_tls_ready
 from deployment.helpers.public_health_http import read_public_json
@@ -51,7 +51,7 @@ def group_scope(config):
     return f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['svc']}"
 
 
-def deployment_inputs(config, state, image_digest=None):
+def deployment_inputs(config, state, image_digest=None, *, workspace=None):
     """現在のinfraが保存した基盤出力から、今回の環境だけを参照する。"""
     if image_digest is not None and not re.fullmatch(r'sha256:[0-9a-f]{64}', image_digest):
         raise ValueError('Use an immutable sha256 image digest')
@@ -106,9 +106,8 @@ def deployment_inputs(config, state, image_digest=None):
     if not isinstance(auth_identity, dict) or str(auth_identity.get('id', '')).lower() != (identities + f'id-{stem}-portal-auth').lower():
         raise ValueError('The dedicated authentication identity is missing from the initial foundation')
     from deployment.helpers.portal_api_auth import deployment_settings as api_authentication_settings
-    api_authentication = api_authentication_settings(config, portal, identities)
+    api_authentication = api_authentication_settings(config, portal, identities, management=True)
     return {
-        **({'apiAuthentication': api_authentication} if api_authentication else {}),
         'stem': stem, 'location': config['location'],
         'tags': {**config.get('tags', {}), 'product': config['productName'], 'environment': config['environmentName'], 'azd-env-name': config['environmentName']},
         'environmentName': expected['environmentName'], 'registryName': expected['registryName'],
@@ -122,11 +121,14 @@ def deployment_inputs(config, state, image_digest=None):
         'databaseSettings': config['portalAuthentication'], 'vaultName': f'kv-{stem}',
         'credentialProviderName': profile_name, 'clientId': authentication['clientId'], 'tenantId': authentication['tenantId'],
         'authentication': authentication, 'authIdentity': auth_identity,
+        'apiAuthentication': api_authentication,
+        'subscriptionServiceAudience': config['gateway']['authentication']['entra']['audience'],
         'publicOrigin': 'https://' + config['portal']['publicHostName'],
         # Core出力との一致を確認した公開ドメインを使い、共通購読キーは配備しません。
         'gatewayOrigin': gateway_origin,
         'networkResourceGroup': config['resourceGroupNames']['nw'],
         'acaPrefix': config['network']['subnetPrefixes']['aca'],
+        'apimSubnetPrefix': config['network']['subnetPrefixes']['apim'],
         'expectedEgressIp': portal.get('expectedEgressIp', ''),
         'imageDigest': image_digest, 'deployApplication': False,
     }
@@ -163,8 +165,10 @@ def verify_foundation(config, values, transport):
         raise ValueError('Shared SQL server must use its existing private connection')
     environment = checked(transport, 'GET', prefix + 'Microsoft.App/managedEnvironments/' + values['environmentName'] + '?api-version=' + APP_API,
                           label='Read existing Container Apps environment')
-    if environment.get('properties', {}).get('provisioningState') != 'Succeeded':
-        raise ValueError('Existing Container Apps environment is not ready')
+    environment_properties = environment.get('properties', {})
+    if (environment_properties.get('provisioningState') != 'Succeeded'
+            or environment_properties.get('vnetConfiguration', {}).get('internal') is not True):
+        raise ValueError('The existing private Container Apps environment is not ready')
     apim_id = prefix + 'Microsoft.ApiManagement/service/' + values['apimName']
     apim = checked(transport, 'GET', apim_id + '?api-version=2024-05-01', label='Read existing Portal API management target')
     if str(apim.get('id', '')).lower() != apim_id.lower():
@@ -194,15 +198,24 @@ def signing_secret(config, values, transport, root=REPOSITORY):
     return prepare_secret(config, root, protected_json)['portalAuthenticationSecret']
 
 
-def profile_secret(config, values, transport, root=REPOSITORY):
-    """PortalとAPIM専用の照会鍵を初回だけ作り、再配備では既存値を保持する。"""
-    target = group_scope(config) + '/providers/Microsoft.KeyVault/vaults/' + values['vaultName'] + '/secrets/' + SECRET_NAME
+def _subscription_secret(config, values, transport, root, name, purpose):
+    target = group_scope(config) + '/providers/Microsoft.KeyVault/vaults/' + values['vaultName'] + '/secrets/' + name
     response = transport.request('GET', target + '?api-version=2023-07-01')
     if response.get('statusCode') == 200:
         return ''
     if response.get('statusCode') != 404:
-        raise ValueError('Subscription profile secret metadata could not be read')
-    return _prepare_credential(config, root, 'subscription-profile', protected_json)
+        raise ValueError('Subscription service secret metadata could not be read')
+    return _prepare_credential(config, root, purpose, protected_json)
+
+
+def profile_secret(config, values, transport, root=REPOSITORY):
+    """照会鍵を初回に限り生成する。"""
+    return _subscription_secret(config, values, transport, root, SECRET_NAME, 'subscription-profile')
+
+
+def subscription_sync_secret(config, values, transport, root=REPOSITORY):
+    """購読管理サービスだけが読む同期署名鍵を初回に限り生成する。"""
+    return _subscription_secret(config, values, transport, root, 'core-subscription-sync-key', 'subscription-sync')
 
 
 def error_codes(error):
@@ -255,13 +268,24 @@ def wait_schema(config, execution, transport, *, timeout=900, sleep=time.sleep, 
     raise ValueError('Portal SQL initialization is still pending; inspect its job execution')
 
 
-def wait_application(config, transport, *, expected_image_digest=None, timeout=900, sleep=time.sleep, monotonic=time.monotonic, progress=print):
+def wait_application(config, transport, *, expected_image_digest=None, component='portal', timeout=900, sleep=time.sleep, monotonic=time.monotonic, progress=print):
     """今回の期待イメージが反映された正常revisionまで待ち、旧Healthyだけで進まない。"""
     if expected_image_digest is not None and not re.fullmatch(r'sha256:[0-9a-f]{64}', expected_image_digest):
         raise ValueError('Portal application readiness requires an immutable image digest')
     expected_image = (f"acr{config['resourceStem'].replace('-', '')}.azurecr.io/portal@{expected_image_digest}"
                       if expected_image_digest is not None else None)
-    target = group_scope(config) + '/providers/Microsoft.App/containerApps/ca-' + config['resourceStem'] + '-portal'
+    suffix, role = {'portal': ('portal', None), 'subscriptionAdmin': ('sub-admin', 'management'),
+                    'subscriptionProfileReader': ('sub-profile', 'profile')}[component]
+    app_name = 'ca-' + config['resourceStem'] + '-portal' if component == 'portal' else subscription_app_names(config)[component]
+    target = group_scope(config) + '/providers/Microsoft.App/containerApps/' + app_name
+    expected_environment = group_scope(config) + '/providers/Microsoft.App/managedEnvironments/cae-' + config['resourceStem']
+    def expected_container(containers):
+        if len(containers) != 1 or containers[0].get('name') != suffix or containers[0].get('image') != expected_image:
+            return False
+        if role is None:
+            return True
+        return [item.get('value') for item in containers[0].get('env', [])
+                if item.get('name') == 'PORTAL_SUBSCRIPTION_SERVICE_ROLE'] == [role]
     deadline, notice = monotonic() + timeout, monotonic() + 45
     while monotonic() < deadline:
         app = checked(transport, 'GET', target + '?api-version=' + APP_API, label='Read Portal application')
@@ -269,19 +293,39 @@ def wait_application(config, transport, *, expected_image_digest=None, timeout=9
         revision = properties.get('latestRevisionName')
         ingress = properties.get('configuration', {}).get('ingress', {})
         containers = properties.get('template', {}).get('containers', [])
-        expected_app = (expected_image is None or (len(containers) == 1
-                        and containers[0].get('name') == 'portal' and containers[0].get('image') == expected_image
-                        and ingress.get('allowInsecure', False) is False and ingress.get('targetPort') == 3000))
+        expected_app = expected_image is None or expected_container(containers)
+        if role is not None or expected_image is not None:
+            expected_app = (expected_app and ingress.get('external') is (role != 'management')
+                            and ingress.get('allowInsecure', False) is False and ingress.get('targetPort') == 3000)
         if (properties.get('provisioningState') == 'Succeeded' and expected_app
                 and isinstance(revision, str) and re.fullmatch(r'[a-z0-9-]+', revision)
                 and revision == properties.get('latestReadyRevisionName')):
+            if role is not None:
+                environments = [properties[key] for key in ('environmentId', 'managedEnvironmentId') if properties.get(key)]
+                if (str(app.get('id', '')).casefold() != target.casefold() or not environments
+                        or any(str(value).casefold() != expected_environment.casefold() for value in environments)):
+                    raise ValueError('Subscription service is outside its configured private ACA environment')
+            if role == 'profile':
+                restrictions = ingress.get('ipSecurityRestrictions')
+                if (not isinstance(restrictions, list) or len(restrictions) != 1
+                        or not isinstance(restrictions[0], dict) or restrictions[0].get('name') != 'apim'
+                        or restrictions[0].get('action') != 'Allow'
+                        or restrictions[0].get('ipAddressRange') != config['network']['subnetPrefixes']['apim']):
+                    raise ValueError('Subscription profile ingress must allow only the configured APIM subnet')
             ready = checked(transport, 'GET', target + '/revisions/' + revision + '?api-version=' + APP_API, label='Read Portal revision').get('properties', {})
             containers = ready.get('template', {}).get('containers', [])
-            expected_revision = expected_image is None or (len(containers) == 1
-                and containers[0].get('name') == 'portal' and containers[0].get('image') == expected_image)
+            expected_revision = expected_image is None or expected_container(containers)
             if (ready.get('healthState') == 'Healthy' and ready.get('provisioningState') == 'Provisioned'
                     and ready.get('runningState') == 'Running' and expected_revision):
-                return {'revision': revision, 'expectedImageVerified': expected_image is not None}
+                result = {'revision': revision, 'expectedImageVerified': expected_image is not None}
+                if role is not None:
+                    fqdn = ingress.get('fqdn')
+                    internal = r'\.internal' if role == 'management' else ''
+                    pattern = re.escape(app_name) + internal + r'\.[a-z0-9-]+\.[a-z0-9-]+\.azurecontainerapps\.io'
+                    if not isinstance(fqdn, str) or not re.fullmatch(pattern, fqdn):
+                        raise ValueError('Subscription service ingress hostname does not match its configured boundary')
+                    result['fqdn'] = fqdn
+                return result
         if properties.get('provisioningState') == 'Failed':
             raise ValueError('Portal application failed to provision')
         if monotonic() >= notice:
@@ -321,6 +365,7 @@ def deploy_release(config, values, template, transport, *, state=None,
     # 初回の署名鍵は作成済み。2段階目は同じ値の新規バージョンも作成しません。
     values['signingSecret'] = ''
     values['profileSecret'] = ''
+    values['subscriptionSyncSecret'] = ''
     job = group_scope(config) + '/providers/Microsoft.App/jobs/' + resource_names(config)['schemaJob']
     started = checked(transport, 'POST', job + '/start?api-version=' + APP_API, label='Start Portal SQL initialization')
     wait_schema(config, started.get('name'), transport)
@@ -332,16 +377,23 @@ def deploy_release(config, values, template, transport, *, state=None,
     values['deployApplication'] = True
     deployed = deploy_template(config, values, template, transport)
     client_prepare(config, state, deployed, transport, component='portal')
+    private_readiness = {
+        component: wait_application(config, transport, expected_image_digest=values['imageDigest'], component=component)
+        for component in subscription_app_names(config)
+    }
     wait_application(config, transport, expected_image_digest=values['imageDigest'])
     gateway_readiness = require_appgw_backend_tls_ready(config, transport)
     print('ポータル: 公開URLから起動状態を確認します。', flush=True)
     verify_public(values['publicOrigin'])
-    if values.get('apiAuthentication'):
+    if values.get('apiAuthentication', {}).get('scope'):
         verify_public(values['publicOrigin'], api_authentication=True)
     apim_id = group_scope(config) + '/providers/Microsoft.ApiManagement/service/' + values['apimName']
-    profiles = activate_profile_settings(apim_id, transport, infrastructure_api_definitions(config['apiDefinitions']))
+    profile_fqdn = private_readiness['subscriptionProfileReader']['fqdn']
+    profiles = activate_profile_settings(apim_id, transport, infrastructure_api_definitions(config['apiDefinitions']),
+        expected_url='https://' + profile_fqdn + '/api/internal/subscription-profile')
     return {'backendTls': gateway_readiness, 'callbackWaf': callback_waf,
-            'dataWaf': data_waf, 'subscriptionProfiles': profiles}
+            'dataWaf': data_waf, 'subscriptionProfiles': profiles, 'privateReadiness': private_readiness,
+            **{component: deployed[component] for component in private_readiness}}
 
 
 def main(argv=None):
@@ -369,11 +421,11 @@ def main(argv=None):
         state = json.loads(Path(args.state_file).read_text(encoding='utf-8'))
     resolved_authentication = deployment_authentication(config, workspace, args.certificate_slot)
     config['portal']['authentication'] = resolved_authentication
-    values = deployment_inputs(config, state, args.image_digest)
+    values = deployment_inputs(config, state, args.image_digest, workspace=workspace)
     if args.execute:
         config = prepare_api_key_groups(args.config, config)
         config['portal']['authentication'] = resolved_authentication
-        values = deployment_inputs(config, state, args.image_digest)
+        values = deployment_inputs(config, state, args.image_digest, workspace=workspace)
     data, source_hash = (None, None) if args.image_digest else source_bundle()
     build_record = workspace.state / 'portal-build.json'
     transport = ArmTransport(config) if args.execute else None
@@ -384,6 +436,8 @@ def main(argv=None):
     plan = {'status': 'planned', 'azureWrites': 0, 'azdUpRequired': False,
         'application': 'ca-' + config['resourceStem'] + '-portal', 'database': 'sqldb-' + config['resourceStem'] + '-portal',
         'imageBuild': values['imageDigest'] is None,
+        'apiAuthenticationEnabled': bool(values['apiAuthentication']['scope']),
+        'subscriptionServices': subscription_app_names(config),
         'imageReuseVerificationPending': not args.execute and not args.image_digest,
         'apiKeyGroupCount': len(values['apiKeyGroups']),
         'verificationSubscriptionCount': len(values['apiKeyVerificationSubscriptions']),
@@ -408,14 +462,17 @@ def main(argv=None):
             record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))
     values['signingSecret'] = signing_secret(config, values, transport)
     values['profileSecret'] = profile_secret(config, values, transport)
+    values['subscriptionSyncSecret'] = subscription_sync_secret(config, values, transport)
     gateway_readiness = deploy_release(config, values, template, transport, state=state)
     result = {'status': 'deployed', 'database': plan['database'], 'application': plan['application'],
         'authentication': values['authentication'],
         'sqlInitialized': True, 'applicationReady': True, 'publicHealthVerified': True,
-        'apiAuthenticationHealthVerified': bool(values.get('apiAuthentication')),
+        'apiAuthenticationHealthVerified': bool(values.get('apiAuthentication', {}).get('scope')),
         'imageDigest': values['imageDigest'], 'publicUrl': values['publicOrigin'], 'azdUpExecuted': False,
         'callbackWaf': gateway_readiness['callbackWaf'],
         'backendTls': gateway_readiness['backendTls'],
+        'privateReadiness': gateway_readiness['privateReadiness'],
+        **{component: gateway_readiness[component] for component in subscription_app_names(config)},
         'subscriptionProfiles': gateway_readiness['subscriptionProfiles']}
     protected_json(workspace.state / 'portal-deployment.json', result)
     print(json.dumps(result, ensure_ascii=False))

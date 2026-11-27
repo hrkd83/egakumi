@@ -64,6 +64,16 @@ class PortalConfigurationTests(unittest.TestCase):
         with self.assertRaises(configuration.ConfigurationError):
             self.validate(raw)
 
+    def test_certificate_names_keep_automation_out_of_other_vault_objects(self):
+        for public_name, portal_name in (("TLS-PUBLIC", "tls-public"), ("gateway-obo", "portal-auth"),
+                                         ("core-l7-ingress-secret", "portal-auth"), ("tls-public", "tls-public-acme-state")):
+            with self.subTest(public_name=public_name, portal_name=portal_name):
+                raw = self.valid()
+                raw['certificate']['certificateName'] = public_name
+                raw['portal']['certificate'] = {'certificateName': portal_name}
+                with self.assertRaisesRegex(configuration.ConfigurationError, 'certificateName'):
+                    self.validate(raw)
+
     def test_wildcard_certificate(self):
         raw = self.valid()
         raw['certificate']['domainNames'] = ['*.example.com']

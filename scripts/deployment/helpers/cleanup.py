@@ -25,11 +25,12 @@ from typing import Any, Protocol
 from urllib.parse import parse_qs, parse_qsl, urlsplit
 from uuid import UUID
 
+from .audit_evidence import evidence_container_id, evidence_policy_id
 from .configuration import API_NAME, load_configuration
 from .grpc_lifecycle import apim_name_matches
 from .apim_naming import apim_instance_id, apim_name
 from .credential_pools import resource_names
-from .portal_resources import resource_names as portal_resource_names
+from .portal_resources import resource_names as portal_resource_names, subscription_app_names
 
 
 class CleanupError(RuntimeError):
@@ -170,6 +171,21 @@ def _validate_state(configuration: dict, state: Mapping[str, Any]) -> dict:
         if [part.lower() for part in parts[8:]] != ["blobservices", "default", "containers", parts[11].lower(), "immutabilitypolicies", "default"] or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", parts[11]):
             _error("invalid-state", "監査保持ポリシーのResource IDが不正です。")
 
+    outputs = state.get("outputs", {})
+    evidence = outputs.get("auditEvidence") if isinstance(outputs, Mapping) else None
+    body_policy_id = None
+    if evidence or configuration.get("auditEvidence", {}).get("enabled"):
+        body_policy_id = evidence_policy_id(configuration)
+        if evidence:
+            if not isinstance(evidence, Mapping):
+                _error("invalid-state", "本文監査の配備出力が不正です。")
+            container_id = evidence_container_id(configuration)
+            if ("evidenceContainerId" in evidence and not _same(evidence["evidenceContainerId"], container_id)
+                    or "payloadImmutability" in evidence and (not isinstance(evidence["payloadImmutability"], Mapping)
+                        or not _same(evidence["payloadImmutability"].get("policyId"), body_policy_id))):
+                _error("invalid-state", "本文監査の配備出力が対象の保存先に一致しません。")
+        policy_ids = [*policy_ids, body_policy_id]
+
     service_ids = state.get("serviceResourceIds") or {}
     if not isinstance(service_ids, Mapping) or set(service_ids) - SERVICE_TYPES.keys():
         _error("invalid-state", "完全削除の対象が今回の管理対象サービスに一致しません。")
@@ -189,7 +205,7 @@ def _validate_state(configuration: dict, state: Mapping[str, Any]) -> dict:
         expected_location = configuration["foundryLocation"] if key == "foundry" else configuration["location"]
         if locations.get(key) != expected_location or not re.fullmatch(r"[a-z][a-z0-9]+", locations[key]):
             _error("invalid-state", "サービスの実配置region codeが配備記録と環境設定で一致しません。")
-    return {"storage": storage, "policyIds": policy_ids, "serviceIds": service_ids,
+    return {"storage": storage, "policyIds": policy_ids, "bodyPolicyId": body_policy_id, "serviceIds": service_ids,
             "locations": locations}
 
 
@@ -970,6 +986,15 @@ def _validate_portal_record(record: Any, targets: dict, configuration: dict) -> 
     }
     if any(not _same(record.get(key), value) for key, value in expected.items()):
         _error("portal-state-mismatch", "PortalのCA・CAEの配備出力が今回の命名とsvc RGに一致しません。", targets["applicationId"])
+    prefix = _rg_id(configuration, 'svc') + '/providers/Microsoft.App/containerApps/'
+    for key, name in subscription_app_names(configuration).items():
+        if key not in record:
+            continue
+        service_id = prefix + name
+        service = record[key]
+        if (not isinstance(service, Mapping) or not _same(service.get('name'), name)
+                or not _same(service.get('id'), service_id)):
+            _error('portal-state-mismatch', '購読サービスの配備記録が今回の固定IDに一致しません。', service_id)
 
 
 def _portal_resource_owner(configuration: dict, targets: dict, kind: str, resource: Mapping) -> None:
@@ -1029,9 +1054,10 @@ def _application_infrastructure(configuration: dict, inventory: Any) -> list[dic
         _error(code, 'Container Appsの管理ネットワーク記録が配列ではありません。')
     environment_prefix = (_rg_id(configuration, 'svc')
                           + '/providers/Microsoft.App/managedEnvironments/cae-' + configuration['resourceStem'])
-    environments = {value.casefold(): value for value in (environment_prefix, environment_prefix + '-certificate')}
+    environments = {(environment_prefix + suffix).casefold(): environment_prefix + suffix
+                    for suffix in ('', '-certificate', '-broker', '-audit')}
     own_groups = {_rg_id(configuration, kind).casefold() for kind in ('id', 'nw', 'monitor', 'svc', 'maint')}
-    result, seen = [], set()
+    result, seen = [], {}
     for item in inventory:
         if not isinstance(item, Mapping) or set(item) != {'environmentId', 'resourceGroupId'}:
             _error(code, 'Container Appsの管理ネットワーク記録の項目を確認できません。')
@@ -1040,7 +1066,9 @@ def _application_infrastructure(configuration: dict, inventory: Any) -> list[dic
             parts = _parts(group_id)
         except CleanupError:
             _error(code, 'Container Appsの管理RGのResource IDが不正です。')
-        if (not isinstance(item['environmentId'], str) or item['environmentId'].casefold() not in environments
+        identity = item['environmentId']
+        environment_id = environments.get(identity.casefold()) if isinstance(identity, str) else None
+        if (not environment_id
                 or len(parts) != 4 or parts[0].casefold() != 'subscriptions'
                 or not _same(parts[1], configuration['subscriptionId']) or parts[2].casefold() != 'resourcegroups'
                 or not re.fullmatch(r'[\w().-]{1,90}', parts[3]) or parts[3].endswith('.')
@@ -1049,9 +1077,12 @@ def _application_infrastructure(configuration: dict, inventory: Any) -> list[dic
             _error(code, 'Container Appsの管理RGが今回のCAE・サブスクの外部管理RGに一致しません。')
         canonical = {'environmentId': environments[item['environmentId'].casefold()],
                      'resourceGroupId': f"/subscriptions/{configuration['subscriptionId']}/resourceGroups/{parts[3]}"}
-        if canonical['resourceGroupId'].casefold() not in seen:
+        group_key = canonical['resourceGroupId'].casefold()
+        if group_key in seen and seen[group_key] != environment_id:
+            _error(code, '異なるCAEで同じ管理ネットワークRGが記録されています。', group_id)
+        if group_key not in seen:
             result.append(canonical)
-            seen.add(canonical['resourceGroupId'].casefold())
+            seen[group_key] = environment_id
     return result
 
 
@@ -1124,12 +1155,56 @@ def _portal_preflight(configuration: dict, state: Mapping, transport: Transport)
     return targets
 
 
+def _broker_preflight(configuration: dict, state: Mapping, portal: dict, transport: Transport) -> dict:
+    """専用CAEの固定ID・配備記録・実subnetを確認し、旧Brokerの所有先も特定する。"""
+    targets = {
+        'environmentId': portal['environmentId'] + '-broker',
+        'subnetId': portal['subnetId'].removesuffix('-aca') + '-broker',
+        'applicationInfrastructure': portal['applicationInfrastructure'],
+    }
+    outputs = state.get('outputs', {})
+    if not isinstance(outputs, Mapping):
+        _error('credential-state-mismatch', 'Gatewayの配備出力形式を確認できません。')
+    record = outputs.get('brokerPlatform')
+    foundation = outputs.get('gatewayFoundation')
+    expected_name = 'cae-' + configuration['resourceStem'] + '-broker'
+    if record is not None and (not isinstance(record, Mapping) or record and (
+            not _same(record.get('environmentId'), targets['environmentId'])
+            or not _same(record.get('environmentName'), expected_name)
+            or not _same(record.get('infrastructureSubnetId'), targets['subnetId']))):
+        _error('credential-state-mismatch', 'Broker専用CAEの配備記録が今回の固定ID・subnetに一致しません。')
+    dedicated = bool(record)
+    if isinstance(foundation, Mapping) and any(key in foundation for key in ('brokerEnvironmentId', 'brokerEnvironmentName', 'brokerSubnetId')):
+        if (not _same(foundation.get('brokerEnvironmentId'), targets['environmentId'])
+                or not _same(foundation.get('brokerEnvironmentName'), expected_name)
+                or not _same(foundation.get('brokerSubnetId'), targets['subnetId'])):
+            _error('credential-state-mismatch', 'GatewayのBroker専用CAEとsubnetが今回の固定IDに一致しません。')
+        dedicated = True
+    environment = _read_dedicated_environment(configuration, targets, transport)
+    _capture_application_infrastructure(configuration, targets, environment)
+    portal['applicationInfrastructure'] = targets['applicationInfrastructure']
+    # 旧構築の成功記録は旧アプリの所有先として維持し、部分構築時だけ実在する専用CAEを参照します。
+    use_dedicated = dedicated or environment is not None and not foundation
+    portal['credentialEnvironmentId'] = targets['environmentId'] if use_dedicated else portal['environmentId']
+    targets['checkSubnet'] = dedicated or environment is not None or 'broker' in configuration.get('network', {}).get('subnetPrefixes', {})
+    return targets
+
+
+def _read_dedicated_environment(configuration: dict, targets: dict, transport: Transport) -> dict | None:
+    resource_id = targets['environmentId']
+    resource = _expect_read(_request(transport, 'GET', resource_id, targets.get('environmentApi', API['containerApps'])), resource_id)
+    if resource is not None:
+        _portal_resource_owner(configuration, targets, 'environment', resource)
+    return resource
+
+
 def _wait_portal_absent(configuration: dict, targets: dict, kind: str, transport: Transport, *,
                         max_checks: int, wait_seconds: float, sleep: Callable[[float], None]) -> None:
     """非同期削除中も所有・接続先を照合し、同じCAまたはCAEの404を有限回待つ。"""
     resource_id = targets[kind + "Id"]
+    api = targets.get('environmentApi', API['containerApps']) if kind == 'environment' else API['containerApps']
     for attempt in range(max_checks):
-        resource = _expect_read(_request(transport, "GET", resource_id, API["containerApps"]), resource_id)
+        resource = _expect_read(_request(transport, "GET", resource_id, api), resource_id)
         if resource is None:
             return
         _portal_resource_owner(configuration, targets, kind, resource)
@@ -1167,7 +1242,7 @@ def _wait_portal_subnet_released(targets: dict, transport: Transport, *, max_che
 def _delete_portal_before_network(configuration: dict, targets: dict, transport: Transport, *,
                                   max_checks: int, wait_seconds: float,
                                   sleep: Callable[[float], None], state: Mapping | None = None) -> dict:
-    """全ジョブ・Broker→Portal CA→CAE→subnetの順で解放し、azdのNW削除へ渡す。"""
+    """ジョブと補助アプリ、Portal、CAE、subnetの順で解放してazdのNW削除へ渡す。"""
     children = _delete_app_children(configuration, targets, state or {}, transport,
         max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
     current = _portal_snapshot(configuration, targets, transport)
@@ -1181,9 +1256,9 @@ def _delete_portal_before_network(configuration: dict, targets: dict, transport:
             current = _portal_snapshot(configuration, targets, transport)
             if current["application"] is not None:
                 _error("cleanup-pending", "PortalのCAが残っているためCAEの削除へ進めません。", targets["applicationId"])
-            if (_credential_apps_preflight(configuration, state or {}, transport)
-                    or _portal_jobs_preflight(configuration, targets, transport)):
-                _error('cleanup-pending', '共用CAEに属するアプリまたはジョブが再出現しています。', targets['environmentId'])
+            if (_credential_apps_preflight(configuration, state or {}, transport, targets['credentialEnvironmentId'])
+                    or _portal_children_preflight(configuration, targets, transport)):
+                _error('cleanup-pending', '今回のCAEに属するアプリまたはジョブが再出現しています。', targets['environmentId'])
         resource = current[kind]
         provisioning_state = str(resource.get("properties", {}).get("provisioningState", "")).casefold() if resource is not None else ""
         already_deleting = (resource is not None and
@@ -1198,6 +1273,26 @@ def _delete_portal_before_network(configuration: dict, targets: dict, transport:
     # 出力のない部分構築の再実行でも、既に消えたCAEが残した参照を見落とさない。
     result["subnet"] = _wait_portal_subnet_released(targets, transport,
         max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
+    broker = targets['broker']
+    broker['infrastructureFrozen'] = True
+    # 所有する子が再出現していないことと、CAEの実subnetを削除直前に照合します。
+    if _credential_apps_preflight(configuration, state or {}, transport, targets['credentialEnvironmentId']):
+        _error('cleanup-pending', 'Brokerのアプリまたはジョブが再出現しています。', broker['environmentId'])
+    environment = _read_dedicated_environment(configuration, broker, transport)
+    deleting = (environment is not None and str(environment['properties'].get('provisioningState', '')).casefold()
+                in ('deleting', 'scheduledfordelete'))
+    if environment is not None:
+        if not deleting:
+            _request(transport, 'DELETE', broker['environmentId'], API['containerApps'])
+        _wait_portal_absent(configuration, broker, 'environment', transport,
+            max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
+    if broker['checkSubnet'] or environment is not None:
+        result['brokerEnvironment'] = {
+            'resourceId': broker['environmentId'], 'status': 'absent', 'httpStatus': 404,
+            'deleteRequested': environment is not None and not deleting, 'alreadyDeleting': deleting,
+            'subnet': _wait_portal_subnet_released(broker, transport,
+                max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep),
+        }
     result["crossResourceGroupSubnetReferenceRemoved"] = True
     return result
 
@@ -1330,20 +1425,18 @@ def _app_resource_owner(configuration, resource_id, environment_id, resource, *,
                   if properties.get(key) not in (None, '')]
     if (any(not _same(value, environment_id) for value in references)
             or not references and not _incomplete_app_resource(properties)):
-        _error(code, 'アプリまたはジョブが今回の共用CAEを参照していません。', resource_id)
+        _error(code, 'アプリまたはジョブが今回の割り当て先CAEを参照していません。', resource_id)
 
 
-def _credential_apps_preflight(configuration, state, transport):
+def _credential_apps_preflight(configuration, state, transport, environment):
     """保存出力の有無にかかわらず、固定したGatewayのCA・ジョブを照合する。"""
     outputs = state.get("outputs", {})
     if not isinstance(outputs, Mapping):
         _error('credential-state-mismatch', 'Gatewayの配備出力形式を確認できません。')
     record = outputs.get("credentialBroker")
     foundation = outputs.get("gatewayFoundation")
-    stem = configuration["resourceStem"]
     service_group = configuration["resourceGroupNames"]["svc"]
     prefix = f"/subscriptions/{configuration['subscriptionId']}/resourceGroups/{service_group}/providers/Microsoft.App/"
-    environment = prefix + "managedEnvironments/cae-" + stem
     names = resource_names(configuration)
     # Gatewayの配備成否や保存出力に依存せず、対象は同じ環境の固定名に限定します。
     if record is not None and (not isinstance(record, Mapping)
@@ -1353,7 +1446,7 @@ def _credential_apps_preflight(configuration, state, transport):
     if foundation is not None and (not isinstance(foundation, Mapping)
             or foundation and (foundation.get("resourceGroup") != service_group
             or foundation.get("apimName") != apim_name(configuration)
-            or foundation.get("environmentName") != "cae-" + stem)):
+            or (foundation.get("brokerEnvironmentName") or foundation.get("environmentName")) != environment.rsplit('/', 1)[-1])):
         _error("credential-state-mismatch", "Gatewayの共通基盤が今回の環境と一致しません。")
     targets = [("jobs", names['reconcileJob']), ("jobs", names['schemaJob']),
                ("containerApps", names['application'])]
@@ -1368,12 +1461,14 @@ def _credential_apps_preflight(configuration, state, transport):
     return result
 
 
-def _portal_jobs_preflight(configuration, targets, transport):
-    """PortalのSQL初期化・所有グループ照合ジョブを、共用CAEより先に解放する。"""
-    prefix = _rg_id(configuration, 'svc') + '/providers/Microsoft.App/jobs/'
+def _portal_children_preflight(configuration, targets, transport):
+    """Portalのジョブと購読サービスを、共用CAEより先に解放する。"""
+    prefix = _rg_id(configuration, 'svc') + '/providers/Microsoft.App/'
+    children = [('jobs', name) for name in portal_resource_names(configuration).values()]
+    children.extend(('containerApps', name) for name in subscription_app_names(configuration).values())
     result = []
-    for name in portal_resource_names(configuration).values():
-        resource_id = prefix + name
+    for kind, name in children:
+        resource_id = f'{prefix}{kind}/{name}'
         resource = _expect_read(_request(transport, 'GET', resource_id, API['containerApps']), resource_id)
         if resource is None:
             continue
@@ -1382,17 +1477,72 @@ def _portal_jobs_preflight(configuration, targets, transport):
     return result
 
 
+def _audit_preflight(configuration, state, portal, transport):
+    record = state.get('outputs', {}).get('auditEvidence')
+    if not record and not configuration.get('auditEvidence', {}).get('enabled'):
+        return None
+    stem = configuration['resourceStem']
+    targets = {'environmentId': portal['environmentId'] + '-audit',
+               'environmentApi': '2025-07-01',
+               'subnetId': portal['subnetId'].removesuffix('-aca') + '-audit',
+               'applicationInfrastructure': portal['applicationInfrastructure'],
+               'applicationIds': [_rg_id(configuration, 'svc') + '/providers/Microsoft.App/containerApps/ca-'
+                                  + stem + '-audit-' + name for name in ('relay', 'store')]}
+    if record and (not isinstance(record, Mapping)
+                   or not _same(record.get('environmentId'), targets['environmentId'])
+                   or not _same(record.get('infrastructureSubnetId'), targets['subnetId'])):
+        _error('audit-state-mismatch', '本文監査のCAE・subnetの記録が対象環境と一致しません。')
+    _audit_applications(configuration, targets, transport)
+    _capture_application_infrastructure(configuration, targets, _read_dedicated_environment(configuration, targets, transport))
+    portal['applicationInfrastructure'] = targets['applicationInfrastructure']
+    return targets
+
+
+def _audit_applications(configuration, targets, transport):
+    apps = {}
+    for resource_id in targets['applicationIds']:
+        observed = _expect_read(_request(transport, 'GET', resource_id, API['containerApps']), resource_id)
+        if observed is not None:
+            _app_resource_owner(configuration, resource_id, targets['environmentId'], observed, code='audit-owner-mismatch')
+            apps[resource_id] = observed
+    return apps
+
+
+def _delete_audit_before_network(configuration, targets, transport, *, max_checks, wait_seconds, sleep):
+    targets['infrastructureFrozen'] = True
+    for resource_id, app in _audit_applications(configuration, targets, transport).items():
+        if str(app['properties'].get('provisioningState', '')).casefold() != 'deleting':
+            _request(transport, 'DELETE', resource_id, API['containerApps'])
+    for attempt in range(max_checks):
+        if not _audit_applications(configuration, targets, transport):
+            break
+        if attempt + 1 < max_checks:
+            sleep(wait_seconds)
+    else:
+        _error('cleanup-pending', '本文監査用アプリの削除が完了していません。', targets['environmentId'])
+    environment = _read_dedicated_environment(configuration, targets, transport)
+    if environment is not None:
+        if str(environment['properties'].get('provisioningState', '')).casefold() not in ('deleting', 'scheduledfordelete'):
+            _request(transport, 'DELETE', targets['environmentId'], targets['environmentApi'])
+        _wait_portal_absent(configuration, targets, 'environment', transport,
+                            max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
+    return {'resourceId': targets['environmentId'], 'status': 'absent',
+            'subnet': _wait_portal_subnet_released(targets, transport, max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)}
+
+
 def _delete_app_children(configuration, targets, state, transport, *, max_checks, wait_seconds, sleep):
     """削除直前と待機中も所有を照合し、全ての既知の子が404になるまで待つ。"""
     result = []
-    credential = _credential_apps_preflight(configuration, state, transport)
-    portal = _portal_jobs_preflight(configuration, targets, transport)
+    credential_environment = targets['credentialEnvironmentId']
+    credential = _credential_apps_preflight(configuration, state, transport, credential_environment)
+    portal = _portal_children_preflight(configuration, targets, transport)
     for resource_id in [*credential, *portal]:
         code = 'credential-owner-mismatch' if resource_id in credential else 'portal-owner-mismatch'
+        environment = credential_environment if resource_id in credential else targets['environmentId']
         resource = _expect_read(_request(transport, 'GET', resource_id, API['containerApps']), resource_id)
         if resource is None:
             continue
-        _app_resource_owner(configuration, resource_id, targets['environmentId'], resource, code=code)
+        _app_resource_owner(configuration, resource_id, environment, resource, code=code)
         deleting = str(resource['properties'].get('provisioningState', '')).casefold() == 'deleting'
         if not deleting:
             _request(transport, 'DELETE', resource_id, API['containerApps'])
@@ -1400,17 +1550,17 @@ def _delete_app_children(configuration, targets, state, transport, *, max_checks
             remaining = _expect_read(_request(transport, 'GET', resource_id, API['containerApps']), resource_id)
             if remaining is None:
                 break
-            _app_resource_owner(configuration, resource_id, targets['environmentId'], remaining, code=code)
+            _app_resource_owner(configuration, resource_id, environment, remaining, code=code)
             if attempt + 1 < max_checks:
                 sleep(wait_seconds)
         else:
-            _error('cleanup-pending', '共用CAEを使うアプリまたはジョブの削除が完了していません。', resource_id)
+            _error('cleanup-pending', '対象CAEを使うアプリまたはジョブの削除が完了していません。', resource_id)
         result.append({'resourceId': resource_id, 'status': 'absent', 'httpStatus': 404,
                        'deleteRequested': not deleting, 'alreadyDeleting': deleting})
     # 先に404だったIDや、削除確認後に再出現したIDもCAE削除前に検出する。
-    if (_credential_apps_preflight(configuration, state, transport)
-            or _portal_jobs_preflight(configuration, targets, transport)):
-        _error('cleanup-pending', '共用CAEに属するアプリまたはジョブが再出現しています。')
+    if (_credential_apps_preflight(configuration, state, transport, credential_environment)
+            or _portal_children_preflight(configuration, targets, transport)):
+        _error('cleanup-pending', '対象CAEに属するアプリまたはジョブが再出現しています。')
     return result
 
 
@@ -1503,8 +1653,10 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
     management_targets = _management_preflight(configuration, state, transport)
     portal_targets = _portal_preflight(configuration, state, transport)
     certificate_targets = _certificate_environment_preflight(configuration, state, transport)
-    portal_jobs = _portal_jobs_preflight(configuration, portal_targets, transport)
-    credential_apps = _credential_apps_preflight(configuration, state, transport)
+    portal_targets['broker'] = _broker_preflight(configuration, state, portal_targets, transport)
+    audit_targets = _audit_preflight(configuration, state, portal_targets, transport)
+    portal_children = _portal_children_preflight(configuration, portal_targets, transport)
+    credential_apps = _credential_apps_preflight(configuration, state, transport, portal_targets['credentialEnvironmentId'])
     policies: list[tuple[str, dict]] = []
     policy_results: list[dict] = []
     # 変更を1件も行う前に全保持ポリシーを調べる。後の方にLockedが見つかっても、
@@ -1529,7 +1681,9 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
             _error("locked-retention", "監査StorageにLocked WORMがあります。保持を回避せずazd downを停止します。保持期限と本番の保全手順を確認してください。", policy_id)
         if mode != "Unlocked":
             _error("unknown-retention", "監査保持ポリシーの状態を判定できません。", policy_id)
-        if configuration["monitoring"]["auditImmutabilityMode"] != "Disabled":
+        requested_mode = (configuration.get("auditEvidence", {}).get("payloadImmutabilityMode", "Disabled")
+                          if policy_id == current["bodyPolicyId"] else configuration["monitoring"]["auditImmutabilityMode"])
+        if requested_mode != "Disabled":
             _error("configured-retention", "監査保持を有効にした構成のため、Unlockedポリシーもこの撤去処理では解除しません。保持方針を確認してください。", policy_id)
         etag = policy.get("etag") or next((value for key, value in response["headers"].items() if key.lower() == "etag"), None)
         if not isinstance(etag, str) or len(etag) < 3 or not etag.startswith('"') or not etag.endswith('"') or etag == '"*"':
@@ -1550,6 +1704,9 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
     apim = _delete_apim_before_network(configuration, current, transport,
                                       max_checks=apim_max_checks,
                                       wait_seconds=apim_wait_seconds, sleep=sleep)
+    audit = (_delete_audit_before_network(configuration, audit_targets, transport,
+                                        max_checks=apim_max_checks, wait_seconds=apim_wait_seconds, sleep=sleep)
+             if audit_targets else None)
     portal = _delete_portal_before_network(configuration, portal_targets, transport,
         max_checks=apim_max_checks, wait_seconds=apim_wait_seconds, sleep=sleep, state=state)
     certificate = _delete_certificate_environment(configuration, certificate_targets, transport,
@@ -1588,12 +1745,16 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
               "modelDeployments": models,
               "apiManagement": apim,
               "credentialApplications": credential_apps,
-              "portalJobs": portal_jobs,
+              "portalJobs": [resource for resource in portal_children if resource.rsplit('/', 2)[-2] == 'jobs'],
+              "portalSubscriptionApplications": [resource for resource in portal_children
+                                                 if resource.rsplit('/', 2)[-2] == 'containerApps'],
               "portal": portal,
               "management": management,
               "activityDiagnostic": {"resourceId": diagnostic_id, "status": "absent", "httpStatus": 404}}
     if certificate is not None:
         result["certificateEnvironment"] = certificate
+    if audit is not None:
+        result['auditEvidenceEnvironment'] = audit
     credential_manager = _credential_manager_release(configuration)
     if credential_manager is not None:
         credential_manager["apimServiceDeletionVerified"] = apim.get("apimDeletionVerified") is True
@@ -1775,7 +1936,7 @@ def post_down(config_path: str | Path, state: Mapping[str, Any], transport: Tran
         service_results.append({"kind": key, "resourceId": tombstone_id, "status": "absent", "httpStatus": 404})
 
     # RG消滅後は、そのRGの削除履歴一覧自体が読めない場合があります。
-    # 他3サービスの必須purgeを先に完了し、API Centerの確認不能は別項目へ記録します。
+    # 所有サービスの必須purgeを先に完了し、API Centerの確認不能は別項目へ記録します。
     # 404や権限不足を「完全削除済み」や「永久残留」と決め付けず、RGも再作成しません。
     try:
         api_center_retention = _api_center_retention(configuration, state, transport)

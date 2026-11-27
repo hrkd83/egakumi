@@ -112,6 +112,7 @@ class MonitoringExportReapplyTests(LifecycleFixture, unittest.TestCase):
             return record
         with mock.patch.object(lifecycle, 'run', return_value=copy.deepcopy(self.template if template is None else template)) as compiler, \
              mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
+             mock.patch.object(lifecycle, 'prepare_core_network_upgrade'), \
              mock.patch.object(lifecycle, 'discover_existing_network_security_groups', return_value=[]), \
              mock.patch.object(lifecycle, 'discover_existing_route_table_routes', return_value={}), \
              mock.patch.object(lifecycle, 'discover_existing_apim_hostnames', return_value={}), \
@@ -279,6 +280,10 @@ class MonitoringExportReapplyTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual([call['method'] for call in transport.calls], ['PUT', 'GET'])
 
     def test_core_failure_has_no_monitoring_reapply_branch(self):
-        _, error, transport, _ = self.exercise(self.responses(), phase='core')
-        self.assertIsNotNone(error)
-        self.assertEqual([call['method'] for call in transport.calls], ['PUT', 'GET'])
+        registry_absent = {'statusCode': 404, 'headers': {}, 'body': None}
+        _, error, transport, _ = self.exercise([registry_absent, *self.responses()[:2]], phase='core')
+        self.assertIsInstance(error, lifecycle.DeploymentError)
+        self.assertIn('The core deployment Failed', str(error))
+        self.assertEqual([call['method'] for call in transport.calls], ['GET', 'PUT', 'GET'])
+        self.assertIn('/providers/Microsoft.ContainerRegistry/registries/', transport.calls[0]['path'])
+        self.assertFalse(transport.responses)

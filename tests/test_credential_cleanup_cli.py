@@ -38,10 +38,10 @@ class CredentialCleanupCliTests(LifecycleFixture, unittest.TestCase):
         ]
         for path in self.generated_credentials:
             lifecycle.protected_json(path, {"value": "SYNTHETIC_PRIVATE_INPUT"})
-        # Five owned RGs and three exact service tombstones are already absent.
+        # Five owned RGs and four exact service tombstones (including both vaults) are already absent.
         # The last response is the complete, empty owned API Center history page.
         return ScriptedTransport(
-            [{"statusCode": 404, "body": None, "headers": {}} for _ in range(8)]
+            [{"statusCode": 404, "body": None, "headers": {}} for _ in range(9)]
             + [{"statusCode": 200, "body": {"value": []}, "headers": {}}]
         )
 
@@ -82,7 +82,10 @@ class CredentialCleanupCliTests(LifecycleFixture, unittest.TestCase):
             self.assertEqual(stat.S_IMODE(receipt_path.stat().st_mode), 0o600)
         self.assertFalse(self.paths.parameters.exists())
         self.assertTrue(all(not path.exists() for path in self.generated_credentials))
-        self.assertEqual(len(transport.calls), 9)
+        self.assertEqual(len(transport.calls), 10)
+        vault, = [item for item in receipt["result"]["softDeletedServices"] if item["kind"] == "certificateVault"]
+        self.assertTrue(vault["resourceId"].endswith("/deletedVaults/kvtls-" + self.config["resourceStem"]))
+        self.assertEqual(vault["status"], "absent")
         self.assertFalse(transport.responses)
         self.assertTrue(all(call["method"] == "GET" for call in transport.calls))
         self.assertFalse(transport.mutations())

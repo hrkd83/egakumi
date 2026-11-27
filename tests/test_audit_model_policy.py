@@ -220,8 +220,8 @@ class AuditModelExpressionTests(unittest.TestCase):
         for marker, filename, xpath, attribute in (
             ("__BODY_MODEL__", "audit-body-model.xml", './set-variable[@name="gatewayAuditBodyModel"]', "value"),
             ("__AUDIT_MODEL__", "audit-context.xml", './set-variable[@name="gatewayAuditModel"]', "value"),
-            ("__ALIAS_REQUIRED__", "gateway.xml", './inbound/choose[@id="core-model-alias"]/when', "condition"),
-            ("__ALIAS_BODY__", "gateway.xml", './inbound/choose[@id="core-model-alias"]/when/set-body', None),
+            ("__ALIAS_REQUIRED__", "rest.xml", './inbound/choose[@id="core-model-alias"]/when', "condition"),
+            ("__ALIAS_BODY__", "rest.xml", './inbound/choose[@id="core-model-alias"]/when/set-body', None),
         ):
             source = source.replace(marker, expression(filename, xpath, attribute))
         with tempfile.TemporaryDirectory(prefix="core-audit-model-") as temporary:

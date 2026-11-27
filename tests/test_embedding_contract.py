@@ -1,4 +1,4 @@
-"""埋め込みの次元・入力意味制約を実APIM式で検査する。外部通信はしない。"""
+"""埋め込みの配備設定と、本文を提供元に引き渡す実APIM式を検査する。"""
 import copy
 import base64
 import json
@@ -18,7 +18,7 @@ from test_api_protocols import CSHARP, actual_expression, bound_coverage
 from test_gateway_limits_telemetry import LIMIT_EXPRESSION, PWSH
 
 def embedding_cases(apis):
-    """配備設定と無関係な合成本文で、入力型・次元・既存契約の差を検査します。"""
+    """提供元が検査する合成本文と、Gatewayが検査する受信サイズを準備します。"""
     cases = []
 
     def add(id, provider, body, valid, *, kind=None, wire=None, max_bytes=None):
@@ -49,8 +49,8 @@ def embedding_cases(apis):
         b.pop(dimension)
         add(provider + '-default', provider, b, True)
         add(provider + '-unknown-extension', provider, {**body, 'vendor_extension': {'synthetic': True}}, True)
-        add(provider + '-unknown-model', provider, {**body, 'model': 'unapproved-synthetic-model'}, False)
-        add(provider + '-wrong-model-type', provider, {**body, 'model': 1}, False)
+        add(provider + '-unknown-model', provider, {**body, 'model': 'provider-selected-model'}, True)
+        add(provider + '-wrong-model-type', provider, {**body, 'model': 1}, True)
     for dim in (1, 256, 1536):
         add('small-valid-' + str(dim), 'openai', {**oa, 'dimensions': dim}, True)
     add('small-max-plus1', 'openai', {**oa, 'dimensions': 1537}, True)
@@ -64,18 +64,6 @@ def embedding_cases(apis):
     for dim in (256, 512, 1024, 1536):
         add('cohere-dim-' + str(dim), 'cohere', {**co, 'output_dimension': dim}, True)
     add('cohere-unlisted-dimension', 'cohere', {**co, 'output_dimension': 768}, True)
-    # 正式な設定検査は変更せず、生成済み設定の次元表だけを実行時のfixtureで差し替えます。
-    for label, value in (('missing', None), ('null', None),
-                         ('inconsistent', {'unrelated-synthetic-model': {'default': 256, 'maximum': 128}})):
-        add('runtime-dimension-map-' + label, 'cohere', {**co, 'output_dimension': 768}, True)
-        runtime_constraint = cases[-1]['config']['operationConstraints']['cohere-embeddings']
-        if label == 'missing':
-            runtime_constraint.pop('embeddingDimensionsByModel')
-        else:
-            runtime_constraint['embeddingDimensionsByModel'] = value
-    add('runtime-model-list-null', 'cohere', co, False)
-    cases[-1]['config']['operationConstraints']['cohere-embeddings']['allowedModels'] = None
-    add('openai-unknown-model-invalid-dimension', 'openai', {**oa, 'model': 'unapproved-synthetic-model', 'dimensions': 0}, False)
     for purpose in ('search_document', 'search_query', 'classification', 'clustering'):
         add('cohere-purpose-' + purpose, 'cohere', {**co, 'input_type': purpose}, True)
     for purpose in (None, 'arbitrary', 0):
@@ -93,7 +81,7 @@ def embedding_cases(apis):
     compact = json.dumps(oa, separators=(',', ':'))
     add('raw-L-exact', 'openai', oa, True, wire=compact + ' ' * (262144 - len(compact.encode())))
     add('raw-L-plus1', 'openai', oa, True, wire=compact + ' ' * (262145 - len(compact.encode())))
-    add('malformed-json', 'openai', oa, False, wire='{synthetic malformed JSON')
+    add('malformed-json', 'openai', oa, True, wire='{synthetic malformed JSON')
     # Azureの実上限まで確保せず、独立した小さな合成枠で本文サイズの境界を確認します。
     for size in (1024, 1025):
         add('synthetic-byte-' + str(size), 'openai', oa, size == 1024,
@@ -142,9 +130,10 @@ class EmbeddingExpressionTests(unittest.TestCase):
             raise unittest.SkipTest("PowerShell is required for actual APIM C# expressions")
         apis = {api["name"]: api for api in configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")["apiDefinitions"]}
         cases = embedding_cases(apis)
-        base=CSHARP.split('public static class ExpandedPolicyFixture')[0].replace(
-            'public class Body { public string Data; public int Reads; public T As<T>(bool preserveContent=false) { Reads++; return (T)(object)JObject.Parse(Data); } }',
-            '''public class Body {
+        base = CSHARP.split('public static class ExpandedPolicyFixture', 1)[0]
+        body_start = base.index('public class Body {')
+        body_end = base.index('public class Url {', body_start)
+        base = base[:body_start] + '''public class Body {
  public string Data; public int Reads; public int ByteReads;
  public T As<T>(bool preserveContent=false) {
   Reads++;
@@ -152,7 +141,8 @@ class EmbeddingExpressionTests(unittest.TestCase):
   if (typeof(T)==typeof(byte[])) { ByteReads++; return (T)(object)Encoding.UTF8.GetBytes(Data); }
   return (T)(object)JObject.Parse(Data);
  }
-}''')
+}
+''' + base[body_end:]
         source=base+r'''
         public static class EmbeddingDirectFixture {
          public static string Profile(Context context) { __PROFILE__ }
@@ -163,7 +153,8 @@ class EmbeddingExpressionTests(unittest.TestCase):
           var result=new JObject();foreach(JObject item in JArray.Parse(input)) {
            var c=new Context();c.Operation.Id=(string)item["operation"];c.Request.Body=new Body{Data=item["wire"] == null ? item["body"].ToString(Formatting.None) : (string)item["wire"]};c.Variables["config"]=item["config"].ToString(Formatting.None);var before=c.Request.Body.Data;
            c.Variables["gatewayControlSettings"]=new JObject(new JProperty("operationConstraints", item["config"]["operationConstraints"])).ToString(Formatting.None);
-           var profile=JObject.Parse(Profile(c));bool p=(bool)profile["allowed"],l=false,t=false;int limitsStatus=0,limitBodyReads=0,limitByteReads=0,targetBodyReads=0;
+           var selected=Profile(c);c.Variables["gatewayOperationSelection"]=selected;
+           var profile=JObject.Parse(selected);bool p=(bool)profile["allowed"],l=false,t=false;int limitsStatus=0,limitBodyReads=0,limitByteReads=0,targetBodyReads=0;
            if(p){
             c.Variables["gatewayOperationConstraint"]=profile["constraint"].ToString(Formatting.None);
             var beforeLimitReads=c.Request.Body.Reads;var beforeLimitByteReads=c.Request.Body.ByteReads;
@@ -174,7 +165,7 @@ class EmbeddingExpressionTests(unittest.TestCase):
            result[(string)item["id"]]=new JObject(new JProperty("profileAllowed",p),new JProperty("limitsAllowed",l),new JProperty("limitsStatus",limitsStatus),new JProperty("limitBodyReads",limitBodyReads),new JProperty("limitByteReads",limitByteReads),new JProperty("targetBodyReads",targetBodyReads),new JProperty("targetAllowed",t),new JProperty("requestNotRewritten",before==c.Request.Body.Data));
           }return result.ToString(Formatting.None);
          }
-        }'''.replace('__PROFILE__',actual_expression('gateway.xml','gatewayOperationSelection')).replace('__LIMITS__',LIMIT_EXPRESSION).replace('__TARGET__',actual_expression('gateway.xml','gatewayTargetDecision'))
+        }'''.replace('__PROFILE__',actual_expression('rest.xml','gatewayOperationSelection')).replace('__LIMITS__',LIMIT_EXPRESSION).replace('__TARGET__',actual_expression('rest.xml','gatewayTargetDecision'))
         with tempfile.TemporaryDirectory(prefix='embedding-direct-contract-')as temporary:
          p=Path(temporary);(p/'policy.cs').write_text(source);(p/'cases.json').write_text(json.dumps(cases));(p/'run.ps1').write_text("$ErrorActionPreference='Stop'\n$refs=@(Get-ChildItem (Join-Path $PSHOME 'ref/*.dll')|ForEach-Object FullName)+@([Newtonsoft.Json.Linq.JObject].Assembly.Location)\nAdd-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')) -ReferencedAssemblies $refs -CompilerOptions '/nowarn:1701'\n[EmbeddingDirectFixture]::Run((Get-Content -Raw (Join-Path $PSScriptRoot 'cases.json')))\n")
          for q in p.iterdir():q.chmod(0o600)
@@ -194,26 +185,6 @@ class EmbeddingExpressionTests(unittest.TestCase):
                 if case["publicExpectationAllowed"]:
                     self.assertEqual(value["limitsStatus"], 200)
                 self.assertTrue(value["requestNotRewritten"])
-
-    def test_unknown_models_keep_the_target_refusal(self):
-        for name in ("openai-unknown-model", "cohere-unknown-model", "openai-unknown-model-invalid-dimension"):
-            self.assertEqual(self.observed[name]["limitsStatus"], 200)
-            self.assertTrue(self.observed[name]["limitsAllowed"])
-            self.assertFalse(self.observed[name]["targetAllowed"])
-            self.assertTrue(self.observed[name]["requestNotRewritten"])
-
-    def test_dimension_maxima_and_runtime_dimension_maps_do_not_restrict_requests(self):
-        for name in ("small-max-plus1", "large-max-plus1", "cohere-unlisted-dimension",
-                     "runtime-dimension-map-missing", "runtime-dimension-map-null", "runtime-dimension-map-inconsistent"):
-            with self.subTest(case=name):
-                self.assertEqual(self.observed[name]["limitsStatus"], 200)
-                self.assertTrue(self.observed[name]["limitsAllowed"])
-                self.assertTrue(self.observed[name]["targetAllowed"])
-                self.assertTrue(self.observed[name]["requestNotRewritten"])
-        self.assertEqual(self.observed["runtime-model-list-null"]["limitsStatus"], 200)
-        self.assertTrue(self.observed["runtime-model-list-null"]["limitsAllowed"])
-        self.assertFalse(self.observed["runtime-model-list-null"]["targetAllowed"])
-        self.assertTrue(self.observed["runtime-model-list-null"]["requestNotRewritten"])
 
     def test_mixed_provider_fields_do_not_reject_valid_native_inputs_or_rewrite_the_body(self):
         for provider, fields in (("openai", ("texts", "input_type", "output_dimension", "embedding_types")),
@@ -248,14 +219,14 @@ class EmbeddingExpressionTests(unittest.TestCase):
                 self.assertEqual(self.observed[name]["limitsStatus"], status)
                 self.assertEqual(self.observed[name]["limitsAllowed"], status == 200)
                 self.assertTrue(self.observed[name]["requestNotRewritten"])
-        self.assertFalse(self.observed["malformed-json"]["targetAllowed"])
+        self.assertTrue(self.observed["malformed-json"]["targetAllowed"])
 
-    def test_limits_only_measure_bytes_and_target_retains_its_json_read(self):
-        for name in ("openai-valid", "cohere-valid", "malformed-json", "runtime-model-list-null"):
+    def test_limits_measure_bytes_and_target_leaves_body_interpretation_to_provider(self):
+        for name in ("openai-valid", "cohere-valid", "malformed-json", "openai-unknown-model", "cohere-wrong-model-type"):
             with self.subTest(case=name):
                 self.assertEqual(self.observed[name]["limitBodyReads"], 1)
                 self.assertEqual(self.observed[name]["limitByteReads"], 1)
-                self.assertEqual(self.observed[name]["targetBodyReads"], 1)
+                self.assertEqual(self.observed[name]["targetBodyReads"], 0)
 
     def test_compiled_publication_preserves_dimension_map_without_llm_token_counting(self):
         template = compile_bicep("apps/apim/api-publication.bicep")
@@ -285,7 +256,9 @@ class EmbeddingExpressionTests(unittest.TestCase):
             if api["name"] not in ("openai-embeddings-v1", "cohere-inference-v1"):
                 continue
             api["backendUrl"] = "https://provider.example.com/openai/v1" if api["name"] == "openai-embeddings-v1" else "https://provider.example.com"
-            parameters = {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"}}
+            parameters = {name: definition["defaultValue"] for name, definition in template["parameters"].items()
+                          if "defaultValue" in definition}
+            parameters.update(apiDefinitions=[api], publicHostName="gateway.example.com", names={"apim": "apim-fixture"})
 
             def evaluate(value):
                 return PolicyExpression(value, template["variables"], functions=template["functions"]).evaluate(parameters)

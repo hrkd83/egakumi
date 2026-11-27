@@ -21,7 +21,7 @@ from deployment.helpers.apim_audit import render_audit_policy
 from test_credential_login import operation_error_methods,operation_error_cases,assert_shared_operation_error
 
 ROOT = Path(__file__).resolve().parents[1]
-GATEWAY = ROOT / 'apps/apim/policies/api-templates/gateway.xml'
+GATEWAY = ROOT / 'apps/apim/policies/api-templates/rest/rest.xml'
 START = ROOT / 'apps/apim/policies/operation-policies/document-analysis/document-analysis.xml'
 STATUS = ROOT / 'apps/apim/policies/operation-policies/document-analysis/document-analysis-status.xml'
 AUTHENTICATION_RESULT = ROOT / 'apps/apim/policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.xml'
@@ -889,9 +889,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
     def test_document_gate_precedes_rate_limits_backend_authentication_and_acceptance(self):
         inbound = ET.parse(GATEWAY).find('inbound')
         blocks = list(inbound)
-        target_rejection = next(node for node in inbound.findall('choose')
-                                if any('gatewayTargetDecision' in branch.get('condition', '')
-                                       for branch in node.findall('when')))
+        target_validation = inbound.find("choose[@id='core-api-target-validation-selection']")
         gate = inbound.find('./choose[@id="core-document-input-validation"]')
         self.assertIsNotNone(gate)
         constraint = inbound.find('./set-variable[@name="gatewayOperationConstraint"]')
@@ -901,7 +899,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
         self.assertIn('gatewayOperationSelection', constraint.get('value'))
         self.assertIn('["constraint"]', constraint.get('value'))
         self.assertLess(blocks.index(inbound.find('./include-fragment[@fragment-id="core-model-limits"]')), blocks.index(gate))
-        self.assertLess(blocks.index(target_rejection), blocks.index(gate))
+        self.assertLess(blocks.index(target_validation), blocks.index(gate))
         self.assertLess(blocks.index(gate), blocks.index(inbound.find('./include-fragment[@fragment-id="core-rate-limit"]')))
         self.assertLess(blocks.index(gate), blocks.index(inbound.find('./set-variable[@name="gatewayAuditPhase"][@value="accepted"]')))
         serialized = ET.tostring(inbound, encoding='unicode')
@@ -1126,8 +1124,8 @@ class DocumentAnalysisConfigurationTests(unittest.TestCase):
                 'realtimeTicketKey': 'synthetic-document-ticket-key',
             })
             self.assertEqual(prepare.call_args_list, [
-                mock.call(config, ROOT, 'l7-ingress', writer),
-                mock.call(config, ROOT, 'realtime-ticket', writer),
+                mock.call(config, ROOT, 'l7-ingress', writer, record_registration=True),
+                mock.call(config, ROOT, 'realtime-ticket', writer, record_registration=True),
             ])
         writer.assert_not_called()
 

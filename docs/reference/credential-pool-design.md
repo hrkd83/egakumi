@@ -57,7 +57,7 @@ CM接続を準備・照合したときの失効番号を認証取引へ保存し
 - 更新を無視して同じ値を使い続けられないように、引き渡し猶予後は業務実行前に`SessionUpdateRequired`を返す。この場合だけ確定後に業務を再試行する。
 - 成功済みの業務は日次更新のために再実行しない。更新通信の失敗だけを次の利用へ持ち越す。
 
-契約のヘッダー・JSON・エラーコードは[本人接続の使い方](../setup/credential-manager-login.md)、言語別の保存・更新処理は[クライアント実装](connection-session-clients.md)を参照する。
+契約のヘッダー・JSON・エラーコードは[本人接続の使い方](credential-manager-login.md)、言語別の保存・更新処理は[クライアント実装](connection-session-clients.md)を参照する。
 
 ## Brokerとの内部契約
 
@@ -86,7 +86,7 @@ Graphの通常の権限不足と、条件付きアクセスの追加認証要求
 
 ## 配備・復旧
 
-`azd up`は共通SQLサーバー・SQL初期化ID・ネットワーク・ACA環境・ACR等を準備し、`postup`でGateway→Portalを配備する。個別更新は同じ`deploy_gateway.py --config <params> --execute`を使う。SQL初期化→Broker起動→APIM登録の順。CM tokenはSQLやイメージへ含めない。イメージは管理VMから非公開ACRへ登録し、一時的な`AcrPush`とRun Commandを回収する。
+`azd up`で共通SQLサーバー・SQL初期化ID・ネットワーク・ACA環境・ACR等を準備する。Entra登録後にGateway、Portalを順に個別配備する。個別更新は同じ`deploy_gateway.py --config <params> --execute`を使う。SQL初期化→Broker起動→APIM登録の順。CM tokenはSQLやイメージへ含めない。イメージは管理VMから非公開ACRへ登録し、一時的な`AcrPush`とRun Commandを回収する。
 
 | リソース | 名前・配置 |
 | --- | --- |
@@ -114,4 +114,4 @@ CMの接続状態値は未使用期間の判定元にしない。SQLの確保を
 
 `003_idle_connection_cleanup.sql`でSQLスキーマ版3と割当処理を準備する。既存の利用日時は巻き戻さず保持する。SQLの競合制御、CM削除と確保状態の検証、正式ジョブからの実行を別々に検証し、制御下の単体検証だけで実SQL・実CMの受入済みとは扱わない。
 
-SQL復元はCMを巻き戻さない。Brokerと本人接続APIを止め、復元した全セッション・途中取引を失効させる。CMと本人対応の照合、再認証・Graph本人確認後に再開する。[Gatewayの配備と復旧](../setup/credential-sql.md)を参照する。
+SQL復元はCMを巻き戻さない。Brokerと本人接続APIを止め、復元した全セッション・途中取引を失効させる。CMと本人対応の照合、再認証・Graph本人確認後に再開する。[Gatewayの配備と復旧](../setup/11-deploy-gateway.md)を参照する。

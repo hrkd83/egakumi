@@ -104,35 +104,34 @@ class PortalBootstrapLifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertTrue(lifecycle.discover_existing_portal_app(self.config,
             ScriptedTransport([response])))
 
-    def test_both_preparation_hooks_pass_actual_existence_into_native_azd_inputs(self):
+    def test_preprovision_passes_actual_existence_into_native_azd_inputs(self):
         absent = {"statusCode": 404, "body": None}
-        for phase in ("preup", "preprovision"):
-            for exists in (False, True):
-                response = self.app_response() if exists else absent
-                # Native preprovision checks ACR and the monitoring deployment before Portal.
-                responses = ([absent, absent] if phase == "preprovision" else []) + [response]
-                transport = ScriptedTransport(responses)
-                with self.subTest(phase=phase, exists=exists), \
-                        mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
-                        mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
-                        mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
-                        mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
-                        mock.patch.object(lifecycle, "run", return_value={}), \
-                        mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
-                        mock.patch.object(lifecycle, "capacity_preflight"), \
-                        mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
-                        mock.patch.object(lifecycle, "configure_app_insights_cap"), \
-                        mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
-                        mock.patch.object(lifecycle, "discover_existing_network_security_groups", return_value=[]), \
-                        mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
-                        mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}), \
-                        mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
-                        contextlib.redirect_stdout(io.StringIO()):
-                    self.assertEqual(lifecycle.main([phase]), 0)
-                    values = json.loads(self.paths.parameters.read_text())["parameters"]
-                    self.assertIs(values["existingPortalApp"]["value"], exists)
-                    self.assertFalse(transport.responses)
-                    self.assertFalse(transport.mutations())
+        for exists in (False, True):
+            response = self.app_response() if exists else absent
+            # Native preprovision checks ACR and the monitoring deployment before Portal.
+            responses = [absent, absent, response]
+            transport = ScriptedTransport(responses)
+            with self.subTest(exists=exists), \
+                    mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
+                    mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
+                    mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
+                    mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
+                    mock.patch.object(lifecycle, "run", return_value={}), \
+                    mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
+                    mock.patch.object(lifecycle, "capacity_preflight"), \
+                    mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
+                    mock.patch.object(lifecycle, "configure_app_insights_cap"), \
+                    mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
+                    mock.patch.object(lifecycle, "discover_existing_network_security_groups", return_value=[]), \
+                    mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
+                    mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}), \
+                    mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(lifecycle.main(["preprovision"]), 0)
+                values = json.loads(self.paths.parameters.read_text())["parameters"]
+                self.assertIs(values["existingPortalApp"]["value"], exists)
+                self.assertFalse(transport.responses)
+                self.assertFalse(transport.mutations())
 
     def test_direct_core_checks_existing_app_but_monitoring_does_not(self):
         absent = {"statusCode": 404, "body": None}

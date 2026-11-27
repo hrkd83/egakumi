@@ -118,4 +118,4 @@ COMMIT TRANSACTION;
 
 DBAは対象DBに作業用ユーザーと残存セッションがないことを確認します。担当者が閉じられなかった接続が残る場合は、接続先DBと本人のセッションをDBAが確認して、該当セッションだけを終了します。VMログインを回収する前に、回収後の新規SQL接続が拒否されることを確認します。スキーマジョブ用IDを一時的に切り替えた場合は、復元後に正規のスキーマジョブが使えることも検証します。実施時刻と結果は保護された運用記録に残します。[Azure SQLのアクティブセッション終了手順](https://learn.microsoft.com/en-us/azure/azure-sql/database/ransomware-recovery-contain?view=azuresql#action-2-revoke-all-active-sessions-for-suspicious-accounts)
 
-旧資材で管理VMの恒常的なSQLユーザーを作成した環境は、構築済みの各DBとVM IDを照合し、既存環境の切り替え作業としてDBAが回収します。今回の新規構築では同ユーザーを作成しません。[Azure SQLの構築と復旧](../setup/credential-sql.md)
+旧資材で管理VMの恒常的なSQLユーザーを作成した環境は、構築済みの各DBとVM IDを照合し、既存環境の切り替え作業としてDBAが回収します。今回の新規構築では同ユーザーを作成しません。[Azure SQLの構築と復旧](../setup/11-deploy-gateway.md)

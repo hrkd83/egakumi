@@ -73,7 +73,8 @@ class EntraRenderingTests(unittest.TestCase):
         self.assertEqual(scope.get("separator"), " ")
         self.assertEqual(scope.find("value").text, "{{core-entra-required-scope}}")
         guard = policy_root(rendered).find(".//when/set-variable[@name='gatewayAuthenticationFailure']")
-        self.assertIn('context.Product.Id != "' + ENTRA_OPEN_PRODUCT_ID + '"', guard.get("value"))
+        self.assertIn('"' + ENTRA_OPEN_PRODUCT_ID + '"', guard.get("value"))
+        self.assertIn('"manual-entra-users"', guard.get("value"))
         self.assertIn("context.Subscription != null", guard.get("value"))
         self.assertNotIn("__ENTRA_OPEN_PRODUCT_ID__", rendered)
 
@@ -135,7 +136,7 @@ class EntraRenderingTests(unittest.TestCase):
 
     def test_current_bearer_support_needs_no_runtime_readiness_marker(self):
         self.assertNotIn("gatewayEntraOperationSupported", render_service_policy(entra=settings()))
-        for filename in ("gateway.xml", "protocol.xml", "mcp.xml"):
+        for filename in ("rest.xml", "stream.xml", "generated.xml"):
             policy = (policy_fixture_path(POLICIES, filename)).read_text(encoding="utf-8")
             with self.subTest(filename=filename):
                 self.assertNotIn("gatewayEntraOperationSupported", policy)
@@ -148,7 +149,7 @@ class EntraRenderingTests(unittest.TestCase):
                 guard = next(node for node in ET.fromstring(preparation).findall("./choose/when")
                              if "gatewayCommonAuthenticationValidated" in node.get("condition", ""))
                 self.assertEqual(guard.find("return-response/set-status").get("code"), "503")
-                if filename == "gateway.xml":
+                if filename == "rest.xml":
                     # HTTPのBearer結果参照も別部品へ移したため、その呼出しと正本を確認します。
                     self.assertIsNotNone(ET.fromstring(policy).find("./inbound/include-fragment[@fragment-id='core-api-authentication-result']"))
                     authentication = render_audit_policy(policy_fixture_path(POLICIES, "core-api-authentication-result.xml").read_text(encoding="utf-8"))
@@ -167,7 +168,7 @@ class EntraRenderingTests(unittest.TestCase):
                 for node in inbound[:inbound.index(base)]:
                     self.assertNotIn("context.Request.Headers", ET.tostring(node, encoding="unicode"))
                     self.assertNotIn("context.Request.Body", ET.tostring(node, encoding="unicode"))
-        policy = (POLICIES / "api-templates" / "gateway.xml").read_text(encoding="utf-8")
+        policy = (POLICIES / "api-templates" / "rest/rest.xml").read_text(encoding="utf-8")
         self.assertLess(policy.index("<base />"), policy.index('<set-header name="Authorization" exists-action="delete"'))
 
     def test_current_bearer_routing_uses_key_presence_without_api_selection(self):
@@ -493,8 +494,8 @@ public class Response {''')
             return "static " + return_type + " " + name + "(Context context) { " + csharp_expression(raw) + " }"
         methods += "\n" + "\n".join([
             method("Decision", "core-api-authentication-result.xml", ".//set-variable[@name='gatewayDecision']"),
-            method("Protocol", "protocol.xml", ".//set-variable[@name='gatewayDecision']"),
-            method("Mcp", "mcp.xml", ".//set-variable[@name='gatewayDecision']"),
+            method("Protocol", "stream.xml", ".//set-variable[@name='gatewayDecision']"),
+            method("Mcp", "generated.xml", ".//set-variable[@name='gatewayDecision']"),
             method("UserProfile", "entra-user-profile.xml", "set-variable[@name='gatewaySubscriptionProfile']"),
             method("Rate", "rate-limit.xml", ".//set-variable[@name='gatewayRateDecision']"),
             method("TokenEnabled", "token-limit.xml", ".//set-variable[@name='gatewayLlmTokenLimitEnabled']", return_type="bool"),
@@ -505,9 +506,9 @@ public class Response {''')
         # 各APIのDecision直後の失敗分岐を実XMLから取り出し、既存アダプターで監査と応答を実行します。
         cls.decision_failure_reasons = {}
         telemetry = ET.fromstring(render_audit_policy(policy_fixture_path(POLICIES, "core-gateway-telemetry.xml").read_text(encoding="utf-8")))
-        for api, label, filename in (("decision", "DecisionFailure", "gateway.xml"),
-                                     ("protocol", "ProtocolFailure", "protocol.xml"),
-                                     ("mcp", "McpFailure", "mcp.xml")):
+        for api, label, filename in (("decision", "DecisionFailure", "rest.xml"),
+                                     ("protocol", "ProtocolFailure", "stream.xml"),
+                                     ("mcp", "McpFailure", "generated.xml")):
             gateway = ET.parse(policy_fixture_path(POLICIES, filename)).getroot()
             decision_failure = next(node for node in gateway.findall("./inbound/choose")
                                     if "gatewayDecision" in node.find("when").get("condition", ""))
@@ -869,6 +870,13 @@ public static class EntraFixture {
         add("revision", api="openai-inference-v1;rev=2")
         add("missing-product", product=None); add("wrong-product", product="existing-product")
         add("keyless-native-subscription", subscription=True)
+        add("manual-product", api="manual-claude", product="manual-entra-users")
+        add("manual-product-unregistered-prefix", api="openai-inference-v1", product="manual-entra-users")
+        add("manual-product-wrong-product", api="manual-claude", product="some-open-product")
+        add("manual-product-managed-product", api="manual-claude", product=ENTRA_OPEN_PRODUCT_ID)
+        add("manual-product-invalid-token", api="manual-claude", product="manual-entra-users", nativeAccepted=False)
+        add("manual-product-invalid-key", api="manual-claude", product="manual-entra-users",
+            headers={"X-Gateway-Key": "SYNTHETIC_KEY", "Authorization": "Bearer SYNTHETIC_TOKEN"})
         # Common Product checks remain mandatory above. These cases isolate the three API decisions
         # after successful common authentication, proving they trust its result without repeating Product checks.
         add("decision-product-null", decisionContext={"product": None})
@@ -1389,6 +1397,20 @@ public static class EntraFixture {
         for name in ("missing-product", "wrong-product", "keyless-native-subscription", "new-api-missing-product", "new-api-wrong-product"):
             self.assertEqual(self.results[name]["status"], 401)
             self.assertFalse(self.results[name]["nativeOutput"])
+
+    def test_manual_open_product_requires_manual_api_and_valid_common_authentication(self):
+        manual = self.results["manual-product"]
+        baseline = self.results["employee"]
+        self.assertEqual(manual["status"], 200)
+        self.assertTrue(manual["nativeOutput"])
+        self.assertTrue(manual["decision"]["allowed"])
+        self.assertEqual(manual["decision"]["verifiedPrincipalId"], baseline["decision"]["verifiedPrincipalId"])
+        self.assertEqual(manual["rate"], baseline["rate"])
+        self.assertEqual(self.results["manual-product-managed-product"]["status"], 200)
+        for case in ("manual-product-unregistered-prefix", "manual-product-wrong-product",
+                     "manual-product-invalid-token", "manual-product-invalid-key"):
+            self.assertEqual(self.results[case]["status"], 401)
+            self.assertFalse(self.results[case]["nativeOutput"])
 
     def test_api_decisions_use_verified_common_identity_without_repeating_product_checks(self):
         baseline = self.results["employee"]

@@ -1,6 +1,6 @@
 # Foundryモデルの容量・版・配備を変更する
 
-[共通確認](common.md) · [モデル設定](../setup/05-config.md)
+[共通確認](common.md) · [モデル設定](../reference/config-options.md)
 
 [モデル保守script](../../scripts/operations/model.py)で、構築済みFoundryの一配備を
 対象に変更する。既定は実物を読む計画、`--execute`で反映する。

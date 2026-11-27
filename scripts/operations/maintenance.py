@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""構築済み環境へ監査Blob PE・固定NSG・管理VM保守権限だけを追加する。"""
+"""構築済み環境の監査用ネットワークと保守クライアント資材を更新する。"""
 from __future__ import annotations
 
 import os
@@ -20,9 +20,11 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from deployment.helpers import fixed_nsg as nsg
+from deployment.helpers.credential_pools import resource_names as broker_resource_names
+from deployment.helpers.management_client_assets import expected_maintenance_environments, matches_maintenance_environment
 from deployment.helpers.management_maintenance import management_maintenance_inputs
 from deployment.helpers.paths import REPOSITORY
-from deployment.helpers.portal_resources import resource_names
+from deployment.helpers.portal_resources import resource_names, subscription_app_names
 from deployment.lifecycle import ArmTransport, DeploymentError, run
 from operations.common import OperationContext, OperationError
 
@@ -321,14 +323,46 @@ class MaintenanceUpgrade:
                 raise OperationError('An audit container is outside the constructed collectors')
             self.context.verify_resource(identity, '2023-05-01', 'Microsoft.Storage/storageAccounts/blobServices/containers')
         svc = f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/{self.config['resourceGroupNames']['svc']}/providers/Microsoft.App/"
-        app_names = [outputs['portal']['applicationName']]
-        job_names = list(resource_names(self.config).values())
-        # Broker and its jobs are initial infrastructure, including without login profiles.
-        app_names.append('ca-' + self.config['resourceStem'] + '-credentials')
-        job_names.extend(['caj-' + self.config['resourceStem'] + '-schema', 'caj-' + self.config['resourceStem'] + '-recon'])
-        for kind, names in (('containerApps', app_names), ('jobs', job_names), ('managedEnvironments', [outputs['portal']['environmentName']])):
-            for name in names:
-                self.context.verify_resource(svc + kind + '/' + name, '2025-01-01', 'Microsoft.App/' + kind)
+        try:
+            environments = expected_maintenance_environments(self.config, self.context.state)
+        except (KeyError, ValueError) as error:
+            raise OperationError('The recorded ACA environment scopes differ from the construction') from error
+        environment_ids = list(dict.fromkeys(environments.values()))
+        for identity in environment_ids:
+            environment = self.context.verify_resource(identity, '2025-01-01', 'Microsoft.App/managedEnvironments')
+            if len(environment_ids) == 2 and environment.get('properties', {}).get('vnetConfiguration', {}).get('internal') is not True:
+                raise OperationError('Both constructed ACA environments must be internal')
+        broker = broker_resource_names(self.config)
+        portal_app = 'ca-' + stem + '-portal'
+        if outputs['portal'].get('applicationName') != portal_app:
+            raise OperationError('The recorded Portal application differs from the construction')
+        applications = {'portal': [portal_app], 'gateway': [broker['application']]}
+        jobs = {'portal': list(resource_names(self.config).values()), 'gateway': [broker['schemaJob'], broker['reconcileJob']]}
+        for kind, targets in (('containerApps', applications), ('jobs', jobs)):
+            for component, names in targets.items():
+                for name in names:
+                    resource = self.context.verify_resource(svc + kind + '/' + name, '2025-01-01', 'Microsoft.App/' + kind)
+                    if not matches_maintenance_environment(resource.get('properties'), environments[component]):
+                        raise OperationError('A maintenance app or job is outside its constructed ACA environment')
+        service_names = subscription_app_names(self.config)
+        constructed_services = []
+        for name in service_names.values():
+            service = self._optional(svc + 'containerApps/' + name, 'Microsoft.App/containerApps', '2025-01-01')
+            if service is None:
+                continue
+            props = service.get('properties', {})
+            tags = service.get('tags', {})
+            if not isinstance(props, dict) or not isinstance(tags, dict):
+                raise OperationError('A subscription service has incomplete ownership or runtime information')
+            if (not matches_maintenance_environment(props, environments['portal'])
+                    or props.get('provisioningState') != 'Succeeded' or service.get('name') != name
+                    or any(tags.get(key) != value for key, value in nsg._initial_nsg_tags(self.config).items())):
+                raise OperationError('A subscription service is not ready in the constructed ACA environment')
+            constructed_services.append(name)
+        if (constructed_services or len(environment_ids) == 2) and len(constructed_services) != len(service_names):
+            raise OperationError('The constructed subscription services are incomplete')
+        app_names = [*applications['portal'], *applications['gateway'], *constructed_services]
+        job_names = [*jobs['portal'], *jobs['gateway']]
         sql_server = groups['svc'] + '/providers/Microsoft.Sql/servers/sql-' + stem
         if str(outputs['portal'].get('sharedSqlServerId', '')).casefold() != sql_server.casefold():
             raise OperationError('The constructed SQL server output is missing or differs')
@@ -348,8 +382,9 @@ class MaintenanceUpgrade:
             raise OperationError('The recorded workspace name and ID differ')
         self.verify_dns(bindings)
         plan = {'status': 'verified-plan', 'principalId': principal, 'bindings': bindings, 'auditStorage': storage,
-                'sqlDatabases': sql_databases, 'applicationNames': app_names, 'jobNames': job_names,
-                'environmentNames': [outputs['portal']['environmentName']]}
+                'sqlDatabases': sql_databases,
+                'applicationNames': app_names, 'jobNames': job_names,
+                'environmentNames': [identity.rsplit('/', 1)[-1] for identity in environment_ids]}
         self.context.record('maintenance', plan)
         return plan
 

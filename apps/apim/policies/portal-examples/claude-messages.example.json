@@ -1,0 +1,19 @@
+{
+  "apiId": "manual-claude-messages",
+  "keyProductId": "manual-model-users",
+  "backendId": "manual-claude-foundry",
+  "backendService": "foundry",
+  "backendAuthentication": {"mode": "managedIdentity", "resource": "https://ai.azure.com"},
+  "responseTransport": "sse",
+  "keyFallbackRate": {"calls": 60, "renewalPeriodSeconds": 60},
+  "operations": [
+    {
+      "operationId": "messages",
+      "method": "POST",
+      "backendPath": "/anthropic/v1/messages",
+      "copyUnmatchedParams": true,
+      "bodyFormat": "json",
+      "maxRequestBytes": 2048000
+    }
+  ]
+}

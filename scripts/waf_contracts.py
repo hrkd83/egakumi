@@ -391,37 +391,6 @@ def contract_inventory(root=ROOT):
     return result
 
 
-def check_legacy_coverage(previous, current):
-    """Return omitted route/selector/rule scopes (None means a complete group)."""
-    omissions = []
-    profiles = {p['name']: p for p in current['profiles']}
-    for before in previous['profiles']:
-        after = profiles.get(before['name'])
-        if not after or before['scope'] != after['scope'] or not all(
-                path in after['paths'] or any(pattern == MODEL_WAF_PATHS.get(before['name'])
-                                            and path.casefold().startswith(pattern[:-1].casefold())
-                                            for pattern in after['paths']) for path in before['paths']):
-            omissions.append(before['name'] + ': route scope')
-            continue
-        for old in before['entries']:
-            candidates = [e for e in after['exclusions']
-                          if e['matchVariable'] == old['variable'] and (
-                              e['selectorMatchOperator'] == old['operator'] and e['selector'] == old['selector']
-                              or e['selectorMatchOperator'] == 'StartsWith' and old['selector'].startswith(e['selector']))]
-            groups = {}
-            for entry in candidates:
-                for group in entry['exclusionManagedRuleSets'][0]['ruleGroups']:
-                    name = group['ruleGroupName']
-                    if 'rules' not in group:
-                        groups[name] = None
-                    elif name not in groups or groups[name] is not None:
-                        groups.setdefault(name, set()).update(r['ruleId'] for r in group['rules'])
-            for name, rules in old['groups'].items():
-                if name not in groups or (groups[name] is not None and (
-                        rules is None or not set(rules) <= groups[name])):
-                    omissions.append(before['name'] + ':' + old['selector'] + ':' + name)
-    return omissions
-
 
 def render(root=ROOT, *, check=False):
     # Inventory completeness is a separate gate from exclusion generation.

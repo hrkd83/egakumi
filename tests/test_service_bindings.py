@@ -7,6 +7,12 @@ from bicep_helpers import compile_bicep
 
 from pathlib import Path
 import unittest
+from uuid import UUID
+
+from configuration_fixtures import fixture
+from deployment.helpers import diagnostics
+from deployment.helpers.configuration import normalize_configuration
+from test_parameter_ip_ownership import NetworkArmExpression
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -125,8 +131,8 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
         self.assertNotIn("piiRoleDefinitionResourceId", self.templates["bindings"].get("outputs", {}))
 
 
-    def test_core_bindings_exclude_tool_host_roles_and_portal_owns_its_hosts(self):
-        """必須PortalのACA/ACRを認め、外部ツールの運用権限とは分離する。"""
+    def test_core_bindings_exclude_tool_host_roles_and_provision_only_owned_app_platforms(self):
+        """共用ACRと各専用ACA環境をCore、Broker本体はGatewayで構築する。"""
         template = self.templates["bindings"]
         self.assertNotIn("containerAppOperators", template["parameters"])
         self.assertNotIn("containerAppsOperatorRoleId", template.get("variables", {}))
@@ -157,10 +163,23 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
             "Microsoft.App/managedEnvironments",
             "Microsoft.ContainerRegistry/registries",
         })
-        dedicated, = [resource for resource in self.templates["main"]["resources"]
-                      if resource.get("name") == "[format('{0}-certificate-environment', variables('stem'))]"]
-        self.assertEqual({kind for kind, _ in hosts(dedicated)}, {"Microsoft.App/managedEnvironments"})
-        self.assertEqual(hosts(self.templates["main"]), sorted(portal_hosts + hosts(dedicated)))
+        dedicated_modules = {
+            "certificate-environment": "certificate",
+            "broker-platform": "broker",
+            "audit-evidence-environment": "audit",
+        }
+        dedicated_hosts = []
+        for module_name, environment_name in dedicated_modules.items():
+            with self.subTest(platform=environment_name):
+                dedicated, = [
+                    resource for resource in self.templates["main"]["resources"]
+                    if resource.get("name") == f"[format('{{0}}-{module_name}', variables('stem'))]"
+                ]
+                expected = ("Microsoft.App/managedEnvironments",
+                            f"[format('cae-{{0}}-{environment_name}', parameters('stem'))]")
+                self.assertEqual(hosts(dedicated), [expected])
+                dedicated_hosts.append(expected)
+        self.assertEqual(hosts(self.templates["main"]), sorted(portal_hosts + dedicated_hosts))
         self.assertIn(("Microsoft.App/containerApps", "[format('ca-{0}-credentials', parameters('stem'))]"),
                       hosts(self.templates["gateway"]))
 
@@ -211,20 +230,28 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
         self.assertEqual(binding["resourceGroup"], "[format('rg-{0}-svc', variables('stem'))]")
         self.assertEqual(binding["properties"]["parameters"]["names"]["value"], "[variables('serviceNames')]")
 
-    def test_apim_control_plane_exception_keeps_vault_private_and_foundry_unchanged(self):
-        """証明書の管理面例外だけを条件付きにし、通常の公開許可へ広げない。"""
-        template = self.templates["services"]
-        self.assertFalse(template["parameters"]["allowApimKeyVaultControlPlane"]["defaultValue"])
-        vault, = [item for item in template["resources"] if item["type"] == "Microsoft.KeyVault/vaults"]
-        # vault properties は purge 保護の条件を union するため、ARM 式へ展開される。
-        properties = vault["properties"]
-        self.assertIn("'publicNetworkAccess', 'Disabled'", properties)
-        self.assertIn("'defaultAction', 'Deny'", properties)
-        self.assertIn("'bypass', if(parameters('allowApimKeyVaultControlPlane'), 'AzureServices', 'None')", properties)
-        self.assertIn("'ipRules', createArray()", properties)
-        self.assertIn("'virtualNetworkRules', createArray()", properties)
-        self.assertIn("'enableRbacAuthorization', true()", properties)
-        foundry, = [item for item in template["resources"] if item["type"] == "Microsoft.CognitiveServices/accounts"]
+    def test_application_and_public_tls_vaults_remain_separate_and_private(self):
+        """両Vaultの公開アクセスを無効にし、管理面例外とRBACの設定を確認する。"""
+        services_template = self.templates["services"]
+        tls_template = self.templates["certificate_storage"]
+        self.assertFalse(services_template["parameters"]["allowApimKeyVaultControlPlane"]["defaultValue"])
+        self.assertNotIn("allowApimKeyVaultControlPlane", tls_template["parameters"])
+        options = {'tenantId': str(UUID(int=1)), 'vaultSkuName': 'standard', 'vaultRetentionDays': 90,
+                   'vaultPurgeProtection': True}
+        for template, name in (
+            (services_template, "[parameters('names').keyVault]"),
+            (tls_template, "[format('kvtls-{0}', parameters('stem'))]"),
+        ):
+            vault, = [item for item in template["resources"] if item["type"] == "Microsoft.KeyVault/vaults"]
+            self.assertEqual(vault["name"], name)
+            properties = NetworkArmExpression(vault["properties"], template).evaluate(
+                {**options, "allowApimKeyVaultControlPlane": True})
+            self.assertEqual(properties['publicNetworkAccess'], 'Disabled')
+            self.assertEqual(properties['networkAcls'], {
+                'defaultAction': 'Deny', 'bypass': 'AzureServices', 'ipRules': [], 'virtualNetworkRules': []})
+            self.assertTrue(properties['enableRbacAuthorization'])
+            self.assertTrue(properties['enablePurgeProtection'])
+        foundry, = [item for item in services_template["resources"] if item["type"] == "Microsoft.CognitiveServices/accounts"]
         self.assertEqual(foundry["properties"]["publicNetworkAccess"], "Disabled")
         self.assertEqual(foundry["properties"]["networkAcls"]["bypass"], "None")
         services, = [item for item in self.templates["main"]["resources"]
@@ -232,7 +259,19 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
         self.assertEqual(services["properties"]["parameters"]["allowApimKeyVaultControlPlane"]["value"],
                          True)
 
-    def test_apim_secret_reader_is_scoped_to_vault_and_appgw_keeps_its_own_identity(self):
+    def test_public_tls_vault_delivers_audit_events_to_the_existing_sinks(self):
+        template = self.templates['certificate_storage']
+        config = normalize_configuration(fixture())
+        destinations = diagnostics.canonical_settings(config, 'core')['vault-logs']['properties']
+        setting, = [item for item in template['resources'] if item['type'] == 'Microsoft.Insights/diagnosticSettings']
+        self.assertEqual(setting['scope'], "[resourceId('Microsoft.KeyVault/vaults', format('kvtls-{0}', parameters('stem')))]")
+        self.assertEqual(setting['name'], 'core-audit')
+        self.assertEqual(setting['properties'], "[parameters('diagnosticSettingProperties')['vault-logs']]")
+        self.assertEqual(destinations['logs'], [{'category': 'AuditEvent', 'enabled': True}])
+        self.assertIn('/workspaces/', destinations['workspaceId'])
+        self.assertIn('/storageAccounts/', destinations['storageAccountId'])
+
+    def test_apim_and_appgw_use_distinct_managed_identities(self):
         """コンパイル済みの RBAC と本体を照合し、APIM と AppGW の ID を混同しない。"""
         bindings = self.templates["bindings"]
         resources = bindings["resources"]
@@ -244,6 +283,17 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
         self.assertIn("4633458b-17de-408a-b874-0445c86b69e6", bindings["variables"]["secretsUserRoleId"])
         self.assertEqual(grants[0]["scope"], "[resourceId('Microsoft.KeyVault/vaults', parameters('names').keyVault)]")
         self.assertEqual(grants[0]["properties"]["principalType"], "ServicePrincipal")
+        ingress = self.templates["public_ingress"]
+        certificate_reader, = [item for item in ingress["resources"]
+                               if item.get("name") == "[format('{0}-public-certificate-reader', parameters('gatewayPlan').resourceStem)]"]
+        reader_parameters = certificate_reader["properties"]["parameters"]
+        self.assertEqual(reader_parameters["vaultName"]["value"], "[parameters('gatewayPlan').certificateVaultName]")
+        self.assertEqual(reader_parameters["certificateName"]["value"], "[parameters('gatewayPlan').certificateName]")
+        self.assertEqual(reader_parameters["principalId"]["value"], "[parameters('gatewayPlan').certificateReaderPrincipalId]")
+        certificate_grant, = certificate_reader["properties"]["template"]["resources"]
+        self.assertEqual(certificate_grant["scope"],
+                         "[resourceId('Microsoft.KeyVault/vaults/secrets', parameters('vaultName'), parameters('certificateName'))]")
+        self.assertEqual(certificate_grant["properties"]["principalId"], "[parameters('principalId')]")
 
         found = []
         def walk(value):
@@ -256,7 +306,7 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
                 for item in value:
                     walk(item)
         walk(self.templates["main"])
-        walk(self.templates["public_ingress"])
+        walk(ingress)
         # Bicep の existing APIM 参照も type を持つ。実際に identity を配備する本体を対象にする。
         apim = [item for item in found if item["type"] == "Microsoft.ApiManagement/service" and "identity" in item]
         gateways = [item for item in found if item["type"] == "Microsoft.Network/applicationGateways"]

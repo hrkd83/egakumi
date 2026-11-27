@@ -4,10 +4,19 @@ import copy
 import json
 import sys
 from pathlib import Path
+from uuid import UUID
 
 CORE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CORE / "scripts"))
 from deployment.helpers import configuration
+
+
+def bind_credential_fixture_id(parameters):
+    """公開例のCredentialアプリ欄へ合成IDを入れる。"""
+    auth = parameters.get("gateway", {}).get("authentication", {})
+    credential = auth.get("credentialLogin", {}).get("identity", {})
+    if credential.get("clientId", "").startswith("<ENTRA_"):
+        credential["clientId"] = str(UUID(int=10, version=4))
 
 
 def public_fixture(profile="test"):
@@ -21,6 +30,7 @@ def public_fixture(profile="test"):
     parameters["services"]["apimInstanceId"] = "abc123"
     parameters["gateway"]["authentication"]["entra"]["audience"] = "33333333-3333-4333-8333-333333333333"
     parameters["credentialProviders"]["graphDelegated"]["clientId"] = "44444444-4444-4444-8444-444444444444"
+    bind_credential_fixture_id(parameters)
     parameters["certificate"]["azureDnsSubscriptionId"] = parameters["subscriptionId"]
     parameters["certificate"]["azureDnsManagedIdentityResourceId"] = (
         "/subscriptions/" + parameters["subscriptionId"] +
@@ -45,11 +55,17 @@ def fixture():
     value["services"]["modelDeployments"] = []
     # Generic unit cases opt out of application publication independently of shipped defaults.
     value["publishApis"] = False
+    value["auditEvidence"]["enabled"] = False
+    audit = value["network"]["subnetPrefixes"].pop("audit")
+    value["network"]["addressSpaces"].remove(audit)
+    for key in ("snatPrivateRanges", "idpsPrivateRanges"):
+        value["network"]["firewall"][key].remove(audit)
     # 基礎fixtureはCMを使わず、接続試験ではconnection_fixtureで追加する。
     value["credentialProviders"] = []
     value["gateway"]["authentication"].pop("credentialLogin", None)
     # 汎用試験はEntra追加前の入力互換も扱う。Entra試験で別途追加する。
     value["gateway"]["authentication"].pop("entra", None)
+    value["portal"].pop("authentication", None)
     value["certificate"].pop("domainNames", None)
     return value
 

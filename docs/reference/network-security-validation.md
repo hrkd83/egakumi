@@ -11,7 +11,7 @@
 | 設計判断 | 通信要件、NSG/FWへの対応、採否、例外、変更入力の範囲 | 資材への実装と実環境動作 |
 | 資材実装 | 固定集合、構築IPのbinding、初期構築工程、限定更新工程 | 実際の配備成功とパケット到達 |
 | 合成検証 | 架空入力でのBicep展開、tuple・経路・生成・境界・競合処理の一致 | Azure側の動作、実DNS回答、サービス内部の全通信 |
-| Azure限定反映・読戻し | 所有する対象の設定一致、既存設定保持、処理完了 | 全77 NSG規則・全35 FW規則の個別パケット実証と管理VMの現在の時刻精度 |
+| Azure限定反映・読戻し | 所有する対象の設定一致、既存設定保持、処理完了 | NSG・Firewall規則ごとの個別パケット実証と管理VMの現在の時刻精度 |
 | 実操作 | 新規接続での業務・保守操作、認可、結果取得、失敗時の復旧 | 将来の全scale/基盤更新/障害復旧と、任意の企業接続 |
 | 新規再構築E2E | 新しい環境の初期工程から同じ機能が成立すること | 既存環境の限定反映や合成試験だけではこの段階を完了にしない |
 
@@ -23,11 +23,10 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 | 試験 | 確認する内容 |
 | --- | --- |
-| [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py) | catalog v5の77 NSG定義の展開一致、ACAの終端Deny、複数PE IP、priority、Firewallの基盤用途分割、直接経路向けFW規則の除去、ACA Dev宛先の固定生成 |
+| [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py) | NSG正本の定義の展開一致、ACAの終端Deny、複数PE IP、priority、Firewallの基盤用途分割、直接経路向けFW規則の除去、ACA Dev宛先の固定生成 |
 | [test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py) | 構築サブネット・IPの所有境界、5 NSGとFirewallサブネットの非関連付け |
 | [test_dns_nsg.py](../../tests/test_dns_nsg.py) | 廃止DNS用規則の対象限定、未知の手動規則保持、競合・応答不明時の扱い |
 | [test_grpc_fixed_infrastructure.py](../../tests/test_grpc_fixed_infrastructure.py) | gRPC専用設備の撤去、HTTPS保守保持、AppGW/API入口の構成 |
-| [test_grpc_fixed_configuration.py](../../tests/test_grpc_fixed_configuration.py) | 旧gRPC設定の拒否と生成設定の境界 |
 | [test_credential_broker_initial_deployment.py](../../tests/test_credential_broker_initial_deployment.py) | Broker初期build/配備、source bundle、所有資源、再試行とcleanupの境界 |
 | [test_audit_storage_network.py](../../tests/test_audit_storage_network.py) | 監査Blob PEの全IP、DNS zone/group/linkとレコード照合、構築順序 |
 | [test_portal_gateway.py](../../tests/test_portal_gateway.py) | APIMとPortalのHTTPSプローブと検査用ルート照合 |
@@ -57,6 +56,9 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | 固定NSGの限定移行 | [nsg-fixed-upgrade.bicep](../../infra/modules/nsg-fixed-upgrade.bicep)、[fixed migration](../../tests/test_fixed_nsg_migration.py)、[upgrade](../../tests/test_fixed_nsg_upgrade.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
 | Broker常設 | [Broker配備資材](../../apps/apim/deploy/main.bicep)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py)の`test_broker_resources_are_always_selected_independently_of_business_profiles` |
 | L7入口保護 | [AppGW資材](../../infra/modules/application-gateway.bicep)、[APIM共通policy](../../apps/apim/policies/service.xml)、[trusted ingress](../../tests/test_trusted_ingress.py) |
+| 本文監査の専用経路 | [追加NSG正本](../../infra/audit-evidence-nsg.json)、[本文監査のネットワーク資材](../../infra/modules/audit-evidence-network.bicep)、[資材試験](../../tests/test_audit_evidence_infra.py) |
+| 監査Blob閲覧 | [本人へ付与する保守権限](../operations/management-vm-access.md)、[maintenance upgrade](../../tests/test_maintenance_upgrade.py) |
+| ACA/保存ログの認可 | [maintenance roles](../../infra/modules/management-maintenance-roles.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py) |
 | 監査Blob閲覧 | [保守時の手動付与](../operations.md#保守の付与回収)、[保守資材の回帰試験](../../tests/test_maintenance_upgrade.py) |
 | ACA/保存ログの認可 | [ACAカスタムロール定義](../../infra/modules/management-maintenance-roles.bicep)、[RBAC試験](../../tests/test_management_maintenance_rbac.py)、[本人クライアント試験](../../tests/test_management_client.py) |
 | 保守clientと導入 | [management_client.py](../../scripts/management_client.py)、[client試験](../../tests/test_management_client.py)、[導入試験](../../tests/test_management_client_install.py) |
@@ -85,18 +87,20 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 
 ## 実環境の受入確認
 
+以下は受入条件であり、本文監査を含む現行構成のAzure配備、設定読戻し、実通信の受入は未実施である。本文監査の追加規則は標準のテスト・本番設定で有効になる。
+
 | 確認 | 通信・設定との対応 | 合格条件と限界 |
 | --- | --- | --- |
-| NSG全件読戻し | catalog v5の5 NSG・77カスタム規則と既定規則、PE policy | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが一致。管理VM325の旧UDP123規則が残らずAPIM328が維持される。既定規則を再作成せず、例外区画の既定許可も確認 |
-| FW全件読戻し | 6 RCG、10 collection、35規則。`rcg-platform`は12規則 | priority、action、種別、全source/destination、protocol/port、TLS inspectionが資材と一致。管理VM NTP規則が残らずAPIM NTPが維持され、直接経路用の不要規則が混ざらない |
-| 公開入口 | CLIENT、APPGW-APIM、APPGW-ACA | 公開TLS、HTTPリダイレクト、APIM正常API、Portalのhealthと画面、L7入口保護を確認。healthだけを全APIの認可確認にしない |
-| 入口のTLS検査 | APPGW-APIM、APPGW-ACA | AppGW両バックエンドのSNIと証明書チェーン、`HTTPS:443`のApplication Ruleの一致、TLS検査・IDPSのログを合成トラフィックで照合。Portalの実認証前にFirewall診断の[クエリ保護](../testing/log-privacy.md#firewallのtls検査ログ)を確認する |
-| 長時間応答と接続 | SSE、WebSocketと通常の非ストリーミングAPI | 120秒を超えるSSEとWebSocketで継続受信を確認し、必要な無通信時間を含むセッションを試す。先頭データが遅い通常応答も確認し、切断位置と継続時間を記録する。[Firewall TLS検査のタイムアウト](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#azure-firewall-limits) |
-| PE接続 | APIM/ACA/管理VMとFoundry/KV/SQL/ACR/監査Blob | DNS回答とPE全IP、往復制御、サービスTLSと認可を照合。FWログが無いことだけで直接経路成功としない |
-| ACAのFirewall経路 | ACAの既定経路、AppGW向け復路、既定送信アクセス、BGP伝搬 | 固定`0.0.0.0/0`とAppGW向け復路の次ホップが構築Firewall。既定送信とBGP伝搬は無効。承認済みのEntra・パッケージ配布へのHTTPSとFirewallログを照合し、未許可の公開宛TCP443はFirewallで拒否される。経路の変更は合成入力で検証する |
-| ACAの両方向の拒否 | 同一ACAサブネット、許可元、新規のその他VNet接続 | AppGW経由のPortal、APIMからBroker、管理VMからACAが到達する。明示許可のない別サブネットからの受信と、ACAから未許可のVNet内宛先・ポートへの送信が新規接続で拒否される |
-| ACAの現構成依存 | 新規イメージ取得、App/Job起動、スケール、標準DNS、管理ID、監視 | ACRのログインと専用データの名前がPEへ解決し、イメージ未取得のレプリカで取得できる。MCRからの初回起動、レプリカ増減、Broker／PortalのSQL Proxy接続、Key Vault参照と監視ログの取り込みを確認する |
-| 監査Blob・保存ログ | MGMT-AUDIT-JAPAN/FOUNDRY、MGMT-MONITOR | 担当者本人が一時付与の範囲内で対象コンテナー／Workspaceを読む。範囲外の読取、監査Blobの書込み・削除、回収後の新規操作は拒否される |
+| NSG全件読戻し | 基本構成と証明書用ACAの規則、本文監査有効時の追加規則 | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが正本に一致する。各ACAの専用サブネット・NSG関連付け、両方向の終端Deny、Azure既定規則、PEのNSGポリシー、管理VM／APIMの時刻通信を確認する。 |
+| FW全件読戻し | 基本は6 RCG・10 collection・35規則。本文監査有効時は7 RCG・12 collection・37規則 | priority、action、種別、全source/destination、protocol/port、TLS inspectionが資材と一致する。`rcg-platform`の12規則、本文監査用`rcg-audit-evidence`の2規則、APIMのNTP許可と管理VMの旧NTP規則の撤去を確認する。 |
+| 公開入口 | CLIENT、APPGW-APIM、APPGW-ACA | 公開TLS、HTTPリダイレクト、APIM正常API、Portalのhealthと画面、L7入口保護を確認。両バックエンドのHTTPSプローブとFirewallのTLS検査・非対象経路の拒否も確認。healthだけを全APIの認可確認にしない |
+| 購読管理と照会 | ACA-INTERNAL、APIM-ACA、ACA-SQL | Portalから購読管理、APIMからプロファイル照会へ直接HTTPSで接続。専用2アプリのrevision、DNS・証明書・実際のIngress拒否、本人トークンと照会鍵、SQL権限を確認 |
+| Broker分離 | APIM-BROKER、ACA-KV、ACA-SQL、ACA-ACR、ACA-ARM、ACA-ENTRA | APIMからBrokerへの許可、Portal用ACA・AppGW・管理VMからの拒否、Brokerの起動・SQL・CM・OBO・監査、PortalとBrokerが別々のACA環境を使うことを確認する。 |
+| 本文監査の分離 | APIMから専用中継、専用ACAからEvent Hubs・本文Blob・チェックポイントBlob | 中継へのAPIM以外からの接続と未許可IDを拒否し、保存ワーカーに入口がないことを確認する。Private DNSと実効NSG、各実行IDの権限、JSON／SSEの受領確認、Event Hubs障害時の応答、Blobへの保存を合成データで確認する。 [本文監査の受入条件](request-body-audit.md) |
+| PE接続 | APIM/ACA/管理VMとFoundry/KV/SQL/ACR/監査Blob、本文監査用の3 PE | DNS回答とPE全IP、往復制御、サービスTLSと認可を照合する。本文監査が有効な場合はEvent Hubs・本文Blob・チェックポイントBlobの三つを個別に確認する。 |
+| Vault分離と証明書 | APPGW-KV、APIM-KV、ACA-KV、MGMT-KV | 2つのPrivate EndpointとDNS回答、Vaultのネットワーク設定、対象オブジェクトの実効RBACを照合。公開証明書の初回発行・自動更新・実配信、APIMのNamed Value解決、必要のない接続とsecret読取の拒否を確認 |
+| ACAの現構成依存 | イメージ取得、App/Job起動、標準DNS、管理ID、監視、リビジョン切替、再起動、スケール | 構築ACRと公開MCRの用途を区別する。Portal、Broker、本文監査それぞれのPE接続と起動・更新・復旧を確認する。 |
+| 監査Blob・保存ログ | MGMT-AUDIT-JAPAN/FOUNDRY、MGMT-MONITOR | 担当者本人の作業権限で構築コンテナーとWorkspaceを読み、付与前・回収後は拒否される。監査Blobへの書込み・削除権限は付けない |
 | ACA App/環境のログ・App exec | MGMT-ARM、MGMT-ACA-DEV | 対象App/revision/replica/containerとtoken scopeを確認し、ログ本文/有限execの結果を取得。環境tokenをログ専用の保証として扱わない |
 | ACA Jobログ | ACA-SQL等のJob処理とMGMT-ACA-DEV | 対象Jobのtoken認可、保存ログ、実行が存続する場合のライブログを区別。schema Jobは配備更新工程の正常実行に合わせて確認 |
 | SQL直接保守 | MGMT-SQL | 対象DBだけで一時付与した本人のユーザーと最小権限で接続し、ODBC 18のTLSと証明書検証を確認する。別DBと回収後の新規接続は拒否される |
@@ -116,9 +120,96 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | --- | --- | --- |
 | Job対話exec | 初期非採用 | JobのライフサイクルとAPI/clientの制約をApp execと区別。ログ取得とJobの通常処理は維持 |
 | Serial NMI/reset/SysRq | 初期非採用 | 対話ログインと診断取得を保守範囲にし、破壊的な障害注入を実証のために追加しない |
-| ACAから公開Storageを使うワークロード | 初期対象外 | 構築ACRはPrivate Endpoint経由。Storageを新しく使うアプリやJobの追加時に、接続先・認可・経路を個別に設計する |
+| ACAのStorage通信 | 利用中のプライベート接続を許可 | 追加のStorage依存は宛先・用途を整理し、末尾拒否より前の明示許可と実検証を伴う |
 | カスタムDNS用の作成switch | 廃止 | 初期は標準DNS固定。企業DNS移行は問い合わせ元、DNS IP、53/TCP/UDP、zone/link、FW自身のDNSと往復経路を手動で整合 |
 | gRPC専用設備 | 要件廃止 | HTTPS保守と通常HTTP/HTTPSの入口保護を残す。8443や専用転送を再作成しない |
 | fresh再構築E2E | 限定パッチ・合成検証とは別 | 初期工程への組込みと、実際に新しい全環境を構築して全機能を確認することを分ける |
 
 採用した保守判断の集計と、[OPS-01〜14](../testing/operations-tests.md)の業務運用シナリオの集計は別である。上位の網羅確認と個々のclient操作を二重計上せず、SQL直接保守など追加採用した機能もそれぞれの実施票で追跡する。
+
+## 新規構築資材の防御レビュー
+
+ローカルの構成、認証、権限、ログの流れを確認した。実環境では新規配備後に、テスト専用の本人・購読・入力で以下を受け入れる。
+
+| 優先度・到達点 | ソースで確認した境界と残る影響 | 対応と新規構築後の確認 |
+| --- | --- | --- |
+| 高・管理VMから共用資源 | 旧資材は共有KV Officer、DBの`db_owner`、ACAのexecと環境Dev API token取得をVMのIDに付けていた | 新規資材は対話保守の常設割当を廃止し、本人へ作業単位で付与・回収する。無人の証明書処理は名前を固定した対象に絞る。初回発行、自動更新、他の秘密へのアクセス拒否、保守権限の回収後の拒否を確認する。 [管理VMの一時権限](../operations/management-vm-access.md) |
+| 高・公開入口の迂回 | AppGWが再暗号化し、Firewall経由のHTTPSがAPIM／ACAの許可元になる。APIMにもAppGWの信頼済み入口確認がある。別経路からの到達や信頼情報の漏えいで境界が弱くなる | 有効なNSG・ルート・SNIを読戻し、外部入口、バックエンドの直接接続、許可されていないサブネットからの到達を確認する。AppGWとAPIMの監査を要求IDで照合する |
+| 高・TLS検査とログ | 検査したURLはFirewallのApplication Rule／Threat Intelログの`TargetUrl`に含まれる可能性があり、OAuthの戻り先には一回限りの値が含まれ得る | URLを記録するカテゴリには取り込み時の削除を適用し、加工前のStorage直送を分ける。合成マーカーのある要求でWorkspace・Storageの双方を確認する。 [Application Ruleログの項目](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwapplicationrule) · [Threat Intelログの項目](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/azfwthreatintel) |
+| 高・Portalと接続所有者 | Portalのプロセスは、同じアプリに割り当てた認証SQL用IDとトークン暗号鍵用IDを使う。侵害時は両方に影響し得る。Entraは同じPortalクライアントで同意済みの別用途にも更新トークンを交換できる | 固定鍵版、期限、認証世代、SQLセッションを照合する。別本人、失効、更新競合、複数レプリカでの停止、インシデント時のセッション失効と鍵更新を受け入れる。 [PortalのID割当](../../apps/portal/deploy/application.bicep) · [Entra追加認証と残る影響](../setup/09-egakumi-portal.md#一度の登録依頼に含める設定) |
+| 高・購読管理への書込み権限 | 公開PortalからAPIM管理権限とSQL台帳の書込み権限を分離した。購読管理の実行IDには対象APIMの購読操作と製品参照を許可する。割当はAPIMインスタンス単位であり、管理サービスの侵害は同じAPIMの他の購読にも影響し得る | 本人トークン、操作時の所属、対象IDと実効権限を[購読管理とプロファイル照会の分離](#購読管理とプロファイル照会の分離)で確認する。既存環境に旧Contributorの割当があれば、移行の受入後に割当IDを特定して個別に回収する。 [APIMロール定義](../../apps/portal/deploy/api-keys.bicep) |
+| 高・共有Key Vaultの読取範囲 | 公開TLSのPFXとACME状態を専用Vaultに分離した。新規資材はAppGWに対象PFXの読取りを付与する。APIMは指定のNamed Valueを参照し、読取のRBACは業務用Vault全体に及ぶ。業務用Vaultは複数処理で共有し、APIM管理プレーンのための例外を持つ | 必要な参照に加え、AppGWによる他のsecretの読取と、APIMや業務用ACAのIDによるTLS Vaultへの未許可操作が拒否されることを確認する。既存環境の広域割当、旧timer、旧証明書とACME状態は実際の依存を確認してから個別に取り扱う。 [Vaultの設定](../../infra/modules/services.bicep) · [RBACの設定](../../infra/modules/service-bindings.bicep) |
+| 高・PortalからBrokerへの横移動 | Brokerを専用の内部ACA環境とサブネットへ分離した。アプリの業務接続をAPIMに限定し、Broker側でも共有鍵・本人・権限を照合する。同じVNetのPEとAzure管理・監視サービスは用途別に利用する | Portal用ACAからBrokerへの直接到達を拒否し、公開Gateway経由の正規処理が成立することを確認する。APIM由来の異常な要求と、Broker実行IDによる対象外の秘密・DB・ARM操作も拒否されることを確認する。 [Broker環境の分離](#credential-broker環境の分離) |
+| 中・接続先、長時間通信と障害 | 検査用中間CAとDNSが経路の信頼点になる。CA失効、証明書名の違い、長い接続の切断はGateway全体へ波及し得る | CAアクセスを専用IDと対象secretへ絞り、切替と期限を運用で確認する。正しい経路と証明書不一致、JSON、SSE、WebSocket、MCPを試験し、タイムアウトとIDPSを監査で識別する |
+
+管理VMの権限見直しは資材上で行い、Azure受入で付与と回収を確認する。上記の実接続とログ検証を、資材の構文・生成・合成入力の結果と区別して記録する。
+
+### 初回公開前に確認する実効境界
+
+| 対象 | 資材上の境界 | Azureで確認する内容 |
+| --- | --- | --- |
+| Portal用環境の内部通信 | 公開Portal、購読管理、プロファイル照会は同じACA環境内の別アプリ。購読管理は同じACA環境からの入口と本人委任に、照会はAPIMサブネットからの入口と専用鍵に限定する。各アプリに別の実行IDとSQL権限を割り当てる。 | Portalからの正規の購読操作とAPIMからの照会を確認する。別環境・未許可サブネット、無効な本人トークン・専用鍵、各実行IDからの対象外SQL操作を拒否することを確認する。 [購読管理とプロファイル照会の分離](#購読管理とプロファイル照会の分離) |
+
+実効権限、到達性、遮断結果は新規構築後の保護実施票に記録する。依存パッケージの公表済み指摘は[Portalの依存監査](../testing/portal-authentication-tests.md#本番依存の再監査)を参照する。
+
+### 購読管理とプロファイル照会の分離
+
+公開Portal、購読管理、プロファイル照会は、同じPortalイメージを別の実行ID・起動入口で使う3つのアプリとして構築する。購読管理は同じACA環境からのHTTPSに限定し、`Subscription.Manage`の発行元、audience、Portalクライアント、本人とscopeを検証してから操作時点の所属を確認する。照会は内部ACA環境のVIPでAPIMサブネットを許可し、専用鍵とSQL参照プロシージャを使う。公開Portalは認証SQLへの権限を使い、購読操作は専用サービスへ依頼する。 [購読管理の起動入口](../../apps/subscription-admin/server.mjs) · [照会の起動入口](../../apps/subscription-profile/server.mjs) · [ACAの定義](../../apps/portal/deploy/subscription-services.bicep) · [クレーム検証](https://learn.microsoft.com/en-us/entra/identity-platform/claims-validation)
+
+| 機能 | 新規環境で受け入れる契約 |
+| --- | --- |
+| 会社マスタ | 基盤管理グループによる会社の登録・改名・選択停止と変更監査。会社の選択停止と購読の失効を独立して扱う |
+| 基盤管理グループと所有候補 | `platformGroupId` と `groupNamePattern` の構築設定、Entraの所属変更、定期照合と管理画面。基盤管理グループの差替えと個々のキーの所有者移管は、現行手順どおり別操作とする |
+| 所有グループの移管 | 移管元の現在の所属、移管先の適格性・Product承認・発行枠を確認し、同じ購読を引き継ぐ。台帳の変更と移管監査を同じSQLトランザクションで記録する |
+| キーの利用・管理者同期 | 発行・表示・停止／再開・削除・利用枠、キーまたはBearerでの試用、管理者の同期プレビューとSQLからAPIMへの反映。同期はSQL未登録購読も差分として提示し、管理者の確認を経て適用する |
+
+| セキュリティ境界 | 新規環境で受け入れる契約 |
+| --- | --- |
+| 公開経路・資格情報 | App Gatewayや公開側から専用2アプリへ到達できず、購読管理は同じACA環境外、照会はAPIM以外のサブネットを拒否。管理側でCookie、別のclient、誤ったscope、期限切れ、別所属を拒否する。照会側で誤った専用鍵を拒否する |
+| APIMロール・SQL | 公開PortalのIDによるAPIM購読操作とSQL台帳への書込みが拒否される。管理IDは購読操作と製品参照が成立し、ポリシー・Named Value・バックエンドの更新が拒否される。照会IDはプロシージャを実行でき、テーブルの直接読取り・書込みを拒否される |
+| 初回構築と照会障害 | SQL初期化、専用2アプリの準備、公開ヘルス、APIMのNamed Value読戻しと有効化の順を確認する。APIMから正しい鍵で照会し、プロファイル未取得時の上流障害が503になる。同期の確認内容は公開PortalのCookie署名鍵と別の鍵で検証する |
+
+新規構築資材のコードと試験で境界を確認し、Azureでの配備、権限回収、上記の実受入は別途記録する。 [配備手順](../setup/12-deploy-portal.md) · [SQL権限](../../apps/portal/scripts/auth-runtime-grants.ts) · [APIMの接続定義](../../apps/portal/deploy/subscription-profile.bicep)
+
+### Credential Broker環境の分離
+
+| 確認対象 | 新規環境で受け入れる契約 |
+| --- | --- |
+| 初回構築とPrivate DNS | Portal用の`cae-<stem>`とBroker用の`cae-<stem>-broker`が別のサブネット・内部VIP・DNS名に対応し、公開ネットワークが無効。Broker本体、SQL初期化Job、定期照合Jobは専用環境に所属する |
+| 正規経路と拒否 | APIMから専用Broker FQDNへHTTPS443で到達し、TLS証明書名を照合する。到達しても無効な共有鍵・本人・権限で処理されない。Portal用ACA、AppGW、管理VMおよび外部からの直接アクセスを拒否し、Portalの利用者は公開Gateway経由で本人確認・Graph・CMを利用できる |
+| Brokerの基盤依存 | ACR login/data PEからのイメージ取得、業務用Key Vault PE、SQL PE、Entra/JWKS、ARMおよびACAの管理通信を使い、起動・スケール・定期照合を確認する。Firewallログ、NSGの設定、実行ログから、到達性と認可失敗を切り分ける |
+| API・資格情報 | 通常のGateway APIとプロファイル照会、購読キーのCM接続・継続利用、Credentialの公開コールバック、本人BearerのGraph OBOを試す。異なる本人、期限切れ、依存先障害、誤ったscopeで停止する。トークンやsecretを監査に残さない |
+| 更新・保守・撤去 | Gateway配備とBroker単体更新で、環境IDとFQDN、App／Job、期待imageと正常revisionを照合する。管理VMのinventoryは両環境を含み、ログ・execの権限を当該資源へ限定できる。撤去時は所有する子資源、両環境・サブネット・各Azure管理RGの消失を順に確認する |
+
+既存環境のBroker移設と資源の回収は別の作業である。今回のAzure配備・受入は未実施である。 [Gatewayの正式手順](../setup/11-deploy-gateway.md) · [保守範囲](../operations/management-vm-access.md)
+
+### 公開TLS用Key Vaultの分離
+
+| 確認対象 | 新規環境で受け入れる契約 |
+| --- | --- |
+| VaultとPE | 公開TLS用と業務用が別IDと別PEに対応し、各FQDNがそれぞれのPEに解決される。公開TLS用の資材は`publicNetworkAccess: Disabled`、`networkAcls.defaultAction: Deny`、`networkAcls.bypass: AzureServices`を指定する。業務用はAPIM管理プレーンのNamed Value用に例外を持つ。Azureでは両Vaultの設定を読み戻し、AppGWの公開TLS証明書参照、公開TLS JobのPE経由の到達、APIMと業務用ACAの業務用Vaultへの到達、対象外の接続・操作の拒否を個別に確認する |
+| 証明書の初回発行と更新 | 対象PFX・ACME状態の専用ACA Jobによる操作と、対象PFXのAppGWによる参照を確認する。業務用VaultのPortal認証証明書や通常のsecretと混同しない。公開2ホストの実TLSを証明書と照合する |
+| APIMの実効権限 | 標準Gateway証明書を使用。子リソースごとに入口、Broker、購読照会と、使用時の所有者チケットのNamed Valueが設定どおり取得できることを確認する。APIMの読取割当が業務用Vaultを対象とし、公開TLS用Vaultに及ばないことを確認する |
+| TLS Vaultの監査 | 公開TLS用Vaultに配備する`core-audit`の`AuditEvent`と送信先を読み戻す。対象オブジェクトに対する正規の読取・証明書更新と、未許可操作の結果を保護証跡で確認する |
+| 既存環境からの切替 | 新しい参照・配信・定期Jobの受入後、旧Vaultの証明書・ACME状態と旧RBACの利用先を確認する。既存の資源回収は新規構築の検証に含めない |
+
+[公開証明書の運用](../operations/secrets-and-certificates.md#tls証明書を更新し公開httpsまで確認する) · [APIM管理プレーンの参照仕様](https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/trusted-service-connectivity-retirement-march-2026#scenarios-that-are-not-affected-by-the-breaking-change)
+
+### 基盤用Entraアプリの分離で追加する確認
+
+| 対象 | 資材上の制御と実環境での確認 |
+| --- | --- |
+| OBOの信頼境界 | BrokerはAPIM内部の共有鍵と検証済み本人を照合する。Entraが元のトークンを検証し、Graphの対象は固定の本人取得とする。同意不足・別人・期限切れ・条件付きアクセス時の停止を確認する |
+| 署名と秘密の権限 | Brokerの実行IDによるOBO署名を専用鍵に、秘密の読み取りをBrokerとCredentialの専用secretに限定する。Azureで、有効な版と実証明書の組、対象外の鍵・secretの拒否を確認する。旧構成から更新する場合は過去の割当も棚卸する |
+| トークンの監査 | APIMの通常診断と権限付きデバッグ、Firewall、Brokerのログを確認する。元のBearer・署名済みclient assertion・Graphトークン・追加認証claimsが通常監査に保存されず、デバッグの利用者と取得範囲が限定されることを確認する |
+| 管理VM | 保守時だけ担当者本人に権限を付与し、終了時に回収する。PIMを利用する場合は、Azure基盤側のライセンスと会社の承認体制を確認する |
+
+### 手動追加したAPIの公開前確認
+
+| 対象 | 確認する内容 |
+| --- | --- |
+| 公開経路 | 新しいパスで有効なWAFの関連付けとモード、AppGWからAPIMへのHTTPS・信頼済み入口の書換え、許可した操作の到達性を照合する |
+| Productと認証 | 許可したProductの購読キーと、公開対象なら本人Bearerで接続する。対象外Product、無効キー、期限切れ・scope不足のBearerを拒否し、監査に認証情報が残らないことを確認する |
+| 下流の到達範囲 | 許可したOperationと固定バックエンドの組、APIMのIDを割り当てた対象資源と推論権限のscopeを確認する。応答の監査、SSEの転送、要求回数の上限も合わせて確認する |
+
+具体的な設定は[Claude Messagesの手動追加手順](../operations.md#構築後にclaudeをguiで追加する)を参照する。検証結果は環境別の保護実施票で管理する。

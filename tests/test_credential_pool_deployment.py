@@ -10,7 +10,6 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-sys.path.insert(0, str(ROOT / 'apps/apim/deploy'))
 sys.path.insert(0, str(ROOT / 'apps/credential-broker/deploy'))
 from deployment.helpers.credential_pools import (
     broker_session_settings, logical_profiles, physical_providers, resource_names, verify_existing_provider_registrations,
@@ -23,6 +22,7 @@ from deploy_gateway import foundation_inputs
 from configuration_fixtures import fixture
 from arm_helpers import ArmExpression
 from management_fixtures import client_core_outputs
+from test_parameter_ip_ownership import NetworkArmExpression
 
 
 def raw_fixture():
@@ -30,6 +30,7 @@ def raw_fixture():
     master = load_configuration_source(ROOT / 'params/test.example.json')
     value['credentialProviders'] = master['credentialProviders']
     value['gateway']['authentication']['credentialLogin'] = master['gateway']['authentication']['credentialLogin']
+    value['gateway']['authentication']['credentialLogin'].pop('identity', None)
     value['credentialProviders'][0]['clientId'] = '44444444-4444-4444-8444-444444444444'
     value['credentialProviders'][0]['oauthTenantId'] = value['entraTenantId']
     return value
@@ -109,7 +110,6 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         settings, = [item for item in gateway['resources']
                      if 'credentialBrokerUrl' in item.get('properties', {}).get('parameters', {})]
         self.assertEqual(settings['condition'], '[parameters(\'deployApplication\')]')
-        self.assertEqual(settings['properties']['parameters']['credentialBrokerUrl']['value'], "[variables('brokerUrl')]")
         broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
         app, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/containerapps']
         self.assertEqual(app['condition'], '[parameters(\'deployApplication\')]')
@@ -170,9 +170,12 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 config['resourceGroupNames'] = {layer: 'rg-' + stem + '-' + layer
                                                 for layer in config['resourceGroupNames']}
                 names = resource_names(config)
-                id_base = ('/subscriptions/' + config['subscriptionId'] + '/resourceGroups/'
-                           + config['resourceGroupNames']['id']
-                           + '/providers/Microsoft.ManagedIdentity/userAssignedIdentities/')
+                groups = config['resourceGroupNames']
+                group_base = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/'
+                id_base = group_base + groups['id'] + '/providers/Microsoft.ManagedIdentity/userAssignedIdentities/'
+                broker_environment = 'cae-' + stem + '-broker'
+                broker_base = group_base + groups['svc'] + '/providers/Microsoft.App/managedEnvironments/'
+                subnet_base = group_base + groups['nw'] + '/providers/Microsoft.Network/virtualNetworks/'
                 foundation = {
                     'resourceGroup': config['resourceGroupNames']['svc'],
                     'identityResourceGroup': config['resourceGroupNames']['id'],
@@ -182,6 +185,10 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                     'schemaIdentity': {'id': id_base + names['schemaIdentity']},
                     'environmentName': 'cae-' + stem,
                     'environmentDomain': 'environment.example.com',
+                    'brokerEnvironmentName': broker_environment,
+                    'brokerEnvironmentId': broker_base + broker_environment,
+                    'brokerEnvironmentDomain': 'synthetic-broker.fixture.' + 'azurecontainerapps.io',
+                    'brokerSubnetId': subnet_base + 'vnet-' + stem + '/subnets/snet-' + stem + '-broker',
                     'registryName': 'acr' + stem.replace('-', ''),
                 }
                 state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
@@ -196,6 +203,8 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 self.assertEqual(names['database'], 'sqldb-' + stem + '-credentials')
                 self.assertEqual(inputs['sqlServer'], foundation['sqlServer'])
                 self.assertEqual(inputs['schemaIdentity']['id'], id_base + names['schemaIdentity'])
+                self.assertEqual(inputs['brokerEnvironmentId'], broker_base + broker_environment)
+                self.assertEqual(inputs['brokerEnvironmentDomain'], foundation['brokerEnvironmentDomain'])
                 self.assertNotIn('database', inputs)
                 self.assertNotIn('runtimeIdentity', inputs)
                 self.assertEqual(state, original)
@@ -252,6 +261,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         broker = compile_bicep('apps/credential-broker/deploy/broker.bicep')
         gateway = compile_bicep('apps/apim/deploy/main.bicep')
         app, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/containerapps']
+        deployment, = [item for item in gateway['resources'] if "-gateway-broker'" in item['name']]
         settings, = [item for item in gateway['resources']
                      if 'credentialBrokerUrl' in item.get('properties', {}).get('parameters', {})]
         for product, environment in (('sample', 'dev'), ('p' * 12, 'test')):
@@ -268,12 +278,25 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 self.assertLessEqual(len(expected), 32)
                 self.assertRegex(expected, r'^[a-z][a-z0-9-]*[a-z0-9]$')
                 self.assertNotIn('--', expected)
-                domain = 'environment.example.invalid'
-                url = ArmExpression(gateway['variables']['brokerUrl']).evaluate(
-                    {'foundation': {'environmentDomain': domain}, '__variables': {'stem': stem}}, 0)
+                domain = 'broker-environment.example.invalid'
+                environment_id = '/mock/Microsoft.App/managedEnvironments/cae-' + stem + '-broker'
+                parameters['__references'] = {environment_id: {'defaultDomain': domain}}
+                broker_expression = NetworkArmExpression('[true()]', broker)
+                outputs = {key: {'value': broker_expression.resolve(broker['outputs'][key]['value'], parameters)}
+                           for key in ('applicationName', 'environmentDomain', 'environmentId')}
+                self.assertEqual(outputs['environmentId']['value'], environment_id)
+                self.assertEqual(broker_expression.resolve(app['properties']['managedEnvironmentId'], parameters),
+                                 environment_id)
+                gateway_expression = NetworkArmExpression('[true()]', gateway)
+                gateway_parameters = {'configuration': {'resourceStem': stem}}
+                deployment_name = gateway_expression.resolve(deployment['name'], gateway_parameters)
+                deployment_id = '/mock/Microsoft.Resources/deployments/' + deployment_name
+                gateway_parameters['__references'] = {deployment_id: {'outputs': outputs}}
+                url_expression = settings['properties']['parameters']['credentialBrokerUrl']['value']
+                url = gateway_expression.resolve(url_expression, gateway_parameters)
                 self.assertEqual(url, 'https://' + expected + '.' + domain)
-                self.assertEqual(ArmExpression(settings['properties']['parameters']['credentialBrokerUrl']['value']).evaluate(
-                    {'__variables': {'brokerUrl': url}}, 0), url)
+                self.assertEqual(gateway_expression.resolve(gateway['outputs']['credentialBroker']['value']['url'],
+                                                            gateway_parameters), url)
                 if product == 'p' * 12:
                     self.assertEqual(len(stem), 17)
                     self.assertEqual(len(expected), 32)

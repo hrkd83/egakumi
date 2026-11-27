@@ -18,6 +18,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from configuration_fixtures import bind_credential_fixture_id
 
 CORE = Path(__file__).resolve().parents[1]
 SUBSCRIPTION = "11111111-1111-4111-8111-111111111111"
@@ -129,6 +130,8 @@ class FreshCloneReadinessTests(unittest.TestCase):
     def enterprise_parameters(self, profile):
         """公開例へ架空の企業情報だけを設定し、標準configは編集しない。"""
         raw = json.loads((self.root / "params" / (profile + ".example.json")).read_text())
+        self.assertNotIn("codex", raw)
+        bind_credential_fixture_id(raw)
         raw.update(subscriptionId=SUBSCRIPTION, azureTenantId=TENANT, entraTenantId=TENANT)
         standard = json.loads((self.root / "config" / (profile + ".json")).read_text(encoding="utf-8"))
         self.assertNotIn("subscriptionKeyHeader", raw["gateway"]["authentication"])
@@ -184,8 +187,17 @@ class FreshCloneReadinessTests(unittest.TestCase):
         self.assertEqual(public["credentialProviders"][0]["oauthTenantId"], TENANT)
         self.assertEqual(public["credentialProviders"][0]["identityEndpoint"], "https://graph.microsoft.com/v1.0/me")
         self.assertEqual(public["credentialProviders"][0]["connectionNames"], [])
+        auth = public["gateway"]["authentication"]
+        credential = auth["credentialLogin"]["identity"]
+        self.assertEqual(credential["tenantId"], TENANT)
+        self.assertNotIn("authentication", public["portal"])
+        self.assertEqual(public["credentialProfiles"]["graph-delegated"]["clientId"], credential["clientId"])
+        self.assertEqual(public["credentialProfiles"]["graph-delegated"]["clientSecretEnv"], "OIDC_SECRET_IDENTITY")
+        self.assertTrue(public["entraRolloutEnabled"])
+        self.assertNotIn("codex", public)
         self.assertEqual(set(public["resourceGroupNames"]), {"id", "nw", "monitor", "svc", "maint"})
-        self.assertEqual(len(public["network"]["addressSpaces"]), 4)
+        self.assertTrue(public["auditEvidence"]["enabled"])
+        self.assertIn(public["network"]["subnetPrefixes"]["audit"], public["network"]["addressSpaces"])
         self.assertNotIn("configFile", public)
         for field in ("sshPublicKeyFile", "pluginArgumentsFile", "clientSecretFile"):
             self.assertNotIn('"' + field + '"', arguments.read_text())

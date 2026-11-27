@@ -266,7 +266,11 @@ class ProtocolConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(configuration.ConfigurationError, "grantApimSecretAccess"):
             self.normalize(raw)
         raw["services"]["grantApimSecretAccess"] = True
-        self.normalize(raw)
+        stem = self.normalize(raw)["resourceStem"]
+        tls_vault = ".".join((f"kv-{stem}-tls", "vault.azure.net"))
+        api["backendAuthentication"]["secretIdentifier"] = f"https://{tls_vault}/secrets/registered-provider"
+        with self.assertRaisesRegex(configuration.ConfigurationError, "public TLS certificate vault"):
+            self.normalize(raw)
         api["backendAuthentication"]["secretIdentifier"] = "SENTINEL_RAW_KEY"
         with self.assertRaises(configuration.ConfigurationError) as caught: self.normalize(raw)
         self.assertNotIn("SENTINEL_RAW_KEY", str(caught.exception))
@@ -428,9 +432,9 @@ class ProtocolConfigurationTests(unittest.TestCase):
 def actual_expression(path, name):
     """APIM policyから指定の実C#式を取り出し、別実装へ置き換えずに検証する。"""
     sources = {
-        ("gateway.xml", "gatewayOperationSelection"): "core-api-operation-settings.cs",
-        ("gateway.xml", "gatewayDecision"): "core-api-authentication-result.cs",
-        ("gateway.xml", "gatewayTargetDecision"): "core-api-target-validation.cs",
+        ("rest.xml", "gatewayOperationSelection"): "core-api-operation-settings.cs",
+        ("rest.xml", "gatewayDecision"): "core-api-authentication-result.cs",
+        ("rest.xml", "gatewayTargetDecision"): "core-api-target-validation.cs",
     }
     if (path, name) in sources:
         # 棚卸済みHTTP部品は、Azure用XMLへ展開する同名C#の正本を直接実行します。
@@ -1404,13 +1408,13 @@ class ExpandedPolicyTests(unittest.TestCase):
         cases.append({"id": "auth-deny-missing", "mode": "auth", "config": auth})
         cases.append({"id": "auth-deny-empty", "mode": "auth", "config": auth, "key": ""})
         ingress = expression(SERVICE_POLICY, "./inbound/choose/when", "condition").replace("{{core-l7-ingress-enabled}}", "true").replace("{{core-l7-ingress-secret}}", "fixture-ingress-proof")
-        protocol = expand_api_request_preparation_fragment((POLICIES / "api-templates" / "protocol.xml").read_text(encoding="utf-8"))
+        protocol = expand_api_request_preparation_fragment((POLICIES / "api-templates" / "shared/stream.xml").read_text(encoding="utf-8"))
         guard_condition = ET.fromstring(protocol).find("./inbound/choose/when").get("condition")
         auth_guard = "return " + guard_condition[2:-1] + ";"
-        query = actual_expression("protocol.xml", "gatewayProtocolQueryAllowed").replace("__WEBSOCKET_QUERY_BASE64__", base64.b64encode(b'{"model":"approved","api-version":"2026-01-01"}').decode())
-        source = CSHARP.replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetDecision")).replace("__INGRESS__", ingress).replace("__QUERY__", query).replace("__AUTH_GUARD__", auth_guard).replace("__AUTH__", actual_expression("protocol.xml", "gatewayDecision"))
-        cls.target_rejection = next(node for node in ET.parse(policy_fixture_path(POLICIES, "gateway.xml")).findall("./inbound/choose/when")
-                                    if "gatewayTargetDecision" in node.get("condition", ""))
+        query = actual_expression("stream.xml", "gatewayProtocolQueryAllowed").replace("__WEBSOCKET_QUERY_BASE64__", base64.b64encode(b'{"model":"approved","api-version":"2026-01-01"}').decode())
+        source = CSHARP.replace("__TARGET__", actual_expression("rest.xml", "gatewayTargetDecision")).replace("__INGRESS__", ingress).replace("__QUERY__", query).replace("__AUTH_GUARD__", auth_guard).replace("__AUTH__", actual_expression("stream.xml", "gatewayDecision"))
+        cls.target_rejection = ET.parse(policy_fixture_path(POLICIES, "rest.xml")).find(
+            "./inbound/choose[@id='core-api-target-validation-selection']/when/choose/when")
         audit_nodes = cls.target_rejection.findall("./set-variable")
         assignments = "\n".join(f'context.Variables[{json.dumps(node.get("name"))}] = {single_expression(node.get("value"))};'
                                 for node in audit_nodes)

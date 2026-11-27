@@ -2,7 +2,6 @@
 targetScope = 'resourceGroup'
 param stem string
 param location string = resourceGroup().location
-param environmentName string
 param registryName string
 param imageDigest string
 param runtimeIdentity object
@@ -29,7 +28,7 @@ param maxReplicas int = 4
 param deployApplication bool = false
 @allowed(['migrate', 'observe-schema'])
 param schemaAction string = 'migrate'
-resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = { name: environmentName }
+resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = { name: 'cae-${stem}-broker' }
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: registryName }
 var image = '${registry.properties.loginServer}/credential-broker@${imageDigest}'
 var commonEnvironment = {
@@ -57,13 +56,13 @@ var schemaEnvironment = union(commonEnvironment, {
   SQL_RUNTIME_CLIENT_ID: runtimeIdentity.clientId
   SQL_RUNTIME_USER_NAME: runtimeIdentity.name
 })
+var oidcEnvironment = [for item in oidcSecrets: { name: item.env, secretRef: item.name }]
 var oboEnvironment = empty(graphObo) ? {} : {
   BROKER_OBO_TENANT_ID: graphObo.tenantId
   BROKER_OBO_CLIENT_ID: graphObo.clientId
   BROKER_OBO_KEY_URL: graphObo.keyUrl
   BROKER_OBO_CERTIFICATE_THUMBPRINT: graphObo.certificateThumbprint
 }
-var oidcEnvironment = [for item in oidcSecrets: { name: item.env, secretRef: item.name }]
 var commonSecrets = concat([{ name: 'broker-key', keyVaultUrl: brokerKeySecretUri, identity: runtimeIdentity.id }],
   map(oidcSecrets, item => { name: item.name, keyVaultUrl: item.uri, identity: runtimeIdentity.id }))
 resource migration 'Microsoft.App/jobs@2025-01-01' = {
@@ -101,6 +100,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = if (deployApplication) {
     workloadProfileName: 'Consumption'
     configuration: {
       activeRevisionsMode: 'Single'
+      // 専用の内部CAEのILBから、別サブネットにいるAPIMだけがHTTPSで接続します。
       ingress: { external: true, targetPort: 8000, transport: 'http', allowInsecure: false }
       registries: [{ server: registry.properties.loginServer, identity: runtimeIdentity.id }]
       secrets: commonSecrets
@@ -155,4 +155,6 @@ output applicationName string = 'ca-${stem}-credentials'
 // 管理VMの保守割当は、各段階で実際に作成した資源だけを対象にします。
 output applicationIds array = deployApplication ? [app!.id] : []
 output jobIds array = deployApplication ? [migration.id, reconciliation!.id] : [migration.id]
+output environmentName string = environment.name
 output environmentId string = environment.id
+output environmentDomain string = environment.properties.defaultDomain

@@ -4,22 +4,23 @@
 
 構築資材の試験は [構築テスト仕様書](construction-tests.md)、開発手順は [DEVELOPMENT.md](../../DEVELOPMENT.md)、導入順は [README.md](../../README.md) を参照してください。
 
-## 5アプリ構成でのEntra受入
+## 基盤用4アプリでのEntra受入
 
-[工程3〜8](../reference/entra-app-rollout-plan.md#工程38の資材と受入条件)の実接続を同じ資材revisionで確認します。各項目の実環境結果は未実施です。
+[工程3〜6・8](../reference/entra-app-rollout-plan.md#工程38の資材と受入条件)の基盤の実接続を同じ資材revisionで確認します。各項目の実環境結果は未実施です。
 
 | 経路 | 確認 |
 | --- | --- |
 | Portal認証 | 独立したPortalアプリのログインとログアウト、管理Graph、定期照合、既存ユーザーとキー所有権 |
 | API試用 | キー／Bearerで同じモデルAPI、SSE、非同期、Realtimeを呼ぶ。別本人・期限切れを拒否し、必要時に追加認証する |
 | Graph | 購読キーはToolsとCredentialの本人接続、Bearerはegakumi-apiのOBOで同じ本人の結果を得る。Graphの追加認証・同意不足・テナント不一致も確認する |
-| Codex | 選んだCLIとDesktopでPKCE、トークン更新、ResponsesのSSE、ツール、先行端末の切り戻しを確認する |
+
+初回構築と受入の後、Codexを採用する環境では、端末のOAuth・Responses・更新・切り戻しを確認します。 [CodexのOAuth接続TIPS](../tips/codex-gateway-oauth.md)
 
 ## 1. 対象と仕様の基準
 
 - 実施時には、この公開コードのrevisionと対象環境の設定を固定します。過去の非公開実行結果を合格の根拠に使いません。
 - 対象: 構築済み環境の経路・証明書・監視、APIM認可、CM本人接続、Azure SQL、Entraグループに基づくAPIキー管理、Model Gateway、Tool Gateway、監査・運用。
-- 正式な提供元: [API定義](../../apps/apim/apis/)、[構築入力](../../params/)、[モデル・API設定](../../config/)、[Gateway資材](../../apps/apim/deploy/)、[Portal](../../apps/portal/)。構築用のexample設定を実環境の設定値と取り違えません。
+- 正式な提供元: [API定義](../../apps/apim/apis/)、[構築入力](../../params/)、[モデル・API設定](../../config/)、[Gateway資材](../../apps/apim/deploy/README.md)、[Portal](../../apps/portal/)。構築用のexample設定を実環境の設定値と取り違えません。
 - 画面の準備中機能: Hosted Agent APIとA2A。準備中表示・誤操作防止を試験し、未実装の実行成功を受入条件にしません。
 - WAFは[データ欄の個別除外](../../apps/apim/waf-data-exclusions.json)、[raw本文の限定調整と補完保護](../../apps/apim/waf-raw-body-controls.json)、[SSML本文検査](../../apps/apim/policies/fragments/request/core-speech-ssml-guard/README.md)を仕様基準とします。正規データの通過と制御欄・隣接経路の遮断を別々に確認し、匿名401をAPI機能成功と数えません。TTSの本文読取り集約と呼出位置の変更はAzure反映・読戻しを完了しました。キー／BearerのTTS正常WAV応答、DTD宣言の400と対応する監査照合を確認しました。実サイズ超過413など残る異常系は未実施であり、既存のPASSを新構成の未確認条件の結果へ読み替えません。
 - API数・モデル数の一致だけでは合格としません。実施時の設定からAPI、operation、モデル、選択後の操作・モデル設定、接続方式を列挙し、該当行を対象ごとに展開します。モデルAPIのprofileヘッダーは使いません。購読利用枠やCM接続のprofileは別の設定として確認します。
@@ -222,7 +223,7 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 | NET-007 | Foundry／Key VaultのDNSと接続経路 | `[読取]` 管理VMから採用するFoundry各名とKey Vault名を解決し、PE IP・DNS zone group・VNetリンクへ照合する。APIMは採用Foundry FQDN設定、公開アクセス無効・例外なし、PE/DNS設定と実backend成功を照合する。APIMのKV管理参照は管理ID・対象KV RBAC・KV参照・読込済み証明書を確認する。 | 管理VMの実解決先が意図したPEに一致し、APIM→Foundryのprivate-only到達が成立する。APIM→KV管理参照に必要なtrusted-service例外をPE経路と区別し、管理IDと対象KVのRBACを維持する。管理参照成功や可視DNSサーバーを、APIMの直接A応答観測へ読み替えない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | NET-008 | APIM専用名の名前解決 | `[読取]` 内部APIMのGateway FQDNと無関係な`azure-api.net`名を内部DNSで引く。 | 作成済みAPIM名だけを実VIPへ解決し、`azure-api.net`全体を私有ゾーン化して他サービスの解決を壊さない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | NET-009 | 非公開SQL／ACRの接続境界 | `[読取]` 管理VMと対象ACAからSQL／ACRへ接続し、許可していない外部端末からも接続を試す。 | アプリ・初期化・イメージ取得は閉域経路で成功する。外部からの直接アクセスを許さず、障害対処としてpublic accessを有効化しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
-| NET-010 | AppGW固定入口・管理接続の境界 | `[読取]` 新規接続で公開Web TCP80／443と同VNetのFirewall公開IPからTCP443の到達、通常APIの認証・認可、入口証明不備の拒否を確認する。管理VMのprivate SSH22接続と企業向け編集後の許可元も確認する。管理VMの現在のPHC／`AZUR`選択・`Normal`同期・offsetを確認し、先行RunCommand成功証跡と区別する。 | 各方向の規則がcatalog v5の77 NSG・35 FWと構築資源のCIDR／割当IPに一致する。AppGWのAPIM・PortalバックエンドはHTTPS443でFirewallのTLS検査を通り、両方のプローブが正常になる。端末とPortal BFFの送信元を区別し、gRPC専用8443入口を提供しない。管理VMの接続経路とNSG許可は別に成立させ、標準DNS、APIMの外部NTP UDP123／NSG328維持と廃止入力の拒否を確認する。管理VMの時刻同期はAzureホストのPHCのみで、旧管理NSG325／FW NTP規則が残らず、VMBus／PHC用UDP123／319／320を追加しない。 | 旧条件のCIDR境界記録と旧102PASS／76 NSG／36 FWの合成記録は保持する。今回の固定集合・管理VM PHC化・管理接続・L7常設とgRPC廃止の条件へ過去のPASSを流用しない。今回のAzure反映・実VM同期・精度確認は未実施。 | 既存条件PASS／変更条件未実施 |
+| NET-010 | AppGW固定入口・管理接続の境界 | `[読取]` 新規接続で公開Web TCP80／443と同VNetのFirewall公開IPからTCP443の到達、通常APIの認証・認可、入口証明不備の拒否を確認する。管理VMのprivate SSH22接続と企業向け編集後の許可元も確認する。管理VMの現在のPHC／`AZUR`選択・`Normal`同期・offsetを確認し、先行RunCommand成功証跡と区別する。 | 各方向の規則がNSG・Firewallの規則正本と構築資源のCIDR／割当IPに一致する。AppGWのAPIM・PortalバックエンドはHTTPS443でFirewallのTLS検査を通り、両方のプローブが正常になる。端末とPortal BFFの送信元を区別し、gRPC専用8443入口を提供しない。管理VMの接続経路とNSG許可は別に成立させ、標準DNS、APIMの外部NTP UDP123／NSG328維持と廃止入力の拒否を確認する。管理VMの時刻同期はAzureホストのPHCのみで、旧管理NSG325／FW NTP規則が残らず、VMBus／PHC用UDP123／319／320を追加しない。 | 旧条件のCIDR境界記録と旧102PASS／76 NSG／36 FWの合成記録は保持する。今回の固定集合・管理VM PHC化・管理接続・L7常設とgRPC廃止の条件へ過去のPASSを流用しない。今回のAzure反映・実VM同期・精度確認は未実施。 | 既存条件PASS／変更条件未実施 |
 | NET-011 | APIMの外向き許可先 | `[読取]` 正式APIに登録したbackendへ接続し、未登録の検証FQDN／portへの到達も確認する。 | 採用backendへ必要なHTTPS通信が通り、無関係な宛先を包括許可しない。再配備時の追加許可先保持は構築テストの`DEP-007`で確認する。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | NET-012 | 管理VMの必要外向き通信 | `[読取]` 採用構成でAzure認証、Key Vault、DNS事業者API、監視、OS／PowerShell依存取得の各経路を確認する。 | 選択機能に必要な通信だけが通る。DNS-01用資格情報をAppGW／利用者の通信経路へ送らない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | NET-013 | UDR・NSG・BGPの実効値 | `[読取]` AppGW・APIM・管理VM・ACA等の関連付けと実効ルートを、選択CIDR・次hop・BGP伝搬フラグに照合する。 | 対象サブネットに意図したRT／NSGが付く。`bgpRoutePropagation`とARMの`disableBgpRoutePropagation`の反転が正しく、往復経路が成立する。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
@@ -265,7 +266,7 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 
 期限試験は標準値の確認と境界試験を分ける。境界試験を短時間で行う場合は、専用の隔離環境に `idleTimeoutSeconds=600`、`absoluteLifetimeSeconds=1800`、`rotationIntervalSeconds=300`、`rotationGraceSeconds=60`、`rotationHandoffSeconds=120`、`rotationCandidateTtlSeconds=120` を設定し、新規認証した専用セッションを使う。既存の業務セッションや本番DBの時刻・期限を直接変更しない。変更・削除・失効・障害注入の行は専用環境限定で、対象IDと復旧方法を事前に記録する。
 
-根拠：`apps/portal/lib/auth-{options,identity,schema,session,routes}.ts`、`apps/credential-broker/credential_broker/{settings,service,store}.py`、`apps/apim/policies/credential-{connection,session-use}.xml`、`docs/setup/credential-manager-login.md`、`apps/portal/lib/connection-session/`、`apps/portal/lib/api-keys/`、`apps/portal/lib/{api-key-administration,company-administration,subscription-sync}/`、各アプリの`sql/`をHEADから確認した。HTTPの失敗は対象層の契約で判定し、Gatewayの状態コードをPortal BFFの状態コードと混同しない。Gatewayの接続セッションはbearer資格情報であり、提示者のPortalログイン本人をGateway単体で再確認するものではない。
+根拠：`apps/portal/lib/auth-{options,identity,schema,session,routes}.ts`、`apps/credential-broker/credential_broker/{settings,service,store}.py`、`apps/apim/policies/credential-{connection,session-use}.xml`、`docs/reference/credential-manager-login.md`、`apps/portal/lib/connection-session/`、`apps/portal/lib/api-keys/`、`apps/portal/lib/{api-key-administration,company-administration,subscription-sync}/`、各アプリの`sql/`をHEADから確認した。HTTPの失敗は対象層の契約で判定し、Gatewayの状態コードをPortal BFFの状態コードと混同しない。Gatewayの接続セッションはbearer資格情報であり、提示者のPortalログイン本人をGateway単体で再確認するものではない。
 
 #### Portal認証
 
@@ -400,7 +401,7 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 
 [MicrosoftのSubscriptions仕様](https://learn.microsoft.com/en-us/azure/api-management/api-management-subscriptions)では、不正キーもopen Productへフォールバックします。共通認証はキーの提示と検証済み購読の欠落を検出して401にし、有効JWTによる救済を禁止します。API自体を購読不要にすると提示キーを無視するため、この方式へ変更しません。
 
-社員利用は基本無制限とし、毎分トークン上限・月間等の期間quotaは`null`で明示的に無効化します。request rateは機械的な大量要求を抑える暫定防御値の例として1000 requests／60秒を置き、対象Codexで調整します。HTTP回数は人のプロンプト数と異なり、ツール継続・retry・並列処理は複数call、1推論内のreasoningだけでは別HTTP要求になりません。rateだけで攻撃を判定せず、既存WAF・Entra認証・client権限・API／モデル制約を維持します。
+社員利用は基本無制限とし、毎分トークン上限・月間等の期間quotaは`null`で明示的に無効化します。request rateは機械的な大量要求を抑える暫定防御値の例として1000 requests／60秒を置き、利用するクライアントに合わせて調整します。HTTP回数は人のプロンプト数と異なり、ツール継続・retry・並列処理は複数call、1推論内のreasoningだけでは別HTTP要求になりません。rateだけで攻撃を判定せず、既存WAF・Entra認証・client権限・API／モデル制約を維持します。
 
 以下は新方式の実環境受入項目です。反映・読戻しと実要求の確認範囲を分け、未確認の条件は未実施として管理します。既存の`GW`・`LIM`・`MET`や結果要約のPASSへ加算しません。合成試験・ポリシー読戻し・実要求の結果を区別し、実ID・キー・token・認証code・環境証跡は公開表へ転載しません。状態変更・再生成・serviceキーの確認には、所有と復旧方法を確認した専用試験資源を使います。
 
@@ -413,13 +414,13 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 | ENTRA-05 | キー更新・停止の反映 | 専用購読の主キーを1回再生成し、旧主・新主・副を比較する。停止・再開とAPI/Product所属変更も確認する。 | 旧主キー・停止・範囲外は有効JWTがあっても拒否。新主・副は有効な同じ購読へ到達。APIM標準の反映時間を記録し、追加の認可cacheで失効を遅らせない。 | 新方式の実試験未実施。 | 未実施 |
 | ENTRA-06 | 空・重複・query・競合提示 | 空キー、同名header重複、大小文字を変えた重複、`api-key`/`subscription-key` query、headerとqueryの競合を送る。 | 空・重複・queryを拒否し、JWT付きでも救済しない。keyやtokenをURL・応答・診断ログへ残さない。合成の不正値を使い実キーをqueryへ載せない。 | 新方式の実試験未実施。 | 未実施 |
 | ENTRA-07 | Authorizationの用途分離 | APIキーを`Authorization: Bearer`だけへ移した要求と、正しい設定キーheader＋既存用途のAuthorizationを比較する。JWT headerの重複・空Bearerも送る。 | AuthorizationだけのAPIキーはJWTとして拒否。正しいキー提示時はキー側の従来処理を維持し、任意Authorizationを新JWT条件で拒否しない。キーなしの不正Bearerは401。 | 新方式の実試験未実施。 | 未実施 |
-| ENTRA-08 | 社員Public client PKCE | 登録済みCodex client、認証tenant、loopback redirectでAuthorization Code＋PKCEを実行し、API向け委任tokenだけを送る。Entraの同意・割当による段階配布と停止も比較する。 | secret・固定APIキー・OpenAIサインインを要求せず、委任許可を得たユーザーが対象モデルを利用できる。APIリソースのGUIDをv2 audとし、scope URIをaudへ代入しない。新規取得停止と発行済みtoken期限・既存streamを区別し、APIMクライアント許可リストの回収を前提にしない。 | Codex本体と実Entraの試験未実施。 | 未実施 |
+| ENTRA-08 | 任意のPublic clientでのPKCE | 登録済みのPublic clientを採用する環境で、認証tenantとloopback redirectを使ってAuthorization Code＋PKCEを実行し、API向け委任tokenだけを送る。Entraの同意・割当による段階配布と停止も比較する。 | client secretや固定APIキーを要求せず、委任許可を得たユーザーが対象モデルを利用できる。APIリソースのGUIDをv2 audとし、scope URIをaudへ代入しない。新規取得停止と発行済みtoken期限・既存streamを区別し、APIMクライアント許可リストの回収を前提にしない。 | 採用するクライアントと実Entraでの試験は未実施。 | 未実施 |
 | ENTRA-09 | JWT検証の拒否境界 | tenant／issuer／aud／v2／scp不一致、期限切れ、署名改変、tid/oid欠落・不正、ID token、Graph token、app-only tokenを制御した試験で比較する。azpの欠落・空・zero・不正・重複も比較する。 | 正しいv2ユーザー委任tokenだけを受理。不一致は401で、利用者・利用枠を推測せずbackendへ送らない。azpの違い・欠落・不正で認可を狭めず、単一の有効GUIDだけ監査へ残す。署名不正の合成試験を実Entraの条件不一致試験へ読み替えない。 | 新方式の実試験未実施。 | 未実施 |
 | ENTRA-10 | 全業務transportと拒否境界 | HTTP・SSE・MCP・WS handshake・Realtime制御・CM保護操作をキーとBearerで実行する。無認証、未登録operation/method、別人・別tenant・認証方式間のsession/ticket転用、CMブラウザー／callbackも比較する。 | 両方式で既存の操作・入力・モデル制約と所有者検査を維持。無認証と未登録操作を契約どおり拒否。CMユーザーcs2とキーcs2、Realtimeユーザーticket v4とキーv3は相互流用を拒否。同じ本人の更新tokenは再利用可能。ブラウザー／callbackは専用一時取引を要求し、Gateway tokenだけで迂回できない。 | 新方式の実試験未実施。 | 未実施 |
 | ENTRA-11 | 継承・処理順序 | global→Product→API→operationの有効policyを照合。変更前のAPI集合に含まれない、正本へ追加したAPIも比較する。隔離構成でbase欠落・検証前のheader上書き・early return・未知fragmentを再現する。Product欠落・別Productの要求も、APIM標準の拒否と共通認証の拒否を区別して確認する。 | 専用Productはbaseのみ。BearerのProductの存在とIDは共通認証で確認し、各APIは認証完了と本人情報の整合性を確認する。通常要求はキーheaderの有無だけで認証方法を選び、API名をBearer分岐の条件にしない。正本へ追加したAPIのProduct所属と共通認証継承を配備前に照合する。キー提示時の購読またはキーなしのJWTを検証してから、対象backendの認証がAuthorizationを設定する。迂回や未知変更は公開前に停止。valid keyの既存Product policyを保持する。 | 新方式の実試験未実施。 | 未実施 |
-| ENTRA-12 | 本人別制限・無制限と監査 | 2本人・複数client/APIで、nullの毎分トークン・期間quotaと有効なrequest rateを確認。実Codexの長い推論・ツール継続・retry・並列要求を比較し、有限枠の拒否は隔離した少数要求で別途確認する。 | 有効counterは検証済みtid+oidで共有しclient切替で回避できない。nullの制限は実行せず、欠落・不正設定を無制限へ変換しない。既存キーcounterを維持。方式、tid、oid、任意の有効azp、正本API、request ID、モデルを関連付け、tokenを記録しない。 | 新方式の実試験未実施。 | 未実施 |
-| ENTRA-13 | Responses・SSE・ツール継続 | APIM/AppGW経由で逐次SSE、response.completed、エラー、複数ターン、function_callとfunction_call_outputをCodexで確認する。 | 過去入力・call_id・ツール結果を保持してローカル実行後に回答が継続。意図したmodel→deployment/API世代へ到達。SSEの途中を成功完了にせず共有経路のtimeout/bufferも確認する。 | 新方式の実試験未実施。 | 未実施 |
-| ENTRA-14 | 更新・再サインイン | 対象CLI/Desktop runtimeで期限到来、更新成功/失敗、再サインイン、保存済み認証の利用を比較する。 | Gateway OAuthが更新または明示再サインインへ進み、固定token/外部取得コマンドへ自動切替しない。失敗した生成要求を無条件に再送しない。 | Codex本体の実試験未実施。 | 未実施 |
+| ENTRA-12 | 本人別制限・無制限と監査 | 2本人・複数client/APIで、nullの毎分トークン・期間quotaと有効なrequest rateを確認。採用するクライアントの長い推論・ツール継続・retry・並列要求を比較し、有限枠の拒否は隔離した少数要求で別途確認する。 | 有効counterは検証済みtid+oidで共有しclient切替で回避できない。nullの制限は実行せず、欠落・不正設定を無制限へ変換しない。既存キーcounterを維持。方式、tid、oid、任意の有効azp、正本API、request ID、モデルを関連付け、tokenを記録しない。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-13 | Responses・SSE・ツール継続 | APIM/AppGW経由で逐次SSE、response.completed、エラー、複数ターン、function_callとfunction_call_outputをResponsesクライアントで確認する。 | 過去入力・call_id・ツール結果を保持してローカル実行後に回答が継続。意図したmodel→deployment/API世代へ到達。SSEの途中を成功完了にせず共有経路のtimeout/bufferも確認する。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-14 | 任意クライアントの更新・再サインイン | Gateway OAuthを利用するクライアントを採用する環境で、期限到来、更新成功/失敗、再サインイン、保存済み認証の利用を比較する。 | Gateway OAuthが更新または明示再サインインへ進み、固定token/外部取得コマンドへ自動切替しない。失敗した生成要求を無条件に再送しない。 | 採用するクライアントでの実試験は未実施。 | 未実施 |
 | ENTRA-15 | 閉鎖・途中失敗・rollback | 専用Product所属を先に解除して社員経路を閉じ、内部stagingでのBearer分岐切替と復旧を確認。ETag競合、途中失敗、古い関連付け残存も再現する。 | APIは購読必須のまま。失敗時はBearer受付を停止。閉鎖後はキーなし/無効キーを拒否し正常キーを維持。公開enabled/apiNames入力を使わず、Product非公開化やBicep省略だけを解除完了にせず所有とreadbackを確認する。 | 新方式の実試験未実施。 | 未実施 |
 | ENTRA-16 | 認証tenantとbackend認証の分離 | 同一/別tenant構成の入力・token宛先・Foundry RBAC・検証済みJWT後のbackend認証を照合する。CMのSQL v4・Broker・XML更新と本人照合も確認する。 | employee認証tenantをAzure資源tenant/MIへ流用しない。社員tokenはAPIMで検証後に除去し、FoundryへAPIM MI、Graph本人接続へCM委任token等の正本backend認証を送る。CM本人確認tenantがGateway認証tenantと違うprofileを拒否。APIMのOAuth管理画面設定のみでJWT検証済みと判定しない。 | 新方式の実試験未実施。 | 未実施 |
 
@@ -463,14 +464,14 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 
 #### APIとモデルによる内部profile選択の受入
 
-段階2では、Portal・試験CLI・Codexからprofileを選択・付与せず、APIMがAPI・操作とモデル名から内部設定を選びます。残る`X-Egakumi-Profile`は選択や値数・IDの検査に使わず、下流転送前の削除だけを残します。内部設定は操作の基本設定＋modelSettings差分へ整理します。既存の入力・モデル制約、利用枠・監査は保持します。以下は対象環境で確認する受入条件です。ローカル検証・生成専用出力・配備読戻し・端末疎通を区別し、個別環境の結果は保護した証跡で管理します。
+段階2では、Portalや試験CLIを含む呼び出し元ではprofileを指定せず、APIMがAPI・操作とモデル名から内部設定を選びます。残る`X-Egakumi-Profile`は選択や値数・IDの検査に使わず、下流転送前の削除だけを残します。内部設定は操作の基本設定＋modelSettings差分へ整理します。既存の入力・モデル制約、利用枠・監査は保持します。以下は対象環境で確認する受入条件です。ローカル検証・生成専用出力・配備読戻し・端末疎通を区別し、個別環境の結果は保護した証跡で管理します。
 
 | ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
 | --- | --- | --- | --- | --- | --- |
 | PROF-01 | 旧ヘッダーからの独立と清掃 | 有効キーと社員Bearerの両方で、旧ヘッダーなし・旧正常値・不正値・複数値を同じAPI・操作・modelで比較する。モデル別設定のない操作への旧指定も試す。 | APIMは旧ヘッダーを理由に選択・拒否せず、モデルから同じ内部設定を選ぶ。下流には旧ヘッダーを送らない。HTTP／WAFの別の構文拒否を区別し、共通認証と検証済み利用者の扱いは変えない。 | 対象環境で反映後の経路・ログを確認する。 | 要確認 |
 | PROF-02 | 既定以外のモデルと固定URI | Chatの互換モデル・Router、FLUX flex／proを、登録済みのモデル名で呼ぶ。操作ポリシーと上流URIを読み戻す。 | 旧ヘッダーを指定せず、対応する内部設定と登録済みの固定上流URIへ到達する。既定設定への固定で別モデルを失わず、要求由来の任意URLへ転送しない。 | モデル・固定URIの実確認未実施。 | 未実施 |
-| PROF-03 | 現在のCodex経路とalias | 段階1反映後、現在のCodex設定でResponsesを実行し、主モデルと`codex-auto-review`の解決、SSE完了・会話・ローカルツール継続を確認する。 | 現在のResponses経路が維持される。aliasが登録したdeploymentへ解決し、監査の実モデル・alias適用情報を追跡できる。接続成功だけですべてのモデル機能の受入完了にしない。 | Codexによる実確認未実施。 | 未実施 |
-| PROF-04 | クライアント設定と旧処理撤去 | Codex設定から旧ヘッダーを外し、再起動後の新規要求で疎通する。Portalの要求例・実送信と試験CLIもprofileを指定・付与せず、モデルでpayloadと内部設定が決まることを確認する。 | 旧付与・受付選択・値数/ID検査を撤去し、旧ヘッダーの下流転送前削除だけを保持する。購読利用枠、CM profileNameと認証キャッシュは変更しない。内部設定の構造は別のPROF-06で確認する。 | 対象端末と配備環境で新条件を確認する。 | 要確認 |
+| PROF-03 | Codex採用環境の経路とalias | Codexを採用済みの環境で、段階1反映後に既存のCodex設定でResponsesを実行し、主モデルと`codex-auto-review`の解決、SSE完了・会話・ローカルツール継続を確認する。 | 現在のResponses経路が維持される。aliasが登録したdeploymentへ解決し、監査の実モデル・alias適用情報を追跡できる。接続成功だけですべてのモデル機能の受入完了にしない。 | Codexによる実確認未実施。 | 未実施 |
+| PROF-04 | クライアント設定と旧処理撤去 | Portalの要求例・実送信と試験CLIでprofileが指定されず、モデルでpayloadと内部設定が決まることを確認する。既にCodexを採用する環境では、Codex設定から旧ヘッダーを外して再起動し、新規要求で疎通する。 | 旧付与・受付選択・値数/ID検査を撤去し、旧ヘッダーの下流転送前削除だけを保持する。購読利用枠、CM profileNameと認証キャッシュは変更しない。内部設定の構造は別のPROF-06で確認する。 | 対象端末と配備環境で新条件を確認する。 | 要確認 |
 | PROF-05 | まとめ反映と通信維持 | 同じ生成元のGlobal／共有fragment／Named Value／API／操作を読み戻し、旧新query参照とFLUXルーティングを照合する。反映中もBearerによる現在のResponses要求を確認する。 | 新しい参照先を先に登録してから切り替え、参照不在・設定不一致で現在の通信を止めない。旧query資材は新参照確認後に退役する。Foundry容量と既存キー／社員利用枠を維持し、PII WAF分割の実受入をこのAPIM受入と分ける。 | 承認済み資材の反映・全graph読戻し・公開所属不変と、キー／BearerのResponses JSON・SSEおよび対応する監査照合を確認。旧query資材の参照不在確認・退役・不在読戻しと正本checkpoint整理も完了。他モデル・transport等の受入は未完。 | 一部確認 |
 
 | PROF-06 | 操作基本設定とモデル別差分 | 同じ生成元で、新fragment、全操作設定、modelAliases、FLUX固定URI、Portalカタログを照合し、対象のキー／Bearer要求を実行する。 | 一つのモデルの設定が一意に決まり、基本＋差分で出力項目・サイズ・固定URI・監査ラベルが維持される。モデル名を使わないAPIは基本設定だけを使う。 | ローカル検証と対象環境の反映・受入を区別する。 | 要確認 |
@@ -696,7 +697,7 @@ MOD-40～42の本人再照合と、MOD-43までのgatewayDecision直後の不許
 #### 仕様照合に用いたファイル
 
 - `apps/apim/apis/openai-inference-v1.json`、`openai-embeddings-v1.json`、`cohere-inference-v1.json`、`openai-images-v1.json`、`blackforest-images-v1.json`、`openai-audio-v1.json`、`azure-speech-v1.json`、`microsoft-decision-v1.json` と realtime/live/transcription/voice-live/observer/control API 定義。
-- `apps/apim/model-capabilities.json`、`public-bindings.json`、`policies/api-templates/gateway.xml`。
+- `apps/apim/model-capabilities.json`、`public-bindings.json`、`policies/api-templates/rest/rest.xml`。
 - `apps/portal/lib/model-catalog.ts`、`model-selection.ts`、`text-model-choices.ts`、`model-request.ts`、`model-integration.ts`、`model-gateway.ts`、`model-stream.ts`、`model-response.ts`。
 - `apps/portal/lib/embedding-*`、`image-*`、`speech-*`、`rerank-*`、`decision-*`、`realtime-*`、`apps/portal/components/realtime-audio-panel.tsx`。
 

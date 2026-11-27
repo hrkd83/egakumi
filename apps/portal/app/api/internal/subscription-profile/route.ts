@@ -2,8 +2,11 @@ import { getGatewayProfileSettings, handleGatewayProfile } from "@/lib/api-keys/
 import { getApiKeyLimitRepository } from "@/lib/api-keys/limit-repository";
 
 
-/** APIM専用の読み取り口です。通常のPortal Cookieでは利用できません。 */
+/** ローカル検証用プロファイル口です。Azureでは専用読み取りACAが担当します。 */
 export async function GET(request: Request): Promise<Response> {
+  if (process.env.NODE_ENV === "production") {
+    return Response.json({ error: { code: "NotFound" } }, { status: 404, headers: { "Cache-Control": "no-store" } });
+  }
   return handleGatewayProfile(request, {
     settings: getGatewayProfileSettings,
     readProfile: (tenantId, subscriptionId) => getApiKeyLimitRepository().getGatewayProfile(tenantId, subscriptionId),

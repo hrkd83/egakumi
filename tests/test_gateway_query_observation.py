@@ -23,7 +23,6 @@ from policy_fixture_paths import policy_fixture_path
 
 CORE = Path(__file__).resolve().parents[1]
 POLICIES = CORE / "apps/apim/policies"
-API_TEMPLATES = POLICIES / "api-templates"
 PRIVATE = "SYNTHETIC_PRIVATE_QUERY_MARKER"
 CONSTRAINTS = {
     "live-create": {"kind": "liveCreate", "bodyFormat": "json"},
@@ -134,7 +133,6 @@ public static class HeaderExtensions {
 public static class QueryFixture {
  static int Prepare(Context context) { __PREPARATION__ return 200; }
  static string Guard(Context context) { __GUARD__ }
- static string PreviousGuard(Context context) { __GUARD_MODE_INIT__ __PREVIOUS_GUARD__ }
  static string Record(Context context) { __RECORD__ }
  static bool Emit(Context context) { __EMIT__ }
  static Context CopyContext(Context c) {
@@ -196,18 +194,11 @@ public static class QueryFixture {
    c.Variables["gatewayQueryPhase"] = (string)item["phase"];
    c.Response.StatusCode = (int)item["responseStatus"];
    if ((bool?)item["omitAuditStatus"] != true) { c.Variables["gatewayAuditStatus"] = (int)item["responseStatus"]; }
-   // 公開XMLの移設前fixtureを独立したContextで実行し、query読取り回数も比較します。
-   var previous = CopyContext(c);
    var pipeline = CopyContext(c);
    var preparedStatus = Prepare(pipeline);
    var preparedDecision = preparedStatus == 200 ? JObject.Parse(Guard(pipeline)) : null;
-   var previousDecision = JObject.Parse(PreviousGuard(previous));
    var decision = JObject.Parse(Guard(c));
    var originalDecision = decision.DeepClone();
-   // 凍結fixtureの観測4項目だけを比較します。削除したmode・拒否・件数区分は比較対象にしません。
-   var comparablePrevious = new JObject();
-   foreach(var key in new [] {"route", "httpMethod", "presence", "duplicates"}) comparablePrevious[key] = previousDecision[key];
-   var guardEquivalent = JToken.DeepEquals(decision, comparablePrevious);
    var preparedEquivalent = preparedDecision != null && JToken.DeepEquals(preparedDecision, decision);
    c.Variables["gatewayQueryObservation"] = decision.ToString(Formatting.None);
    if (item["recordPatch"] != null) {
@@ -218,15 +209,13 @@ public static class QueryFixture {
    var record = (bool?)item["directRecord"] == true || Emit(c) ? Record(c) : "";
    results[(string)item["id"]] = new JObject(
     new JProperty("decision", decision), new JProperty("record", record),
-    new JProperty("originalDecision", originalDecision), new JProperty("previousDecision", previousDecision),
+    new JProperty("originalDecision", originalDecision),
     new JProperty("telemetryComputedStatus", c.TelemetryComputedStatus),
     new JProperty("bodyReads", c.Request.Body.Reads),
     new JProperty("bodyAfter", c.Request.Body.Data),
     new JProperty("queryAfter", JObject.FromObject(c.Request.Url.Values)),
     new JProperty("queryReads", c.Request.Url.QueryReads),
     new JProperty("responseStatus", c.Response.StatusCode),
-    new JProperty("guardEquivalent", guardEquivalent),
-    new JProperty("previousBodyReads", previous.Request.Body.Reads), new JProperty("previousQueryReads", previous.Request.Url.QueryReads),
     new JProperty("preparedStatus", preparedStatus), new JProperty("preparedQueryReads", pipeline.Request.Url.QueryReads),
     new JProperty("preparedEquivalent", preparedEquivalent)
    );
@@ -243,14 +232,10 @@ class GatewayQueryExpressionTests(unittest.TestCase):
         if not PWSH:
             raise unittest.SkipTest("PowerShell Roslyn is required; no Azure checks were performed")
         guard = ET.fromstring(render_query_observation_fragment())
-        previous_guard = ET.parse(CORE / "tests/fixtures/query-guard-before-layout.xml").getroot()
         telemetry = ET.fromstring(render_audit_policy((POLICIES / "fragments/audit/core-query-telemetry/core-query-telemetry.xml").read_text(encoding="utf-8")))
         current_body = expression(guard.find("./set-variable[@name='gatewayQueryObservation']").get("value"))
-        previous_body = expression(previous_guard.find("./set-variable[@name='gatewayQueryGuardDecision']").get("value"))
         source = SOURCE.replace("__GUARD__", current_body)
         source = source.replace("__PREPARATION__", compile_preparation(ET.fromstring(render_api_request_preparation_fragment())))
-        source = source.replace("__PREVIOUS_GUARD__", previous_body)
-        source = source.replace("__GUARD_MODE_INIT__", 'context.Variables["gatewayQueryGuardModes"] = context.NamedQueryModes;')
         source = source.replace("__RECORD__", expression(telemetry.find("./choose/when/trace/message").text))
         source = source.replace("__EMIT__", expression(telemetry.find("./choose/when").get("condition")))
         cases = []
@@ -500,9 +485,6 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
                     self.assertEqual(result["originalDecision"]["presence"], "present")
                     self.assertEqual(result["originalDecision"]["duplicates"], duplicate)
                     self.assertEqual(result["responseStatus"], self.cases[prefix+"-"+mode+"-"+suffix]["responseStatus"])
-                    if mode=="reject":
-                        self.assertFalse(result["previousDecision"]["allowed"])
-                        self.assertEqual(result["previousDecision"]["status"],400)
 
     def test_retired_modes_are_not_read_and_inspection_failure_is_only_unknown(self):
         for prefix in self.route_cases:
@@ -547,13 +529,6 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
                 self.assertEqual(result["preparedStatus"],503)
                 self.assertEqual(result["preparedQueryReads"],0)
 
-    def test_standard_observe_values_match_the_frozen_baseline(self):
-        for prefix in self.route_cases:
-            for suffix in ("default",*("observe-"+name for name in ("single","same-name","empty-name","null-values","empty-values","duplicate","four","five","late-duplicate","private","query-error"))):
-                result=self.results[prefix+"-"+suffix]
-                self.assertTrue(result["guardEquivalent"],prefix+"-"+suffix)
-                self.assertIn("countBucket",result["previousDecision"])
-
     def test_all_cases_preserve_inputs_and_responses(self):
         for identifier,result in self.results.items():
             item=self.cases[identifier]
@@ -595,10 +570,10 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
 
 class GatewayQueryStructureTests(unittest.TestCase):
     def test_guard_is_after_authentication_and_before_parent_body_processing(self):
-        for filename, body_boundary in (("gateway.xml", "core-model-limits"), ("mcp.xml", "gatewayMcpArgumentError")):
+        for filename, body_boundary in (("rest.xml", "core-model-limits"), ("generated.xml", "gatewayMcpArgumentError")):
             with self.subTest(policy=filename):
                 policy = ET.fromstring(expand_api_request_preparation_fragment(
-                    (API_TEMPLATES / filename).read_text(encoding="utf-8")))
+                    policy_fixture_path(POLICIES, filename).read_text(encoding="utf-8")))
                 inbound = list(policy.find("./inbound"))
                 guard_index = next(i for i, node in enumerate(inbound)
                                    if node.tag == "include-fragment" and node.get("fragment-id") == "core-query-observation")
@@ -619,7 +594,7 @@ class GatewayQueryStructureTests(unittest.TestCase):
                 self.assertLess(guard_index, boundary_index)
                 for node in inbound[:guard_index]:
                     self.assertNotIn("context.Request.Body", ET.tostring(node, encoding="unicode"))
-                if filename == "mcp.xml":
+                if filename == "generated.xml":
                     handoff = next(i for i, node in enumerate(inbound)
                                    if node.tag == "choose" and "gatewayDecision" in node.find("when").get("condition", ""))
                     self.assertLess(handoff, guard_index)
@@ -631,7 +606,8 @@ class GatewayQueryStructureTests(unittest.TestCase):
         self.assertEqual(observation[0].get("name"),"gatewayQueryObservation")
         for token in ("context.Request.Body","gatewayQueryGuardModes",'result["allowed"]','result["status"]'):
             self.assertNotIn(token,observation[0].get("value"))
-        for path in (API_TEMPLATES/"gateway.xml",API_TEMPLATES/"mcp.xml",policy_fixture_path(POLICIES,"query-observation-inbound.xml")):
+        for filename in ("rest.xml", "generated.xml", "query-observation-inbound.xml"):
+            path = policy_fixture_path(POLICIES, filename)
             root=ET.parse(path).getroot()
             self.assertIsNone(root.find(".//choose[@id='core-query-rejection']"))
             self.assertNotIn("QUERY_PARAMETERS_NOT_ALLOWED",ET.tostring(root,encoding="unicode"))

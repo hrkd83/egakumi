@@ -40,6 +40,15 @@ class ResourceNamingTests(unittest.TestCase):
         }
         expected_names["apim"] = "[format('apim-{0}-{1}', variables('stem'), parameters('configuration').services.apimInstanceId)]"
         self.assertEqual(self.variables["serviceNames"], expected_names)
+        storage = self.module("certificate-storage")
+        tls_vault, = [item for item in storage["resources"] if item["type"] == "Microsoft.KeyVault/vaults"]
+        self.assertEqual(tls_vault["name"], "[format('kvtls-{0}', parameters('stem'))]")
+        self.assertEqual(storage["outputs"]["vaultName"]["value"], tls_vault["name"])
+        cleanup = self.template["outputs"]["cleanup"]["value"]
+        self.assertEqual(cleanup["certificateVaultName"], "[format('kvtls-{0}', variables('stem'))]")
+        self.assertEqual(cleanup["serviceResourceIds"]["certificateVault"],
+                         "[resourceId(subscription().subscriptionId, format('rg-{0}-svc', variables('stem')), "
+                         "'Microsoft.KeyVault/vaults', format('kvtls-{0}', variables('stem')))]")
         groups = [item for item in self.template["resources"]
                   if item["type"] == "Microsoft.Resources/resourceGroups"]
         self.assertEqual({item["name"] for item in groups}, {
@@ -54,6 +63,23 @@ class ResourceNamingTests(unittest.TestCase):
                 self.assertEqual(self.module(name)["parameters"]["resourceStem"]["defaultValue"], expected)
         gateway = compile_bicep('infra/modules/application-gateway.bicep')
         self.assertEqual(gateway["parameters"]["resourceStem"]["defaultValue"], expected)
+
+    def test_broker_core_outputs_and_dns_share_the_dedicated_platform(self):
+        template = self.module("broker-platform")
+        environment, = [item for item in template["resources"] if item["type"] == "Microsoft.App/managedEnvironments"]
+        self.assertEqual(environment["name"], "[format('cae-{0}-broker', parameters('stem'))]")
+        self.assertEqual(environment["properties"]["vnetConfiguration"], {
+            "infrastructureSubnetId": "[parameters('subnetId')]", "internal": True,
+        })
+        self.assertEqual(environment["properties"]["publicNetworkAccess"], "Disabled")
+        dns = next(item for item in self.template["resources"]
+                   if item["name"] == "[format('{0}-broker-dns', variables('stem'))]")
+        for parameter, output in (("defaultDomain", "defaultDomain"), ("staticIp", "privateIp")):
+            value = dns["properties"]["parameters"][parameter]["value"]
+            self.assertIn("-broker-platform", value)
+            self.assertIn(f".outputs.platform.value.{output}", value)
+        for key in ("brokerEnvironmentName", "brokerEnvironmentId", "brokerEnvironmentDomain", "brokerSubnetId"):
+            self.assertIn(key, self.template["outputs"]["gatewayFoundation"]["value"])
 
     def test_storage_names_remove_only_hyphens_and_retain_collector_purpose(self):
         monitoring = self.module("monitoring")

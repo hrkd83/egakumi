@@ -47,18 +47,18 @@ class ManagementClientBicepTests(unittest.TestCase):
                        for resource in (resources.values() if isinstance(resources, dict) else resources))
         network, = [node for node in nodes.values()
                     if constructs(node, 'Microsoft.Network/virtualNetworks')]
-        portal, = [node for node in nodes.values()
-                   if constructs(node, 'Microsoft.App/managedEnvironments')
-                   and "-portal'" in node.get('name', '')]
+        environments = [node for node in nodes.values()
+                        if constructs(node, 'Microsoft.App/managedEnvironments')]
+        self.assertTrue(any("-portal'" in node.get('name', '') for node in environments))
         network_region = network['properties']['parameters']['location']['value']
-        portal_region = portal['properties']['parameters']['location']['value']
         self.assertEqual(network_region, "[variables('location')]")
-        self.assertEqual(portal_region, network_region)
         self.assertEqual(self.core['variables']['location'], "[parameters('configuration').location]")
-        resources = portal['properties']['template']['resources']
-        environment, = [node for node in (resources.values() if isinstance(resources, dict) else resources)
-                        if node['type'].casefold() == 'microsoft.app/managedenvironments']
-        self.assertEqual(environment['location'], "[parameters('location')]")
+        for module in environments:
+            self.assertEqual(module['properties']['parameters']['location']['value'], network_region)
+            resources = module['properties']['template']['resources']
+            environment, = [node for node in (resources.values() if isinstance(resources, dict) else resources)
+                            if node['type'].casefold() == 'microsoft.app/managedenvironments']
+            self.assertEqual(environment['location'], "[parameters('location')]")
 
     def fixture(self):
         config = fixture_config()
@@ -70,6 +70,7 @@ class ManagementClientBicepTests(unittest.TestCase):
         management = {'id': vm_id, 'name': 'vm-test-fixture-mgmt', 'principalId': '33333333-3333-4333-8333-333333333333'}
         platform = {'applicationId': svc + 'containerApps/ca-test-fixture-portal',
                     'environmentId': svc + 'managedEnvironments/cae-test-fixture'}
+        broker = {'environmentName': 'cae-test-fixture-broker', 'environmentId': platform['environmentId'] + '-broker'}
         monitoring = {'workspaceId': monitor + 'Microsoft.OperationalInsights/workspaces/law-test-fixture',
                       'workspaceCustomerId': '44444444-4444-4444-8444-444444444444'}
         storage = {key: {'id': monitor + 'Microsoft.Storage/storageAccounts/sttestfixture' + suffix,
@@ -79,19 +80,22 @@ class ManagementClientBicepTests(unittest.TestCase):
                                    for key in ('collectJapan', 'collectFoundry')]
         references = {'test-fixture-management': {'outputs': {'managementVm': {'value': management}}},
                       'test-fixture-portal': {'outputs': {'platform': {'value': platform}}},
+                      'test-fixture-broker-platform': {'outputs': {'platform': {'value': broker}}},
                       'test-fixture-monitoring': {'outputs': {'monitoring': {'value': monitoring}, 'storage': {'value': storage}}}}
         # Symbolic compiler versions may reference the module declaration key.
         references.update({key: references['test-fixture-' + key] for key in ('management', 'portal', 'monitoring')})
+        references['brokerEnvironment'] = references['test-fixture-broker-platform']
         parameters = {'configuration': config, 'phase': 'core', '__references': references}
         expected = {'schemaVersion': 1, 'subscriptionId': SUBSCRIPTION, 'azureTenantId': config['azureTenantId'],
             'managementVmId': vm_id, 'managementPrincipalId': management['principalId'],
-            'applications': [platform['applicationId']], 'jobs': [], 'sqlDatabases': [], 'environments': [platform['environmentId']],
+            'applications': [platform['applicationId']], 'jobs': [], 'sqlDatabases': [],
+            'environments': [platform['environmentId'], broker['environmentId']],
             'workspace': {'id': monitoring['workspaceId'], 'customerId': monitoring['workspaceCustomerId']},
             'auditStorage': [{'id': storage[key]['id'], 'containers': ['insights-logs-audit']}
                              for key in ('collectJapan', 'collectFoundry')]}
         state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
         state['outputs'] = {'managementVm': management, 'monitoring': monitoring, 'auditStorage': storage,
-                            'managementClientInventory': expected}
+                            'managementClientInventory': expected, 'brokerPlatform': broker}
         return config, parameters, expected, state
 
     def test_client_embeds_current_public_source_and_exact_constructed_inventory(self):
@@ -136,14 +140,13 @@ class ManagementClientBicepTests(unittest.TestCase):
         core = resolve(self.core, self.core['outputs']['managementClientInventory']['value'], parameters)
         combined = copy.deepcopy(core)
         for component in ('portal', 'gateway'):
-            outputs = {'managementMaintenance': assets._expected_targets(config)[component]}
+            outputs = {'managementMaintenance': assets._expected_targets(config, broker_separated=True)[component]}
             combined, _ = assets._merge_outputs(config, combined, outputs, component)
         plan = {'principalId': core['managementPrincipalId'], 'auditStorage': state['outputs']['auditStorage'],
                 'sqlDatabases': combined['sqlDatabases'],
                 'applicationNames': [value.rsplit('/', 1)[-1] for value in combined['applications']],
                 'jobNames': [value.rsplit('/', 1)[-1] for value in combined['jobs']],
-                'environmentNames': [value.rsplit('/', 1)[-1] for value in combined['environments']],
-                'readers': {key: [{'containerName': 'insights-logs-audit'}] for key in ('collectJapan', 'collectFoundry')}}
+                'environmentNames': [value.rsplit('/', 1)[-1] for value in combined['environments']]}
         context = SimpleNamespace(config=config, state=state, transport=mock.Mock())
         upgraded = MaintenanceUpgrade(context).client_inventory(plan)
         self.assertEqual(upgraded, combined)
@@ -154,6 +157,7 @@ class ManagementClientBicepTests(unittest.TestCase):
         parameters = {'managementPrefix': '10.70.2.128/26',
                       'acaPrefix': '10.70.2.192/26', 'apimPrefix': '10.70.2.64/26',
                       'acaPrivateIp': '10.70.2.196',
+                      'brokerPrefix': fixture_config()['network']['subnetPrefixes']['broker'],
                       'stem': 'test-fixture', 'privateEndpointNicIds': [], 'referencePrivateIps': ['10.70.1.10']}
         from test_nsg_rule_priorities import FixedExpression
         rules = FixedExpression('[true()]', template).resolve(resource['properties']['ruleCollections'], parameters)

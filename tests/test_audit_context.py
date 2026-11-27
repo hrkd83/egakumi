@@ -52,7 +52,9 @@ public class Body {
  public T As<T>(bool preserveContent=false) {
   Reads++; AllReadsPreserved &= preserveContent;
   if(BlockReads) throw new Exception("Native protocol body must remain unread");
-  if(!preserveContent) throw new Exception(); return (T)(object)JObject.Parse(Text);
+  if(!preserveContent) throw new Exception();
+  if(typeof(T)==typeof(string)) return (T)(object)Text;
+  return (T)(object)JObject.Parse(Text);
  }
 }
 public class Request { public Headers Headers=new Headers(); public Body Body=new Body(); public Dictionary<string,string> MatchedParameters=new Dictionary<string,string>(); }
@@ -212,7 +214,7 @@ class AuditContextTests(unittest.TestCase):
   for name,policy_id in (('similar','core-audit-body-model-read-extra'),('null',None),('empty','')):
    add('prepared-other-id-'+name,constraintRaw='{broken',errorPolicyId=policy_id)
   source=SOURCE
-  gateway=ET.fromstring(render_audit_policy(policy_fixture_path(CORE/'apps/apim/policies','gateway.xml').read_text(encoding='utf-8')))
+  gateway=ET.fromstring(render_audit_policy(policy_fixture_path(CORE/'apps/apim/policies','rest.xml').read_text(encoding='utf-8')))
   guard=copy.deepcopy(gateway.find('on-error/choose[@id="core-audit-body-model-error"]'))
   # 共通のquery監査は構造で確認し、状態・Gateway監査・停止応答の実guardをこのfixtureで実行します。
   guard.find('when').remove(guard.find('when/include-fragment[@fragment-id="core-query-telemetry"]'))
@@ -222,7 +224,7 @@ class AuditContextTests(unittest.TestCase):
   source=source.replace('__BODY_MODEL_POLICY_ID__',json.dumps(body_model.find('set-variable').get('id')))
   for marker,filename,xpath,attr in [
     ('__CLAIM__','audit-context.xml','./set-variable[@name="gatewayAgentTrace"]','value'),
-    ('__INJECT__','gateway.xml','./inbound/choose[@id="core-hosted-response-metadata"]/when/set-body',None),
+    ('__INJECT__','rest.xml','./inbound/choose[@id="core-hosted-response-metadata"]/when/set-body',None),
     ('__BODY_MODEL__','audit-body-model.xml','./set-variable[@name="gatewayAuditBodyModel"]','value'),
     ('__MODEL__','audit-context.xml','./set-variable[@name="gatewayAuditModel"]','value'),
     ('__BACKEND__','backend-audit.xml','./set-variable','value'),
@@ -336,7 +338,7 @@ class AuditContextTests(unittest.TestCase):
   self.assertNotIn('context.Variables["gatewayControlSettings"]',source)
 
  def test_all_protocols_strip_claims_and_capture_backend_before_base(self):
-  for name in ['gateway.xml','protocol.xml','mcp.xml']:
+  for name in ['rest.xml','stream.xml','generated.xml']:
    root=ET.parse(policy_fixture_path(CORE / "apps/apim/policies", name)).getroot()
    inbound=list(root.find('inbound'))
    source=root.find('./inbound/set-variable[@name="gatewayApiSettingsSource"]')
@@ -347,11 +349,11 @@ class AuditContextTests(unittest.TestCase):
    self.assertIsNotNone(root.find('./inbound/include-fragment[@fragment-id="core-audit-context"]'))
    first=list(root.find('outbound'))[0]
    self.assertEqual(first.attrib.get('fragment-id'),'core-backend-audit')
-  root=ET.fromstring(render_audit_policy(policy_fixture_path(CORE/'apps/apim/policies','gateway.xml').read_text(encoding='utf-8')))
+  root=ET.fromstring(render_audit_policy(policy_fixture_path(CORE/'apps/apim/policies','rest.xml').read_text(encoding='utf-8')))
   error=list(root.find('on-error'));guard=root.find('on-error/choose[@id="core-audit-body-model-error"]')
   self.assertEqual(error[0].tag,'base')
   self.assertLess(error.index(guard),next(i for i,n in enumerate(error) if n.get('name')=='gatewayAuditPhase'))
-  raw=policy_fixture_path(CORE/'apps/apim/policies','gateway.xml').read_text(encoding='utf-8')
+  raw=policy_fixture_path(CORE/'apps/apim/policies','rest.xml').read_text(encoding='utf-8')
   tail=raw[raw.index('<on-error>'):]
   self.assertLess(tail.index('__RATE_LIMIT_ERROR_XML__'),tail.index('__AUDIT_BODY_MODEL_ERROR_XML__'))
   branch=list(guard.find('when'));self.assertEqual(branch[-1].tag,'return-response')

@@ -154,7 +154,8 @@ def update_consumers(ctx, scope, receipt, receipt_path, values, label):
         raise OperationError('Key Vault does not match the selected environment')
     ctx.verify_resource(vault_id, '2023-07-01', 'Microsoft.KeyVault/vaults')
     ctx.verify_resource(ctx.service_id('apim'), '2024-05-01', 'Microsoft.ApiManagement/service')
-    if scope['profiles']:
+    login = ctx.config.get('gateway', {}).get('authentication', {}).get('credentialLogin', {})
+    if scope['profiles'] and 'identity' not in login:
         update_shared_cm_secrets(ctx, scope, receipt, receipt_path, values, label, vault_id)
     # 独立OIDCの専用KV参照はGateway配備が保護入力から更新します。
     save(ctx, receipt_path, receipt, label + '-gateway-requested')

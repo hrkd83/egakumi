@@ -533,7 +533,9 @@ class BootstrapControllerTests(unittest.TestCase):
                 resource_id = plan['apimId'] + '/' + kind + '/' + name
                 properties = {'value': '<fragment><set-variable name="mode" value="unowned" /></fragment>'} if kind == 'policyFragments' else {'url': 'https://provider.example.com'}
                 if name == 'added-backend-secret':
-                    plan['parameters']['apiDefinitions']['value'][0].setdefault('backendAuthentication', {})['mode'] = 'keyVaultHeader'
+                    host = '.'.join(('other-synthetic-vault', 'vault.azure.net'))
+                    plan['parameters']['apiDefinitions']['value'][0]['backendAuthentication'] = {
+                        'mode': 'keyVaultHeader', 'secretIdentifier': f'https://{host}/secrets/example'}
                 if name.casefold().startswith('op-'):
                     plan['parameters']['apiDefinitions']['value'][0]['operations'][0]['backendOverride'] = {}
                 if kind == 'policyFragments':

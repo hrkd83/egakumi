@@ -26,7 +26,7 @@ ARM_API = '2022-09-01'
 # ARM guid()の公開namespace。環境から取得したIDではありません。
 # https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/template-functions-string#guid
 ARM_NAMESPACE = uuid.UUID('11fb06fb-712d-4ddd-98c7-e71bbd588830')
-CERTIFICATES_OFFICER = 'a4417e6f-fecd-4de8-b567-7b0420556985'
+CERTIFICATE_ISSUE_ACTIONS = {'Microsoft.KeyVault/vaults/certificates/read', 'Microsoft.KeyVault/vaults/certificates/create/action'}
 
 
 def arm_guid(*values):
@@ -133,15 +133,46 @@ def prerequisites(ctx):
     if (view.get('executionState') != 'Succeeded' or view.get('exitCode') != 0
             or '7.6.7' not in tls_body.get('properties', {}).get('source', {}).get('script', '')):
         raise OperationError('Complete the fixed PowerShell preparation before initialization')
-    roles = ctx.request('GET', vault_id + '/providers/Microsoft.Authorization/roleAssignments', '2022-04-01')
-    role_body = roles.get('body') or {}
-    if roles.get('statusCode') != 200 or role_body.get('nextLink'):
-        raise OperationError('The management certificate permissions cannot be verified')
-    if not any(str(r.get('properties', {}).get('principalId', '')).casefold() == principal.casefold()
-               and str(r.get('properties', {}).get('roleDefinitionId', '')).casefold().endswith('/' + CERTIFICATES_OFFICER)
-               for r in role_body.get('value', [])):
-        raise OperationError('The management certificate officer assignment is missing')
+    _verify_certificate_issue_role(ctx, groups['svc'], vault_id, principal)
     return groups, vm_id, vault_id, principal
+
+
+def _verify_certificate_issue_role(ctx, group, vault, principal):
+    """Portalの指定証明書に限った発行ロールを照合します。"""
+    scope = vault + '/certificates/' + ctx.config['portal']['certificate']['certificateName']
+    roles = ctx.request('GET', scope + '/providers/Microsoft.Authorization/roleAssignments', '2022-04-01')
+    role_body = roles.get('body') or {}
+    if (roles.get('statusCode') != 200 or not isinstance(role_body, dict)
+            or role_body.get('nextLink') or not isinstance(role_body.get('value'), list)):
+        raise OperationError('The management certificate permissions cannot be verified')
+    authorization = '/providers/Microsoft.Authorization/roleDefinitions/'
+    subscription = '/subscriptions/' + ctx.config['subscriptionId']
+    for assignment in role_body['value']:
+        assigned = assignment.get('properties') or {}
+        if (str(assigned.get('principalId', '')).casefold() != principal.casefold()
+                or str(assigned.get('scope', '')).casefold() != scope.casefold() or assigned.get('condition')):
+            continue
+        role_id = str(assigned.get('roleDefinitionId', ''))
+        suffix = role_id.rsplit('/', 1)[-1]
+        if (not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', suffix)
+                or role_id.casefold() not in {(base + authorization + suffix).casefold() for base in (group, subscription)}):
+            continue
+        owned_role_id = group + authorization + suffix
+        definition = ctx.request('GET', owned_role_id, '2022-04-01')
+        body = definition.get('body') or {}
+        props = body.get('properties') or {}
+        permissions = props.get('permissions')
+        if (definition.get('statusCode') == 200 and str(body.get('id', '')).casefold() in
+                {owned_role_id.casefold(), (subscription + authorization + suffix).casefold()}
+                and props.get('type') == 'CustomRole'
+                and [str(value).casefold() for value in props.get('assignableScopes', [])] == [group.casefold()]
+                and isinstance(permissions, list) and len(permissions) == 1):
+            allowed = permissions[0]
+            if ({str(action).casefold() for action in allowed.get('dataActions', [])}
+                    == {action.casefold() for action in CERTIFICATE_ISSUE_ACTIONS}
+                    and not any(allowed.get(key) for key in ('actions', 'notActions', 'notDataActions'))):
+                return
+    raise OperationError('The exact management Portal certificate issue assignment is missing')
 
 
 def _command_view(ctx, resource):

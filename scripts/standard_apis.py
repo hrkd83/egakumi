@@ -170,6 +170,9 @@ def infrastructure_api_definitions(definitions: list[dict]) -> list[dict]:
                 'transport': api['mcpProxy']['transport'],
                 'endpoints': [{key: endpoint[key] for key in ('name', 'uriTemplate')} for endpoint in api['mcpProxy']['endpoints']],
             }
+        # AppGWの承認済みobserver経路の判定にだけ使い、接続・認可設定はコピーしません。
+        if projected['apiType'] == 'websocket' and isinstance(api.get('websocket', {}).get('realtimeObserver'), dict):
+            projected['websocket'] = {'realtimeObserver': {}}
         result.append(projected)
     return result
 

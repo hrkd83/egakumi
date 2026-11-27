@@ -1,0 +1,5 @@
+<fragment>
+  <!-- onHandshakeだけへ展開する差分。上流はAPIのWSS接続先を使います。 -->
+  <!-- stream-handshake-query-start -->__PROTOCOL_QUERY_XML__<!-- stream-handshake-query-end -->
+  <!-- stream-handshake-session-start -->__PROTOCOL_SESSION_XML__<!-- stream-handshake-session-end -->
+</fragment>

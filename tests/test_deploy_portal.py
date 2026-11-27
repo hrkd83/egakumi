@@ -25,7 +25,8 @@ def fixture():
         'services': {'apimInstanceId': 'abc123'},
         'resourceGroupNames': {'svc': 'rg-test-sample-svc', 'id': 'rg-test-sample-id', 'nw': 'rg-test-sample-nw',
                                'maint': 'rg-test-sample-maint', 'monitor': 'rg-test-sample-monitor'},
-        'network': {'subnetPrefixes': {'aca': '10.20.0.0/26'}},
+        'network': {'subnetPrefixes': {'aca': '192.0.2.0/26', 'apim': '192.0.2.64/26'}},
+        'entraTenantId': '44444444-4444-4444-8444-444444444444',
         'tags': {}, 'productName': 'sample', 'environmentName': 'test',
         'portalAuthentication': {'credentialProviderName': 'graph-delegated'},
         'credentialProviders': [{'name': 'graph-delegated', 'clientId': '33333333-3333-4333-8333-333333333333',
@@ -35,7 +36,8 @@ def fixture():
             'clientId': '33333333-3333-4333-8333-333333333333',
             'keyId': 'https://kv-test-sample.vault.azure.net/keys/portal-auth/' + 'a'*32,
             'certificateThumbprint': 'a'*40}},
-        'gateway': {'publicHostName': 'gateway.example.com'},
+        'gateway': {'publicHostName': 'gateway.example.com', 'authentication': {'entra': {
+            'audience': '55555555-5555-4555-8555-555555555555', 'requiredScope': 'Gateway.Invoke'}}},
         'apiDefinitions': [],
     }
     identities = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/rg-test-sample-id/providers/Microsoft.ManagedIdentity/userAssignedIdentities/'
@@ -50,6 +52,7 @@ def fixture():
             'runtimeIdentity': {'id': identities + 'id-test-sample-portal-pull'},
             'schemaIdentity': {'id': identities + 'id-test-sample-credential-schema'},
             'authIdentity': {'id': identities + 'id-test-sample-portal-auth'},
+            'apiAuthIdentity': {'id': identities + 'id-test-sample-portal-api-auth'},
             'sharedSqlServer': 'sql-test-sample.database.windows.net',
             'applicationId': portal.group_scope(config) + '/providers/Microsoft.App/containerApps/ca-test-sample-portal'},
     }
@@ -120,8 +123,11 @@ class PortalDeploymentTests(unittest.TestCase):
                  mock.patch.object(portal, "verify_foundation"), \
                  mock.patch.object(portal, "signing_secret"), \
                  mock.patch.object(portal, "profile_secret"), \
+                 mock.patch.object(portal, "subscription_sync_secret"), \
+                 mock.patch("deployment.helpers.portal_api_auth.ensure_initial_key", return_value="synthetic-key-ref"), \
                  mock.patch.object(portal, "deploy_release", return_value={
-                     "backendTls": readiness, "callbackWaf": {}, "subscriptionProfiles": {}}), \
+                     "backendTls": readiness, "callbackWaf": {}, "subscriptionProfiles": {},
+                     "privateReadiness": {}, "subscriptionAdmin": {}, "subscriptionProfileReader": {}}), \
                  contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(portal.main(["--config", str(workspace.params), "--state-file", str(state_file),
                                               "--image-digest", "sha256:" + "a" * 64, "--execute"]), 0)
@@ -138,7 +144,7 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertEqual(values['publicOrigin'], 'https://portal.example.com')
         self.assertEqual(values['gatewayOrigin'], 'https://gateway.example.com')
         self.assertEqual(values['networkResourceGroup'], 'rg-test-sample-nw')
-        self.assertEqual(values['acaPrefix'], '10.20.0.0/26')
+        self.assertEqual(values['acaPrefix'], config['network']['subnetPrefixes']['aca'])
         self.assertFalse(values['deployApplication'])
         self.assertEqual(values['tenantId'], config['credentialProviders'][0]['oauthTenantId'])
         self.assertEqual(values['apimName'], 'apim-test-sample-abc123')
@@ -318,6 +324,7 @@ class PortalDeploymentTests(unittest.TestCase):
         config, state = fixture()
         values = portal.deployment_inputs(config, state)
         values.update(signingSecret='synthetic-signing-value', profileSecret='synthetic-profile-value',
+                      subscriptionSyncSecret='synthetic-sync-value',
                       imageDigest='sha256:' + 'a' * 64)
         phases = []
         self.deployment_values = []
@@ -330,6 +337,7 @@ class PortalDeploymentTests(unittest.TestCase):
         def deploy(config, values, *args):
             phases.append('application' if values['deployApplication'] else 'database')
             self.deployment_values.append(copy.deepcopy(values))
+            return {component: {'name': name} for component, name in portal.subscription_app_names(config).items()}
         def public(*args):
             phases.append('public')
             if public_failure:
@@ -339,14 +347,21 @@ class PortalDeploymentTests(unittest.TestCase):
             if readiness_failure:
                 raise ValueError('readiness failed')
             return {'protocol': 'Https', 'port': 443}
+        def ready(*args, component='portal', **kwargs):
+            phases.append({
+                'subscriptionAdmin': 'ready-admin',
+                'subscriptionProfileReader': 'ready-profile',
+                'portal': 'ready',
+            }[component])
+            return {'fqdn': 'profile.example.invalid'}
         with mock.patch.object(portal, 'deploy_template', side_effect=deploy), \
              mock.patch.object(portal, 'wait_schema', side_effect=schema), \
              mock.patch.object(portal, 'configure_portal_callback_waf', side_effect=lambda *a: phases.append('callback-waf')), \
              mock.patch.object(portal, 'configure_data_waf', side_effect=lambda *a, **k: phases.append('data-waf')), \
-             mock.patch.object(portal, 'wait_application', side_effect=lambda *a, **k: phases.append('ready')), \
+             mock.patch.object(portal, 'wait_application', side_effect=ready), \
              mock.patch.object(portal, 'require_appgw_backend_tls_ready', side_effect=tls_ready), \
              mock.patch.object(portal, 'verify_public', side_effect=public), \
-             mock.patch.object(portal, 'activate_profile_settings', side_effect=lambda *a: phases.append('profiles')), \
+             mock.patch.object(portal, 'activate_profile_settings', side_effect=lambda *a, **k: phases.append('profiles')), \
              contextlib.redirect_stdout(io.StringIO()):
             if schema_failure or public_failure or readiness_failure:
                 error = 'schema failed' if schema_failure else 'public failed' if public_failure else 'readiness failed'
@@ -363,23 +378,28 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertEqual(self.release(schema_failure=True), ['database', 'sql'])
 
     def test_update_order_includes_public_verification(self):
-        self.assertEqual(self.release(), ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'tls-ready', 'public', 'profiles'])
+        self.assertEqual(self.release(), ['database', 'sql', 'callback-waf', 'data-waf', 'application',
+                                          'ready-admin', 'ready-profile', 'ready', 'tls-ready', 'public', 'profiles'])
 
     def test_second_phase_reuses_existing_secret_versions(self):
         self.release()
         first, second = self.deployment_values
         self.assertEqual(first['signingSecret'], 'synthetic-signing-value')
         self.assertEqual(first['profileSecret'], 'synthetic-profile-value')
+        self.assertEqual(first['subscriptionSyncSecret'], 'synthetic-sync-value')
         self.assertEqual(second['signingSecret'], '')
         self.assertEqual(second['profileSecret'], '')
+        self.assertEqual(second['subscriptionSyncSecret'], '')
 
     def test_public_failure_never_activates_subscription_profiles(self):
         self.assertEqual(self.release(public_failure=True),
-                         ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'tls-ready', 'public'])
+                         ['database', 'sql', 'callback-waf', 'data-waf', 'application',
+                          'ready-admin', 'ready-profile', 'ready', 'tls-ready', 'public'])
 
     def test_tls_readiness_failure_does_not_activate_profiles(self):
         self.assertEqual(self.release(readiness_failure=True),
-                         ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'tls-ready'])
+                         ['database', 'sql', 'callback-waf', 'data-waf', 'application',
+                          'ready-admin', 'ready-profile', 'ready', 'tls-ready'])
 
     def test_application_waits_for_expected_image_in_both_app_and_ready_revision(self):
         config, _ = fixture()
@@ -389,7 +409,7 @@ class PortalDeploymentTests(unittest.TestCase):
         def app(image, **ingress):
             return {'properties': {'provisioningState': 'Succeeded',
                 'latestRevisionName': revision, 'latestReadyRevisionName': revision,
-                'configuration': {'ingress': {'targetPort': 3000, **ingress}},
+                'configuration': {'ingress': {'targetPort': 3000, 'external': True, **ingress}},
                 'template': {'containers': [{'name': 'portal', 'image': image}]}}}
         def ready(image):
             return {'properties': {'healthState': 'Healthy', 'provisioningState': 'Provisioned',
@@ -406,6 +426,44 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertEqual(ticks[0], 30)
         self.assertEqual(transport.request.call_count, 6)
         self.assertTrue(all(call.args[0] == 'GET' for call in transport.request.call_args_list))
+
+    def test_profile_reader_wait_checks_exact_aca_environment_and_apim_ingress_subnet(self):
+        config, _ = fixture()
+        stem = config['resourceStem']
+        app_name = 'ca-' + stem + '-sub-profile'
+        scope = portal.group_scope(config) + '/providers/Microsoft.App/'
+        target = scope + 'containerApps/' + app_name
+        environment = scope + 'managedEnvironments/cae-' + stem
+        hostname = '.'.join((app_name, 'synthetic', 'japaneast', 'azurecontainerapps', 'io'))
+        revision = app_name + '--current'
+        digest = 'sha256:' + 'a' * 64
+        registry = 'acr' + stem.replace('-', '') + '.azurecr.io'
+        container = {'name': 'sub-profile', 'image': f'{registry}/portal@{digest}',
+                     'env': [{'name': 'PORTAL_SUBSCRIPTION_SERVICE_ROLE', 'value': 'profile'}]}
+        allow = {'name': 'apim', 'action': 'Allow', 'ipAddressRange': config['network']['subnetPrefixes']['apim']}
+        for environment_reference, rules, error in (
+                (environment, [allow], None),
+                (environment + '-foreign', [allow], 'configured private ACA'),
+                (environment, [], 'only the configured APIM subnet'),
+                (environment, [{**allow, 'ipAddressRange': config['network']['subnetPrefixes']['aca']}],
+                 'only the configured APIM subnet'),
+                (environment, [allow, {**allow, 'name': 'another-rule'}], 'only the configured APIM subnet')):
+            with self.subTest(error=error, restrictions=len(rules)):
+                app = {'id': target, 'properties': {'provisioningState': 'Succeeded',
+                    'environmentId': environment, 'managedEnvironmentId': environment_reference,
+                    'latestRevisionName': revision, 'latestReadyRevisionName': revision,
+                    'configuration': {'ingress': {'external': True, 'allowInsecure': False, 'targetPort': 3000,
+                                                  'ipSecurityRestrictions': rules, 'fqdn': hostname}},
+                    'template': {'containers': [container]}}}
+                ready = {'properties': {'healthState': 'Healthy', 'provisioningState': 'Provisioned',
+                    'runningState': 'Running', 'template': {'containers': [container]}}}
+                transport = mock.Mock()
+                transport.request.side_effect = [{'statusCode': 200, 'body': body} for body in (app, ready)]
+                with self.assertRaisesRegex(ValueError, error) if error else contextlib.nullcontext():
+                    result = portal.wait_application(config, transport, expected_image_digest=digest,
+                        component='subscriptionProfileReader', monotonic=lambda: 0)
+                    self.assertEqual(result['fqdn'], hostname)
+                self.assertEqual(transport.request.call_count, 1 if error else 2)
 
     def test_public_health_uses_explicit_protocol_headers_and_requires_no_store(self):
         for cacheable in (False, True):

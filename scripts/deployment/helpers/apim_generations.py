@@ -212,4 +212,4 @@ def _prepare_next_instance(paths: LocalPaths, config: dict) -> dict:
     return {"status": "new-apim-instance-prepared", "parameters": str(paths.params.relative_to(paths.repository)),
             "apimInstanceId": next_id, "apimName": apim_name(updated),
             "history": str(archive.relative_to(paths.repository)), "azureAccessPerformed": False,
-            "next": "Display registration URIs from these parameters and update the Entra CM redirect URI before azd up."}
+            "next": "Display registration URIs from these parameters and update the Entra CM redirect URI before Core provisioning."}

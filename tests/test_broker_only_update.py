@@ -7,7 +7,6 @@ import unittest
 from unittest import mock
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1] / 'scripts'),
-               str(Path(__file__).resolve().parents[1] / 'apps/apim/deploy'),
                str(Path(__file__).resolve().parents[1] / 'apps/credential-broker/deploy')]
 import broker_deployment as release
 from bicep_helpers import compile_bicep
@@ -138,14 +137,16 @@ def broker_fixture(*, business_login=True):
         scope + '/providers/Microsoft.Sql/servers/sql-' + config['resourceStem']:
             response(scope + '/providers/Microsoft.Sql/servers/sql-' + config['resourceStem'],
                      {'fullyQualifiedDomainName': foundation['sqlServer'], 'publicNetworkAccess': 'Disabled'}),
-        scope + '/providers/Microsoft.App/managedEnvironments/' + foundation['environmentName']:
-            response(scope + '/providers/Microsoft.App/managedEnvironments/' + foundation['environmentName'],
-                     {'provisioningState': 'Succeeded', 'defaultDomain': foundation['environmentDomain']}),
+        foundation['brokerEnvironmentId']:
+            response(foundation['brokerEnvironmentId'], {'provisioningState': 'Succeeded',
+                'defaultDomain': foundation['brokerEnvironmentDomain'], 'publicNetworkAccess': 'Disabled',
+                'vnetConfiguration': {'internal': True, 'infrastructureSubnetId': foundation['brokerSubnetId']}}),
         app_id: response(app_id, {
-            'managedEnvironmentId': scope + '/providers/Microsoft.App/managedEnvironments/' + foundation['environmentName'],
+            'managedEnvironmentId': foundation['brokerEnvironmentId'],
             'provisioningState': 'Succeeded', 'latestRevisionName': names['application'] + '--old',
             'latestReadyRevisionName': names['application'] + '--old',
-            'configuration': {'activeRevisionsMode': 'Single', 'ingress': {'fqdn': names['application'] + '.' + foundation['environmentDomain']}, 'secrets': secrets},
+            'configuration': {'activeRevisionsMode': 'Single', 'ingress': {'fqdn': names['application'] + '.'
+                + foundation['brokerEnvironmentDomain'], 'external': True, 'allowInsecure': False}, 'secrets': secrets},
             'template': {'containers': [{'name': 'credential-broker', 'image': registry_server + '/credential-broker@' + OLD_DIGEST,
                 'env': rows, 'probes': [{'type': 'Readiness', 'httpGet': {'path': '/health'}}]}], 'scale': {'minReplicas': 2, 'maxReplicas': 4}},
         }),
@@ -158,7 +159,7 @@ def broker_fixture(*, business_login=True):
     inventory[database] = response(database, {'status': 'Online'})
     for key in ('schemaJob', 'reconcileJob'):
         rid = scope + '/providers/Microsoft.App/jobs/' + names[key]
-        inventory[rid] = response(rid, {'environmentId': scope + '/providers/Microsoft.App/managedEnvironments/' + foundation['environmentName'],
+        inventory[rid] = response(rid, {'environmentId': foundation['brokerEnvironmentId'],
             'template': {'containers': [{'image': registry_server + '/credential-broker@' + OLD_DIGEST}]}})
         inventory[rid]['body']['identity'] = {'type': 'UserAssigned', 'userAssignedIdentities': {(schema if key == 'schemaJob' else runtime)['id']: {}}}
     old_revision = app_id + '/revisions/' + names['application'] + '--old'
@@ -239,6 +240,31 @@ class BrokerOnlyUpdateTests(unittest.TestCase):
         self.assertNotIn('credentialLogin', config['gateway']['authentication'])
         self.assertEqual(transport.inventory, before)
         self.assertTrue(all(method == 'GET' for method, *_ in transport.calls))
+
+    def test_wrong_broker_boundary_or_shared_environment_workload_is_refused_before_writes(self):
+        for changed in ('subnet', 'internal', 'public-network', 'domain', 'app', 'schema-job', 'reconciliation-job'):
+            with self.subTest(changed=changed):
+                config, state, transport = broker_fixture()
+                foundation = state['outputs']['gatewayFoundation']
+                properties = transport.inventory[foundation['brokerEnvironmentId']]['body']['properties']
+                if changed == 'subnet':
+                    properties['vnetConfiguration']['infrastructureSubnetId'] = foundation['brokerSubnetId'].removesuffix('-broker') + '-aca'
+                elif changed == 'internal':
+                    properties['vnetConfiguration']['internal'] = False
+                elif changed == 'public-network':
+                    properties['publicNetworkAccess'] = 'Enabled'
+                elif changed == 'domain':
+                    properties['defaultDomain'] = 'wrong.fixture.invalid'
+                else:
+                    targets = {'app': transport.application_id, 'schema-job': transport.schema_job,
+                        'reconciliation-job': transport.schema_job.rsplit('/', 1)[0] + '/' + resource_names(config)['reconcileJob']}
+                    workload = transport.inventory[targets[changed]]['body']['properties']
+                    # A good primary reference does not hide a conflicting environment alias.
+                    alias = 'environmentId' if changed == 'app' else 'managedEnvironmentId'
+                    workload[alias] = foundation['brokerEnvironmentId'].removesuffix('-broker')
+                with self.assertRaisesRegex(ValueError, 'private Broker environment|different environment'):
+                    release.prepare_broker_only_update(config, state, transport)
+                self.assertTrue(all(method == 'GET' for method, *_ in transport.calls))
 
     def test_backup_and_successful_actual_observation_precede_migration_and_new_application(self):
         result, transport, plan, backups, records = self.run_release()

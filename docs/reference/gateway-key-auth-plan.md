@@ -2,7 +2,7 @@
 
 本書は現行のGateway認可とPortal・本人接続の分担を説明します。APIの正本は [登録定義](../../apps/apim/apis/)、共通認可は [service.xml](../../apps/apim/policies/service.xml)、配備は [Gateway配備コマンド](../../scripts/deploy_gateway.py)です。実環境への反映状況は配備記録と試験結果で確認します。
 
-社員のGateway OAuthに必要な設定・JWT検証・専用open Product生成と、共通Inbound STEP1～5の部品化を実装しています。各API・操作のInbound、およびbackend・outbound・on-error全体の棚卸は未完です。コードの実装、棚卸完了、特定環境の配備・実接続受入は分けて管理し、個別のキー接続やCodexの成功を全APIの受入へ流用しません。残る作業と5つのEntraアプリへの分離は[全体計画](entra-app-rollout-plan.md)を参照してください。
+社員のGateway OAuthに必要な設定・JWT検証・専用open Product生成と、共通Inbound STEP1～5の部品化を実装しています。各API・操作のInbound、およびbackend・outbound・on-error全体の棚卸は未完です。コードの実装、棚卸完了、特定環境の配備・実接続受入は分けて管理し、個別のキー接続やCodexの成功を全APIの受入へ流用しません。残る作業と基盤用Entraアプリの分離は[全体計画](entra-app-rollout-plan.md)を参照してください。
 
 ## 利用経路と認証の分担
 
@@ -62,7 +62,7 @@ Entra設定を持つ構成では、HTTP・WebSocket・MCP・Realtime・CMを含�
 
 PortalはEntraグループをキーの所有者として管理し、現在の所属により発行・閲覧・更新・停止・移管・削除を認可します。APIMが業務呼出しごとに所有グループの所属を再照会する構成ではありません。配布済みのキーを止める場合は購読の停止やキー交換も行います。
 
-primaryとsecondaryは同じ購読ID・利用枠・音声セッションの所有主体を使います。APIキーの値はPortal SQLの正本データとして保存しません。台帳とAPIMの同期は [Portal](../setup/portal.md)の管理機能で行い、配備資材の`keySubscriptions`を通常のキー台帳へ置き換えません。
+primaryとsecondaryは同じ購読ID・利用枠・音声セッションの所有主体を使います。APIキーの値はPortal SQLの正本データとして保存しません。台帳とAPIMの同期は [Portal](../setup/12-deploy-portal.md)の管理機能で行い、配備資材の`keySubscriptions`を通常のキー台帳へ置き換えません。
 
 社員経路は既存APIの購読必須設定を変えず、固定ID `core-entra-model-users`・所有marker `core-owned-entra-model-users-v1`の専用open Productへ業務API正本・生成MCP・設定済みCM保護入口を自動的に追加します。CMブラウザー入口は含めません。専用Productは`subscriptionRequired=false`ですが、APIはtrueです。これにより有効キーの標準検証と既存Product policyを維持します。API／all-APIs／serviceキーにProduct policyが適用されない既存仕様も保持します。キーなしでは専用Productのbaseからglobal/APIのJWT検証を継承します。専用Productに所属させるAPI集合は配備処理で自動生成・読戻し照合し、要求ごとのBearer分岐条件には埋め込みません。
 
@@ -76,7 +76,7 @@ Graph `/me`は、入口のキーまたはBearer認可に加えて`X-Core-Connect
 
 未接続時は409 `ConnectionRequired`と認証案内を返します。Portalのサーバー処理は仮セッションと取引を保存し、利用者へ`loginUrl`を案内します。statusは状態・本人・期限のメタデータを返し、セッション平文を再発行しません。確認した本人がPortalのログイン本人と一致した場合に、保存済みセッションで元の要求を再開します。
 
-現在の本人接続はv2です。無操作期限・最長期限・日次更新、共有保存先の排他・世代比較、logout・全失効・接続解除を別々に扱います。契約は [CM接続手順](../setup/credential-manager-login.md)、[プールとセッション](credential-pool-design.md)、[クライアント実装](connection-session-clients.md)を参照してください。
+現在の本人接続はv2です。無操作期限・最長期限・日次更新、共有保存先の排他・世代比較、logout・全失効・接続解除を別々に扱います。契約は [CM接続手順](credential-manager-login.md)、[プールとセッション](credential-pool-design.md)、[クライアント実装](connection-session-clients.md)を参照してください。
 
 キー用とユーザー用のcs2セッションは相互流用せず、Bearerへ切り替えるときはCM startから別セッションを取得します。同じtid+oidの既存CM接続は再利用できます。この変更にはSQL migration v4・Brokerイメージ・CMポリシーの更新が必要で、実SQL移行とBearer CMサインインの受入は未実施です。
 
@@ -92,7 +92,7 @@ HTTP・SSE・WebSocketの接続開始には、対象ポリシーの購読単位�
 
 ## 配備・確認の入口
 
-`azd up`は共通基盤の完了後、Gateway→Portalを順に配備します。Gateway更新は同じparams・配備記録を使い、計画確認後に`--execute`を付けて実行します。DB・CM・Broker起動確認の後にAPIと共通ポリシーを反映します。詳細は [運用手順](../operations.md)を参照してください。
+初回は`azd up`で共通基盤を作り、Entra登録後にGateway、Portalの順で個別配備します。Gateway更新は同じparams・配備記録を使い、計画確認後に`--execute`を付けて実行します。DB・CM・Broker起動確認の後にAPIと共通ポリシーを反映します。詳細は [運用手順](../operations.md)を参照してください。
 
 共通ルール・ローカル実行は [DEVELOPMENT.md](../../DEVELOPMENT.md)、動作の受入条件・結果は [動作テスト仕様書](../testing/integration-tests.md)、資材と構築・更新・撤去の受入条件・結果は [構築テスト仕様書](../testing/construction-tests.md)で管理します。構築・登録成功だけで業務APIの実通信を合格にしません。
 

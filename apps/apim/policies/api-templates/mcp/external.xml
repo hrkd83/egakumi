@@ -1,0 +1,10 @@
+<fragment>
+  <!-- 外部MCP APIへ展開する差分。固定backend、transportのURI、CM応答処理を使います。 -->
+  <!-- stream-pre-base-start -->__MCP_PRM_GUARD_XML__<!-- stream-pre-base-end -->
+  <!-- stream-observe-inbound-start -->__PROTOCOL_QUERY_OBSERVATION_XML__<!-- stream-observe-inbound-end -->
+  <!-- stream-backend-start --><set-backend-service backend-id="__BACKEND_ID__" /><!-- stream-backend-end -->
+  <!-- stream-route-start -->__MCP_PROXY_ROUTE_XML__<!-- stream-route-end -->
+  <!-- stream-credential-outbound-start -->__CREDENTIAL_CONNECTION_OUTBOUND_XML__<!-- stream-credential-outbound-end -->
+  <!-- stream-observe-outbound-start -->__PROTOCOL_QUERY_OUTBOUND_XML__<!-- stream-observe-outbound-end -->
+  <!-- stream-observe-error-start -->__PROTOCOL_QUERY_ERROR_XML__<!-- stream-observe-error-end -->
+</fragment>

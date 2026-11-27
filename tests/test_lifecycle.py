@@ -18,6 +18,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from deployment import lifecycle
 from deployment.helpers import cleanup
+from deployment.helpers.audit_evidence import evidence_policy_id
 from deployment.helpers import prepare_secrets as secret_preparation
 from deployment.helpers.configuration import normalize_configuration
 from configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
@@ -98,7 +99,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         for path in (lifecycle.ROOT, self.paths.parameters, self.paths.state / "latest.json",
                      self.paths.state / "capacity.json"):
             self.assertTrue(path.resolve().is_relative_to(self.root.resolve()))
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 19)
+        transport = self.preprovision_transport()
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
@@ -116,7 +117,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                             for call in lifecycle.protected_json.call_args_list))
 
     def test_preprovision_hands_only_initial_generation_to_native_azd_after_recording_provenance(self):
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 19)
+        transport = self.preprovision_transport()
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
@@ -140,7 +141,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
     def test_api_center_recovery_runs_after_monitoring_and_before_core_inputs(self):
         """5RGを作る監視段階の出力を使い、復元成功後だけ本体入力を用意する。"""
         events = []
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 19)
+        transport = self.preprovision_transport()
         outputs = self.outputs()
 
         def recovery(config, actual_outputs, actual_transport):
@@ -248,8 +249,10 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertNotIn("services", outputs)
         actual = lifecycle.state_from_outputs(self.config, outputs)
         self.assertEqual(actual["serviceResourceIds"], outputs["cleanup"]["serviceResourceIds"])
-        self.assertEqual(set(actual["serviceResourceIds"]), {"keyVault", "foundry", "apim"})
-        self.assertEqual(actual["serviceLocations"], {"keyVault": "japaneast", "foundry": "eastus2", "apim": "japaneast"})
+        self.assertEqual(set(actual["serviceResourceIds"]), {"keyVault", "certificateVault", "foundry", "apim"})
+        self.assertTrue(actual["serviceResourceIds"]["certificateVault"].endswith("/vaults/kvtls-" + self.config["resourceStem"]))
+        self.assertEqual(actual["serviceLocations"], {
+            "keyVault": "japaneast", "certificateVault": "japaneast", "foundry": "eastus2", "apim": "japaneast"})
         self.assertNotIn("sshPublicKeyFile", json.dumps(actual))
 
     def test_registered_providers_only_read_and_never_register(self):
@@ -292,7 +295,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
 
     def test_first_up_prepares_monitoring_without_a_prior_state_or_seed_deployment(self):
         parameter_path, state_path = self.paths.parameters, self.paths.state / "latest.json"
-        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 19)
+        transport = self.preprovision_transport()
         self.assertFalse(state_path.exists())
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -312,7 +315,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(parameters["sshPublicKey"]["value"], "LOCAL_ONLY_FIXTURE")
         self.assertEqual(parameters["existingNetworkSecurityGroupNames"]["value"], [])
         self.assertEqual(parameters["existingRouteTableRoutes"]["value"],
-                         {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "aca", "certificate")})
+                         {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "aca", "certificate", "broker")})
+        self.assertEqual(transport.responses, [])
 
     def test_retry_with_disabled_deleted_zero_policies_reaches_core_parameters(self):
         self.config['monitoring']['auditImmutabilityMode'] = 'Disabled'
@@ -385,6 +389,36 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                 lifecycle.preprovision(self.config)
         deploy.assert_not_called()
         self.assertFalse(transport.mutations())
+
+    def test_core_handoff_can_manage_body_worm_while_preserving_locked_diagnostic_policies(self):
+        self.config['monitoring']['auditImmutabilityMode'] = 'Locked'
+        self.config['auditEvidence'] = {'enabled': True, 'payloadImmutabilityMode': 'Locked',
+                                        'payloadRetentionDays': 2557, 'eventHubsSku': 'Premium'}
+        absent = {'statusCode': 404, 'headers': {}, 'body': None}
+        body_id = evidence_policy_id(self.config)
+        existing_body = response_policy('Locked', append=False)
+        existing_body['body']['id'] = body_id
+        diagnostic_id = (f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/{self.config['resourceGroupNames']['monitor']}"
+                         '/providers/Microsoft.Storage/storageAccounts/sttestegakumijp/blobServices/default/containers/'
+                         'insights-logs-gatewaylogs/immutabilityPolicies/default')
+        outputs = self.outputs()
+        outputs['auditStorage'] = {'immutabilityMode': 'Locked', 'retentionInDays': 2557,
+                                   'immutabilityPolicyIds': [diagnostic_id]}
+        for policy_response, retained in ((absent, [diagnostic_id]), (existing_body, [body_id, diagnostic_id])):
+            transport = self.preprovision_transport(body_policy=policy_response)
+            with self.subTest(retained=retained), mock.patch.object(lifecycle, 'local_preflight'), \
+                    mock.patch.object(lifecycle, 'azure_preflight'), mock.patch.object(lifecycle, 'register_providers'), \
+                    mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
+                    mock.patch.object(lifecycle, 'capacity_preflight'), mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
+                    mock.patch.object(lifecycle, 'deploy_phase', return_value=outputs), \
+                    mock.patch.object(lifecycle, 'lock_and_verify_policies'), \
+                    mock.patch.object(lifecycle, 'configure_app_insights_cap'), contextlib.redirect_stdout(io.StringIO()):
+                lifecycle.preprovision(self.config)
+                params = json.loads(self.paths.parameters.read_text(encoding='utf-8'))['parameters']
+                self.assertTrue(params['manageAuditImmutabilityPolicies']['value'])
+                self.assertEqual(params['retainedAuditImmutabilityPolicyIds']['value'], retained)
+                self.assertFalse(transport.mutations())
+                self.assertEqual(transport.responses, [])
 
 
     def test_failed_capacity_prevents_billable_preparation_after_free_provider_registration(self):
@@ -501,16 +535,16 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.prepare_nsg.assert_not_called()
         self.complete_nsg.assert_not_called()
 
-    def test_new_build_and_https_reup_check_portal_before_staging_and_core_inputs(self):
+    def test_new_build_and_https_reup_check_backend_before_staging_and_core_inputs(self):
         for existing in (False, True):
             events = []
             if existing:
                 lifecycle._save_deployment_state(self.config, self.outputs())
             else:
                 (self.paths.state / 'latest.json').unlink(missing_ok=True)
-            transport = ScriptedTransport([{'statusCode': 404, 'body': None}] * 18)
-            self.backend_tls_gate.side_effect = lambda *a, **kw: events.append('portal-gate') or {
-                'newGateway': not existing, 'httpBackendVerified': existing}
+            transport = self.preprovision_transport()
+            topology = {'newGateway': False, 'protocol': 'Https', 'port': 443, 'portalProbe': '/api/health'} if existing else {'newGateway': True}
+            self.backend_tls_gate.side_effect = lambda *a, **kw: events.append('backend-tls') or topology
             self.prepare_nsg.side_effect = lambda *a, **k: events.append('nsg-stage') or {'azureWrites': 0}
             original_write = lifecycle.write_arm_parameters
             def write_core(*args):
@@ -526,93 +560,30 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                  mock.patch.object(lifecycle, 'deploy_phase', side_effect=lambda *a, **k: events.append('monitoring') or self.outputs()), \
                  mock.patch.object(lifecycle, 'lock_and_verify_policies'), \
                  mock.patch.object(lifecycle, 'configure_app_insights_cap'), \
-                 mock.patch.object(lifecycle, 'discover_existing_apim_egress_fqdns', return_value=[]), \
                  mock.patch.object(lifecycle, 'write_arm_parameters', side_effect=write_core), \
                  contextlib.redirect_stdout(io.StringIO()):
                 lifecycle.preprovision(self.config)
-            self.assertEqual(events, ['authentication', 'providers', 'portal-gate', 'secret-inputs',
-                                      'monitoring', 'portal-gate', 'nsg-stage', 'core-inputs'])
+            self.assertEqual(events, ['authentication', 'providers', 'backend-tls', 'secret-inputs',
+                                      'monitoring', 'backend-tls', 'nsg-stage', 'core-inputs'])
             self.assertEqual(json.loads(self.paths.parameters.read_text(encoding="utf-8"))['parameters']['phase']['value'], 'core')
             self.assertFalse(transport.mutations())
+            self.assertEqual(transport.responses, [])
 
     def test_old_http_preprovision_stops_before_secret_preparation_monitoring_and_nsg_changes(self):
         lifecycle.protected_json(self.paths.parameters, {'old': 'PRIVATE_INPUT_FIXTURE'})
         prior = lifecycle._save_deployment_state(self.config, self.outputs())
-        self.backend_tls_gate.side_effect = ValueError('Migrate the existing HTTP backend to inspected HTTPS first')
+        self.backend_tls_gate.side_effect = ValueError('Existing App Gateway requires a separate migration to the inspected HTTPS backend contract')
         with mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
              mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport'), \
              mock.patch.object(lifecycle, 'load_secret_inputs') as secrets, \
              mock.patch.object(lifecycle, 'prepare_grpc_secret') as ingress, \
              mock.patch.object(lifecycle, 'deploy_phase') as deploy:
-            with self.assertRaisesRegex(ValueError, 'Migrate'):
+            with self.assertRaisesRegex(ValueError, 'requires a separate migration'):
                 lifecycle.preprovision(self.config)
         for boundary in (secrets, ingress, deploy, self.prepare_nsg):
             boundary.assert_not_called()
         self.assertFalse(self.paths.parameters.exists())
         self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8")), prior)
-
-    def test_old_http_preup_stops_before_azd_environment_or_ingress_mutation(self):
-        lifecycle.protected_json(self.paths.params, {})
-        self.backend_tls_gate.side_effect = ValueError('Migrate the existing HTTP backend to inspected HTTPS first')
-        with mock.patch.object(lifecycle, 'load_configuration', return_value=self.config), \
-             mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
-             mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport'), \
-             mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
-             mock.patch.object(lifecycle, 'prepare_grpc_secret') as ingress, \
-             mock.patch.object(lifecycle, 'write_arm_parameters') as write, \
-             mock.patch.object(lifecycle, 'run') as cli, contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(lifecycle.main(['preup', '--config', str(self.paths.params)]), 1)
-        for boundary in (cli, ingress, write, self.prepare_nsg):
-            boundary.assert_not_called()
-
-    def test_preup_new_build_and_reup_gate_precedes_environment_and_input_registration(self):
-        lifecycle.protected_json(self.paths.params, {})
-        for existing in (False, True):
-            events = []
-            self.backend_tls_gate.side_effect = lambda *a, **kw: events.append('portal-gate') or {'newGateway': not existing}
-            names = ['nsg-' + self.config['resourceStem'] + '-' + suffix
-                     for suffix in ('agw', 'apim', 'pep', 'vm', 'aca')] if existing else []
-            def environment(arguments, **kwargs):
-                self.assertEqual(arguments[:3], ['azd', 'env', 'set'])
-                events.append('input-registration' if arguments[3] == 'EGAKUMI_ARM_PARAMETERS_FILE' else 'environment')
-                return {}
-            def hostnames(*args, custom_properties_out=None):
-                if existing and custom_properties_out is not None:
-                    custom_properties_out['apim-' + self.config['resourceStem'] + '-abc123'] = {
-                        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'False'}
-                return {}
-            with self.subTest(existing=existing), \
-                 mock.patch.object(lifecycle, 'load_configuration', return_value=self.config), \
-                 mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
-                 mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport'), \
-                 mock.patch.object(lifecycle, '_prepare_management_serial_password', side_effect=lambda *a:
-                     events.append('serial-preparation') or ('' if existing else 'PRIVATE_SERIAL_FIXTURE')), \
-                 mock.patch.object(lifecycle, '_confirm_management_serial_target', side_effect=lambda *a:
-                     events.append('serial-confirmation')), \
-                 mock.patch.object(lifecycle, '_management_serial_generation', side_effect=lambda config,password:
-                     'INITIAL_SERIAL_GENERATION_FIXTURE' if password else ''), \
-                 mock.patch.object(lifecycle, '_record_management_serial_creation', side_effect=lambda *a,**kw:
-                     events.append('serial-provenance')), \
-                 mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
-                 mock.patch.object(lifecycle, 'run', side_effect=environment), \
-                 mock.patch.object(lifecycle, 'discover_existing_network_security_groups', return_value=names), \
-                 mock.patch.object(lifecycle, 'discover_existing_route_table_routes', return_value={}), \
-                 mock.patch.object(lifecycle, 'discover_existing_apim_hostnames', side_effect=hostnames), \
-                 mock.patch.object(lifecycle, 'discover_existing_portal_app', return_value=existing):
-                self.assertEqual(lifecycle.main(['preup', '--config', str(self.paths.params)]), 0)
-            self.assertEqual(events, ['portal-gate', 'environment', 'environment', 'environment',
-                                     'serial-preparation', 'serial-confirmation', 'serial-provenance', 'input-registration'])
-            parameters = json.loads(self.paths.parameters.read_text(encoding="utf-8"))['parameters']
-            self.assertEqual(parameters['existingNetworkSecurityGroupNames']['value'], names)
-            self.assertEqual(parameters['existingPortalApp']['value'], existing)
-            self.assertEqual(parameters['existingApimCustomProperties']['value'], {
-                'apim-' + self.config['resourceStem'] + '-abc123': {
-                    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'False'}} if existing else {})
-            self.assertTrue(parameters['l7IngressSecret']['value'])
-            self.assertNotIn('managementAdminPassword', parameters)
-            self.assertEqual(parameters['managementInitialSerialGeneration']['value'], '' if existing else 'INITIAL_SERIAL_GENERATION_FIXTURE')
-            self.assertNotIn('PRIVATE_SERIAL_FIXTURE', json.dumps(parameters))
-            self.assertNotIn('grpc', parameters['configuration']['value']['gateway'])
 
     def test_native_core_failed_completion_keeps_outputs_and_cleans_secret_input(self):
         outputs = self.outputs()
@@ -638,8 +609,9 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                 'outputs': {key: {'value': value} for key, value in outputs.items()}}}},
         ])
         existing_names = ['nsg-' + self.config['resourceStem'] + '-' + suffix
-                          for suffix in ('agw', 'apim', 'pep', 'vm', 'aca')]
-        self.backend_tls_gate.side_effect = lambda *a, **kw: events.append('portal-gate') or {'httpBackendVerified': True}
+                          for suffix in ('agw', 'apim', 'pep', 'vm', 'aca', 'certificate', 'broker')]
+        self.backend_tls_gate.side_effect = lambda *a, **kw: events.append('backend-tls') or {
+            'newGateway': False, 'protocol': 'Https', 'port': 443, 'portalProbe': '/api/health'}
         self.prepare_nsg.side_effect = lambda *a, **k: events.append('nsg-stage') or {'azureWrites': 0}
         original_save = lifecycle._save_deployment_state
         def save(*args):
@@ -696,7 +668,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
 
     def test_direct_core_saves_outputs_then_verifies_complete_set_then_bootstraps_ingress(self):
         events, parameters = self.direct_core()
-        self.assertEqual(events, ['portal-gate', 'nsg-stage', 'saved-state', 'nsg-complete', 'l7-bootstrap'])
+        self.assertEqual(events, ['backend-tls', 'nsg-stage', 'saved-state', 'nsg-complete', 'l7-bootstrap'])
         self.assertEqual(parameters['sshPublicKey']['value'], 'PRIVATE_SSH_FIXTURE')
         self.assertEqual(parameters['l7IngressSecret']['value'], 'PRIVATE_L7_FIXTURE')
         self.assertIn('api.example.invalid', parameters['configuration']['value']['generatedApimServiceFqdns'])
@@ -704,7 +676,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(parameters['existingApimCustomProperties']['value'], {
             'apim-' + self.config['resourceStem'] + '-abc123': {
                 'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'False'}})
-        self.assertEqual(len(parameters['existingNetworkSecurityGroupNames']['value']), 5)
+        self.assertEqual(parameters['existingNetworkSecurityGroupNames']['value'], [
+            f"nsg-{self.config['resourceStem']}-{suffix}" for suffix in ('agw', 'apim', 'pep', 'vm', 'aca', 'certificate', 'broker')])
         self.assertTrue(parameters['existingPortalApp']['value'])
         self.assertNotIn('PRIVATE_', json.dumps(parameters['configuration']['value']))
         self.assertEqual(json.loads((self.paths.state / 'ingress-bootstrap.json').read_text(encoding="utf-8")),
@@ -716,19 +689,19 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
 
     def test_direct_core_failed_completion_preserves_actual_deployment_state(self):
         events, _ = self.direct_core(completion_failure=True)
-        self.assertEqual(events, ['portal-gate', 'nsg-stage', 'saved-state', 'nsg-complete'])
+        self.assertEqual(events, ['backend-tls', 'nsg-stage', 'saved-state', 'nsg-complete'])
         self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8"))['outputs'], self.outputs())
         self.assertFalse((self.paths.state / 'ingress-bootstrap.json').exists())
 
     def test_upgrade_journal_preserves_repeated_events_and_separate_attempts(self):
-        first = lifecycle.upgrade_journal(self.config, 'portal-http80')
+        first = lifecycle.upgrade_journal(self.config, 'ingress-endpoint')
         first('gateway-before', {'value': 'first-snapshot'})
         first('gateway-before', {'value': 'second-snapshot'})
-        second = lifecycle.upgrade_journal(self.config, 'portal-http80')
+        second = lifecycle.upgrade_journal(self.config, 'ingress-endpoint')
         second('gateway-before', {'value': 'next-attempt'})
-        directories = list((self.paths.state / 'portal-http80').iterdir())
+        directories = list((self.paths.state / 'ingress-endpoint').iterdir())
         self.assertEqual(len(directories), 2)
-        snapshots = list((self.paths.state / 'portal-http80').glob('*/*.json'))
+        snapshots = list((self.paths.state / 'ingress-endpoint').glob('*/*.json'))
         self.assertEqual(len(snapshots), 3)
         self.assertEqual({json.loads(path.read_text(encoding="utf-8"))['value'] for path in snapshots},
                          {'first-snapshot', 'second-snapshot', 'next-attempt'})

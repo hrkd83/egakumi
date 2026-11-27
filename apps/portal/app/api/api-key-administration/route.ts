@@ -1,9 +1,9 @@
 import { getAuthEnvironment } from "@/lib/auth-environment";
 import { readPortalPrincipal } from "@/lib/auth-session";
 import { handleApiKeyAdministration } from "@/lib/api-key-administration/http";
-import { getApiKeyAdministrationService } from "@/lib/api-key-administration/service";
+import { getPortalApiKeyAdministrationService } from "@/lib/subscription-service/client";
 
-const dependencies = { readActor: readPortalPrincipal, readOrigin: () => getAuthEnvironment().baseURL, getService: getApiKeyAdministrationService };
+const dependencies = { readActor: readPortalPrincipal, readOrigin: () => getAuthEnvironment().baseURL, getService: getPortalApiKeyAdministrationService };
 
 /** 管理グループの現在メンバーだけに、登録済み所有グループの状態を返します。 */
 export async function GET(request: Request): Promise<Response> { return handleApiKeyAdministration(request, dependencies); }

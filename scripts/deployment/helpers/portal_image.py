@@ -32,6 +32,10 @@ TOP_LEVEL_FILES = frozenset({
     'Dockerfile', '.dockerignore', 'package.json', 'package-lock.json',
     'next.config.ts', 'tsconfig.json', 'proxy.ts',
 })
+SUBSCRIPTION_ENTRYPOINTS = (
+    'subscription-admin/server.mjs',
+    'subscription-profile/server.mjs',
+)
 SOURCE_EXTENSIONS = {
     'app': {'.ts', '.tsx', '.css', '.json', '.ico', '.svg', '.png', '.jpg', '.jpeg', '.webp', '.avif'},
     'components': {'.ts', '.tsx', '.css'},
@@ -120,8 +124,8 @@ def allowed_source_path(name):
 def source_bundle(root=REPOSITORY):
     """公開資材を再現可能なtarへまとめる。node_modulesや.envは参照しない。"""
     source = Path(root) / 'apps/portal'
-    if source.is_symlink():
-        raise ValueError('Portal source directory must not be a symbolic link')
+    if source.parent.is_symlink() or source.is_symlink():
+        raise ValueError('Portal source directories must not be symbolic links')
     files = [source / name for name in TOP_LEVEL_FILES]
     for directory in SOURCE_EXTENSIONS:
         folder = source / directory
@@ -135,27 +139,29 @@ def source_bundle(root=REPOSITORY):
                         and allowed_source_path(path.relative_to(source).as_posix())):
                     files.append(path)
     files.extend(source / name for name in EXTRA_FILES if (source / name).exists())
-    files = sorted(set(files), key=lambda path: path.relative_to(source).as_posix())
-    if len(files) > 1000:
+    paths = {path.relative_to(source).as_posix(): (path, source) for path in files}
+    for name in SUBSCRIPTION_ENTRYPOINTS:
+        paths['services/' + name] = (source.parent / name, source.parent)
+    if len(paths) > 1000:
         raise ValueError('Portal source contains too many files for the inline build')
     if not (source / 'app').is_dir() or not (source / 'sql/001_initial.sql').is_file():
         raise ValueError('Portal application or SQL sources are missing')
     total = 0
     raw = io.BytesIO()
     with tarfile.open(fileobj=raw, mode='w') as archive:
-        for path in files:
+        for name, (path, allowed_root) in sorted(paths.items()):
             if (path.is_symlink() or any(parent.is_symlink() for parent in path.parents if parent != source.parent)
-                    or not path.is_file() or not path.resolve().is_relative_to(source.resolve())):
+                    or not path.is_file() or not path.resolve().is_relative_to(allowed_root.resolve())):
                 raise ValueError('Portal build source must be a regular file')
             if path.stat().st_size > MAX_FILE_BYTES:
                 raise ValueError('Portal build source file exceeds the size limit')
             data = path.read_bytes()
-            if path.suffix in {'.ts', '.tsx', '.css', '.json', '.md', '.sh', '.sql', '.svg'} or path.name in {'Dockerfile', '.dockerignore'}:
+            if path.suffix in {'.mjs', '.ts', '.tsx', '.css', '.json', '.md', '.sh', '.sql', '.svg'} or path.name in {'Dockerfile', '.dockerignore'}:
                 data = data.decode('utf-8').replace('\r\n', '\n').encode('utf-8')
             total += len(data)
             if total > MAX_SOURCE_BYTES:
                 raise ValueError('Portal build source exceeds the size limit')
-            item = tarfile.TarInfo(path.relative_to(source).as_posix())
+            item = tarfile.TarInfo(name)
             item.size, item.mode, item.mtime = len(data), 0o600, 0
             archive.addfile(item, io.BytesIO(data))
         for name, snapshot in ((MODEL_CATALOG_PATH, model_catalog_snapshot(root)),

@@ -35,8 +35,8 @@ _native_size = ET.fromstring(render_audit_policy(PII.read_text(encoding='utf-8')
 NATIVE_SIZE_EXPRESSION = _native_size[2:-1]
 RESULT_EXPRESSION = expression(PII, "./outbound/set-variable[@name='piiResult']", "value")
 RETRY_EXPRESSION = expression(PII, "./outbound/set-variable[@name='piiRetryAfter']", "value")
-MCP_AUTH_EXPRESSION = expression(POLICIES / "api-templates" / "mcp.xml", "./inbound/set-variable[@name='gatewayDecision']", "value")
-REST_AUTH_EXPRESSION = actual_expression("gateway.xml", "gatewayDecision")
+MCP_AUTH_EXPRESSION = expression(POLICIES / "api-templates" / "mcp/generated.xml", "./inbound/set-variable[@name='gatewayDecision']", "value")
+REST_AUTH_EXPRESSION = actual_expression("rest.xml", "gatewayDecision")
 
 CSHARP = r'''
 using System;
@@ -674,11 +674,11 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
         self.assertIsNotNone(anonymous)
         self.assertEqual(common.findall(".//validate-azure-ad-token"), [])
         self.assertEqual(common.findall(".//set-header[@name='WWW-Authenticate']"), [])
-        for filename in ("mcp.xml", "gateway.xml"):
+        for filename in ("generated.xml", "rest.xml"):
             tree = ET.fromstring(render_audit_policy(
                 policy_fixture_path(POLICIES, filename).read_text(encoding="utf-8")))
             self.assertEqual(tree.findall(".//set-header[@name='WWW-Authenticate']"), [])
-            if filename == "gateway.xml":
+            if filename == "rest.xml":
                 self.assertIsNotNone(tree.find("./inbound/include-fragment[@fragment-id='core-api-authentication-result']"))
                 decision = REST_AUTH_EXPRESSION
             else:
@@ -686,7 +686,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
             self.assertIn("context.Subscription", decision)
 
     def test_generated_mcp_never_buffers_protocol_response(self):
-        text = (POLICIES / "api-templates" / "mcp.xml").read_text()
+        text = (POLICIES / "api-templates" / "mcp/generated.xml").read_text()
         self.assertNotIn("context.Response.Body", text)
         tree = ET.fromstring(text)
         self.assertIsNone(tree.find("./outbound/set-body"))

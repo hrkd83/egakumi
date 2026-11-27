@@ -152,7 +152,7 @@ def verify_inline_profiles(apim_id, transport, api_definitions):
         raise ValueError('Core API inventory is incomplete; publish all Core APIs before enabling profiles')
 
 
-def activate_profile_settings(apim_id, transport, api_definitions, *, timeout=180, sleep=time.sleep, monotonic=time.monotonic):
+def activate_profile_settings(apim_id, transport, api_definitions, *, expected_url=None, timeout=180, sleep=time.sleep, monotonic=time.monotonic):
     """固定fragmentとKV参照が準備された後にだけ、プロファイル参照を有効化する。"""
     fragment = checked(transport, 'GET', apim_id + '/policyFragments/core-rate-limit?api-version=' + APIM_API,
                        label='Read subscription profile policy')
@@ -161,6 +161,11 @@ def activate_profile_settings(apim_id, transport, api_definitions, *, timeout=18
                for node in fragment_xml.iter()):
         raise ValueError('Deploy the current Gateway definitions before enabling Portal subscription profiles')
     verify_inline_profiles(apim_id, transport, api_definitions)
+    if expected_url is not None:
+        endpoint = checked(transport, 'GET', apim_id + '/namedValues/' + PREFIX + 'url?api-version=' + APIM_API,
+                           label='Read subscription profile endpoint').get('properties', {})
+        if endpoint.get('secret') is not False or endpoint.get('value') != expected_url:
+            raise ValueError('Subscription profile endpoint does not match the healthy dedicated application')
     deadline = monotonic() + timeout
     while True:
         secret = checked(transport, 'GET', apim_id + '/namedValues/' + PREFIX + 'secret?api-version=' + APIM_API,

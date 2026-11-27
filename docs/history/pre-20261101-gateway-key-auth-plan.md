@@ -165,7 +165,7 @@ URLにキーを送るとAPIMへ到着する前のApp Gateway等で記録され�
 }
 ```
 
-本人接続が必要なAPIは、CM接続用の`start`・`status`・`logout`と、ブラウザの`launch`・`callback`を使う。これらはAPIM上の専用APIとして実装し、取引・購読・確認済み本人・接続の対応を保持する。[本人接続の手順](../setup/credential-manager-login.md)
+本人接続が必要なAPIは、CM接続用の`start`・`status`・`logout`と、ブラウザの`launch`・`callback`を使う。これらはAPIM上の専用APIとして実装し、取引・購読・確認済み本人・接続の対応を保持する。[本人接続の手順](../reference/credential-manager-login.md)
 
 キー方式の標準導入では、Gateway用scopeの公開や管理者同意、Gateway共通ログイン用シークレットの準備を必須工程にしない。Portal自身のログイン、Azure管理、下流サービスの認証は、それぞれの手順に残す。
 

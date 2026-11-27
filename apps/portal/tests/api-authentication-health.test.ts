@@ -21,6 +21,7 @@ test("試用OAuthの準備失敗はPortal本体を停止させず、同時プロ
     "@/lib/api-keys/limit-repository": "export const getApiKeyLimitRepository=()=>({getGatewayProfile:async()=>{}})",
     "@/lib/company-administration/repository": "export const getCompanyRepository=()=>({assertReady:async()=>{}})",
     "@/lib/connection-session/store": "export const assertConnectionSessionStoreReady=async()=>{}",
+    "@/lib/subscription-service/client": "export const subscriptionManagerOrigin=()=>null",
     "@/lib/api-auth/settings": `export const apiAuthenticationEnabled=()=>${access}.enabled`,
     "@/lib/api-auth/service": `export const scheduleApiAuthCleanup=()=>{${access}.cleanup++};
       export const getPortalApiAuthentication=()=>({assertReady:async()=>{${access}.probes++;throw new Error('synthetic key failure')}})`,

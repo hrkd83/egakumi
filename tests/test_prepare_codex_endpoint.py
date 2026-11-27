@@ -12,6 +12,7 @@ import unittest
 from configuration_fixtures import CORE
 from deployment.helpers.paths import LocalPaths, private_parent
 from deployment.helpers.private_permissions import protect_new_path
+from operations.common import lock_environment
 
 
 SCRIPT = CORE / "scripts" / "prepare_codex_endpoint.py"
@@ -27,13 +28,14 @@ class CodexEndpointTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.runtime = LocalPaths(Path(temporary.name), "test")
         self.output = self.runtime.root / "generated" / "codex" / "pilot01"
+        self.settings = self.runtime.secrets / "codex-endpoint.json"
         self.params = {
             "environmentName": "test",
             "entraTenantId": TENANT,
             "gateway": {"publicHostName": "gateway.example.com", "authentication": {"entra": {"audience": API}}},
-            "codex": {"clientId": CODEX},
         }
         self.save_json(self.runtime.params, self.params)
+        self.save_json(self.settings, {"clientId": CODEX})
 
     def save_json(self, destination, data):
         private_parent(destination, self.runtime.repository)
@@ -52,12 +54,22 @@ class CodexEndpointTests(unittest.TestCase):
     def read_toml(self, name):
         return tomllib.loads((self.output / name).read_text(encoding="utf-8"))
 
+    def test_bundle_rejects_a_busy_shared_environment_and_can_retry(self):
+        with lock_environment(self.runtime):
+            result = self.prepare("side-by-side")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Another operation is already running for this environment", result.stderr)
+            self.assertFalse(self.output.exists())
+        self.assertEqual(self.prepare("side-by-side").returncode, 0)
+
     def test_shared_defaults_keep_provider_selection_and_catalog_in_company_profile(self):
         catalog = {"models": [{"slug": "gpt-6-sol"}, {"slug": "codex-auto-review"}]}
         self.save_json(self.runtime.secrets / "codex-models.json", catalog)
-        self.save_json(self.runtime.secrets / "codex-endpoint.json", {"catalogInstallPath": CATALOG_PATH})
+        self.settings.unlink()
+        self.save_json(self.settings, {"clientId": CODEX, "catalogInstallPath": CATALOG_PATH})
         result = self.prepare("side-by-side", "--windows-catalog", "--redirect-port", "43128")
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "CODEX_BUNDLE_READY\n", ""))
+        self.assertEqual(json.loads(self.runtime.params.read_text()), self.params)
 
         base = self.read_toml("config.toml")
         profile = self.read_toml("aigateway.config.toml")
@@ -104,7 +116,8 @@ class CodexEndpointTests(unittest.TestCase):
     def test_catalog_cannot_carry_credentials_in_nested_metadata(self):
         catalog = {"models": [{"slug": "gpt-6-sol", "metadata": {"client-secret": "fixture"}}]}
         self.save_json(self.runtime.secrets / "codex-models.json", catalog)
-        self.save_json(self.runtime.secrets / "codex-endpoint.json", {"catalogInstallPath": CATALOG_PATH})
+        self.settings.unlink()
+        self.save_json(self.settings, {"clientId": CODEX, "catalogInstallPath": CATALOG_PATH})
         result = self.prepare("dedicated", "--windows-catalog")
         self.assertEqual((result.returncode, result.stdout), (1, ""))
         self.assertFalse(self.output.exists())
@@ -119,14 +132,22 @@ class CodexEndpointTests(unittest.TestCase):
         self.assertEqual(oauth["token_url"], f"https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/token")
 
     def test_rejects_wrong_oauth_role_and_does_not_print_protected_values(self):
-        self.runtime.params.unlink()
-        self.params["codex"]["clientId"] = API
-        self.save_json(self.runtime.params, self.params)
+        self.settings.unlink()
+        self.save_json(self.settings, {"clientId": API})
         result = self.prepare("dedicated")
         self.assertEqual((result.returncode, result.stdout), (1, ""))
         self.assertNotIn(API, result.stderr)
         self.assertNotIn(str(self.runtime.repository), result.stderr)
         self.assertFalse(self.output.exists())
+
+    def test_existing_deployment_params_can_supply_codex_client_id(self):
+        self.settings.unlink()
+        self.runtime.params.unlink()
+        self.save_json(self.runtime.params, {**self.params, "codex": {"clientId": CODEX}})
+        result = self.prepare("dedicated")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        oauth = self.read_toml("config.toml")["model_providers"]["aigateway"]["gateway_oauth"]
+        self.assertEqual(oauth["client_id"], CODEX)
 
     def test_rejects_parameters_from_another_environment(self):
         self.runtime.params.unlink()

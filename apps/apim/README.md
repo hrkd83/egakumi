@@ -1,8 +1,10 @@
 # APIMのAPI登録用資材
 
-共通基盤と同じparamsを、ルートの`python3 scripts/deploy_gateway.py --config <params> --execute`へ渡します。GatewayのDB・CM・認証窓口が必要な場合は先に配備し、準備完了後にこのフォルダーのAPIを登録します。`azd up`も`postup`からGateway配備コマンドを呼び、このBicepによるAPI登録まで実行します。`azd provision`は共通基盤までを対象とします。
+共通基盤と同じparamsを、ルートの`python3 scripts/deploy_gateway.py --config <params> --execute`へ渡します。GatewayのDB・CM・認証窓口が必要な場合は先に配備し、準備完了後にこのフォルダーのAPIを登録します。初回構築では、`azd up`による共通基盤の作成と、公開証明書のEntra登録を済ませてから[Gatewayを個別配備](../../docs/setup/11-deploy-gateway.md)します。
 
-標準API正本を常用で解決します。公開params/configの`apiDefinitions`と`publishApis`は廃止し、旧入力は空配列やfalseでも拒否します。標準定義の接続先は構築結果から解決し、API配列や環境固有URLをparamsへ書き戻しません。既存の非標準入力は無断変換せず、[移行条件](../../docs/setup/04-params.md#既存入力の移行を確認する)を確認します。今回の入力整理のAzure反映・全環境再構築E2Eは未実施です。
+Credential BrokerのBackendと名前付きの値は、専用内部CAEの既定ドメインからHTTPS URLを生成します。本人接続・Graph OBOの公開前にはBrokerの所属CAEとHTTPS ingressを照合します。 [Credential Brokerの配備境界](../credential-broker/README.md)
+
+標準API正本を常用で解決します。公開params/configの`apiDefinitions`と`publishApis`は廃止し、旧入力は空配列やfalseでも拒否します。標準定義の接続先は構築結果から解決し、API配列や環境固有URLをparamsへ書き戻しません。既存の非標準入力は無断変換せず、[移行条件](../../docs/setup/07-params.md#既存入力の移行を確認する)を確認します。今回の入力整理のAzure反映・全環境再構築E2Eは未実施です。
 
 配備CLIは、このBicepを一度コンパイルし、[要求の分割処理](deploy/publication_templates.py)で二つのARM要求へ分けます。最初の要求は既存APIMを参照するだけで、照合用の完成XMLと設定を生成します。次の要求はAPI等の資源を配備し、大きな照合用データの代わりに、その生成を特定する小さなIDを出力します。資源定義と生成式は同じ正本を使い、コメントや監査処理を削ってサイズを抑える方式にはしません。
 
@@ -10,7 +12,7 @@ CMのブラウザー受付を判定するC#に埋め込む真偽値は、ARMの�
 
 URLクエリは、API定義の`queryObservation`で指定した入口だけを観測します。HTTPの操作ID辞書`queryObservations`と、MCPのメソッド・公開相対path辞書`mcpQueryObservations`を生成し、サービス名やモデル形式から対象を推測しません。標準3ラベルと対象入口を維持し、任意の観測ラベルを複数APIで共有できます。観測・拒否を切り替えるmodeや、そのための名前付きの値は使いません。[運用時の確認](../../docs/operations/apim.md)を参照してください。
 
-queryの[観測部品](policies/fragments/request/core-query-observation/README.md)と[監査部品](policies/fragments/audit/core-query-telemetry/README.md)は、それぞれ同名XML／C#を持つ専用フォルダで管理します。C#と日本語説明を生成時にXMLへ組み込み、AzureのPolicy fragmentsでも読めるようにします。外部MCPには`protocol.xml`へ処理を差し込み、WebSocketには追加しません。棚卸⑦では観測専用化を承認し、要求ごとの`gatewayQueryObservation`は`route`・`httpMethod`・`presence`・`duplicates`だけを持ちます。この部品による400／500の拒否分岐を撤去し、観測できない値は`unknown`として扱います。
+queryの[観測部品](policies/fragments/request/core-query-observation/README.md)と[監査部品](policies/fragments/audit/core-query-telemetry/README.md)は、それぞれ同名XML／C#を持つ専用フォルダで管理します。C#と日本語説明を生成時にXMLへ組み込み、AzureのPolicy fragmentsでも読めるようにします。外部MCPのquery監査は`policies/api-templates/mcp/external.xml`で適用区画を指定します。棚卸⑦では観測専用化を承認し、要求ごとの`gatewayQueryObservation`は`route`・`httpMethod`・`presence`・`duplicates`だけを持ちます。この部品による400／500の拒否分岐を撤去し、観測できない値は`unknown`として扱います。
 
 ⑥で承認した有無・複数値の取得を維持し、件数区分`countBucket`の計算・出力を削除します。監査イベント名`query-guard`と`schemaVersion: 2`、`auditSchemaVersion: 2`を維持し、modeや拒否専用phaseは新規出力しません。他イベントのschema 1と旧query/schema 1のKQL読取り互換は別に保持する方針です。観測専用化のローカル改修・検証は完了し、Azureには未反映で、Azureへのまとめ反映と実接続の受入は未実施です。旧API参照・旧fragment・旧Named Valueの撤去は、新参照の反映後に行います。その後の[入力検査](policies/fragments/request/core-api-input-validation/README.md)ではquery制限・メソッド再確認・入口MIME一覧比較を撤去し、対象表の空の値`{}`で選んだ操作へ、Content-Type宣言の存在・1値・非空MIME部分という共通条件だけを適用します。操作登録とAPIMの照合は維持します。後段のMIME制御、URI変換・Speech転送・WAF・モデル本文検査は別の未棚卸項目であり、任意形式の受付やサービス互換性の確認完了とは扱いません。
 
@@ -36,7 +38,7 @@ WebSocket APIを登録すると、既存の監査用診断設定`core-audit`の�
 
 登録後は、初期サンプルの`echo-api`、`starter`／`unlimited`製品と、対象の製品・Echo APIだけに紐づく購読を整理します。既にない場合は何もしません。設定で明示した名前、接続先等を変更したEcho、業務APIやMCPが所属する製品は保持し、理由を`defaultSampleCleanup`へ記録します。通常の購読・全API用購読・マスター購読は削除しません。
 
-共通ポリシーは[policies/service.xml](policies/service.xml)です。All APIsへ登録する全体ポリシーと、各APIへ登録する[共有テンプレート3正本](policies/api-templates/README.md)を区別します。入口の保護設定は共通基盤を使い、CM関連の名前付きの値はGateway配備が用意します。各APIは`<base />`で共通ポリシーを継承します。本人接続が必要なAPIは[CM共通窓口](../../docs/setup/credential-manager-login.md)を利用します。
+共通ポリシーは[policies/service.xml](policies/service.xml)です。All APIsへ登録する全体ポリシーと、各APIへ登録する[共有テンプレート3正本](policies/api-templates/README.md)を区別します。入口の保護設定は共通基盤を使い、CM関連の名前付きの値はGateway配備が用意します。各APIは`<base />`で共通ポリシーを継承します。本人接続が必要なAPIは[CM共通窓口](../../docs/reference/credential-manager-login.md)を利用します。
 
 標準APIの追加・変更は[定義ファイルの管理方法](apis/README.md)を参照してください。APIファイルにモデルの配備やCMプロバイダーの設定を混在させず、モデルとCM共通定義はconfig、環境固有IDとアプリ登録・秘密参照はparamsで管理します。標準Graphは双方の`credentialProviders.graphDelegated`、追加providerは定義／登録の`additional[]`を論理名で照合します。
 

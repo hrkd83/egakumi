@@ -6,6 +6,7 @@ import base64
 import copy
 import contextlib
 import io
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -17,7 +18,7 @@ import xml.etree.ElementTree as ET
 
 from configuration_fixtures import (
     CORE, configuration, fixture, ssh_fixture_key, api_fixture,
-    profiled_api_fixture, connection_fixture, pii_fixture, pii_key_fixture,
+    profiled_api_fixture, connection_fixture, pii_fixture, pii_key_fixture, bind_credential_fixture_id,
 )
 from deployment.helpers.firewall_destinations import generated_apim_service_fqdns
 
@@ -29,6 +30,7 @@ class PublicSampleTests(unittest.TestCase):
         parameters = json.loads(manifest.read_text(encoding="utf-8"))
         options = json.loads((manifest.parent / parameters["configFile"]).read_text(encoding="utf-8"))
         raw = configuration.load_configuration_source(manifest)
+        bind_credential_fixture_id(raw)
         raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
         raw["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
         raw["entraTenantId"] = raw["azureTenantId"]
@@ -401,7 +403,7 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaises(configuration.ConfigurationError):
             self.normalize(raw)
         self.assertEqual(set(self.normalize()["network"]["subnetPrefixes"]),
-                         {"agw", "firewall", "apim", "pep", "management", "aca", "certificate"})
+                         {"agw", "firewall", "apim", "pep", "management", "aca", "broker", "certificate"})
 
     def test_names_are_derived_for_exact_five_groups(self):
         actual = self.normalize()
@@ -429,6 +431,7 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(configuration.ConfigurationError, "subscriptionId"):
             self.normalize(raw)
         raw["subscriptionId"], raw["azureTenantId"] = fixture()["subscriptionId"], fixture()["azureTenantId"]
+        bind_credential_fixture_id(raw)
         raw["entraTenantId"] = raw["azureTenantId"]
         raw["certificate"]["azureDnsSubscriptionId"] = raw["subscriptionId"]
         raw["certificate"]["azureDnsManagedIdentityResourceId"] = (
@@ -461,6 +464,26 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(configuration.ConfigurationError, "overlap"):
             self.normalize(raw)
 
+    def test_broker_subnet_uses_only_unused_declared_space_when_loading_old_input(self):
+        raw = fixture()
+        network = raw["network"]
+        network["subnetPrefixes"].pop("broker", None)
+        reserved = dict(network["subnetPrefixes"])
+        spare = ipaddress.ip_network(network["addressSpaces"][-1])
+        certificate = ipaddress.ip_network(reserved["certificate"])
+        remaining = next(subnet for subnet in spare.subnets(new_prefix=26) if not subnet.overlaps(certificate))
+        self.assertEqual(self.normalize(raw)["network"]["subnetPrefixes"], {
+            **reserved, "broker": str(remaining),
+        })
+        only_broker = next(remaining.subnets(new_prefix=27))
+        network["addressSpaces"][-1:] = [str(certificate), str(only_broker)]
+        self.assertEqual(self.normalize(raw)["network"]["subnetPrefixes"]["broker"], str(only_broker))
+        network["addressSpaces"].pop()
+        with self.assertRaisesRegex(configuration.ConfigurationError, r"subnetPrefixes\.broker"):
+            self.normalize(raw)
+        network["subnetPrefixes"]["broker"] = reserved["aca"]
+        with self.assertRaisesRegex(configuration.ConfigurationError, "overlap"):
+            self.normalize(raw)
 
     def test_bgp_route_propagation_defaults_to_enabled_per_route_table(self):
         raw = fixture()
@@ -1352,7 +1375,7 @@ class PolicySourceTests(unittest.TestCase):
     def setUp(self):
         from deployment.helpers.apim_audit import render_audit_policy
         self.root = ET.fromstring(render_audit_policy(
-            (CORE / "apps/apim/policies/api-templates/gateway.xml").read_text(encoding="utf-8")))
+            (CORE / "apps/apim/policies/api-templates/rest/rest.xml").read_text(encoding="utf-8")))
         self.guard = (CORE / "apps/apim/policies/fragments/request/core-api-target-validation/core-api-target-validation.cs").read_text(encoding="utf-8")
 
     def test_stateless_route_matching_is_delegated_without_model_revalidation(self):

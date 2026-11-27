@@ -1,7 +1,7 @@
 import "server-only";
 
 import { AzureCliCredential, ManagedIdentityCredential } from "@azure/identity";
-import { MssqlDialect } from "kysely";
+import { MssqlDialect, sql, type Kysely } from "kysely";
 import * as Tarn from "tarn";
 import * as Tedious from "tedious";
 import { getSqlEnvironment, type SqlEnvironment } from "./auth-environment.ts";
@@ -54,4 +54,15 @@ export function createAuthDatabase(settings: SqlEnvironment): { dialect: MssqlDi
     },
   });
   return { dialect, type: "mssql" };
+}
+
+/** 接続後のSQLメタデータから、Azure SQL Databaseの論理サーバーとDBを照合します。 */
+export async function isCanonicalAzureSqlDatabase(connection: Kysely<Record<string, unknown>>,
+  server: string, database: string): Promise<boolean> {
+  const row = (await sql<{ edition: number; server: string | null; database: string | null }>`SELECT
+    CAST(SERVERPROPERTY('EngineEdition') AS int) AS edition,
+    CAST(SERVERPROPERTY('ServerName') AS nvarchar(256)) AS server, DB_NAME() AS [database]`.execute(connection)).rows[0];
+  return row?.edition === 5
+    && row.server?.toLowerCase().replace(/\.database\.windows\.net$/, "") === server.toLowerCase().replace(/\.database\.windows\.net$/, "")
+    && row.database?.toLowerCase() === database.toLowerCase();
 }
