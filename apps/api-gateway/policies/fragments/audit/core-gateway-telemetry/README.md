@@ -80,4 +80,4 @@ APIMが取得した実要求の識別項目を監査へ出す処理と、公開�
 
 一部の認証失敗監査では、生成時に主体の読取り先を`gatewayEntraFailureSubject`へ差し替えます。認証後の会社設定・内部処理で停止しても、先行処理が確認できた本人を記録するためです。監査のために認証成功印を成功へ変える処理ではありません。
 
-[識別情報の出力契約](../../../../../../docs/reference/audit-identification.md)、[部品の生成・展開試験資材](../../../../../../tests/test_audit_fragments.py)、[識別情報の合成試験資材](../../../../../../tests/test_audit_identification.py)を参照してください。このREADMEの追加では過去の試験を再実行せず、Azureの反映・ログ受入も実行していません。既存の限定受入と全体の残件は[管理構成](../../../README.md)に従います。全`message`のC#化は統合待ちであり、文書追加を実装・実環境検証の完了として扱いません。
+[識別情報の出力契約](../../../../../../docs/reference/audit-identification.md)、[部品の生成・展開試験資材](../../../../../../tests/audit/test_audit_fragments.py)、[識別情報の合成試験資材](../../../../../../tests/audit/test_audit_identification.py)を参照してください。このREADMEの追加では過去の試験を再実行せず、Azureの反映・ログ受入も実行していません。既存の限定受入と全体の残件は[管理構成](../../../README.md)に従います。全`message`のC#化は統合待ちであり、文書追加を実装・実環境検証の完了として扱いません。

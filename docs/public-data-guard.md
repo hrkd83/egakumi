@@ -34,7 +34,7 @@ pre-pushは全履歴と送信対象を同じ検査プロセスで確認し、Git
 python3 -I -B scripts/check_public_data.py --staged --worktree
 python3 -I -B scripts/check_public_data.py --all-history
 python3 -I -B scripts/check_public_data.py --worktree-strict
-python3 -I -B -m unittest discover -s tests -p test_public_data_guard.py -v
+python3 -I -B -m unittest discover -s tests/repository -t . -p test_public_data_guard.py -v
 ```
 
 ローカル検査は、未承認のGUID・クラウドID・ホスト名・メール・IP・端末の絶対パス、代表的な秘密値、認証付きURLを対象にします。UTF-16、URL・Unicodeエスケープ、代表的なBase64も上限付きで検査します。未承認のバイナリー・埋め込み素材・過大なファイル・シンボリックリンクは要確認として停止します。履歴不足・読み取り失敗・不正なポリシー・検査起動失敗も成功扱いにしません。

@@ -1,0 +1,626 @@
+"""azdの各段階を正しい順で実行し、失敗時に止まることを検証する。
+
+偽のCLIとARM transportで事前確認・監視準備・構築後設定・撤去の境界を再現する。秘密の一時入力や保持設定を扱うため、成功系だけでなく中断時の挙動も調べる。
+"""
+from __future__ import annotations
+
+import copy
+from concurrent.futures import ThreadPoolExecutor
+import contextlib
+import io
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import ssl
+import tempfile
+import threading
+import unittest
+from unittest import mock
+from urllib.error import HTTPError, URLError
+
+from deployment import lifecycle
+from deployment.helpers import cleanup
+from deployment.helpers import prepare_secrets as secret_preparation
+from deployment.helpers.configuration import normalize_configuration
+from tests.support.configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
+
+
+from tests.support.lifecycle_fixtures import LifecycleFixture, ScriptedTransport, response_policy
+
+
+class CommandJsonTransportTests(unittest.TestCase):
+    """Windows CLIのUTF-8境界と、他OSの既存実行方法を合成JSONで検証する。"""
+
+    def test_windows_azure_cli_resolves_executable_and_uses_utf8_without_mutating_inputs(self):
+        arguments = ["az", "account", "show", "--output", "json"]
+        response = {"metadata": {"description": "通信要件の確認用テスト"}}
+        parent_environment = {"PATH": "/fixture/bin", "PARENT_FIXTURE": "retained",
+                              "PYTHONUTF8": "0", "PYTHONIOENCODING": "cp932"}
+        for supplied_environment in (None, {"CHILD_FIXTURE": "retained", "PYTHONUTF8": "0",
+                                            "PYTHONIOENCODING": "cp932"}):
+            with self.subTest(explicit_environment=supplied_environment is not None):
+                environment_before = copy.deepcopy(supplied_environment)
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0,
+                    json.dumps(response, ensure_ascii=False), "")
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which", return_value="/fixture/az.cmd") as executable, \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "nt"
+                    platform.environ = parent_environment
+                    self.assertEqual(lifecycle.run(arguments, payload={"description": "合成入力"},
+                        environment=supplied_environment), response)
+                executable.assert_called_once_with("az")
+                process.assert_called_once()
+                self.assertEqual(process.call_args.args[0], ["/fixture/az.cmd", *arguments[1:]])
+                options = process.call_args.kwargs
+                self.assertEqual(options["encoding"], "utf-8")
+                self.assertTrue(options["text"])
+                self.assertTrue(options["capture_output"])
+                self.assertEqual(json.loads(options["input"]), {"description": "合成入力"})
+                self.assertEqual(options["env"], {**parent_environment, **(supplied_environment or {}),
+                    "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+                self.assertEqual(arguments[0], "az")
+                self.assertEqual(supplied_environment, environment_before)
+                self.assertEqual(parent_environment["PYTHONUTF8"], "0")
+                self.assertEqual(parent_environment["PYTHONIOENCODING"], "cp932")
+
+    def test_windows_non_azure_json_child_uses_utf8_without_azure_resolution(self):
+        arguments = ["/fixture/pwsh", "-NoProfile", "-File", "/fixture/helper.ps1"]
+        completed = lifecycle.subprocess.CompletedProcess(arguments, 0, '{"result":"合成結果"}', "")
+        with mock.patch.object(lifecycle, "os") as platform, \
+             mock.patch.object(lifecycle.shutil, "which") as executable, \
+             mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+            platform.name = "nt"
+            platform.environ = {"PARENT_FIXTURE": "retained"}
+            self.assertEqual(lifecycle.run(arguments), {"result": "合成結果"})
+        executable.assert_not_called()
+        self.assertEqual(process.call_args.args[0], arguments)
+        self.assertEqual(process.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(process.call_args.kwargs["env"], {"PARENT_FIXTURE": "retained",
+            "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+        self.assertIsNone(process.call_args.kwargs["input"])
+
+    def test_windows_bicep_build_uses_explicit_parent_path_or_standard_compiler(self):
+        arguments = ["az", "bicep", "build", "--file", "/fixture/infra/main.bicep", "--stdout"]
+        cases = (
+            ({"BICEP_CLI": "/fixture/child/bicep.exe"}, {"BICEP_CLI": "/fixture/parent/bicep.exe"},
+             "/fixture/path/bicep.exe", "/fixture/child/bicep.exe", []),
+            ({}, {"BICEP_CLI": "/fixture/parent/bicep.exe"}, "/fixture/path/bicep.exe",
+             "/fixture/parent/bicep.exe", []),
+            ({}, {}, "/fixture/path/bicep.exe", "/fixture/path/bicep.exe", [mock.call("bicep")]),
+            ({}, {}, None, "/fixture/compiler-root/.azure/bin/bicep.exe", [mock.call("bicep")]),
+        )
+        for environment, parent_environment, path_compiler, expected_compiler, resolution in cases:
+            with self.subTest(compiler=expected_compiler):
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0, '{"description":"通信要件"}', "")
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which", return_value=path_compiler) as executable, \
+                     mock.patch.object(lifecycle.Path, "home", return_value=Path("/fixture/compiler-root")) as standard_home, \
+                     mock.patch.object(lifecycle.Path, "is_file", return_value=True), \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "nt"
+                    platform.environ = parent_environment
+                    self.assertEqual(lifecycle.run(arguments, environment=environment), {"description": "通信要件"})
+                self.assertEqual(executable.call_args_list, resolution)
+                self.assertEqual(standard_home.call_count, int(path_compiler is None and not environment and not parent_environment))
+                self.assertEqual(process.call_args.args[0], [expected_compiler, "build",
+                    "/fixture/infra/main.bicep", "--stdout"])
+                self.assertEqual(process.call_args.kwargs["encoding"], "utf-8")
+                self.assertEqual(process.call_args.kwargs["env"]["PYTHONUTF8"], "1")
+                self.assertEqual(process.call_args.kwargs["env"]["PYTHONIOENCODING"], "utf-8")
+                self.assertEqual(arguments, ["az", "bicep", "build", "--file", "/fixture/infra/main.bicep", "--stdout"])
+
+    def test_windows_bicep_build_preserves_other_flags_and_positional_file(self):
+        for build_arguments, converted in (
+            (["--stdout", "--file", "/fixture/infra/main.bicep", "--no-restore"],
+             ["--stdout", "/fixture/infra/main.bicep", "--no-restore"]),
+            (["/fixture/infra/main.bicep", "--stdout"], ["/fixture/infra/main.bicep", "--stdout"]),
+        ):
+            with self.subTest(arguments=build_arguments):
+                arguments = ["az", "bicep", "build", *build_arguments]
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0, "{}", "")
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which") as executable, \
+                     mock.patch.object(lifecycle.Path, "is_file", return_value=True), \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "nt"
+                    platform.environ = {"BICEP_CLI": "/fixture/bicep.exe"}
+                    self.assertEqual(lifecycle.run(arguments), {})
+                executable.assert_not_called()
+                self.assertEqual(process.call_args.args[0], ["/fixture/bicep.exe", "build", *converted])
+                self.assertEqual(arguments, ["az", "bicep", "build", *build_arguments])
+
+    def test_windows_bicep_missing_compiler_falls_back_to_azure_cli_without_conversion(self):
+        arguments = ["az", "bicep", "build", "--file", "/fixture/infra/main.bicep", "--stdout"]
+        for configured_compiler in (None, "/fixture/missing/bicep.exe"):
+            with self.subTest(configured_compiler=configured_compiler):
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0, "{}", "")
+                def resolve(command):
+                    return "/fixture/az.cmd" if command == "az" else None
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which", side_effect=resolve) as executable, \
+                     mock.patch.object(lifecycle.Path, "home", return_value=Path("/fixture/home")), \
+                     mock.patch.object(lifecycle.Path, "is_file", return_value=False), \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "nt"
+                    platform.environ = {"BICEP_CLI": configured_compiler} if configured_compiler else {}
+                    self.assertEqual(lifecycle.run(arguments), {})
+                expected_resolution = [mock.call("az")] if configured_compiler else [mock.call("bicep"), mock.call("az")]
+                self.assertEqual(executable.call_args_list, expected_resolution)
+                self.assertEqual(process.call_args.args[0], ["/fixture/az.cmd", *arguments[1:]])
+                self.assertIn("--file", process.call_args.args[0])
+
+    def test_windows_bicep_other_commands_still_use_windows_azure_cli(self):
+        for suffix in (["bicep", "version"], ["bicep", "build-params", "--file", "/fixture/infra/main.bicepparam"],
+                       ["deployment", "group", "what-if", "--output", "json"]):
+            with self.subTest(command=suffix):
+                arguments = ["az", *suffix]
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0, "{}", "")
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which", return_value="/fixture/az.cmd") as executable, \
+                     mock.patch.object(lifecycle.Path, "is_file") as compiler_file, \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "nt"
+                    platform.environ = {"BICEP_CLI": "/fixture/bicep.exe"}
+                    self.assertEqual(lifecycle.run(arguments), {})
+                executable.assert_called_once_with("az")
+                compiler_file.assert_not_called()
+                self.assertEqual(process.call_args.args[0], ["/fixture/az.cmd", *suffix])
+
+    def test_windows_missing_azure_cli_stops_before_launching_child(self):
+        with mock.patch.object(lifecycle, "os") as platform, \
+             mock.patch.object(lifecycle.shutil, "which", return_value=None) as executable, \
+             mock.patch.object(lifecycle.subprocess, "run") as process:
+            platform.name = "nt"
+            with self.assertRaisesRegex(lifecycle.DeploymentError, "Install Azure CLI on Windows"):
+                lifecycle.run(["az", "account", "show"])
+        executable.assert_called_once_with("az")
+        process.assert_not_called()
+
+    def test_non_windows_keeps_existing_cli_environment_and_locale_decoding(self):
+        arguments = ["az", "bicep", "build", "--file", "/fixture/infra/main.bicep", "--stdout"]
+        for environment in (None, {"CHILD_FIXTURE": "retained", "PYTHONUTF8": "0"}):
+            with self.subTest(explicit_environment=environment is not None):
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0, '{"result":"合成結果"}', "")
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which") as executable, \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "posix"
+                    self.assertEqual(lifecycle.run(arguments, environment=environment), {"result": "合成結果"})
+                executable.assert_not_called()
+                self.assertIs(process.call_args.args[0], arguments)
+                self.assertIs(process.call_args.kwargs["env"], environment)
+                self.assertIsNone(process.call_args.kwargs["encoding"])
+                self.assertIsNone(process.call_args.kwargs["input"])
+
+
+class ProviderRegistrationTests(unittest.TestCase):
+    """本物のCLIを呼ばず、標準RPの登録と完了待ちを検証する。"""
+
+    def setUp(self):
+        self.config = {"subscriptionId": "11111111-1111-4111-8111-111111111111"}
+
+    def assert_provider_commands_only(self, calls):
+        for call in calls:
+            arguments = call.args[0]
+            self.assertEqual(arguments[:2], ["az", "provider"])
+            self.assertIn(arguments[2], ("show", "register"))
+            self.assertEqual(arguments[arguments.index("--subscription") + 1], self.config["subscriptionId"])
+            self.assertEqual(arguments[-2:], ["-o", "json"])
+
+    def test_missing_standard_registrations_wait_until_registered(self):
+        for namespace in ("Microsoft.Network", "Microsoft.Compute"):
+            for initial in ({}, {"registrationState": "NotRegistered"}):
+                with self.subTest(namespace=namespace, initial=initial):
+                    observations = iter([initial, {"registrationState": "Registering"}, {"registrationState": "Registered"}])
+                    def command(arguments):
+                        if arguments[arguments.index("--namespace") + 1] != namespace:
+                            return {"registrationState": "Registered"}
+                        return next(observations) if arguments[2] == "show" else {"registrationState": "Registering"}
+                    with mock.patch.object(lifecycle, "run", side_effect=command) as run, \
+                         mock.patch.object(lifecycle.time, "monotonic", return_value=0), \
+                         mock.patch.object(lifecycle.time, "sleep") as sleep:
+                        lifecycle.register_providers(self.config)
+                    writes = [c.args[0] for c in run.call_args_list if c.args[0][2] == "register"]
+                    self.assertEqual(len(writes), 1)
+                    self.assertEqual(writes[0][writes[0].index("--namespace") + 1], namespace)
+                    self.assertEqual(sum(c.args[0][2] == "show" and c.args[0][c.args[0].index("--namespace") + 1] == namespace for c in run.call_args_list), 3)
+                    sleep.assert_called_once_with(10)
+                    self.assert_provider_commands_only(run.call_args_list)
+
+    def test_both_missing_providers_register_once_then_read_completion(self):
+        counts = {namespace: 0 for namespace in ("Microsoft.Network", "Microsoft.Compute")}
+        def command(arguments):
+            namespace = arguments[arguments.index("--namespace") + 1]
+            if namespace not in counts:
+                return {"registrationState": "Registered"}
+            if arguments[2] == "register":
+                return {"registrationState": "Registering"}
+            counts[namespace] += 1
+            return {"registrationState": "NotRegistered" if counts[namespace] == 1 else "Registered"}
+        with mock.patch.object(lifecycle, "run", side_effect=command) as run, \
+             mock.patch.object(lifecycle.time, "monotonic", return_value=0), \
+             mock.patch.object(lifecycle.time, "sleep") as sleep:
+            lifecycle.register_providers(self.config)
+        writes = [c.args[0][c.args[0].index("--namespace") + 1] for c in run.call_args_list if c.args[0][2] == "register"]
+        self.assertEqual(writes, list(("Microsoft.Network", "Microsoft.Compute")))
+        self.assertEqual(set(counts.values()), {2})
+        sleep.assert_not_called()
+        self.assert_provider_commands_only(run.call_args_list)
+
+    def test_standard_registration_timeout_stops_without_repeat_registration(self):
+        for namespace in ("Microsoft.Network", "Microsoft.Compute"):
+            with self.subTest(namespace=namespace):
+                def command(arguments):
+                    return {"registrationState": "Registering" if arguments[arguments.index("--namespace") + 1] == namespace else "Registered"}
+                with mock.patch.object(lifecycle, "run", side_effect=command) as run, \
+                     mock.patch.object(lifecycle.time, "monotonic", side_effect=[0, 1801]), \
+                     mock.patch.object(lifecycle.time, "sleep") as sleep:
+                    with self.assertRaisesRegex(lifecycle.DeploymentError, "registration is still pending"):
+                        lifecycle.register_providers(self.config)
+                self.assertEqual(sum(c.args[0][2] == "register" for c in run.call_args_list), 1)
+                self.assertEqual(sum(c.args[0][2] == "show" and c.args[0][c.args[0].index("--namespace") + 1] == namespace for c in run.call_args_list), 2)
+                sleep.assert_not_called()
+                self.assert_provider_commands_only(run.call_args_list)
+
+
+class ArmTransportTests(LifecycleFixture, unittest.TestCase):
+    """azdの各段階を正しい順で実行し、失敗時に止まることを検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
+    def setUp(self):
+        super().setUp()
+        self.transport = lifecycle.ArmTransport(self.config)
+        self.transport.token, self.transport.expires = "TOKEN_FIXTURE", float("inf")
+        self.opener = mock.Mock()
+        self.opener.open.side_effect = AssertionError("Forbidden request must not reach the HTTP opener")
+        self.transport.opener = self.opener
+        self.path = f"/subscriptions/{self.config['subscriptionId']}/providers/Microsoft.Resources/deployments/example?api-version=2022-09-01"
+
+    def test_other_host_subscription_port_and_userinfo_are_rejected(self):
+        invalid = [
+            "https://other.example.com" + self.path,
+            "https://management.azure.com.other.example.com" + self.path,
+            self.path.replace(self.config["subscriptionId"], "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+            "https://management.azure.com:8443" + self.path,
+            "https://:PRIVATE_PASSWORD_FIXTURE@management.azure.com" + self.path,
+        ]
+        for target in invalid:
+            with self.subTest(target=target.split("@")[-1]):
+                with self.assertRaises(lifecycle.DeploymentError):
+                    self.transport.request("GET", target)
+        self.opener.open.assert_not_called()
+
+    def test_concurrent_reads_share_one_token_refresh_without_serializing_http(self):
+        self.transport.token, self.transport.expires = None, 0
+        begin = threading.Barrier(8)
+        http_overlap = threading.Barrier(8)
+        checked = set()
+        checked_lock = threading.Lock()
+        all_checked = threading.Event()
+        def now():
+            with checked_lock:
+                checked.add(threading.get_ident())
+                if len(checked) == 8:
+                    all_checked.set()
+            return 0
+        def fetch_token(subscription, tenant):
+            # 全workerが期限切れを観測するまで取得を止め、lockなしなら重複取得になる競合を再現します。
+            if not all_checked.wait(timeout=10):
+                raise AssertionError("Concurrent reads did not reach token freshness checks")
+            return {"accessToken": "CONCURRENT_TOKEN_FIXTURE", "expires_on": float("inf")}
+        self.opener.open.side_effect = lambda *args, **kwargs: (http_overlap.wait(timeout=10),
+                                                               self.response(body={"ready": True}))[1]
+        def read():
+            begin.wait(timeout=10)
+            return self.transport.request("GET", self.path)
+        with mock.patch.object(lifecycle.time, "time", side_effect=now), \
+             mock.patch.object(lifecycle, "arm_access_token", side_effect=fetch_token) as token:
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                observed = list(pool.map(lambda unused: read(), range(8)))
+        token.assert_called_once_with(self.config["subscriptionId"], self.config["azureTenantId"])
+        self.assertEqual(self.opener.open.call_count, 8)
+        self.assertTrue(all(result["body"] == {"ready": True} for result in observed))
+        self.assertEqual(self.transport.token, "CONCURRENT_TOKEN_FIXTURE")
+
+    def test_redirect_never_follows_or_sends_token_to_destination(self):
+        handler = lifecycle.NoRedirect()
+        self.assertIsNone(handler.redirect_request(mock.Mock(), None, 302, "Found", {}, "https://other.example.com/"))
+        redirect = HTTPError("https://management.azure.com" + self.path, 302, "Found", {"Location": "https://other.example.com/"}, io.BytesIO(b'{"error":{"message":"PRIVATE_ERROR_FIXTURE"}}'))
+        self.opener.open.side_effect = redirect
+        observed = self.transport.request("GET", self.path)
+        with self.assertRaises(lifecycle.DeploymentError) as error:
+            lifecycle.require_success(observed, "mock ARM operation")
+        self.assertIn("302", str(error.exception))
+        self.assertNotIn("PRIVATE_ERROR_FIXTURE", str(error.exception))
+        self.assertEqual(self.opener.open.call_count, 1)
+
+    def response(self, status=200, body=None):
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.status, response.headers = status, {}
+        response.read.return_value = json.dumps(body or {}).encode()
+        return response
+
+    def raw_policy_response(self, xml, content_type="application/vnd.ms-azure-apim.policy.raw+xml"):
+        response = self.response()
+        response.headers = {"Content-Type": content_type, "ETag": '"policy-version-fixture"'}
+        response.read.return_value = xml.encode("utf-8")
+        return response
+
+    def apim_path(self, suffix, query="api-version=2025-09-01-preview&format=rawxml"):
+        return (f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/resource-fixture/"
+                f"providers/Microsoft.ApiManagement/service/apim-fixture/{suffix}?{query}")
+
+    def test_explicit_apim_raw_policy_and_fragment_reads_preserve_xml_and_etag(self):
+        policy = '<policies><inbound><base /></inbound><backend /><outbound /><on-error /></policies>'
+        fragment = '<fragment><set-variable name="fixture" value="plain" /></fragment>'
+        for suffix, xml in (("policies/policy", policy), ("apis/model-fixture/policies/policy", policy),
+                            ("apis/model-fixture/operations/create/policies/policy", policy),
+                            ("products/product-fixture/policies/policy", policy),
+                            ("policyFragments/fragment-fixture", fragment)):
+            with self.subTest(suffix=suffix):
+                response = self.raw_policy_response(xml, "Application/Vnd.Ms-Azure-Apim.Policy.Raw+Xml; charset=utf-8")
+                self.opener.open.side_effect = [response]
+                observed = self.transport.request("GET", self.apim_path(suffix), headers={"Accept": "application/json"})
+                self.assertEqual(observed, {"statusCode": 200, "headers": response.headers,
+                    "body": {"properties": {"format": "rawxml", "value": xml}}})
+
+    def test_unrequested_xml_unrelated_paths_and_unknown_mime_are_not_raw_policy_reads(self):
+        xml = '<policies><inbound /><backend /><outbound /><on-error /></policies>'
+        cases = [("GET", self.path, None, "application/vnd.ms-azure-apim.policy.raw+xml"),
+                 ("GET", self.apim_path("apis/model-fixture"), None, "application/vnd.ms-azure-apim.policy.raw+xml"),
+                 ("GET", self.apim_path("policies/policy", "api-version=fixture"), None, "application/vnd.ms-azure-apim.policy.raw+xml"),
+                 ("GET", self.apim_path("policies/policy", "format=rawxml&format=rawxml"), None, "application/vnd.ms-azure-apim.policy.raw+xml"),
+                 ("GET", self.apim_path("policies/policy"), None, "text/xml"),
+                 ("GET", self.apim_path("policies/policy"), None, "application/json"),
+                 ("PUT", self.apim_path("policies/policy"), None, "application/vnd.ms-azure-apim.policy.raw+xml"),
+                 ("GET", self.apim_path("policies/policy"), {}, "application/vnd.ms-azure-apim.policy.raw+xml")]
+        for method, target, body, mime in cases:
+            with self.subTest(method=method, mime=mime, has_body=body is not None):
+                self.opener.open.side_effect = [self.raw_policy_response(xml, mime)]
+                with self.assertRaises(json.JSONDecodeError):
+                    self.transport.request(method, target, body)
+
+    def test_explicit_raw_policy_rejects_dtd_entities_invalid_xml_and_wrong_root(self):
+        cases = ["", "<policies>", '<!DOCTYPE policies [<!ENTITY private "PRIVATE_ENTITY_FIXTURE">]><policies>&private;</policies>',
+                 '<!DOCTYPE policies SYSTEM "https://example.invalid/private"><policies />',
+                 '<fragment />', '<html>PRIVATE_BODY_FIXTURE</html>']
+        for xml in cases:
+            with self.subTest(case=cases.index(xml)):
+                self.opener.open.side_effect = [self.raw_policy_response(xml)]
+                output = io.StringIO()
+                with contextlib.redirect_stderr(output), self.assertRaises(lifecycle.DeploymentError) as error:
+                    self.transport.request("GET", self.apim_path("policies/policy"))
+                self.assertEqual(str(error.exception), "ARM returned invalid APIM raw policy XML")
+                self.assertNotIn("PRIVATE_", output.getvalue())
+        self.opener.open.side_effect = [self.raw_policy_response('<policies />')]
+        with self.assertRaises(lifecycle.DeploymentError):
+            self.transport.request("GET", self.apim_path("policyFragments/fragment-fixture"))
+
+    def test_normal_json_and_malformed_json_are_not_masked_by_raw_policy_support(self):
+        for target in (self.path, self.apim_path("policies/policy")):
+            self.opener.open.side_effect = [self.response(body={"properties": {"value": "json-fixture"}})]
+            self.assertEqual(self.transport.request("GET", target)["body"], {"properties": {"value": "json-fixture"}})
+            response = self.response()
+            response.read.return_value = b'{"properties":'
+            self.opener.open.side_effect = [response]
+            with self.assertRaises(json.JSONDecodeError):
+                self.transport.request("GET", target)
+
+    def http_error(self, status, headers=None, body=None):
+        return HTTPError("https://management.azure.com" + self.path,
+                         status, "PRIVATE_HTTP_REASON_FIXTURE", headers or {},
+                         io.BytesIO(json.dumps(body or {"error": {
+                             "message": "PRIVATE_HTTP_BODY_FIXTURE"}}).encode()))
+
+    def test_transient_http_get_errors_recover_without_exposing_response_or_query(self):
+        for status in (408, 429, 500, 502, 503, 504):
+            with self.subTest(status=status):
+                self.opener.open.reset_mock()
+                error = self.http_error(status)
+                self.opener.open.side_effect = [error, self.response(body={"ready": True})]
+                output = io.StringIO()
+                with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(output):
+                    observed = self.transport.request("GET", self.path + "&secret=PRIVATE_QUERY_FIXTURE")
+                self.assertEqual(observed["body"], {"ready": True})
+                self.assertEqual(self.opener.open.call_count, 2)
+                self.assertTrue(error.fp.closed)
+                sleep.assert_called_once_with(1)
+                self.assertIn(f"HTTP {status}", output.getvalue())
+                for secret in ("TOKEN_FIXTURE", "PRIVATE_HTTP", "PRIVATE_QUERY", "api-version"):
+                    self.assertNotIn(secret, output.getvalue())
+
+    def test_transient_http_get_exhaustion_returns_last_response_after_three_attempts(self):
+        errors = [self.http_error(504), self.http_error(503),
+                  self.http_error(504, {"Retry-After": "300"}, {"error": {"code": "GatewayTimeout"}})]
+        self.opener.open.side_effect = errors
+        with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(io.StringIO()):
+            observed = self.transport.request("GET", self.path)
+        self.assertEqual(self.opener.open.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
+        self.assertEqual(observed, {"statusCode": 504, "headers": {"Retry-After": "300"},
+                                   "body": {"error": {"code": "GatewayTimeout"}}})
+        self.assertTrue(all(error.fp.closed for error in errors))
+
+    def test_http_and_connection_failures_share_the_three_attempt_read_budget(self):
+        self.opener.open.side_effect = [URLError(TimeoutError()), self.http_error(504), self.response()]
+        with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.transport.request("GET", self.path)["statusCode"], 200)
+        self.assertEqual(self.opener.open.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
+
+    def test_mutations_and_get_with_body_never_retry_transient_http_statuses(self):
+        for method, body in [(method, None) for method in ("PUT", "POST", "PATCH", "DELETE")] + [("GET", {})]:
+            for status in (429, 504):
+                with self.subTest(method=method, body=body, status=status):
+                    self.opener.open.reset_mock()
+                    self.opener.open.side_effect = self.http_error(status, {"Retry-After": "10"})
+                    with mock.patch.object(lifecycle.time, "sleep") as sleep:
+                        observed = self.transport.request(method, self.path, body)
+                    self.assertEqual(observed["statusCode"], status)
+                    self.assertEqual(self.opener.open.call_count, 1)
+                    sleep.assert_not_called()
+
+    def test_nsg_and_gateway_mutations_keep_the_concrete_if_match_header_and_do_not_retry_conflicts(self):
+        for method in ('PUT', 'DELETE'):
+            self.opener.open.reset_mock()
+            self.opener.open.side_effect = self.http_error(412)
+            with self.subTest(method=method), mock.patch.object(lifecycle.time, 'sleep') as sleep:
+                observed = self.transport.request(method, self.path,
+                    {'properties': {'priority': 120}} if method == 'PUT' else None,
+                    headers={'If-Match': '"owned-version-fixture"'})
+            self.assertEqual(observed['statusCode'], 412)
+            self.assertEqual(self.opener.open.call_count, 1)
+            request = self.opener.open.call_args.args[0]
+            self.assertEqual(request.get_header('If-match'), '"owned-version-fixture"')
+            self.assertEqual(request.get_method(), method)
+            sleep.assert_not_called()
+
+    def test_authentication_and_other_non_transient_http_errors_are_not_retried(self):
+        for status in (302, 400, 401, 403, 404, 409, 412, 422, 501):
+            with self.subTest(status=status):
+                self.opener.open.reset_mock()
+                self.opener.open.side_effect = self.http_error(status, {"Retry-After": "10"})
+                with mock.patch.object(lifecycle.time, "sleep") as sleep:
+                    self.assertEqual(self.transport.request("GET", self.path)["statusCode"], status)
+                self.assertEqual(self.opener.open.call_count, 1)
+                sleep.assert_not_called()
+
+    def test_supported_numeric_retry_after_waits_at_least_the_hint(self):
+        for value, delay in (("0", 1), ("3", 3), ("0003", 3), ("10", 10), ("\t3 ", 3)):
+            with self.subTest(value=value):
+                self.opener.open.reset_mock()
+                self.opener.open.side_effect = [self.http_error(429, {"retry-after": value}), self.response()]
+                output = io.StringIO()
+                with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(output):
+                    self.assertEqual(self.transport.request("GET", self.path)["statusCode"], 200)
+                sleep.assert_called_once_with(delay)
+                self.assertEqual(self.opener.open.call_count, 2)
+                self.assertNotIn("PRIVATE_RETRY_FIXTURE", output.getvalue())
+
+    def test_long_or_unsupported_retry_after_returns_original_response_without_retry(self):
+        for value in ("11", "300", "999999999", "9" * 100,
+                      "Wed, 21 Oct 2026 07:28:00 GMT", "-1", "", None, 3,
+                      "PRIVATE_RETRY_FIXTURE"):
+            with self.subTest(value=value):
+                self.opener.open.reset_mock()
+                headers = {"Retry-After": value}
+                body = {"error": {"code": "TooManyRequests", "message": "PRIVATE_HTTP_BODY_FIXTURE"}}
+                error = self.http_error(429, headers, body)
+                self.opener.open.side_effect = error
+                output = io.StringIO()
+                with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(output):
+                    observed = self.transport.request("GET", self.path)
+                self.assertEqual(observed, {"statusCode": 429, "headers": headers, "body": body})
+                self.assertEqual(self.opener.open.call_count, 1)
+                self.assertTrue(error.fp.closed)
+                sleep.assert_not_called()
+                self.assertNotIn("PRIVATE_", output.getvalue())
+
+    def test_small_numeric_hint_does_not_shorten_the_second_attempt_backoff(self):
+        self.opener.open.side_effect = [self.http_error(504),
+                                       self.http_error(429, {"Retry-After": "0"}), self.response()]
+        with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.transport.request("GET", self.path)["statusCode"], 200)
+        self.assertEqual(self.opener.open.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
+
+    def test_transient_read_failure_is_retried_without_repeating_a_write(self):
+        """配備の開始後、状態確認の通信断ではGETだけを再試行する。"""
+        self.opener.open.side_effect = [self.response(202), URLError(TimeoutError()),
+            self.response(body={"properties": {"provisioningState": "Succeeded",
+                "outputs": {"result": {"value": "ready"}}}})]
+        with mock.patch.object(lifecycle, "run", return_value={}), \
+             mock.patch.object(lifecycle, "parameters", return_value={"parameters": {}}), \
+             mock.patch.object(lifecycle, "ArmTransport", return_value=self.transport), \
+             mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(lifecycle.deploy_monitoring(self.config, preserve_collection=False), {"result": "ready"})
+        self.assertEqual([call.args[0].get_method() for call in self.opener.open.call_args_list], ["PUT", "GET", "GET"])
+        sleep.assert_called_once_with(1)
+
+    def test_read_retries_are_bounded_and_failure_does_not_expose_query_or_credentials(self):
+        """失敗箇所と原因を示し、トークン・クエリー・外部エラー本文を出さない。"""
+        self.opener.open.side_effect = URLError(TimeoutError("PRIVATE_ERROR_FIXTURE"))
+        output = io.StringIO()
+        with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(output):
+            with self.assertRaises(lifecycle.DeploymentError) as error:
+                self.transport.request("GET", self.path + "&secret=PRIVATE_QUERY_FIXTURE")
+        self.assertEqual(self.opener.open.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
+        message = str(error.exception)
+        self.assertIn("ARM GET", message)
+        self.assertIn(self.path.split("?", 1)[0], message)
+        self.assertIn("timeout", message)
+        for secret in ("TOKEN_FIXTURE", "PRIVATE_ERROR_FIXTURE", "PRIVATE_QUERY_FIXTURE", "api-version"):
+            self.assertNotIn(secret, message + output.getvalue())
+
+    def test_mutations_are_never_retried_after_connection_failure(self):
+        """応答が消えても、Azureに届いた可能性のある変更要求は再送しない。"""
+        for method in ("PUT", "POST", "PATCH", "DELETE"):
+            with self.subTest(method=method):
+                self.opener.open.reset_mock()
+                self.opener.open.side_effect = URLError(TimeoutError("PRIVATE_ERROR_FIXTURE"))
+                with mock.patch.object(lifecycle.time, "sleep") as sleep:
+                    with self.assertRaises(lifecycle.DeploymentError) as error:
+                        self.transport.request(method, self.path)
+                self.assertIn("resource state must be checked before retry", str(error.exception))
+                self.assertEqual(self.opener.open.call_count, 1)
+                sleep.assert_not_called()
+
+    def test_certificate_verification_failure_stops_without_retry(self):
+        self.opener.open.side_effect = URLError(ssl.SSLCertVerificationError(1, "PRIVATE_CERTIFICATE_FIXTURE"))
+        with mock.patch.object(lifecycle.time, "sleep") as sleep:
+            with self.assertRaises(lifecycle.DeploymentError) as error:
+                self.transport.request("GET", self.path)
+        self.assertIn("certificate-verification", str(error.exception))
+        self.assertNotIn("PRIVATE_CERTIFICATE_FIXTURE", str(error.exception))
+        self.assertEqual(self.opener.open.call_count, 1)
+        sleep.assert_not_called()
+
+
+class ApplicationInsightsFailureDiagnosticsTests(unittest.TestCase):
+    def command(self):
+        return ["/fixture/pwsh", "-NoLogo", "-NoProfile", "-File",
+                str(lifecycle.ROOT / "scripts/deployment/helpers/set-app-insights-cap.ps1")]
+
+    def test_known_daily_cap_failure_preserves_safe_stage_and_suppresses_external_output(self):
+        arguments = self.command()
+        safe = {"status": "failed", "stage": "readback", "code": "ApplicationInsightsDailyCapFailed"}
+        completed = lifecycle.subprocess.CompletedProcess(arguments, 1, json.dumps(safe), "PRIVATE_CAP_STDERR_FIXTURE")
+        with mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+            with self.assertRaises(lifecycle.DeploymentError) as raised:
+                lifecycle.run(arguments, payload={"accessToken": "<PRIVATE_CAP_TOKEN_FIXTURE>"})
+        message = str(raised.exception)
+        self.assertIn("ApplicationInsightsDailyCapFailed", message)
+        self.assertIn("stage=readback", message)
+        self.assertNotIn("corresponding deployment", message)
+        self.assertNotIn("PRIVATE_CAP", message)
+        process.assert_called_once()
+
+    def test_unverified_daily_cap_failure_uses_generic_error_without_external_values(self):
+        safe = {"status": "failed", "stage": "readback", "code": "ApplicationInsightsDailyCapFailed"}
+        arguments = self.command()
+        other_helper = [*arguments[:-1], str(lifecycle.ROOT / "scripts/other-helper.ps1")]
+        attempts = [
+            (arguments, json.dumps({**safe, "stage": []})),
+            (arguments, json.dumps({**safe, "accessToken": "<PRIVATE_CAP_TOKEN_FIXTURE>"})),
+            (arguments, " " * 4097 + json.dumps(safe)),
+            (other_helper, json.dumps(safe)),
+        ]
+        for command, stdout in attempts:
+            with self.subTest(helper=command[-1].split("/")[-1], stdout_bytes=len(stdout)):
+                completed = lifecycle.subprocess.CompletedProcess(command, 1, stdout, "PRIVATE_CAP_STDERR_FIXTURE")
+                with mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    with self.assertRaises(lifecycle.DeploymentError) as raised:
+                        lifecycle.run(command)
+                message = str(raised.exception)
+                self.assertIn("operation failed", message)
+                self.assertNotIn("ApplicationInsightsDailyCapFailed", message)
+                self.assertNotIn("stage=", message)
+                self.assertNotIn("PRIVATE_CAP", message)
+                process.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()

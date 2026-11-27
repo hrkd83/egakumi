@@ -57,11 +57,11 @@ ACA Jobへ移行する前は、管理VMへ初回発行用のRun Commandを追加
 
 | 試験 | 確認する内容 |
 | --- | --- |
-| `tests/portal-auth-certificate-offline.ps1` | 合成RSA鍵・公開証明書をメモリー内で用意。Self・非exportable・新鍵生成方針・公開鍵対応を照合し、他鍵、disabled、private JWK、version未固定、現行版廃止を拒否。保存intentから不明POSTを再送せず再開 |
-| `tests/test_certificate_jobs.py` | 専用Jobの配備と初回実行順序、非公開イメージ、対象実行と結果の照合、開始応答不明からの再開 |
-| `tests/test_portal_auth_certificate.py` | 初期構築はClient ID不要、手動登録後の2項目入力、公開DERとthumbprint・期限・KV参照、単一worker出力、登録前切替拒否、旧VM入口での不明PUTの再送抑止、手動受入と旧Entra削除の必要性 |
-| `tests/test_portal_authentication_infra.py` | Bicepコンパイル、CoreとPortal本体の資源責任、専用ID、鍵scope権限、secretと証明書の設定、ジョブ・DB・Gateway既存設定 |
-| `tests/test_portal_certificate_initialization.py` | ACA Jobが保存した初期状態の読取り、旧構成への初期配備の停止、保護runtimeと排他、旧Coreの発行済み結果の収集 |
+| `tests/certificates/portal-auth-certificate-offline.ps1` | 合成RSA鍵・公開証明書をメモリー内で用意。Self・非exportable・新鍵生成方針・公開鍵対応を照合し、他鍵、disabled、private JWK、version未固定、現行版廃止を拒否。保存intentから不明POSTを再送せず再開 |
+| `tests/certificates/test_certificate_jobs.py` | 専用Jobの配備と初回実行順序、非公開イメージ、対象実行と結果の照合、開始応答不明からの再開 |
+| `tests/certificates/test_portal_auth_certificate.py` | 初期構築ではClient ID不要、登録後の入力と公開DERの照合、証明書Jobの同一操作IDでの再開、実行前の登録確認、切替・受入・旧証明書の削除確認 |
+| `tests/portal/test_portal_authentication_infra.py` | Bicepコンパイル、CoreとPortal本体の資源責任、専用ID、鍵scope権限、secretと証明書の設定、ジョブ・DB・Gateway既存設定 |
+| `tests/certificates/test_portal_certificate_initialization.py` | ACA Jobが保存した初期状態の読取り、必要なJobが未作成の場合の停止、明示した保護runtimeと環境の照合、排他 |
 | Portalの認証・Graphテスト | client assertionの固定宛先・thumbprint・短命性・digest署名・秘密非露出、ログインのtid/oid、Graphの本人照合、既存セッション・実行用SQL権限 |
 
 ローカル試験ではAzure/KV/Entraへ通信せず、実値をfixtureへコピーしません。型検査・lint・build・依存auditと混入検査も確認します。試験に使った合成秘密鍵をファイルへ保存しません。

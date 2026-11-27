@@ -212,12 +212,12 @@ TLS検査によるURLの記録は、取り込み前の変換を通るLog Analyti
 
 | 検証対象 | 判定条件 | 検証資材 |
 | --- | --- | --- |
-| 固定集合・NSGとの対応 | Bicep生成後の名称、規則種別、action、source、destination、protocol／port、priorityを定義と照合 | [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py)、[test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py) |
-| IDPSの方向判定 | 正式CLIで生成した範囲からAppGWの全アドレスだけが除外され、Bicepがその範囲を必須とし、SNAT除外が維持されることを照合 | [test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py)、[test_fixed_parameter_materials.py](../../tests/test_fixed_parameter_materials.py) |
-| 時刻とDNS | APIMのFW UDP123宛先`*`・NSG328・Internet制限、管理VM用UDP123規則の不存在、VNet／FW上流DNS固定を照合。管理VMのPHC選択・同期はguestで別判定 | [test_firewall_diagnostics.py](../../tests/test_firewall_diagnostics.py)、[test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py)、[test_management_linux.py](../../tests/test_management_linux.py) |
-| ACA Azure依存とDev接続 | Monitor／Entra、Entra login／ARMの分離、ipify除外、単一リージョンDev FQDNを照合 | [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py) |
-| 外部業務宛先の更新 | approved-servicesの生成・name移行・他collection保持・反復時同一結果・競合拒否・読戻し条件を照合 | [test_publish_apis.py](../../tests/test_publish_apis.py) |
-| 診断記録 | Network／Application／Threat Intelのresource-specificログ、PremiumだけのIDPSログ、保存先と配備順を照合 | [test_firewall_diagnostics.py](../../tests/test_firewall_diagnostics.py) |
+| 固定集合・NSGとの対応 | Bicep生成後の名称、規則種別、action、source、destination、protocol／port、priorityを定義と照合 | [test_nsg_rule_priorities.py](../../tests/network/test_nsg_rule_priorities.py)、[test_parameter_ip_ownership.py](../../tests/network/test_parameter_ip_ownership.py) |
+| IDPSの方向判定 | 正式CLIで生成した範囲からAppGWの全アドレスだけが除外され、Bicepがその範囲を必須とし、SNAT除外が維持されることを照合 | [test_parameter_ip_ownership.py](../../tests/network/test_parameter_ip_ownership.py)、[test_fixed_parameter_materials.py](../../tests/deployment/configuration/test_fixed_parameter_materials.py) |
+| 時刻とDNS | APIMのFW UDP123宛先`*`・NSG328・Internet制限、管理VM用UDP123規則の不存在、VNet／FW上流DNS固定を照合。管理VMのPHC選択・同期はguestで別判定 | [test_firewall_diagnostics.py](../../tests/audit/test_firewall_diagnostics.py)、[test_parameter_ip_ownership.py](../../tests/network/test_parameter_ip_ownership.py)、[test_management_linux.py](../../tests/management/test_management_linux.py) |
+| ACA Azure依存とDev接続 | Monitor／Entra、Entra login／ARMの分離、ipify除外、単一リージョンDev FQDNを照合 | [test_nsg_rule_priorities.py](../../tests/network/test_nsg_rule_priorities.py) |
+| 外部業務宛先の更新 | approved-servicesの生成・name移行・他collection保持・反復時同一結果・競合拒否・読戻し条件を照合 | [test_publish_apis.py](../../tests/gateway/publication/test_publish_apis.py) |
+| 診断記録 | Network／Application／Threat Intelのresource-specificログ、PremiumだけのIDPSログ、保存先と配備順を照合 | [test_firewall_diagnostics.py](../../tests/audit/test_firewall_diagnostics.py) |
 
 合成検証のPASSは、実環境で全宛先を利用したという結果ではない。共通配布先やAzure基盤の互換許可を保持する規則は、全FQDNへの毎回の接続成功を要件にしていない。検証の結果区分と初期不採用は[共通検証](network-security-validation.md)を参照する。
 

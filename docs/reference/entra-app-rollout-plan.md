@@ -176,7 +176,7 @@ Portal証明書を非exportableなKV鍵で生成するにはAzure側Key Vaultが
 | 対象 | 計画に含める改訂 |
 |---|---|
 | [Core前のEntra登録](../../README.md#新規クローンから構築する)と[Core後の証明書登録](../setup/09-egakumi-portal.md) | 4アプリの責務、機能別の必要登録、準備順、画面ごとの設定、同意・割当、確認値、新規／移行の分岐を示す案内へ改訂。詳細は各章のアプリ別手順を使う |
-| [prepare_registration.py](../../scripts/setup/prepare_registration.py)・[registration-names.bicepparam](../../infra/registration-names.bicepparam)・[登録準備試験](../../tests/test_prepare_registration.py) | 役割別の予定redirect・必要な入力を案内できる形式へ拡張。Portal hostとCM用の戻り先は用途を分けて検査。既存命名出力と呼出元の互換性も確認。登録済みIDやsecretを要求せず事前計算できる契約を維持 |
+| [prepare_registration.py](../../scripts/setup/prepare_registration.py)・[registration-names.bicepparam](../../infra/registration-names.bicepparam)・[登録準備試験](../../tests/deployment/test_prepare_registration.py) | 役割別の予定redirect・必要な入力を案内できる形式へ拡張。Portal hostとCM用の戻り先は用途を分けて検査。既存命名出力と呼出元の互換性も確認。登録済みIDやsecretを要求せず事前計算できる契約を維持 |
 | [07-params.md](../setup/07-params.md)・schemas・configuration.py | 基盤用4アプリのclient ID／認証tenant／scope／資格情報参照の記入先を役割別に説明。CM providerからPortalや接続窓口の設定を暗黙に導出しない |
 | [portal.md](../setup/12-deploy-portal.md)・[Portalローカル認証](../testing/portal-local-auth.md) | Portal専用アプリ、公開／開発callback、証明書準備、API追加同意、KV到達・署名認可、ローカルruntime設定へ更新 |
 | [credential-manager-login.md](credential-manager-login.md)・[credential-sql.md](../setup/11-deploy-gateway.md) | toolsのCM認可とcredentialの本人確認を分離。redirect、provider/profile、secret参照、旧接続移行の対応表を更新 |
@@ -827,7 +827,7 @@ Entraアプリはdisplay nameだけで再利用・更新対象を決めない。
 
 MOD-81は承認済み・ローカル実装と関連検証済みである。WebSocketクエリ検査内のモデル値取得を準備済み変数の直接読取りへ揃え、存在再確認と欠落時の空文字補完だけを撤去した。モデル選択・クエリ照合・catch／403、空クエリ設定の早期成功と監査側の条件は維持する。内部モデル変数だけが失われた場合は、既存catchで403停止となる。製品コードは承認された1式だけと全文照合し、既存の単独クエリ試験には先行処理で準備される値を渡した。新しい試験は追加せず、既存の関連7件が初回から全件成功した（28.081s、失敗・エラー・スキップなし）。[テンプレート説明](../../apps/api-gateway/policies/api-templates/README.md)へ確認範囲を記録した。独立レビューに所見はなく、MOD-80とは別実行である。工程1／2全体は未完了、Azure未反映である。
 
-MOD-81の公開情報検査は初回4ファイルで、既存の合成画像fixtureに対する`embedded-data-review-required`を1件検出した。既存の1 NUL byte画像値の許可定義へ`tests/test_api_protocols.py`の正確なpathを追加し、許可定義を含む5ファイルの再検査で検出0件を確認した。製品コードと試験結果は変わらない。
+MOD-81の公開情報検査は初回4ファイルで、既存の合成画像fixtureに対する`embedded-data-review-required`を1件検出した。既存の1 NUL byte画像値の許可定義へ`tests/gateway/publication/test_api_protocols.py`の正確なpathを追加し、許可定義を含む5ファイルの再検査で検出0件を確認した。製品コードと試験結果は変わらない。
 
 MOD-82は承認済み・ローカル実装と関連検証済みである。WebSocketのモデル監査転記前にある内部変数の存在再確認だけを撤去し、非空なら転記する条件を維持した。null／空／非空と内部変数欠落時の意味は読取りで確認し、当該whenの直接実行試験とは区別する。モデル選択・接続クエリ・監査項目・利用枠は維持し、製品コードの差分は1条件だけと全文照合した。初回はモデル監査・生成・source一致等7件が成功し、別の監査クラスが既存fixtureの準備済み操作設定不足でsetUpClassエラーとなった（28.247s、errors=1）。設定の引渡しと、metadata上書きを設定済みtarget Agentで確認する既存assertへ修正した後、その監査8件が全件成功した（1.850s、失敗・エラー・スキップなし）。[テンプレート説明](../../apps/api-gateway/policies/api-templates/README.md)へ実行別の確認範囲を記録し、新しい試験は追加していない。独立レビューに所見はなく、工程1／2全体は未完了、Azure未反映である。
 

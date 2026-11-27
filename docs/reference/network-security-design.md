@@ -271,9 +271,9 @@ Azure提供DNS、VM IMDS、DHCP、Agent host channel、ホスト時刻提供、l
 
 | 検証 | 確認対象・合格条件 | 公開根拠・実環境での確認方法 |
 | --- | --- | --- |
-| `VERIFY-NSG-CATALOG` | catalog v5の規則の名前・方向・優先度・Allow/Deny・プロトコル・両ポート・アドレス参照・設計IDが正本と一致。 | [優先度試験](../../tests/test_nsg_rule_priorities.py)、[IP所有境界](../../tests/test_parameter_ip_ownership.py)。合成試験結果は[共通検証記録](network-security-validation.md)を参照する。 |
-| `VERIFY-NSG-READBACK` | 作成済みの現行規則は中断後も照合でき、未知の規則や条件のずれは停止する。構築完了には全規則が必要。 | [読戻し試験](../../tests/test_fixed_nsg_validation.py)、[配備順序](../../tests/test_nsg_deployment_order.py) |
-| `VERIFY-NSG-AUDIT` | 監査Blob PE全IPの送受信4規則、DNS、担当者本人の対象コンテナーへの一時認可で読取が成立する。 | [監査Storage合成試験](../../tests/test_audit_storage_network.py)。実環境で到達・認可・Blob読取と権限回収後の拒否を確認する。 |
+| `VERIFY-NSG-CATALOG` | catalog v5の規則の名前・方向・優先度・Allow/Deny・プロトコル・両ポート・アドレス参照・設計IDが正本と一致。 | [優先度試験](../../tests/network/test_nsg_rule_priorities.py)、[IP所有境界](../../tests/network/test_parameter_ip_ownership.py)。合成試験結果は[共通検証記録](network-security-validation.md)を参照する。 |
+| `VERIFY-NSG-READBACK` | 作成済みの現行規則は中断後も照合でき、未知の規則や条件のずれは停止する。構築完了には全規則が必要。 | [読戻し試験](../../tests/network/test_fixed_nsg_validation.py)、[配備順序](../../tests/network/test_nsg_deployment_order.py) |
+| `VERIFY-NSG-AUDIT` | 監査Blob PE全IPの送受信4規則、DNS、担当者本人の対象コンテナーへの一時認可で読取が成立する。 | [監査Storage合成試験](../../tests/audit/test_audit_storage_network.py)。実環境で到達・認可・Blob読取と権限回収後の拒否を確認する。 |
 | `VERIFY-NSG-READBACK` | 構築IPで展開した77tuple、NSG関連付け、PE policy、既定規則、終端Denyの有無をAzure GETで完全照合する。 | 保護stateに対象所有・展開条件・応答・照合判定を保存する。親NSGの更新成功だけで合格にしない。 |
 | `VERIFY-NSG-FLOWS` | AppGW→APIM／Portal、APIM→Foundry／Broker、ACA／管理VM→PE、各保守clientのTLS／認可／操作が成立する。 | 名前解決、new connection、経路、Firewall、TLS、token、RBACを独立に確認する。利用していないサービス依存の規則まで全実通信を生成したとは扱わない。 |
 | `VERIFY-NSG-ACA-EGRESS` | ACAの公開HTTPSが構築Firewallを経由する。未許可の公開宛・別サブネットとの新規接続が失敗する。 | ルートとFirewallログを照合し、許可した管理通信、ACR取得、App・Job起動、スケール、監視も確認する。 |

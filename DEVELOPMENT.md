@@ -108,12 +108,12 @@ Python 3.11以上と [端末の準備条件](docs/setup/01-prerequisites.md) を
 # リポジトリのルートで実行します。
 python3 -m venv .venv
 .venv/bin/python -m pip install -r scripts/clients/integration-requirements.txt -r apps/credential-broker/requirements.txt -r apps/audit-relay/requirements.txt
-.venv/bin/python -B -m unittest discover -s tests -v
+.venv/bin/python -B -m unittest discover -s tests -t . -v
 PYTHONPATH=apps/credential-broker .venv/bin/python -B -m unittest discover -s apps/credential-broker/tests -v
 PYTHONPATH=apps/audit-relay .venv/bin/python -B -m unittest discover -s apps/audit-relay/tests -v
 ```
 
-Windowsでは仮想環境の `Scripts/python.exe` を使い、環境変数は利用するシェルの書式で指定します。
+Windowsでは仮想環境の `Scripts/python.exe` を使い、環境変数は利用するシェルの書式で指定します。用途別のテスト配置と個別実行例は[基盤テスト一覧](tests/README.md)を参照します。
 
 | 対象 | 検証すること |
 | --- | --- |
@@ -125,14 +125,14 @@ Windowsでは仮想環境の `Scripts/python.exe` を使い、環境変数は利
 
 以下の出力を保存する場合は、[第01章](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で`DEPLOY_ENVIRONMENT`・`DEPLOY_LOCAL_DIRECTORY`・`DEPLOY_PARAMS_FILE`を設定します。架空データだけの確認でも保存先を環境別領域へ揃えます。
 
-PowerShellを使う試験は `WORKFORCE_PWSH`、インストール済み `pwsh`、対応するportable版から実行環境を選びます。Bicepの実行ファイルは `BICEP_CLI` で指定できます。依存不足でスキップした項目は理由とともに記録します。
+PowerShellを使う試験は `WORKFORCE_PWSH` で指定した実行ファイルか、`PATH` 上の `pwsh` を使います。Bicepの実行ファイルは `BICEP_CLI` で指定できます。依存不足でスキップした項目は理由とともに記録します。
 
 ```sh
 mkdir -p "$DEPLOY_LOCAL_DIRECTORY/generated"
 az bicep build --file infra/main.bicep --outfile "$DEPLOY_LOCAL_DIRECTORY/generated/main.compiled.json"
 export WORKFORCE_PWSH="$(.venv/bin/python -B -c 'from scripts.deployment.helpers.powershell_runtime import locate_powershell; print(locate_powershell())')"
-"$WORKFORCE_PWSH" -NoProfile -File tests/certificate-offline.ps1
-.venv/bin/python -B tests/cap-offline.py
+.venv/bin/python -B -m unittest discover -s tests/certificates -t . -v
+.venv/bin/python -B -m unittest tests.deployment.test_application_insights_cap -v
 ```
 
 証明書とcapのオフライン試験は合成入力・偽モジュールを使います。実際のDNS、ACME、Azureへ接続しません。生XMLの追加Razor検査には、公式の `System.Web.Razor.dll` を `WORKFORCE_RAZOR_DLL` で指定します。
