@@ -1,0 +1,27 @@
+{
+  "$schema": "./capacity.schema.json",
+  "$comment": "閉域の保守とコンテナビルド用のVM・ディスク・機能要件。",
+  "common": {
+    "management": {
+      "vmSize": "Standard_D2as_v6",
+      "diskControllerType": "NVMe",
+      "imageReference": {
+        "publisher": "Canonical",
+        "offer": "ubuntu-24_04-lts",
+        "sku": "server",
+        "version": "24.04.202610160"
+      },
+      "osDiskSizeGB": 128,
+      "osDiskSku": "StandardSSD_LRS",
+      "enableAcceleratedNetworking": true,
+      "encryptionAtHost": true,
+      "patchAssessmentMode": "AutomaticByPlatform",
+      "patchMode": "AutomaticByPlatform"
+    }
+  },
+  "profiles": {
+    "prod": {},
+    "stg": {},
+    "dev": {}
+  }
+}

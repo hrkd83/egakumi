@@ -41,6 +41,7 @@ param diagnosticSettingProperties object
 // Portal, Credential Broker and certificate jobs use separate delegated ACA subnets.
 var nsgPriorities = loadJsonContent('nsg/core-rules.json')
 var subnetNames = loadJsonContent('subnet-names.json')
+var clientIngressPrefixes = config.?stagingClientAddressPrefixes ?? ['0.0.0.0/0']
 
 var addressSpaces = config.?addressSpaces ?? ['10.40.0.0/24', '10.40.1.0/24', '10.40.2.0/24', '10.40.3.0/24', '10.40.4.0/24']
 var subnetPrefixes = config.?subnetPrefixes ?? {
@@ -58,6 +59,7 @@ var certificateEnabled = contains(subnetPrefixes, 'certificate')
 var dnsServers = []
 var firewallSettings = config.?firewall ?? {}
 var zones = firewallSettings.?zones ?? []
+var appGatewayZones = config.?appGatewayZones ?? []
 // ネットワーク規則の非SNAT範囲は標準範囲と構築VNetを維持します。
 var snatPrivateRanges = union(['IANAPrivateRanges'], addressSpaces)
 // Azureの環境定義からStorage suffixとEntraの標準ログイン先を使います。
@@ -71,8 +73,8 @@ var nsgDefinitions = [
     key: 'agw'
     suffix: 'agw'
     rules: [
-      allowRule('allow-client-http-ingress', nsgPriorities.groups.agw.rules['allow-client-http-ingress'].priority, 'Inbound', 'Tcp', ['0.0.0.0/0'], [subnetPrefixes.agw], ['80'])
-      allowRule('allow-client-https-ingress', nsgPriorities.groups.agw.rules['allow-client-https-ingress'].priority, 'Inbound', 'Tcp', ['0.0.0.0/0'], [subnetPrefixes.agw], ['443'])
+      allowRule('allow-client-http-ingress', nsgPriorities.groups.agw.rules['allow-client-http-ingress'].priority, 'Inbound', 'Tcp', clientIngressPrefixes, [subnetPrefixes.agw], ['80'])
+      allowRule('allow-client-https-ingress', nsgPriorities.groups.agw.rules['allow-client-https-ingress'].priority, 'Inbound', 'Tcp', clientIngressPrefixes, [subnetPrefixes.agw], ['443'])
       allowRule('allow-gateway-manager-ingress', nsgPriorities.groups.agw.rules['allow-gateway-manager-ingress'].priority, 'Inbound', 'Tcp', ['GatewayManager'], ['*'], ['65200-65535'])
       allowRule('allow-azure-load-balancer-ingress', nsgPriorities.groups.agw.rules['allow-azure-load-balancer-ingress'].priority, 'Inbound', '*', ['AzureLoadBalancer'], ['*'], ['*'])
     ]
@@ -400,12 +402,12 @@ resource firewallPublicIp 'Microsoft.Network/publicIPAddresses@2025-01-01' = {
   }
 }
 
-// 利用者が接続する AppGW の固定公開 IP。AppGW 本体と同じゾーン指定が必要です。
+// 利用者が接続する AppGW の固定公開 IP。標準では本体と公開 IP の両方を Azure の自動配置に任せます。
 resource appGatewayPublicIp 'Microsoft.Network/publicIPAddresses@2025-01-01' = {
   name: 'pip-agw-${resourcePrefix}'
   location: location
   tags: tags
-  zones: config.?appGatewayZones ?? []
+  zones: empty(appGatewayZones) ? null : appGatewayZones
   sku: { name: 'Standard', tier: 'Regional' }
   properties: {
     publicIPAllocationMethod: 'Static'

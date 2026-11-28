@@ -46,7 +46,7 @@ from .apim_input_contract import validate_input_contract
 from .apim_document_contract import DOCUMENT_API_VERSION
 from .credential_login import SESSION_POLICY_DEFAULTS, SESSION_POLICY_BOUNDS, MAX_TRANSACTION_LIFETIME_SECONDS
 from .paths import (ENVIRONMENT_NAME_MAX_LENGTH, PRODUCT_NAME_MAX_LENGTH, RESOURCE_NAME_COMPONENT,
-                    STANDARD_CONFIG_DIRECTORY, _no_links)
+                    STANDARD_CONFIG_PROFILES, _no_links)
 
 
 class ConfigurationError(ValueError):
@@ -63,7 +63,7 @@ RFC1918_CIDRS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 # 観測対象の操作・受付へ付けるラベルです。サービスやモデルの種類を列挙しません。
 QUERY_OBSERVATION_ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 TOP_KEYS = {
-    "$schema", "$comment",
+    "$schema", "$comment", "capacityProfile",
     "schemaVersion", "productName", "environmentName", "subscriptionId",
     "azureTenantId", "entraTenantId", "location", "foundryLocation", "tags", "network",
     "services", "gateway", "management", "monitoring", "certificate", "firewallTlsInspection", "authorization",
@@ -74,10 +74,10 @@ EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+\Z")
 REGION = re.compile(r"[a-z][a-z0-9]+\Z")
 SECRET_VALUE_KEYS = {"adminPassword", "password", "pfxPassword", "cloudflareToken", "apiToken", "clientSecret", "accessToken", "primaryKey", "secondaryKey"}
 
-# 導入先の識別・配置・登録情報だけをparamsへ残す。共通動作はconfig、
+# 導入先の識別・配置・登録情報と調整可能な容量をparamsへ残す。共通動作はconfig、
 # 初期構成の定数と構築情報からの導出は資材が所有する。
 PARAMETER_KEYS = {
-    "$schema", "$comment", "configFile", "schemaVersion", "productName",
+    "$schema", "$comment", "configFile", "schemaVersion", "productName", "capacity",
     "environmentName", "subscriptionId", "azureTenantId", "entraTenantId", "services", "gateway",
     "management", "monitoring", "certificate", "firewallTlsInspection",
     "credentialProviders", "portal", "codex", "network", "location", "foundryLocation", "tags",
@@ -85,7 +85,7 @@ PARAMETER_KEYS = {
 # このVNet内で構築する資材のアドレスだけをNSGへ動的に渡します。
 # VNet・Firewall DNSとNSG初期集合はBicep内で固定し、公開入力では変更しません。
 PARAMETER_NETWORK_IP_KEYS = {
-    "addressSpaces", "subnetPrefixes",
+    "addressSpaces", "subnetPrefixes", "stagingClientAddressPrefixes",
 }
 RETIRED_NETWORK_INPUTS = {
     "clientAddressPrefixes", "certificatePublicProbeEnabled", "dnsServers",
@@ -387,7 +387,7 @@ def _network(raw: Any) -> dict:
     """
     n = _object(copy.deepcopy(raw), "network", {
         "addressSpaces", "subnetPrefixes", "bgpRoutePropagation", "firewall",
-        "appGatewayZones", "dnsTtl",
+        "appGatewayZones", "dnsTtl", "stagingClientAddressPrefixes",
     })
     spaces = _cidrs(n.get("addressSpaces"), "network.addressSpaces", minimum=1)
     subnet_kinds = (*SUBNET_KINDS, "certificate")
@@ -433,7 +433,7 @@ def _network(raw: Any) -> dict:
     routes = _object(n.get("bgpRoutePropagation", {}), "network.bgpRoutePropagation", {"agw", "apim", "management"})
     n["bgpRoutePropagation"] = {key: _bool(routes.get(key, True), "network.bgpRoutePropagation." + key) for key in ("agw", "apim", "management")}
     _integer(n.setdefault("dnsTtl", 300), "network.dnsTtl", 1, 86400)
-    _strings(n.setdefault("appGatewayZones", ["1", "2", "3"]), "network.appGatewayZones")
+    _strings(n.setdefault("appGatewayZones", []), "network.appGatewayZones")
     f = _object(n.setdefault("firewall", {}), "network.firewall", {
         "sku", "idpsMode", "threatIntelMode", "zones", "idpsPrivateRanges", "signatureOverrides",
         "bypassTrafficSettings", "snatPrivateRanges",
@@ -1086,6 +1086,18 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _fail("tags", "keys and values must be strings")
     c["tags"] = {**tags, "product": c["productName"], "environment": c["environmentName"]}
     c["network"] = _network(c.get("network"))
+    profile = c.get("capacityProfile")
+    if "capacityProfile" in c:
+        _choice(profile, "capacityProfile", STANDARD_CONFIG_PROFILES)
+    source_ranges = "network.stagingClientAddressPrefixes"
+    if profile == "stg":
+        ranges = _cidrs(c["network"].get("stagingClientAddressPrefixes"), source_ranges, minimum=1)
+        if any(ipaddress.ip_network(prefix).prefixlen == 0 for prefix in ranges):
+            _fail(source_ranges, "must restrict the staging ingress to approved source networks")
+        c["network"]["stagingClientAddressPrefixes"] = list(dict.fromkeys(
+            str(ipaddress.ip_network(prefix)) for prefix in ranges))
+    elif "stagingClientAddressPrefixes" in c["network"]:
+        _fail(source_ranges, "is only supported by the stg capacity profile")
     s = _object(c.get("services"), "services", {"publisherName", "publisherEmail", "apimInstanceId", "apimSkuName", "apimCapacity", "vaultSkuName", "vaultRetentionDays", "vaultPurgeProtection", "modelDeployments", "projectDisplayName", "projectDescription", "grantApimSecretAccess", "speechEnabled", "grantApimFoundryModelsAccess"})
     try:
         apim_instance_id(c)
@@ -1187,7 +1199,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     high = _integer(g.setdefault("autoscaleMaxCapacity", 5), "gateway.autoscaleMaxCapacity", 2, 125)
     if low > high:
         _fail("gateway", "autoscale minimum exceeds maximum")
-    _strings(g.setdefault("zones", ["1", "2", "3"]), "gateway.zones")
+    _strings(g.setdefault("zones", []), "gateway.zones")
     if g["zones"] != c["network"]["appGatewayZones"]:
         _fail("gateway.zones", "must match network.appGatewayZones for its Public IP")
     _choice(g.setdefault("wafMode", "Prevention"), "gateway.wafMode", ("Prevention", "Detection"))
@@ -1230,7 +1242,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     c["management"] = m
     # 監査ログの保持は検証用の便宜で暗黙に弱めない。Locked/Unlocked/Disabledと
     # 保持日数を明示した設定として扱い、撤去時も実状態との照合に使う。
-    mon = _object(c.get("monitoring", {}), "monitoring", {"retentionInDays", "workspaceDailyQuotaGb", "auditStorageSku", "auditAllowedIpAddresses", "auditImmutabilityMode", "auditRetentionDays", "operatorEmailAddresses", "appInsightsIngestionWarningGb", "enableLogAlerts", "auditReaders"})
+    mon = _object(c.get("monitoring", {}), "monitoring", {"retentionInDays", "workspaceDailyQuotaGb", "auditStorageSku", "auditAllowedIpAddresses", "auditImmutabilityMode", "auditRetentionDays", "operatorEmailAddresses", "appInsightsDailyCapGb", "appInsightsIngestionWarningGb", "enableLogAlerts", "auditReaders"})
     _integer(mon.setdefault("retentionInDays", 90), "monitoring.retentionInDays", 90, 730)
     _integer(mon.setdefault("workspaceDailyQuotaGb", -1), "monitoring.workspaceDailyQuotaGb", -1, 100000)
     _choice(mon.setdefault("auditStorageSku", "Standard_GRS"), "monitoring.auditStorageSku", ("Standard_LRS", "Standard_GRS", "Standard_RAGRS", "Standard_ZRS", "Standard_GZRS", "Standard_RAGZRS"))
@@ -1251,7 +1263,8 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     for address in _strings(mon.get("operatorEmailAddresses"), "monitoring.operatorEmailAddresses", minimum=1):
         if not EMAIL.fullmatch(address):
             _fail("monitoring.operatorEmailAddresses", "must contain email addresses")
-    _integer(mon.setdefault("appInsightsIngestionWarningGb", 80), "monitoring.appInsightsIngestionWarningGb", 1, 100000)
+    cap = _integer(mon.setdefault("appInsightsDailyCapGb", 100), "monitoring.appInsightsDailyCapGb", 2, 1000)
+    _integer(mon.setdefault("appInsightsIngestionWarningGb", 80), "monitoring.appInsightsIngestionWarningGb", 1, cap - 1)
     _bool(mon.setdefault("enableLogAlerts", False), "monitoring.enableLogAlerts")
     c["monitoring"] = mon
     portal = _object(c.get("portal"), "portal", PARAMETER_SECTION_KEYS["portal"])
@@ -1401,7 +1414,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     # SQL台帳と認証窓口は常設。業務の本人接続設定がなくても構築設定を検査します。
     broker = _object(c.setdefault("credentialBroker", {}), "credentialBroker", {
         "sqlSkuName", "sqlTier", "sqlCapacity", "sqlMaxSizeGB", "backupRetentionDays",
-        "zoneRedundant", "backupRedundancy", "minReplicas", "maxReplicas"})
+        "zoneRedundant", "backupRedundancy", "minReplicas", "maxReplicas", "cpu", "memory"})
     _choice(broker.setdefault("sqlTier", "GeneralPurpose"), "credentialBroker.sqlTier", ("GeneralPurpose", "BusinessCritical"))
     _string(broker.setdefault("sqlSkuName", "GP_Gen5_2"), "credentialBroker.sqlSkuName")
     _integer(broker.setdefault("sqlCapacity", 2), "credentialBroker.sqlCapacity", 2, 128)
@@ -1411,6 +1424,11 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     _choice(broker.setdefault("backupRedundancy", "Geo"), "credentialBroker.backupRedundancy", ("Local", "Zone", "Geo", "GeoZone"))
     minimum = _integer(broker.setdefault("minReplicas", 2), "credentialBroker.minReplicas", 1, 30)
     _integer(broker.setdefault("maxReplicas", 4), "credentialBroker.maxReplicas", minimum, 30)
+    cpu = broker.setdefault("cpu", 0.5)
+    memory = broker.setdefault("memory", "1Gi")
+    supported_memory = {0.5: "1Gi", 1: "2Gi", 2: "4Gi"}
+    if type(cpu) not in (int, float) or cpu not in supported_memory or memory != supported_memory[cpu]:
+        _fail("credentialBroker", "cpu and memory must use a supported Consumption resource pair")
     from .credential_pools import physical_providers
     physical = physical_providers(c)
     names = [item["name"].casefold() for item in physical]
@@ -1460,6 +1478,12 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     if not any(name == host or (name.startswith("*.") and host.split(".", 1)[1] == name[2:]) for name in cert["domainNames"]):
         _fail("certificate.domainNames", "must cover the Portal hostname")
     _validate_separated_entra_apps(c, portal, authentication, providers)
+    if profile == "stg":
+        if "entra" not in authentication:
+            _fail("gateway.authentication.entra", "is required for staging")
+        authentication["entra"]["requiredAppRole"] = "Gateway.Staging.Access"
+        if "authentication" in portal:
+            portal["authentication"]["requiredAppRole"] = "Gateway.Staging.Access"
     # 基盤の最初の変更より前に、API公開と同じFW表現可能性を検査します。
     # 内部生成値を公開設定へ保存せず、秘密やURLをエラーへ含めません。
     from .firewall_destinations import generated_apim_service_fqdns
@@ -1477,8 +1501,8 @@ def _validate_separated_entra_apps(config, portal, authentication, providers):
     if obo:
         if api.get("requiredScope") != "Gateway.Invoke":
             _fail("gateway.authentication.entra.obo", "requires the Gateway.Invoke delegated scope")
-        from .portal_auth_certificate import application_vault_origin
-        prefix = application_vault_origin(config["resourceStem"]) + "/keys/gateway-obo/"
+        from .portal_auth_certificate import gateway_obo_vault_origin
+        prefix = gateway_obo_vault_origin(config["resourceStem"]) + "/keys/gateway-obo/"
         if not re.fullmatch(re.escape(prefix) + r"[a-f0-9]{32}", obo["keyId"]):
             _fail("gateway.authentication.entra.obo.keyId", "must pin the dedicated key in this foundation")
     separated = entra_app_separation_enabled(config)
@@ -1733,24 +1757,27 @@ def _compose_configuration_source(source: Path, raw: dict) -> dict:
     reference = _string(raw["configFile"], "configFile", maximum=4096)
     if "://" in reference or "\x00" in reference or Path(reference).suffix.lower() != ".json":
         _fail("configFile", "must reference a local JSON config file")
-    config_reference = source.parent / Path(reference).expanduser()
-    config_source = config_reference.resolve()
-    # 移設前に生成した標準paramsは、保存済み入力を書き換えずに同じプロファイルを読む。
-    # 明示された別の設定や既存ファイル、切れたリンクを標準設定で置き換えない。
-    if (source.name == "params.local.json" and source.parent.parent.name == ".local"
-            and reference in ("../../config/test.json", "../../config/production.json")
-            and not config_source.exists()
-            and not (config_reference.is_symlink() or config_reference.parent.is_symlink())):
-        config_source = (source.parents[2] / STANDARD_CONFIG_DIRECTORY / config_reference.name).resolve()
+    config_source = (source.parent / Path(reference).expanduser()).resolve()
     if config_source == source:
         _fail("configFile", "cannot reference the parameters file itself")
     standard = _read_configuration_source(config_source)
+    from .capacity_profiles import CapacityInputError, compose_capacity_options
+    profile = standard.get("capacityProfile")
+    if profile is None and "capacity" in raw:
+        _fail("params.capacity", "requires a prod, stg, or dev standard config")
+    try:
+        standard = compose_capacity_options(config_source, standard, requested_capacity=raw.get("capacity"))
+    except CapacityInputError as error:
+        raise ConfigurationError(str(error)) from None
+    except ValueError as error:
+        _fail("configFile", str(error))
     if "configFile" in standard:
         _fail("configFile", "referenced config must not include another config file")
     _object(standard, "config", TOP_KEYS)
     _reject_config_environment_inputs(standard)
     parameters = copy.deepcopy(raw)
     parameters.pop("configFile")
+    parameters.pop("capacity", None)
     # configにはファイル名だけを置き、参照先は選択した環境のparamsから決める。
     # ファイル名だけで認証やTLS検査の登録を有効化しない。
     resolved_standard = _resolve_file_references(standard, source.parent, standard_secret_paths=True)
@@ -1769,6 +1796,8 @@ def _compose_configuration_source(source: Path, raw: dict) -> dict:
         effective_tenant, fail=_fail,
     ) if provider_options is not None or provider_registrations is not None else [])
     combined = _merge_configuration(resolved_standard, resolved_parameters)
+    if profile is not None:
+        combined["capacityProfile"] = profile
     if effective_tenant is not None or "entraTenantId" in resolved_parameters:
         combined["entraTenantId"] = effective_tenant
     combined["credentialProviders"] = providers

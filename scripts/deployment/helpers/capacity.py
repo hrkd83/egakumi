@@ -147,6 +147,39 @@ def _capacity_rules(limits: dict, requested: float) -> dict:
             "sufficient": sufficient}
 
 
+def minimum_model_capacity(limits: dict) -> int:
+    """SKUで公開された制約を満たす、正の最小初期配備容量を求める。"""
+    rules = _capacity_rules(limits, 1.0)
+    allowed = rules["allowedValues"]
+    if allowed is not None:
+        for candidate in allowed:
+            if _capacity_rules(limits, candidate)["sufficient"]:
+                return int(candidate)
+        raise Unverified()
+    minimum, step = rules["minimum"], rules["step"]
+    if minimum is None and step not in (None, 1):
+        raise Unverified()
+    candidate = step if minimum == 0 and step is not None else max(1.0, minimum or 1.0)
+    if not _capacity_rules(limits, candidate)["sufficient"]:
+        raise Unverified()
+    return int(candidate)
+
+
+def model_sku_matches(available: list, deployment: dict) -> list[tuple[dict, dict]]:
+    """対象モデルの名前・版・形式・SKUすべてに一致するカタログ項目を選ぶ。"""
+    matches = []
+    for entry in available:
+        metadata = entry.get("model") or {}
+        if (metadata.get("name") != deployment["modelName"]
+                or metadata.get("version") != deployment["modelVersion"]
+                or metadata.get("format") != deployment["modelFormat"]):
+            continue
+        choices = entry.get("skus") or metadata.get("skus")
+        if isinstance(choices, list):
+            matches.extend((metadata, choice) for choice in choices if choice.get("name") == deployment["skuName"])
+    return matches
+
+
 def _deployment_capacity(records: list, deployment: dict, location: str, requested: float) -> dict:
     """通常のモデル配備用容量を調べ、別用途のfine-tuning容量を代用しない。"""
     matches = []
@@ -218,11 +251,27 @@ def _existing_allocations(config: dict, resources: dict | None) -> tuple[dict | 
         return None, {}, [{"target": "existing", "code": "EXISTING_ALLOCATION_UNVERIFIED"}]
 
 
-def verify_capacity(config: dict, run_json: Callable[[list[str]], object], *, existing_resources: dict | None = None) -> dict:
+def _existing_model_capacity(existing: dict | None, deployment: dict) -> float | None:
+    if existing is None:
+        return None
+    properties, sku = existing.get("properties", {}), existing.get("sku", {})
+    model = properties.get("model", {})
+    if (properties.get("provisioningState") == "Succeeded"
+            and model.get("name") == deployment["modelName"]
+            and model.get("version") == deployment["modelVersion"]
+            and model.get("format") == deployment["modelFormat"]
+            and sku.get("name") == deployment["skuName"]):
+        return _number(sku.get("capacity"))
+    return None
+
+
+def verify_capacity(config: dict, run_json: Callable[[list[str]], object], *,
+                    existing_resources: dict | None = None, initialize_models: bool = False) -> dict:
     """VM互換性・利用枠・モデル機能・提供容量を読取で照合し、公開結果だけを返す。
 
     VMサイズだけでなくOS世代やNVMe、モデル版・SKU・利用枠プールも確認する。
     同じプールを複数モデルが使う場合は合計量で判定し、読めない値は成功にしない。
+    標準の初回配備では未配備のモデルだけをSKUの最小容量で作成する。
     """
     subscription, location = config["subscriptionId"], config["location"]
     management = config["management"]
@@ -391,19 +440,18 @@ def verify_capacity(config: dict, run_json: Callable[[list[str]], object], *, ex
             report["models"].append(model)
             target = "model." + deployment["name"]
             try:
+                existing = existing_models.get(deployment["name"].lower())
+                existing_capacity = _existing_model_capacity(existing, deployment)
+                if initialize_models:
+                    model["action"] = "preserve" if existing is not None else "create"
+                    if existing is not None:
+                        if existing_capacity is None or existing_capacity < 1 or not existing_capacity.is_integer():
+                            issue(target, "EXISTING_MODEL_DEPLOYMENT_UNVERIFIED")
+                            continue
+                        model["capacity"] = int(existing_capacity)
                 if available is None:
                     raise Unverified()
-                matches = []
-                for entry in available:
-                    metadata = entry.get("model") or {}
-                    if metadata.get("name") != deployment["modelName"] or metadata.get("version") != deployment["modelVersion"] or metadata.get("format") != deployment["modelFormat"]:
-                        continue
-                    choices = entry.get("skus") or metadata.get("skus")
-                    if not isinstance(choices, list):
-                        continue
-                    for choice in choices:
-                        if choice.get("name") == deployment["skuName"]:
-                            matches.append((metadata, choice))
+                matches = model_sku_matches(available, deployment)
                 if not matches:
                     # 設定した版とSKUが一覧にない場合、提供容量の不足とは区別する。
                     # 別の版へ自動で切り替えず、公開カタログの候補だけを理由に残す。
@@ -451,7 +499,17 @@ def verify_capacity(config: dict, run_json: Callable[[list[str]], object], *, ex
                     issue(target, "MODEL_QUOTA_USAGE_AMBIGUOUS")
 
                 if selected:
-                    capacity_rules = [_capacity_rules(choice.get("capacity"), _number(deployment["capacity"])) for _, choice in selected]
+                    if initialize_models and existing is None:
+                        try:
+                            minimum = {minimum_model_capacity(choice.get("capacity")) for _, choice in selected}
+                        except Unverified:
+                            issue(target, "MODEL_MINIMUM_CAPACITY_UNVERIFIED")
+                            continue
+                        if len(minimum) != 1:
+                            issue(target, "MODEL_CAPACITY_METADATA_CONFLICT")
+                            continue
+                        model["capacity"] = minimum.pop()
+                    capacity_rules = [_capacity_rules(choice.get("capacity"), _number(model["capacity"])) for _, choice in selected]
                     # OpenAI/AIServicesで同じモデルが重複表示される場合も、容量制約は一致が必要。
                     # 省略とnullは同じ未提示の意味として比較する。
                     if any(value != capacity_rules[0] for value in capacity_rules[1:]):
@@ -459,22 +517,12 @@ def verify_capacity(config: dict, run_json: Callable[[list[str]], object], *, ex
                         model["capacityRules"] = {"status": "conflicting"}
                     else:
                         model["capacityRules"] = capacity_rules[0]
-                        if not capacity_rules[0]["sufficient"]:
+                        if model.get("action") != "preserve" and not capacity_rules[0]["sufficient"]:
                             issue(target, "MODEL_CAPACITY_UNSUPPORTED")
                 else:
                     model["capacityRules"] = {"status": "unverified", "reason": "quota-usage-not-selected"}
-                existing = existing_models.get(deployment["name"].lower())
-                existing_capacity = 0.0
-                if existing is not None:
-                    previous_properties, previous_sku = existing.get("properties", {}), existing.get("sku", {})
-                    previous_model = previous_properties.get("model", {})
-                    if (previous_properties.get("provisioningState") == "Succeeded"
-                            and previous_model.get("name") == deployment["modelName"]
-                            and previous_model.get("version") == deployment["modelVersion"]
-                            and previous_model.get("format") == deployment["modelFormat"]
-                            and previous_sku.get("name") == deployment["skuName"]):
-                        existing_capacity = _number(previous_sku.get("capacity"))
-                additional_capacity = max(0.0, deployment["capacity"] - existing_capacity)
+                existing_capacity = existing_capacity or 0.0
+                additional_capacity = max(0.0, model["capacity"] - existing_capacity)
                 model.update({"existingCapacity": existing_capacity, "additionalCapacity": additional_capacity})
                 if usage_name is not None:
                     model["usageName"] = usage_name
@@ -488,7 +536,7 @@ def verify_capacity(config: dict, run_json: Callable[[list[str]], object], *, ex
                         model["quota"] = {"status": "unverified", "name": usage_name}
                         issue(target, "MODEL_QUOTA_UNVERIFIED")
 
-                if existing_capacity == deployment["capacity"]:
+                if existing_capacity == model["capacity"]:
                     # 正常な既存配備とモデル・版・形式・SKU・容量が同じなら、割当を再利用します。
                     # 新規配備用の空き容量は不要です。カタログ・利用枠の確認は上で行います。
                     model["availability"] = {"status": "not-required", "reason": "existing-deployment-unchanged",
@@ -531,4 +579,10 @@ def verify_capacity(config: dict, run_json: Callable[[list[str]], object], *, ex
         report["modelStatus"] = "not-configured"
     if not report["issues"]:
         report["status"] = "verified"
+        if initialize_models:
+            sizes = {row["deploymentName"]: row["capacity"] for row in report["models"] if row["action"] == "create"}
+            report["modelDeploymentsToCreate"] = [
+                {**deployment, "capacity": sizes[deployment["name"]]}
+                for deployment in deployments if deployment["name"] in sizes
+            ]
     return report

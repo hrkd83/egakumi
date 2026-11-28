@@ -13,7 +13,7 @@ from .apim_audit import render_audit_policy
 from .apim_ingress import TRUSTED_INGRESS_ID
 from .apim_browser_exception import BROWSER_EXCEPTION_ID, BROWSER_EXCEPTION_VARIABLE
 from .apim_common_authentication import (
-    COMMON_AUTHENTICATION_FRAGMENT_ID, ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID,
+    COMMON_AUTHENTICATION_FRAGMENT_ID, ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID, STAGING_ACCESS_ROLE,
     render_common_authentication_fragments, expand_common_authentication_fragments,
 )
 
@@ -69,11 +69,20 @@ def entra_authentication_settings(config: dict) -> dict:
     authentication = gateway.get("authentication", {})
     if not isinstance(authentication, dict):
         raise ValueError("gateway.authentication must be an object")
+    staging = config.get("capacityProfile") == "stg"
     if "entra" not in authentication:
+        if staging:
+            raise ValueError("APIM staging requires Entra authentication")
         # Entra設定を持たない既存キー構成だけは互換性を維持する。
         return {"enabled": False}
     from .configuration import _entra_authentication, entra_tenant_id
-    settings = _entra_authentication(copy.deepcopy(authentication["entra"]))
+    normalized = copy.deepcopy(authentication["entra"])
+    required_app_role = normalized.pop("requiredAppRole", None) if isinstance(normalized, dict) else None
+    if required_app_role != (STAGING_ACCESS_ROLE if staging else None):
+        raise ValueError("APIM staging requires the fixed Entra app role")
+    settings = _entra_authentication(normalized)
+    if required_app_role is not None:
+        settings["requiredAppRole"] = required_app_role
     login = authentication.get("credentialLogin")
     if login is not None and not isinstance(login, dict):
         raise ValueError("gateway.authentication.credentialLogin must be an object")
@@ -116,8 +125,10 @@ def _entra_policy_settings(settings: dict | None) -> dict | None:
         return None
     if not isinstance(settings, dict) or type(settings.get("enabled", False)) is not bool:
         raise ValueError("Entra authentication enabled must be a boolean")
-    if set(settings) - {"enabled", "tenantId", "audience", "requiredScope", "apiNames", "userLimits"}:
+    if set(settings) - {"enabled", "tenantId", "audience", "requiredScope", "apiNames", "userLimits", "requiredAppRole"}:
         raise ValueError("Entra authentication contains unsupported settings")
+    if "requiredAppRole" in settings and (not settings.get("enabled") or settings["requiredAppRole"] != STAGING_ACCESS_ROLE):
+        raise ValueError("Entra authentication requires the fixed staging access role")
     if not settings.get("enabled", False):
         return None
     result = copy.deepcopy(settings)
@@ -254,8 +265,9 @@ def _authentication_block(policy: str, *, entra: dict | None = None,
     if not any(node.get("fragment-id") == COMMON_AUTHENTICATION_FRAGMENT_ID for node in document.iter("include-fragment")):
         raise ValueError(MIGRATION_REQUIRED)
     enabled = bool(entra and entra.get("enabled", True))
-    trusted = render_common_authentication_fragments(entra_enabled=enabled) if fragments is None else fragments
-    document = ET.fromstring(expand_common_authentication_fragments(policy, trusted, entra_enabled=enabled))
+    render_options = {"entra_enabled": enabled, "required_app_role": (entra or {}).get("requiredAppRole", "")}
+    trusted = render_common_authentication_fragments(**render_options) if fragments is None else fragments
+    document = ET.fromstring(expand_common_authentication_fragments(policy, trusted, **render_options))
     inbound = document.findall("inbound")
     matches = [node for node in document.iter() if node.get("id") == COMMON_AUTHENTICATION_ID]
     if (document.tag != "policies" or len(inbound) != 1 or len(matches) != 1

@@ -6,26 +6,26 @@
 
 ## このページのゴール
 
-第01章のひな型へ、導入先のID・名前・IP計画・公開名・連絡先と、第02〜06章で準備したEntraとDNSの設定を記入します。このページではAzure資源を作りません。設定欄の詳細は[paramsリファレンス](../reference/configuration/parameters.md)を参照してください。
+第01章のひな型へ、導入先のID・名前・IP計画・公開名・連絡先と、第02〜06章で準備したEntraとDNSの設定を記入します。`capacity` に記入済みの容量を確認し、導入先の処理量に合わせて調整します。このページではAzure資源を作りません。設定欄の詳細は[paramsリファレンス](../reference/configuration/parameters.md)を参照してください。
 
 ## 7-1. paramsとconfigの役割
 
 | 場所 | 管理するもの |
 | --- | --- |
-| `.local/<environment>/params.local.json` | 導入先ごとのID・公開名・IP計画・連絡先、アプリClient ID、追加OAuth接続の秘密ファイル参照 |
-| `infra/config/test.json`／`infra/config/production.json` | 構築資材が提供する検証・本番の標準値。初回構築ではそのまま参照する |
+| `.local/<environment>/params.local.json` | 導入先ごとの容量・ID・公開名・IP計画・連絡先、アプリClient ID、追加OAuth接続の秘密ファイル参照 |
+| `infra/config/{prod,stg,dev}.json` と `infra/config/capacity/` | 環境別のSKU・ゾーン・冗長化、監査保持、Foundryモデルの定義などの標準設定 |
 | `.local/<environment>/secrets/` | 対話入力や保護された鍵生成で保存する秘密ファイル |
 | 資材のコード・API正本 | 固定の通信・認証契約、標準API、params/configから導出する内部設定 |
 
-準備コマンドは選択したprofileの参照をparamsへ設定します。configの参照は `../../infra/config/test.json` または `../../infra/config/production.json` です。Tools・Credentialのシークレット、管理VMのSSH公開鍵、Firewallの公開ルートCA証明書のファイル名はconfigで定義します。4ファイルは、選択したparamsと同じ環境の `secrets/` に配置します。`.local/`と`.azure/`はチェックアウト直下だけに置き、リンクと所有者専用権限を確認します。実値を公開example・コード・作業記録へ書き込まず、秘密値をJSONへ直接記載しません。
+準備コマンドは選択したprofileの参照をparamsへ設定します。configの参照は `../../infra/config/<profile>.json` です。Tools・Credentialのシークレット、管理VMのSSH公開鍵、Firewallの公開ルートCA証明書のファイル名はconfigで定義します。4ファイルは、選択したparamsと同じ環境の `secrets/` に配置します。`.local/`と`.azure/`はチェックアウト直下だけに置き、リンクと所有者専用権限を確認します。実値を公開example・コード・作業記録へ書き込まず、秘密値をJSONへ直接記載しません。
 
 エディター向けのSchemaは、[公開paramsの例](../../params/)の隣に[params用](../../params/params.schema.json)、[標準config](../../infra/config/)の隣に[config用](../../infra/config/options.schema.json)を置いています。[configuration schema](../../infra/config/configuration.schema.json)は、API配列・完全なprovider・導出値を含む内部合成形式の参照です。内部形式の項目を、そのまま公開params/configへ追加することはできません。
 
-準備済みparamsが移設前の標準configを参照している場合も、準備コマンドは入力を保持し、配備時は同じprofileを読み込みます。エディターの参照を更新するときは、paramsの `$schema` に `../../params/params.schema.json` を指定します。
+配備・再開・撤去は、準備時に選択した標準configを使います。環境名を変えても標準configは切り替わりません。エディターには `../../params/params.schema.json` を指定します。
 
 ## 7-2. 環境別paramsと自動生成IDを確認する
 
-第1章の[準備コマンド](01-prerequisites.md#1-5-環境別のローカル領域を準備する)で、選んだ公開exampleからparamsを作成します。本番向けの標準構成は`--profile production`を選びます。環境名は最大4文字、製品名は最大12文字です。環境名はSKUの選択とは独立です。
+第1章の[準備コマンド](01-prerequisites.md#1-5-環境別のローカル領域を準備する)で、選んだ公開exampleからparamsを作成します。本番向けの標準構成は`--profile prod`を選びます。管理者だけが使う検証は `stg`、開発は `dev` を選びます。環境名は最大4文字、製品名は最大12文字です。環境名はSKUの選択とは独立です。
 
 ```sh
 export DEPLOY_LOCAL_DIRECTORY="$(pwd)/.local/${DEPLOY_ENVIRONMENT}"
@@ -40,10 +40,14 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 
 公開例のGUID・ホスト・CIDR・会社名・メールは実値から独立した架空例です。導入先の値は生成した保護paramsに記入します。既存paramsへ公開例を重ねてコピーせず、別環境の入力・state・秘密も自動流用しません。
 
+公開例には環境別の `capacity` を記入済みです。App Gatewayの台数範囲、APIMのユニット数、Brokerのレプリカ数範囲とSQLの容量が対象です。準備コマンドで作成したparamsで全項目を確認します。容量項目の欠落は設定検証でエラーになります。Foundryは3環境とも最小容量で初期配備し、構築後にポータルで調整します。 [必須の容量設定と公開例](../reference/configuration/parameters.md#環境ごとに確定する容量) · [Foundryの容量とクォータ](../reference/configuration/capacity/foundry.md)
+
+準備コマンドの再実行は保存済みの入力を保持します。容量の必須項目に不足がある場合は、選択したプロファイルの公開例を参照してparamsへ記入します。
+
 ## 7-3. 環境の値を記入する
 
 1. `subscriptionId`・`azureTenantId`・`entraTenantId`・製品／環境名・3リージョンを確定する。
-2. `network.addressSpaces`と`network.subnetPrefixes`をIP計画へ合わせる。[公開例の割り当て](../reference/configuration/parameters.md#公開例のvnet割り当て)を参考に、導入先で使用可能な範囲を確認する。
+2. `network.addressSpaces`と`network.subnetPrefixes`をIP計画へ合わせる。[公開例の割り当て](../reference/configuration/parameters.md#公開例のvnet割り当て)を参考に、導入先で使用可能な範囲を確認する。`stg` では `network.stagingClientAddressPrefixes` に管理者が実際に使う接続元IPv4 CIDRを指定する。
 3. Gateway／Portalの公開FQDN、APIM発行者、監視通知先、ACME連絡先を記入する。証明書DNS名は公開FQDN2件から自動生成する。
 4. 第05章と第06章で確認したDNS側Subscription IDとUAMIの完全なResource IDを設定する。DNS-01プラグインは資材でAzureへ固定する。
 5. `management.adminUsername`を設定する。保守時の本人権限は[管理VMの運用](../operations/management-vm-access.md)に従う。

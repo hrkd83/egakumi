@@ -25,6 +25,9 @@ param transactionLifetimeSeconds int
 param loginCallsPerMinute int = 10
 param minReplicas int = 2
 param maxReplicas int = 4
+param cpu string = '0.5'
+@allowed(['1Gi', '2Gi', '4Gi'])
+param memory string = '1Gi'
 param deployApplication bool = false
 @allowed(['migrate', 'observe-schema'])
 param schemaAction string = 'migrate'
@@ -110,7 +113,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = if (deployApplication) {
         name: 'credential-broker'
         image: image
         env: concat(map(items(union(runtimeEnvironment, oboEnvironment)), item => { name: item.key, value: item.value }), [{ name: 'BROKER_SHARED_KEY', secretRef: 'broker-key' }], oidcEnvironment)
-        resources: { cpu: json('0.5'), memory: '1Gi' }
+        resources: { cpu: json(cpu), memory: memory }
         probes: [for type in ['Startup', 'Readiness', 'Liveness']: {
           type: type
           httpGet: { path: '/health/gateway-caller-v1', port: 8000, scheme: 'HTTP' }

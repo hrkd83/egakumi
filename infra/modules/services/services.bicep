@@ -28,6 +28,7 @@ param publisherEmail string
 @description('APIM の SKU。Premium は本番構成、Developer は SLA のない検証向け構成です。')
 param apimSkuName string = 'Premium'
 @minValue(1)
+@maxValue(12)
 @description('APIM の処理ユニット数。SKU と負荷に合わせて指定します。')
 param apimCapacity int = 1
 @description('azd が所有確認した実 APIM 名ごとの公開ドメイン設定。秘密証明書・観測した証明書情報や状態は含めず、利用者の公開 config では指定しません。')
@@ -49,7 +50,7 @@ param applicationInsightsResourceId string = ''
 @secure()
 @description('先に作成した Application Insights の実際の接続文字列。認証用 credential ではなく、Foundry 接続の必須 metadata に渡します。公開パラメーターへ転記しません。')
 param applicationInsightsConnectionString string = ''
-@description('配備するモデル名・版・SKU・利用枠等の一覧。APIM のモデル公開設定と組で検証します。')
+@description('新規配備するモデル名・版・SKU・容量。正式な初回構築では配備前に確認した最小値を使います。')
 param modelDeployments array = []
 @description('Foundry 共有プロジェクトの画面上の表示名。物理リソース名とは分けて管理します。')
 param projectDisplayName string = 'egakumi'
@@ -108,7 +109,8 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-06-01' = {
   properties: { displayName: projectDisplayName, description: projectDescription }
 }
 
-// 通常モデルを順番に配備。版と利用枠を明示して、設定外の自動版上げを防ぎます。
+// 新規モデルを順番に配備。正式手順の再実行では、事前検査で照合した既存配備を入力から除きます。
+// 版は明示して、設定外の自動版上げを防ぎます。
 @batchSize(1)
 resource models 'Microsoft.CognitiveServices/accounts/deployments@2025-06-01' = [for model in modelDeployments: {
   parent: foundry
@@ -146,6 +148,21 @@ resource appInsightsConnection 'Microsoft.CognitiveServices/accounts/projects/co
   dependsOn: [models]
 }
 
+// Premium のゾーン冗長化時に内部 APIM の管理面で使う IP。API の入口は AppGW です。
+// ゾーン対応リージョンではゾーン指定を省略した Standard IP もゾーン冗長です。
+// https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses#availability-zone
+resource apimManagementIp 'Microsoft.Network/publicIPAddresses@2025-01-01' = if (apimSkuName == 'Premium') {
+  name: 'pip-${names.apim}-management'
+  location: location
+  tags: tags
+  sku: { name: 'Standard', tier: 'Regional' }
+  properties: {
+    publicIPAllocationMethod: 'Static'
+    publicIPAddressVersion: 'IPv4'
+    dnsSettings: { domainNameLabel: names.apim }
+  }
+}
+
 // 内部 VNet モードの APIM。公開 API は AppGW 側から受け、バックエンドには APIM 自身の MI で認証します。
 resource apim 'Microsoft.ApiManagement/service@2024-05-01' = {
   name: names.apim
@@ -161,6 +178,7 @@ resource apim 'Microsoft.ApiManagement/service@2024-05-01' = {
     publisherEmail: publisherEmail
     virtualNetworkType: 'Internal'
     virtualNetworkConfiguration: { subnetResourceId: apimSubnetId }
+    publicIpAddressId: apimSkuName == 'Premium' ? apimManagementIp!.id : null
     publicNetworkAccess: 'Enabled'
     developerPortalStatus: 'Disabled'
     // 他用途の既存domainはowned GETから保持し、旧gRPC専用domainは後処理で照合して撤去します。

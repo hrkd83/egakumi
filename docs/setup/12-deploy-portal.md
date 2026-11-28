@@ -22,6 +22,8 @@ PortalはMicrosoft Entraでサインインし、Model GatewayとTool Gatewayを�
 
 対象Azure環境へログインし、Python 3.11以上とBicep CLIを使える端末で、リポジトリのルートから計画を確認して実行します。
 
+`stg`の配備コマンドは公開HTTPSでPortalのヘルスを検査します。実行端末または配備runnerの送信元を `network.stagingClientAddressPrefixes` に登録します。NATやプロキシを経由する場合は、App Gatewayから見えるIPv4 CIDRを指定します。この基盤の管理VMから同じFirewallを経由するHTTPSは、Firewallの公開IPで許可されます。
+
 ```sh
 python3 -B scripts/deployment/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
 python3 -B scripts/deployment/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute

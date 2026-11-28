@@ -45,6 +45,17 @@ test("別テナント・宛先・署名・期限切れのトークンを拒否�
   await assert.rejects(resolveProfile({}));
 });
 
+test("ステージングでは署名済みIDトークンの管理者アプリロールを要求する", async () => {
+  const requiredAppRole = "Gateway.Staging.Access";
+  const resolveStagingProfile = createMicrosoftProfileResolver({ tenantId, clientId, requiredAppRole },
+    async () => keys.publicKey);
+  await assert.rejects(resolveStagingProfile({ idToken: await signedToken() }), /ENTRA_ROLE_NOT_ALLOWED/);
+  await assert.rejects(resolveStagingProfile({ idToken: await signedToken({ roles: ["Other.Role"] }) }), /ENTRA_ROLE_NOT_ALLOWED/);
+  await assert.rejects(resolveStagingProfile({ idToken: await signedToken({ roles: requiredAppRole }) }), /ENTRA_ROLE_NOT_ALLOWED/);
+  const result = await resolveStagingProfile({ idToken: await signedToken({ roles: [requiredAppRole] }) });
+  assert.equal(result.user.entraObjectId, objectId);
+});
+
 test("本人識別列は検証済みMicrosoftプロフィールとの一致を必要とする", async () => {
   const gate = createIdentityGate(tenantId);
   const data = {

@@ -742,9 +742,10 @@ func authenticationBranchValue(template string, source string, enabled bool) str
   '__ENTRA_OPEN_PRODUCT_ID__', 'core-entra-model-users')
 // 共通の監査ソースを生成時に展開します。フラグメント同士を実行時に呼ぶ入れ子は作りません。
 func authenticationTelemetryBody(template string, source string) string => preAuthenticationTelemetry(replace(replace(gatewayTelemetryFragmentValue(template, source, true), '<fragment>', ''), '</fragment>', ''))
-func commonAuthenticationFragmentValue(template string, source string, enabled bool, telemetryTemplate string, telemetrySource string) string => replace(replace(
+func commonAuthenticationFragmentValue(template string, source string, enabled bool, requiredAppRole string, telemetryTemplate string, telemetrySource string) string => replace(replace(replace(
   authenticationBranchValue(template, source, enabled), '__AUTHENTICATION_TELEMETRY_XML__', authenticationTelemetryBody(telemetryTemplate, telemetrySource)),
-  '__ENTRA_FAILURE_TELEMETRY_XML__', replace(authenticationTelemetryBody(telemetryTemplate, telemetrySource), '"gatewayAuthenticatedSubject"', '"gatewayEntraFailureSubject"'))
+  '__ENTRA_FAILURE_TELEMETRY_XML__', replace(authenticationTelemetryBody(telemetryTemplate, telemetrySource), '"gatewayAuthenticatedSubject"', '"gatewayEntraFailureSubject"')),
+  '__ENTRA_REQUIRED_APP_ROLE__', empty(requiredAppRole) ? '' : '<claim name="roles" match="any"><value>${requiredAppRole}</value></claim>')
 func entraAuthenticationErrorFragmentValue(template string, telemetryTemplate string, telemetrySource string) string => replace(template, '__AUTHENTICATION_TELEMETRY_XML__', authenticationTelemetryBody(telemetryTemplate, telemetrySource))
 // 配備先と生成元に同じXMLを渡し、展開済みの全文を中間変数へ重複保存しません。
 func trustedIngressFragmentValue(template string, conditionSource string, telemetryTemplate string, telemetrySource string) string => replace(replace(replace(renderPolicyTemplate(template, conditionSource, trustedIngressConditionSlots), '__AUTHENTICATION_TELEMETRY_XML__', preAuthenticationTelemetry(replace(replace(gatewayTelemetryFragmentValue(telemetryTemplate, telemetrySource, false), '<fragment>', ''), '</fragment>', ''))), '__L7_INGRESS_REQUIRED__', '&quot;{{core-l7-ingress-enabled}}&quot; == &quot;true&quot;'), '__L7_INGRESS_EXPECTED__', '{{core-l7-ingress-secret}}')
@@ -780,7 +781,7 @@ resource browserExceptionFragment 'Microsoft.ApiManagement/service/policyFragmen
 resource commonAuthenticationFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-common-authentication'
-  properties: { format: 'rawxml', description: '共通入口でキーまたはBearerを検証し、本人・会社設定・内部処理の失敗を区別して監査する。', value: commonAuthenticationFragmentValue(commonAuthenticationTemplate, commonAuthenticationSource, entraAuthentication.?enabled ?? false, gatewayTelemetryTemplate, gatewayTelemetrySource) }
+  properties: { format: 'rawxml', description: '共通入口でキーまたはBearerを検証し、本人・会社設定・内部処理の失敗を区別して監査する。', value: commonAuthenticationFragmentValue(commonAuthenticationTemplate, commonAuthenticationSource, entraAuthentication.?enabled ?? false, entraAuthentication.?requiredAppRole ?? '', gatewayTelemetryTemplate, gatewayTelemetrySource) }
 }
 resource entraAuthenticationErrorFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = if (entraAuthentication.?enabled ?? false) {
   parent: apim
@@ -1350,7 +1351,7 @@ output entraPublicationSource object = {
       { suffix: '/policyFragments/core-request-context', value: renderPolicyTemplate(requestContextTemplate, requestContextSource, requestContextFragmentSlots) }
       { suffix: '/policyFragments/core-trusted-ingress', value: trustedIngressFragmentValue(trustedIngressTemplate, trustedIngressSource, gatewayTelemetryTemplate, gatewayTelemetrySource) }
       { suffix: '/policyFragments/core-credential-browser-exception', value: browserExceptionFragmentValue(browserExceptionTemplate, browserExceptionSource, credentialLoginEnabled) }
-      { suffix: '/policyFragments/core-common-authentication', value: commonAuthenticationFragmentValue(commonAuthenticationTemplate, commonAuthenticationSource, entraAuthentication.?enabled ?? false, gatewayTelemetryTemplate, gatewayTelemetrySource) }
+      { suffix: '/policyFragments/core-common-authentication', value: commonAuthenticationFragmentValue(commonAuthenticationTemplate, commonAuthenticationSource, entraAuthentication.?enabled ?? false, entraAuthentication.?requiredAppRole ?? '', gatewayTelemetryTemplate, gatewayTelemetrySource) }
       { suffix: '/policyFragments/core-audit-authenticated-subject', value: renderPolicyTemplate(authenticatedSubjectTemplate, authenticatedSubjectSource, authenticatedSubjectFragmentSlots) }
       { suffix: '/policyFragments/core-rate-limit', value: renderPolicyTemplate(rateLimitTemplate, rateLimitSource, rateLimitFragmentSlots) }
       { suffix: '/policyFragments/core-token-limits', value: renderPolicyTemplate(tokenLimitTemplate, tokenLimitSource, tokenLimitFragmentSlots) }

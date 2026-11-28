@@ -182,25 +182,26 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
         self.assertIn(("Microsoft.App/containerApps", "[format('ca-{0}-credentials', parameters('stem'))]"),
                       hosts(self.templates["gateway"]))
 
-    def test_application_and_public_tls_vaults_remain_separate_and_private(self):
-        """両Vaultの公開アクセスを無効にし、管理面例外とRBACの設定を確認する。"""
+    def test_vaults_remain_separate_and_private(self):
+        """用途別Vaultの公開アクセス、管理面例外とRBACを確認する。"""
         services_template = self.templates["services"]
         tls_template = self.templates["certificate_storage"]
         self.assertFalse(services_template["parameters"]["allowApimKeyVaultControlPlane"]["defaultValue"])
         self.assertNotIn("allowApimKeyVaultControlPlane", tls_template["parameters"])
         options = {'tenantId': str(UUID(int=1)), 'vaultSkuName': 'standard', 'vaultRetentionDays': 90,
                    'vaultPurgeProtection': True}
-        for template, name in (
-            (services_template, "[parameters('names').keyVault]"),
-            (tls_template, "[format('kvtls-{0}', parameters('stem'))]"),
+        for template, name, bypass in (
+            (services_template, "[parameters('names').keyVault]", "AzureServices"),
+            (tls_template, "[format('kvtls-{0}', parameters('stem'))]", "AzureServices"),
+            (tls_template, "[format('kvobo-{0}', parameters('stem'))]", "None"),
         ):
-            vault, = [item for item in template["resources"] if item["type"] == "Microsoft.KeyVault/vaults"]
-            self.assertEqual(vault["name"], name)
+            vault, = [item for item in template["resources"]
+                      if item["type"] == "Microsoft.KeyVault/vaults" and item["name"] == name]
             properties = NetworkArmExpression(vault["properties"], template).evaluate(
                 {**options, "allowApimKeyVaultControlPlane": True})
             self.assertEqual(properties['publicNetworkAccess'], 'Disabled')
             self.assertEqual(properties['networkAcls'], {
-                'defaultAction': 'Deny', 'bypass': 'AzureServices', 'ipRules': [], 'virtualNetworkRules': []})
+                'defaultAction': 'Deny', 'bypass': bypass, 'ipRules': [], 'virtualNetworkRules': []})
             self.assertTrue(properties['enableRbacAuthorization'])
             self.assertTrue(properties['enablePurgeProtection'])
         foundry, = [item for item in services_template["resources"] if item["type"] == "Microsoft.CognitiveServices/accounts"]
@@ -216,7 +217,7 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
         config = normalize_configuration(fixture())
         destinations = diagnostics.canonical_settings(config, 'core')['certificate-vault-logs']['properties']
         setting, = [item for item in template['resources'] if item['type'] == 'Microsoft.Insights/diagnosticSettings'
-                    and "Microsoft.KeyVault/vaults" in item['scope']]
+                    and "kvtls-" in item['scope']]
         self.assertEqual(setting['scope'], "[resourceId('Microsoft.KeyVault/vaults', format('kvtls-{0}', parameters('stem')))]")
         self.assertEqual(setting['name'], 'core-audit')
         self.assertEqual(setting['properties'], "[parameters('diagnosticSettingProperties')['certificate-vault-logs']]")

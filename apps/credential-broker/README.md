@@ -10,6 +10,8 @@ Gateway配備は同じ基盤のBroker専用CAE出力を参照し、実行前に�
 
 Broker本体・実行用ID・credentials DB・SQL初期化ジョブ・定期照合ジョブを初期構築で作成します。本人接続の認証プロファイルが未設定でも構築し、`BROKER_PROFILES_JSON={}`で起動します。OIDCのproviderや秘密を補完せず、本人接続APIとcallback用WAFは業務認証の設定に応じて用意します。空プロファイルでのSQL初期化はスキーマと実行IDの権限を準備し、既存プールを無効化しません。定期照合は期限切れ状態だけを掃除し、CM接続の照合・削除や既存割当の変更は行いません。
 
+Graph OBOでは、BrokerがAzure側の署名専用Key Vaultにある版固定の鍵でアプリのclient assertionを署名し、認証側テナントのEntraに利用者トークンを交換します。署名済みclient assertionの有効期間は120秒で、最長60秒を同じプロセス内で再利用します。利用者トークンの照合とGraphへの交換は要求ごとに行います。 [署名容量の確認](../../docs/reference/configuration/capacity/key-vault.md) · [証明書の更新](../../docs/setup/02-entra-api.md#6-基盤構築後にobo用の公開証明書を登録する)
+
 ## 起動に必要な設定
 
 - `BROKER_PUBLIC_ORIGIN`: GatewayのHTTPS origin。

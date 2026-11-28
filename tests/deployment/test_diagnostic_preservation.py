@@ -131,6 +131,7 @@ class DiagnosticPreservationTests(unittest.TestCase):
                 self.assertLessEqual({f"insights-logs-{name}" for name in enabled}, ARCHIVE_CONTAINERS[collectors[destination]])
 
     def test_vm_platform_patch_logs_follow_the_configured_patch_mode(self):
+        self.config["management"].update(patchAssessmentMode="ImageDefault", patchMode="ImageDefault")
         self.assertNotIn("management-patch-logs", diagnostics.canonical_settings(self.config, "core"))
         self.config["management"]["patchAssessmentMode"] = "AutomaticByPlatform"
         patch_logs = diagnostics.canonical_settings(self.config, "core")["management-patch-logs"]["properties"]

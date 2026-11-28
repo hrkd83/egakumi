@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""config正本のモデル一配備を計画し、明示実行で容量・版・新規作成を反映する。"""
+"""config正本のモデル一配備を計画し、明示実行で作成・更新する。"""
 from __future__ import annotations
 
 import os
@@ -20,6 +20,8 @@ import time
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from deployment.helpers import capacity
+from deployment.helpers.paths import STANDARD_CONFIG_PROFILES
 from operations.common import OperationContext, OperationError, poll_delay
 
 
@@ -100,6 +102,31 @@ def _summary(value: dict | None) -> dict | None:
             "versionUpgradeOption": properties.get("versionUpgradeOption")}
 
 
+def _creation_capacity(context, deployment: dict) -> int:
+    """標準環境は対象リージョンで配備SKUが許容する最小容量を使う。"""
+    if context.config.get("capacityProfile") not in STANDARD_CONFIG_PROFILES:
+        return deployment["capacity"]
+    try:
+        catalog = json.loads(context.run_cli([
+            "az", "cognitiveservices", "model", "list", "--location", context.config["foundryLocation"],
+            "--subscription", context.config["subscriptionId"], "-o", "json",
+        ], timeout_seconds=120))
+        if not isinstance(catalog, list):
+            raise capacity.Unverified()
+        usage_name = deployment.get("quotaUsageName")
+        choices = [sku for _, sku in capacity.model_sku_matches(catalog, deployment)
+                   if usage_name is None or usage_name == sku.get("usageName")]
+        usage_names = {sku.get("usageName") for sku in choices}
+        if len(usage_names) != 1 or any(not isinstance(name, str) or not name for name in usage_names):
+            raise capacity.Unverified()
+        minima = {capacity.minimum_model_capacity(sku.get("capacity")) for sku in choices}
+        if len(minima) != 1:
+            raise capacity.Unverified()
+        return minima.pop()
+    except (ValueError, KeyError, TypeError, AttributeError):
+        raise OperationError("The initial model capacity could not be verified") from None
+
+
 def _pause(delay, deadline, sleep, monotonic) -> bool:
     """待機指示を短縮せず、期限内だけ最大60秒ずつ待って次のGETを許す。"""
     if delay >= deadline - monotonic():
@@ -137,7 +164,8 @@ def operate(context, name: str, intent: str, *, allow_version_change: bool = Fal
     current = observed.get("body") if observed["statusCode"] == 200 else None
     if (intent == "create") != (current is None):
         raise OperationError("Create or update intent differs from the current deployment")
-    desired = {"sku": {"name": row["skuName"], "capacity": row["capacity"]},
+    desired = {"sku": {"name": row["skuName"],
+                       "capacity": _creation_capacity(context, row) if current is None else row["capacity"]},
                "properties": {"model": {"format": row["modelFormat"], "name": row["modelName"],
                                          "version": row["modelVersion"]},
                               "versionUpgradeOption": row["versionUpgradeOption"]}}
@@ -158,7 +186,13 @@ def operate(context, name: str, intent: str, *, allow_version_change: bool = Fal
             # 2025-06-01ではreadOnlyだが、非既定の既存動作をPUTで保持できると仮定しない。
             raise OperationError("The existing dynamic throttling setting cannot be safely preserved by a version PUT")
         desired = _writable(current)
-        desired["sku"]["capacity"] = row["capacity"]
+        if context.config.get("capacityProfile") in STANDARD_CONFIG_PROFILES:
+            # 標準環境は配備後の割当をポータルで管理する。版を変える場合も実配備の値を引き継ぐ。
+            actual_capacity = desired["sku"].get("capacity")
+            if type(actual_capacity) is not int or actual_capacity < 1:
+                raise OperationError("The existing model capacity could not be verified")
+        else:
+            desired["sku"]["capacity"] = row["capacity"]
         desired["properties"]["model"]["version"] = row["modelVersion"]
         method = "PUT" if version_changed else "PATCH"
         body = copy.deepcopy(desired) if version_changed else {"sku": desired["sku"]}

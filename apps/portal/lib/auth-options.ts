@@ -38,6 +38,7 @@ export function createPortalAuthOptions(environment: AuthEnvironment, database: 
         getUserInfo: createMicrosoftProfileResolver({
           clientId: environment.microsoftClientId,
           tenantId: environment.microsoftTenantId,
+          requiredAppRole: environment.requiredAppRole,
         }),
       },
     },

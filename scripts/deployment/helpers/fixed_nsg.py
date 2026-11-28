@@ -10,7 +10,9 @@ from uuid import UUID
 
 from .aca_egress import validate_aca_route_snapshot
 from .apim_naming import apim_name
+from .configuration import entra_app_separation_enabled
 from .log_privacy import ARCHIVE_COLLECTORS, audit_storage_account_name
+from .portal_auth_certificate import gateway_obo_vault_name
 from .subnet_names import SUBNET_NAMES, subnet_resource_id
 
 
@@ -41,10 +43,24 @@ def _active_groups(config):
     return GROUPS if 'broker' in config['network']['subnetPrefixes'] else GROUPS[:-1]
 
 
-def _fixed_catalog(*, certificate=False):
+def _agw_client_sources(config):
+    if config.get('capacityProfile') != 'stg':
+        return ['0.0.0.0/0']
+    sources = config['network'].get('stagingClientAddressPrefixes')
+    if not sources:
+        raise FixedNsgError('Staging requires explicit Application Gateway client prefixes')
+    return sources
+
+
+def _fixed_catalog(*, certificate=False, obo=False):
     groups = _catalog('core-rules.json')['groups']
+    additions = []
     if certificate:
-        for key, rules in _catalog('certificate-rules.json')['groups'].items():
+        additions.append('certificate-rules.json')
+        if obo:
+            additions.append('obo-rules.json')
+    for manifest in additions:
+        for key, rules in _catalog(manifest)['groups'].items():
             if key not in groups or set(groups[key]['rules']) & set(rules):
                 raise FixedNsgError('The certificate NSG manifest overlaps the fixed rules')
             groups[key]['rules'].update(rules)
@@ -255,7 +271,7 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
     allowed_bindings = {('ips', key) for key in ('firewallPublic', 'appGatewayPublic', 'apim', 'portal', 'broker', 'management')}
     allowed_bindings.update(('ipSets', key) for key in
                             ('foundry', 'keyVault', 'registry', 'sql', 'auditPlatformBlob', 'auditFoundryBlob',
-                             'certificateVault', 'certificateBlob'))
+                             'certificateVault', 'certificateBlob', 'oboVault'))
     if (_required_bindings is not None and (not isinstance(_required_bindings, frozenset)
                                            or not _required_bindings <= allowed_bindings)):
         raise FixedNsgError('The internal partial-build binding inventory is invalid')
@@ -399,13 +415,16 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
             'certificateBlob': ('certificate-blob', service_prefix + 'Microsoft.Storage/storageAccounts/st'
                                 + stem.replace('-', '') + 'cert', ['blob'], 'Microsoft.Storage/storageAccounts', '2025-01-01'),
         })
+        if entra_app_separation_enabled(config):
+            targets['oboVault'] = ('obo-vault', service_prefix + 'Microsoft.KeyVault/vaults/'
+                                   + gateway_obo_vault_name(stem), ['vault'], 'Microsoft.KeyVault/vaults', '2024-11-01')
     sets = {}; seen_ips = set()
     for key, (suffix, target_id, group_ids, kind, api) in targets.items():
         if not required('ipSets', key): continue
         pe_id = nw + 'privateEndpoints/pe-' + stem + '-' + suffix
         pe = _read(config, transport, pe_id, 'Microsoft.Network/privateEndpoints',
                    required=not (_required_bindings is None and permit_pending_bindings
-                                 and (key in audit_collectors or key.startswith('certificate'))))
+                                 and (key in audit_collectors or key.startswith('certificate') or key == 'oboVault')))
         if pe is None:
             # Infrastructure preparation precedes creation of the two audit endpoints.
             # No missing binding is supplied to a rule or completion check.
@@ -442,7 +461,7 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
                 if address in seen_ips: raise FixedNsgError('The endpoint IP inventory is ambiguous')
                 seen_ips.add(address); addresses.append(address)
         sets[key] = sorted(addresses)
-    return {'subnets': prefixes, 'ips': ips, 'ipSets': sets}
+    return {'subnets': prefixes, 'ips': ips, 'ipSets': sets, 'agwClientSources': _agw_client_sources(config)}
 
 
 def _bind(tokens, bindings):
@@ -452,6 +471,7 @@ def _bind(tokens, bindings):
         if kind == 'subnet': result.append(bindings['subnets'][value])
         elif kind in ('ip', 'address'): result.append(bindings['ips'][value] + ('/32' if kind == 'ip' else ''))
         elif kind in ('ips', 'addresses'): result.extend(ip + ('/32' if kind == 'ips' else '') for ip in bindings['ipSets'][value])
+        elif kind == 'client-prefixes' and value == 'agw': result.extend(bindings['agwClientSources'])
         elif kind in ('literal', 'tag'): result.append(value)
         else: raise FixedNsgError('The fixed manifest has an unsupported address token')
     return sorted(set(result))
@@ -466,9 +486,9 @@ def _definition(rule, bindings):
         raise FixedNsgError('The fixed manifest cannot bind to owned resource addresses') from None
 
 
-def verify_fixed_nsg_inventory(parents, bindings, *, require_complete=False):
+def verify_fixed_nsg_inventory(parents, bindings, *, require_complete=False, obo=False):
     """Accept only exact current rule tuples; completion also requires every rule."""
-    fixed = _fixed_catalog(certificate='certificate' in bindings['subnets'])
+    fixed = _fixed_catalog(certificate='certificate' in bindings['subnets'], obo=obo)
     for group, parent in parents.items():
         current = _inventory(parent)
         expected = fixed[group]['rules']
@@ -492,7 +512,8 @@ def verify_fixed_nsg_before_deployment(config, transport):
     """Use only resources already required by present rules when resuming infrastructure deployment."""
     parents = _parents(config, transport)
     _, _, prefixes = _scope(config)
-    fixed = _fixed_catalog(certificate='certificate' in prefixes)
+    obo = entra_app_separation_enabled(config)
+    fixed = _fixed_catalog(certificate='certificate' in prefixes, obo=obo)
     required_bindings = set()
     for group, parent in parents.items():
         for name in _inventory(parent):
@@ -507,25 +528,28 @@ def verify_fixed_nsg_before_deployment(config, transport):
                     required_bindings.add(('ipSets', value))
 
     if not required_bindings:
-        verify_fixed_nsg_inventory(parents, {'subnets': prefixes, 'ips': {}, 'ipSets': {}})
+        verify_fixed_nsg_inventory(parents, {
+            'subnets': prefixes, 'ips': {}, 'ipSets': {}, 'agwClientSources': _agw_client_sources(config),
+        }, obo=obo)
         return
 
     options = {'permit_unassociated_portal': True, 'permit_pending_bindings': True,
                '_required_bindings': frozenset(required_bindings)}
     bindings = read_fixed_nsg_bindings(config, transport, **options)
-    verify_fixed_nsg_inventory(parents, bindings)
+    verify_fixed_nsg_inventory(parents, bindings, obo=obo)
     if bindings != read_fixed_nsg_bindings(config, transport, **options):
         raise FixedNsgError('Resource addresses changed before infrastructure deployment')
-    verify_fixed_nsg_inventory(_parents(config, transport), bindings)
+    verify_fixed_nsg_inventory(_parents(config, transport), bindings, obo=obo)
 
 
 def verify_fixed_nsg_after_deployment(config, transport):
     """Confirm the complete NSG catalog and its live bindings after infrastructure deployment."""
     parents = _parents(config, transport)
     bindings = read_fixed_nsg_bindings(config, transport)
+    obo = entra_app_separation_enabled(config)
     if 'certificate' in config['network']['subnetPrefixes'] and 'certificate' not in bindings['subnets']:
         raise FixedNsgError('The dedicated certificate subnet is missing after infrastructure deployment')
-    verify_fixed_nsg_inventory(parents, bindings, require_complete=True)
+    verify_fixed_nsg_inventory(parents, bindings, require_complete=True, obo=obo)
     if bindings != read_fixed_nsg_bindings(config, transport):
         raise FixedNsgError('Resource addresses changed during NSG verification')
-    verify_fixed_nsg_inventory(_parents(config, transport), bindings, require_complete=True)
+    verify_fixed_nsg_inventory(_parents(config, transport), bindings, require_complete=True, obo=obo)

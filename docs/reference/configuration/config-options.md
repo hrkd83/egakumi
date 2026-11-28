@@ -5,21 +5,24 @@ Portal認証証明書はparamsの`portal.certificate`で設定し、KV自己署�
 [初回構築の手順](../../../README.md#新規クローンから構築する) · [環境別params](../../setup/07-params.md)
 
 
-検証・本番の標準configは初回構築でそのまま使います。このページは既定値と、SKU・モデル・保護機能を見直す場合の参照資料です。環境固有のID・IP・公開名はparamsで管理します。
+3環境の標準configは初回構築でそのまま使います。このページは既定値と、SKU・モデル・保護機能を見直す場合の参照資料です。環境固有のID・IP・公開名はparamsで管理します。
 
-## 検証・本番の標準構成
+環境・サービス別の容量と受入条件は[prod・stg・devの容量設計](environment-capacity.md)を参照してください。
+
+## 3環境の標準構成
 
 | 正本 | 主な初期構成 | 選ぶときの確認 |
 | --- | --- | --- |
-| `infra/config/test.json` | Firewall Premium・IDPS Deny、検証向けのSKU・保護設定 | 検証後の撤去を想定した費用・保持設定か |
-| `infra/config/production.json` | Firewall Premium・IDPS Deny（Alert and Deny）、AppGW／Public IPの3ゾーン | 対象地域のSKU・ゾーン、可用性・監査保持・削除保護の運用に合うか |
+| `infra/config/prod.json` | 本番用SKU・ゾーン、約7年の監査保持 | SKU・ゾーンと保護の受入条件 |
+| `infra/config/stg.json` | 本番と同じSKUと保護、管理者用入口 | 接続元IPv4 CIDRとEntraアプリロール |
+| `infra/config/dev.json` | APIM Developer、短い監査保持 | 機能確認と撤去の条件 |
 
-[第07章](../../setup/07-params.md)の準備コマンドが、profileに対応する正本の相対パスをparamsの`configFile`に設定します。`environmentName`を変えてもSKU・保持・保護は自動で切り替わりません。configのexampleやlocalコピーは作らず、必要な変更は選んだ正本へ記録します。
+[第07章](../../setup/07-params.md)の準備コマンドが、profileに対応する正本の相対パスをparamsの`configFile`に設定します。SKU・ゾーン・Foundryのモデル定義などは、選択したprofileに合わせて[サービス別JSON](../../../infra/config/capacity/)から合成します。App Gateway・APIM・Broker・Broker SQLの数量は、標準値を記入済みの公開例をもとに、保護paramsの `capacity` で指定します。 [容量の入力項目](parameters.md#環境ごとに確定する容量)
 
 ## 標準設定を調整する場合
 
-1. FirewallのSKU・IDPS、AppGW／APIM／VM等のSKUとゾーンを確認する。Firewallの両環境はPremiumで、IDPSはDeny（Alert and Deny）から開始する。
-2. `services.modelDeployments`で配備するモデル・版・SKU・capacityを選ぶ。API正本の許可モデルと対応させる。
+1. FirewallのSKU・IDPS、AppGW／APIM／VM等のSKUとゾーンを確認する。Firewallの全環境はPremiumで、IDPSはDeny（Alert and Deny）から開始する。
+2. [Foundryのサービス別config](../../../infra/config/capacity/foundry.json)で配備するモデル・版・SKUを確認し、API正本の許可モデルと対応させる。
 3. 音声等の利用機能、WAF上限、回数制限、監査保持、削除保護、証明書更新の動作を確認する。通常HTTP／HTTPSの入口保護と、初期NSGの固定集合を確認する。
 4. 同じparamsでローカル検査し、整合を確認する。
 
@@ -68,14 +71,14 @@ Claudeは手動公開するため、初回構築のモデル配備一覧に含�
 | `network.bgpRoutePropagation.agw` | `true` | AppGW用RTへGateway由来経路を伝搬。true=伝搬する、false=しない。 |
 | `network.bgpRoutePropagation.apim` | `true` | APIM用RTのルート伝搬。 |
 | `network.bgpRoutePropagation.management` | `true` | 管理VM用RTのルート伝搬。デフォルトルートのnext hopやピアリングとは別。 |
-| `network.appGatewayZones` | テスト：`[]`／本番：`["1","2","3"]` | AppGW用公開IPの可用性ゾーン番号。gateway.zonesと一致させる。[]は番号の明示なし。 |
+| `network.appGatewayZones` | 全環境：`[]`（Azureの自動配置） | AppGW用Standard公開IPの可用性ゾーン番号。`gateway.zones`と揃える。 |
 | `network.dnsTtl` | `300` | 作成するPrivate DNSレコードのTTL、秒。1〜86400。 |
 
 NSGは全サブネットの通信要件に対応する固定の初期集合をBicepで作成し、送信元・宛先には構築したサブネットCIDRと割当IPを組み込みます。AppGWは公開TCP80／443を別々に許可し、同じVNetのFirewall公開IP `/32`からのHTTPSも独立した規則にします。gRPC専用のTCP8443入口は作成しません。`network.clientAddressPrefixes`・`certificatePublicProbeEnabled`・`dnsServers`・`operatorAddressPrefixes`・`operatorProtocol`・`operatorPorts`・`ntpAddressPrefixes`・`ntpFqdns`・`managementAdditionalSecurityRules`・`apimKeyVaultAccessEnabled`と`network.firewall.dnsServers`は入力項目から削除しました。以前のJSONから取り除いてください。管理VMのSSH許可は初期不作成とし、APIM→Key Vaultの許可は常設します。企業のIP制限・ハブ接続・独自DNSに合わせる変更は構築後にAzureポータルで行い、再構築・再適用時には初期集合との差を再確認します。[AppGWの固定NSG規則](../../operations/network-security-groups.md#appgwagw)
 
 ルート伝搬はGateway由来経路だけを対象とし、UDR・ピアリング・デフォルトルート変更とは別です。独立VNetには伝搬元Gatewayがないため、既定trueでもGateway由来の経路はありません。Azureの否定形属性へはBicep内部で反転します。[ルート伝搬](https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table)
 
-AppGWと公開IPのゾーン指定は両方同じ値にします。[]はゾーン冗長性の無効化ではありません。[AppGW v2の可用性ゾーン](https://learn.microsoft.com/en-us/azure/reliability/reliability-application-gateway-v2)
+標準構成では、AppGWと公開IPの `zones` を配備時に省略します。両方とも、可用性ゾーンに対応するリージョンではAzureが自動でゾーン冗長に配置します。可用性ゾーンのないリージョンではリージョン内配置になります。ゾーン番号を明示する場合は、AppGWと公開IPの指定を揃えます。 [AppGW v2の可用性ゾーン](https://learn.microsoft.com/en-us/azure/reliability/reliability-application-gateway-v2#configure-availability-zone-support) · [Standard公開IPの可用性ゾーン](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/public-ip-addresses#availability-zone)
 
 企業ハブへの接続・DNS・中央ゾーン・出口・ルート伝搬の変更は[ハブ＆スポークの参考資料](../../setup/10-hub-spoke.md)で確認します。
 
@@ -99,16 +102,15 @@ Firewallのゾーン対応と新規配備の容量条件は構築するリージ
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
-| `services.apimSkuName` | テスト：`"Developer"`／本番：`"Premium"` | APIM classicのDeveloper/Premium。環境名による切替なし。 |
-| `services.apimCapacity` | `1` | APIMユニット数。Developerは1のみ。 |
+| `services.apimSkuName` | `prod`・`stg`：`"Premium"`／`dev`：`"Developer"` | APIM classicのDeveloper/Premium。環境名による切替なし。 |
 | `services.vaultSkuName` | `"standard"` | Key Vaultのstandard/premium。 |
-| `services.vaultRetentionDays` | テスト：`7`／本番：`90` | Key Vault論理削除の保持日数、7〜90。 |
-| `services.vaultPurgeProtection` | テスト：`false`／本番：`true` | Key Vaultの完全削除保護。trueは保護。撤去でも保護を回避しない。 |
+| `services.vaultRetentionDays` | 全環境：`90` | Key Vault論理削除の保持日数、7〜90。 |
+| `services.vaultPurgeProtection` | 全環境：`true` | Key Vaultの完全削除保護。trueは保護。撤去でも保護を回避しない。 |
 | `services.projectDisplayName` | `"egakumi"` | 初期Foundry Projectの表示名。実リソース名は `proj-<環境>-<製品>`。 |
 | `services.projectDescription` | `"Shared project for model, agent, and tool capabilities."` | 初期Projectの説明。 |
 | `services.speechEnabled` | `true` | APIMのMIへ対象FoundryのSpeech権限を付与。音声モデル全体の配備フラグではない。 |
 | `services.grantApimFoundryModelsAccess` | `true` | APIMへ対象Foundryの非OpenAIモデル用の組み込み利用権限を付与。 |
-| `services.grantApimSecretAccess` | テスト：`true`／本番：`false` | バックエンド資格情報のためAPIMへKey Vaultのsecret読取権限を付与。常設L7入口証明等に必要なKV読取権限は、この指定と別にAPIM自身へ付与。通信許可とは別。 |
+| `services.grantApimSecretAccess` | 全環境：`false` | バックエンド資格情報のためAPIMへKey Vaultのsecret読取権限を付与。常設L7入口証明等に必要なKV読取権限は、この指定と別にAPIM自身へ付与。通信許可とは別。 |
 | `services.modelDeployments` | [初期28モデル](../gateway/api-contracts.md#初期28モデルとapioperationの対応)（固定版・SKUはconfig参照） | 単一FoundryへBicepで配備。32件の上限内で選定し、実カタログと利用枠を配備前に照合。 |
 
 初回は32件の上限のうち28件を使用します。モデル追加時は、配備数の上限・対象モデルの提供条件・利用枠を確認します。
@@ -134,9 +136,7 @@ APIMはシステム割り当てマネージドIDで業務用Key VaultのNamed Va
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
 | `gateway.skuName` | `"WAF_v2"` | AppGWのWAF_v2/Standard_v2。 |
-| `gateway.autoscaleMinCapacity` | テスト：`0`／本番：`2` | 自動スケール最小値。0でも固定費があり無課金停止ではない。 |
-| `gateway.autoscaleMaxCapacity` | テスト：`2`／本番：`5` | 自動スケール最大値。 |
-| `gateway.zones` | テスト：`[]`／本番：`["1","2","3"]` | AppGW本体の可用性ゾーン番号。公開IP側のnetwork.appGatewayZonesと同じ値。 |
+| `gateway.zones` | 全環境：`[]`（Azureの自動配置） | AppGW本体の可用性ゾーン番号。公開IP側の `network.appGatewayZones` と揃える。 |
 | `gateway.wafMode` | `"Prevention"` | Prevention=遮断、Detection=検知。 |
 | `gateway.wafCustomRules` | `[]` | 追加WAF custom rule配列。 |
 | `gateway.wafExclusions` | `[]` | WAF検査除外配列。 |
@@ -153,14 +153,14 @@ API公開前には、通常HTTP用の配備出力`ingressSecrets`と、常設L7�
 #### 共通認証・OAuth・Portal初期設定
 
 
-| config側の設定 | test／production初期値・扱い |
+| config側の設定 | 標準初期値・扱い |
 | --- | --- |
 | `gateway.authentication.entra.userLimits` | requestRate=1000／60秒、tokensPerMinute=null、tokenQuota=null |
 | `gateway.authentication.credentialLogin` | providerNames=`["graph-delegated"]`と共通セッション値。明示transactionLifetimeSeconds=600秒を保持 |
-| `credentialProviders.graphDelegated` | displayName=`Delegated Graph connection`、定義済みのGraph委任scope、pool.count=12／capacity=8000 |
+| `credentialProviders.graphDelegated` | displayName=`Delegated Graph connection`、定義済みのGraph委任scope、接続プールは `prod` で12×8,000、`stg` で2×1,000、`dev` で2×100 |
 | `credentialProviders.additional[]` | name・displayName・identityProvider・scopesとプロトコル別定義。params側登録と1対1照合 |
 
-Graphと本人接続窓口のClient ID・秘密ファイル参照はparamsに設定します。標準Graph名・プロトコル・tenant・Graph URL・本人ID契約は資材固定です。追加の接続設定は、対応するプロバイダー登録と合わせて確認します。
+Graphと本人接続窓口のClient IDはparamsに、標準の秘密ファイル参照はconfigに設定します。標準Graph名・プロトコル・tenant・Graph URL・本人ID契約は資材固定です。追加の接続設定は、対応するプロバイダー登録と合わせて確認します。
 
 APIの初回公開は標準定義を使います。Azureポータルから業務APIを追加する手順は [運用手順](../../operations/README.md) を参照してください。
 
@@ -185,8 +185,8 @@ APIの初回公開は標準定義を使います。Azureポータルから業務
 | `management.osDiskSku` | `"StandardSSD_LRS"` | OSディスクのStandard_LRS/StandardSSD_LRS/Premium_LRS。 |
 | `management.enableAcceleratedNetworking` | `true` | 高速ネットワーク。サイズ・イメージの対応を検査。 |
 | `management.encryptionAtHost` | `true` | ホストでの暗号化。 |
-| `management.patchAssessmentMode` | テスト：`"ImageDefault"`／本番：`"AutomaticByPlatform"` | Linux更新の評価。ImageDefault/AutomaticByPlatform。 |
-| `management.patchMode` | テスト：`"ImageDefault"`／本番：`"AutomaticByPlatform"` | Linux更新の適用。ImageDefault/AutomaticByPlatform。 |
+| `management.patchAssessmentMode` | 全環境：`"AutomaticByPlatform"` | Linux更新の評価。ImageDefault/AutomaticByPlatform。 |
+| `management.patchMode` | 全環境：`"AutomaticByPlatform"` | Linux更新の適用。ImageDefault/AutomaticByPlatform。 |
 
 #### 監視・監査（monitoring）
 
@@ -198,11 +198,12 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 | --- | --- | --- |
 | `monitoring.retentionInDays` | `90` | Log Analytics保持日数、90〜730。 |
 | `monitoring.workspaceDailyQuotaGb` | `-1` | 日次取り込み上限、GB。-1は上限なし。 |
-| `monitoring.auditStorageSku` | テスト：`"Standard_LRS"`／本番：`"Standard_GRS"` | 監査Storageの冗長化SKU。 |
-| `monitoring.auditImmutabilityMode` | テスト：`"Disabled"`／本番：`"Locked"` | Disabled/Unlocked/Locked。Lockedは保持期間中解除できず、撤去が停止する。 |
-| `monitoring.auditRetentionDays` | `2557` | 不変保管で削除を保護する日数。ファイルの自動削除期限ではない。Disabled時はポリシー未適用。 |
+| `monitoring.auditStorageSku` | 全環境：`"Standard_GRS"` | 監査Storageの冗長化SKU。 |
+| `monitoring.auditImmutabilityMode` | 全環境：`"Locked"` | Disabled/Unlocked/Locked。Lockedは保持期間中解除できず、撤去が停止する。 |
+| `monitoring.auditRetentionDays` | `prod`・`stg`：`2557`／`dev`：`7` | 不変保管で削除を保護する日数。ファイルの自動削除期限ではない。Disabled時はポリシー未適用。 |
+| `monitoring.appInsightsDailyCapGb` | `100` | Application Insightsの日次上限。Log Analyticsの上限と独立する。 |
 | `monitoring.appInsightsIngestionWarningGb` | `80` | 日次取り込み量の警告値。課金停止上限ではない。 |
-| `monitoring.enableLogAlerts` | テスト：`true`／本番：`false` | ログベースのアラートを作成。 |
+| `monitoring.enableLogAlerts` | 全環境：`true` | ログ検索アラートを有効化。着信・権限の反映後に発報を確認する。 |
 
 #### 公開証明書（certificate）
 
@@ -220,7 +221,7 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 
 #### モデル配列の要素（services.modelDeployments[]）
 
-この表の短い名前はconfigの`services.modelDeployments[]`配下です。[初期モデル](../gateway/api-contracts.md#初期28モデルとapioperationの対応)の28モデルの配備設定は、テスト・本番configが正本です。[標準API定義](../../../apps/api-gateway/apis/)は19 APIを1ファイルずつ管理し、モデル配備の設定を重複して持ちません。API側には、そのAPIで呼び出しを許可するモデル名・操作・要求上限を定義します。外部サンプルAPIやTools/Hosted Agent用bindingsは含みません。版・SKU・利用枠名の一覧はconfigを参照してください。
+この表の短い名前はconfigの`services.modelDeployments[]`配下です。[初期28モデル](../gateway/api-contracts.md#初期28モデルとapioperationの対応)の配備名・版・SKU・利用枠名は[Foundryのサービス別config](../../../infra/config/capacity/foundry.json)で管理します。[標準API定義](../../../apps/api-gateway/apis/)では、APIごとに呼び出しを許可するモデル名・操作・要求上限を定義します。
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
@@ -229,9 +230,10 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 | `modelFormat` | OpenAI／Cohere／Black Forest Labs／Microsoft | 提供元の正式な大文字小文字。Claudeはazdの構築対象外。 |
 | `modelVersion` | configに記載した固定版 | 評価対象の版。配備前にライフサイクルと退役日も確認する。 |
 | `skuName` | 主にGlobalStandard。WhisperはStandard、DecisionはDataZoneStandard | モデル・リージョンが対応するPAYG配備SKU。 |
-| `capacity` | GPT-6.1 Solは50、Lunaは5、他は1 | 初期割当。認定最小値ではなく、TPM／RPM換算もモデル・SKUごとに異なる。 |
 | `versionUpgradeOption` | NoAutoUpgrade | 自動版更新を行わない。 |
 | `quotaUsageName` | 各モデルの実metadataに対応する値を明記 | 同じ利用枠プールの配備は合算して検査。 |
+
+`azd up` は3環境共通で、新規配備の `capacity` をモデル・SKUごとの最小値から決定します。初期構築後は、承認済みクォータに合わせてMicrosoft Foundryポータルで配備容量を調整します。 [初期容量とクォータ](capacity/foundry.md) · [配備容量の変更手順](../../operations/foundry.md#容量だけを変更する)
 
 ## 監査ログの設定
 
@@ -251,7 +253,7 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 ## configを変更する場合の確認
 
 - 選んだ正本をparamsの`configFile`から参照している。
-- 選択モデル・SKU・版・capacityと、APIの公開許可モデルが一致している。
+- 選択モデル・SKU・版を、APIの公開許可モデルと照合した。
 - 監査保持・削除保護を、構築後の運用／撤去方針に合わせて確認した。
 - 同じparamsで`configuration.py validate`が成功する。
 

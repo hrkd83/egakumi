@@ -5,7 +5,7 @@ import json
 import re
 
 from .configuration import entra_app_separation_enabled
-from .portal_auth_certificate import application_vault_origin, certificate_record, save_public_certificate
+from .portal_auth_certificate import certificate_record, gateway_obo_vault_origin, save_public_certificate
 from .private_permissions import check_private_permissions
 
 CERTIFICATE_NAME = 'gateway-obo'
@@ -52,7 +52,7 @@ def deployment_settings(config, workspace):
         cert = certificate_record(record.get('certificate'), config, certificate_name=CERTIFICATE_NAME)
         key_url = cert['keyId']
         fingerprint = hashlib.sha256(base64.b64decode(cert['publicCertificate'], validate=True)).digest()
-    expected = application_vault_origin(config["resourceStem"]) + f"/keys/{CERTIFICATE_NAME}/"
+    expected = gateway_obo_vault_origin(config["resourceStem"]) + f"/keys/{CERTIFICATE_NAME}/"
     if not re.fullmatch(re.escape(expected) + r'[a-f0-9]{32}', key_url) or len(fingerprint) != 32:
         raise ValueError('Gateway OBO requires the fixed signing key of the selected infrastructure vault')
     return {'tenantId': config['entraTenantId'], 'clientId': entra['audience'], 'keyUrl': key_url,

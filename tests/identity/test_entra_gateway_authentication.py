@@ -24,7 +24,9 @@ from deployment.helpers.apim_ingress import expand_trusted_ingress_fragment
 from deployment.helpers.apim_browser_exception import expand_browser_exception_fragment
 from tests.gateway.policies.test_common_authentication import CSHARP, compile_inbound, csharp_expression
 
-from deployment.helpers.apim_common_authentication import render_common_authentication_fragments, expand_common_authentication_fragments
+from deployment.helpers.apim_common_authentication import (
+    STAGING_ACCESS_ROLE, render_common_authentication_fragments, expand_common_authentication_fragments,
+)
 
 
 def policy_root(xml):
@@ -56,6 +58,15 @@ def encoded(value):
 
 
 class EntraRenderingTests(unittest.TestCase):
+    def test_staging_readback_rejects_an_authentication_fragment_without_its_role(self):
+        expected = {**settings(), "requiredAppRole": STAGING_ACCESS_ROLE}
+        policy = render_service_policy(entra=expected)
+        restricted = render_common_authentication_fragments(entra_enabled=True, required_app_role=STAGING_ACCESS_ROLE)
+        self.assertEqual(read_managed_entra_authentication(policy, expected_entra=expected, fragments=restricted), expected)
+        with self.assertRaises(ValueError):
+            read_managed_entra_authentication(policy, expected_entra=expected,
+                fragments=render_common_authentication_fragments(entra_enabled=True))
+
     def test_disabled_setting_retains_key_policy_without_token_validation(self):
         self.assertEqual(render_service_policy(), render_service_policy(entra={"enabled": False}))
         self.assertNotIn("validate-azure-ad-token", render_service_policy(entra={"enabled": False}))

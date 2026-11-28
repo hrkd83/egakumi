@@ -266,6 +266,8 @@ class NsgRulePriorityTests(unittest.TestCase):
             if kind == 'subnet': result.append(p['subnetPrefixes'][value])
             elif kind == 'ip': result.append(p['__ips'][value]+'/32')
             elif kind == 'ips': result.extend(ip+'/32' for ip in p['__sets'][value])
+            elif kind == 'client-prefixes' and value == 'agw':
+                result.extend(p['config'].get('stagingClientAddressPrefixes', ['0.0.0.0/0']))
             elif kind in ('tag', 'literal'): result.append(value)
             else: self.fail('Unknown fixed token: '+token)
         return result
@@ -321,6 +323,17 @@ class NsgRulePriorityTests(unittest.TestCase):
         portal_ingress = [canonical(rule) for rule in rules['portal'].values() if rule['direction'] == 'Inbound']
         self.assertFalse(any(subnet['apim'] in rule['source'] for rule in portal_ingress))
         self.assertTrue(all(subnet['portal'] not in rule['destination'] for rule in broker if rule['direction'] == 'Outbound'))
+
+    def test_staging_listener_ingress_and_portal_callback_use_distinct_sources(self):
+        parameters = self.parameters()
+        client_sources = ['203.0.113.0/26', '203.0.113.128/26']
+        parameters['config']['stagingClientAddressPrefixes'] = client_sources
+        rules = self.compiled_rules(parameters)['agw']
+        for suffix in ('http', 'https'):
+            self.assertEqual(canonical(rules[f'allow-client-{suffix}-ingress'])['source'], client_sources)
+        firewall_ingress = canonical(rules['allow-firewall-public-https-ingress'])
+        self.assertEqual(firewall_ingress['source'], [parameters['__ips']['firewallPublic'] + '/32'])
+        self.assertEqual(firewall_ingress['destinationPorts'], ['443'])
 
     def test_management_host_phc_has_no_network_time_allow_and_apim_keeps_internet_ntp(self):
         p = self.parameters(); actual = self.compiled_rules(p)

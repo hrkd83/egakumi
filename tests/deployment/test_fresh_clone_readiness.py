@@ -18,7 +18,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tests.support.configuration_fixtures import bind_credential_fixture_id
+from tests.support.configuration_fixtures import bind_credential_fixture_id, profile_options
 from tests import REPOSITORY
 
 CORE = REPOSITORY
@@ -103,7 +103,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name).resolve()
         # 読む元を公開ソースの種類へ限定する。*.local.jsonやprivate領域を探索しない。
-        patterns = ("scripts/**/*.py", "infra/config/*.json",
+        patterns = ("scripts/**/*.py", "infra/config/**/*.json",
                     "params/*.example.json", "params/params.schema.json", "infra/modules/monitoring/log-privacy.json",
                     "infra/modules/monitoring/audit-archive.json",
                     "infra/modules/network/nsg/core-rules.json", "infra/modules/network/subnet-names.json",
@@ -115,9 +115,13 @@ class FreshCloneReadinessTests(unittest.TestCase):
                 target = self.root / source.relative_to(CORE)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, target)
-        self.standards_before = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                                 for path in (self.root / "infra/config").glob("*.json")}
+        self.standards_before = self.standard_config_checksums()
         self.assert_no_private_inputs()
+
+    def standard_config_checksums(self):
+        directory = self.root / "infra/config"
+        return {path.relative_to(directory): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in directory.rglob("*.json")}
 
     def assert_no_private_inputs(self):
         """既存端末の入力を持ち込まず、検査だけで秘密や状態を生成させない。"""
@@ -203,22 +207,57 @@ class FreshCloneReadinessTests(unittest.TestCase):
             self.assertNotIn('"' + field + '"', arguments.read_text())
         for secure_input in ("sshPublicKey", "dnsPluginArgumentsJson", "credentialProviderSecrets"):
             self.assertNotIn(secure_input, arm["parameters"])
-        self.assertEqual({path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                          for path in (self.root / "infra/config").glob("*.json")}, self.standards_before)
+        self.assertEqual(self.standard_config_checksums(), self.standards_before)
         self.assert_no_private_inputs()
         return report, public
 
-    def test_test_and_production_public_params_validate_and_render_without_local_assets(self):
-        """両profileとも新規paramsだけで検査でき、初期モデルを正本から取り込める。"""
-        for profile in ("test", "production"):
+    def test_all_public_params_validate_and_render_without_local_assets(self):
+        """3プロファイルすべてを新規paramsだけで検査でき、初期モデルを正本から取り込める。"""
+        capacity = {
+            "prod": ("Premium", 12, 20, 30, 1, "2Gi", 5, 10, 4, "GP_Gen5_2", 2557),
+            "stg": ("Premium", 1, 1, 2, 1, "2Gi", 1, 2, 2, "GP_Gen5_2", 2557),
+            "dev": ("Developer", 1, 1, 2, 0.5, "1Gi", 1, 2, 2, "Basic", 7),
+        }
+        for profile, expected in capacity.items():
             with self.subTest(profile=profile):
                 report, public = self.check_in_isolated_process(profile, self.enterprise_parameters(profile))
-                standard = json.loads((self.root / "infra/config" / (profile + ".json")).read_text())
+                standard = profile_options(profile, self.root)
                 self.assertEqual(report["modelNames"], [item["name"] for item in standard["services"]["modelDeployments"]])
                 self.assertEqual(report["apiNames"], [])
                 self.assertTrue(public["publishApis"])
                 self.assertEqual(public["network"]["firewall"]["sku"], "Premium")
                 self.assertEqual(public["network"]["firewall"]["idpsMode"], "Deny")
+                self.assertEqual(public["capacityProfile"], profile)
+                services, gateway = public["services"], public["gateway"]
+                broker, monitor = public["credentialBroker"], public["monitoring"]
+                self.assertEqual(gateway["zones"], [])
+                self.assertEqual(public["network"]["appGatewayZones"], [])
+                self.assertEqual((services["apimSkuName"], services["apimCapacity"],
+                    gateway["autoscaleMinCapacity"], gateway["autoscaleMaxCapacity"],
+                    broker["cpu"], broker["memory"], broker["minReplicas"], broker["maxReplicas"],
+                    broker["sqlCapacity"], public["portalAuthentication"]["sqlSkuName"],
+                    monitor["auditRetentionDays"]), expected)
+                self.assertEqual((monitor["appInsightsDailyCapGb"], monitor["appInsightsIngestionWarningGb"]), (100, 80))
+                self.assertTrue(monitor["enableLogAlerts"])
+
+    def test_enterprise_capacity_reaches_arm_arguments_with_profile_skus(self):
+        """利用者が書き替えた各容量が、閉域の実構築入口を通じてARM引数へ渡る。"""
+        params = self.enterprise_parameters("stg")
+        capacity = params["capacity"]
+        capacity["applicationGateway"].update(minInstances=3, maxInstances=6)
+        capacity["apim"]["units"] = 4
+        capacity["credentialBroker"].update(minReplicas=2, maxReplicas=4)
+        capacity["brokerSql"].update(vCores=6, maxDataGiB=64)
+        _, public = self.check_in_isolated_process("stg", params)
+        gateway = public["gateway"]
+        apim = public["services"]
+        broker = public["credentialBroker"]
+        self.assertEqual((gateway["autoscaleMinCapacity"], gateway["autoscaleMaxCapacity"]), (3, 6))
+        self.assertEqual(gateway["skuName"], "WAF_v2")
+        self.assertEqual((apim["apimCapacity"], apim["apimSkuName"]), (4, "Premium"))
+        self.assertEqual((broker["minReplicas"], broker["maxReplicas"]), (2, 4))
+        self.assertEqual((broker["sqlCapacity"], broker["sqlMaxSizeGB"], broker["sqlSkuName"]), (6, 64, "GP_Gen5_6"))
+        self.assertEqual({model["capacity"] for model in apim["modelDeployments"]}, {1})
 
     def test_generated_internal_api_definitions_preserve_registration_and_shared_models(self):
         """内部生成API配列は保持し、企業登録と標準モデルは公開params/configから合成する。"""
@@ -233,13 +272,13 @@ class FreshCloneReadinessTests(unittest.TestCase):
         template = json.loads(prepare.stdout)
         replacements = {"TENANT_ID": TENANT, "CM_CLIENT_ID": GATEWAY,
             "CM_CLIENT_SECRET_FILE": "./secrets/entra-client-secret.txt",
-            "PUBLIC_HOST_NAME": self.enterprise_parameters("test")["gateway"]["publicHostName"]}
+            "PUBLIC_HOST_NAME": PUBLIC_HOST}
         payload = json.dumps(template)
         for name, value in replacements.items():
             payload = payload.replace("__" + name + "__", value)
         self.assertIsNone(re.search(r"__[A-Z][A-Z0-9_]+__", payload))
         bound = json.loads(payload)
-        for profile in ("test", "production"):
+        for profile in ("prod", "stg", "dev"):
             with self.subTest(profile=profile):
                 params = self.enterprise_parameters(profile)
                 original_services = copy.deepcopy(params["services"])
@@ -254,7 +293,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
                 self.assertEqual(public["gateway"]["authentication"]["subscriptionKeyHeader"], "api-key")
                 self.assertEqual(public["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
                 self.assertTrue(all(api["authorization"]["mode"] == "subscriptionKey" for api in public["apiDefinitions"]))
-                standard = json.loads((self.root / "infra/config" / (profile + ".json")).read_text())
+                standard = profile_options(profile, self.root)
                 self.assertEqual(public["services"]["modelDeployments"], standard["services"]["modelDeployments"])
 
 

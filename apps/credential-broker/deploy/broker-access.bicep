@@ -12,6 +12,7 @@ param brokerKey string = ''
 @secure()
 param credentialIdentitySecret string = ''
 param identityConfigured bool = false
+param oboVaultName string = ''
 param oboKeyName string = ''
 resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: vaultName }
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: registryName }
@@ -62,7 +63,8 @@ resource registryAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
   name: guid(registry.id, identity.principalId, acrPull)
   properties: { roleDefinitionId: acrPull, principalId: identity.principalId, principalType: 'ServicePrincipal' }
 }]
-resource oboKey 'Microsoft.KeyVault/vaults/keys@2023-07-01' existing = { parent: vault, name: oboKeyName }
+resource oboVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: oboVaultName }
+resource oboKey 'Microsoft.KeyVault/vaults/keys@2023-07-01' existing = { parent: oboVault, name: oboKeyName }
 resource oboSigner 'Microsoft.Authorization/roleDefinitions@2022-04-01' = if (!empty(oboKeyName)) {
   name: guid(resourceGroup().id, 'gateway-graph-obo-signer')
   properties: {

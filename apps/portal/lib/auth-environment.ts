@@ -10,6 +10,7 @@ const authEnvironmentSchema = z.object({
   microsoftClientId: z.uuid().transform((value) => value.toLowerCase()),
   microsoftClientSecret: z.string().min(1).optional(),
   microsoftTenantId: z.uuid().transform((value) => value.toLowerCase()),
+  requiredAppRole: z.literal("Gateway.Staging.Access").optional(),
 });
 
 /** Azureの実行ID認証と、手元専用のSQL Server認証を区別します。 */
@@ -52,6 +53,7 @@ export function getAuthEnvironment(): AuthEnvironment {
     secret: process.env.BETTER_AUTH_SECRET,
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID,
     microsoftTenantId: process.env.MICROSOFT_TENANT_ID,
+    requiredAppRole: process.env.PORTAL_AUTH_REQUIRED_APP_ROLE,
   }, "Portal authentication");
   const url = new URL(settings.baseURL);
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);

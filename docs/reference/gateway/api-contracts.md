@@ -1,6 +1,6 @@
 # GatewayのAPI・Operation定義
 
-初期配備28モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../../apps/api-gateway/apis/)と [モデル設定](../../../infra/config/test.json)。初回は`azd up`で共通基盤を構築し、Entra登録後にGatewayとPortalを個別に配備する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
+初期配備28モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../../apps/api-gateway/apis/)と[モデル設定](../../../infra/config/capacity/foundry.json)。初回は`azd up`で共通基盤を構築し、Entra登録後にGatewayとPortalを個別に配備する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
 
 入口認可と本人接続の分担は[Gatewayの認証と購読キー](../identity/gateway-authentication.md)を参照する。現行の標準19 APIでは、共通入口の購読キー検証と、個人向けAPIの本人OAuth接続を分けて設計する。
 
@@ -93,7 +93,7 @@ flowchart TD
 
 ## 初期28モデルとAPI・Operationの対応
 
-表のモデル名は、この環境で使う配備名を表す。固定版・SKU・容量の正本は`services.modelDeployments`、モデルの選定理由は[モデル一覧](foundry-model-catalog.md#初回配備する28モデル)を参照する。
+表のモデル名は、この環境で使う配備名を表す。固定版・SKUはモデル設定の `modelDeployments` で確認する。 [モデルの選定理由](foundry-model-catalog.md#初回配備する28モデル) · [配備容量の変更手順](../../operations/foundry.md#容量だけを変更する)
 
 | # | 配備名 | API識別子 | 操作・選択方法 |
 |---|---|---|---|
@@ -256,7 +256,7 @@ PII MCPは`pii-v1`の`pii_redact_text` から生成し、同じREST操作へ接�
 
 ## 現行資材の参照先
 
-- 初期配備28モデル：`infra/config/test.json`・`infra/config/production.json`と[モデル一覧](foundry-model-catalog.md)。
+- 初期配備28モデルとその容量の確認先は[Foundryのサービス別config](../../../infra/config/capacity/foundry.json)、[モデル一覧](foundry-model-catalog.md)、[Foundryの容量とクォータ](../configuration/capacity/foundry.md)。
 - 標準19 APIの配備定義：[apps/api-gateway/apis/](../../../apps/api-gateway/apis/)。1 API 1ファイルで、APIの名前とファイル名を一致させる。
 - 現行の登録は `scripts/deployment/deploy_gateway.py`、設定検査は `scripts/deployment/helpers/configuration.py` を使用する。
 - 公開の実装：`apps/api-gateway/api-publication.bicep`・`apps/api-gateway/policies/`。

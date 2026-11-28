@@ -1,0 +1,267 @@
+{
+  "$schema": "./capacity.schema.json",
+  "$comment": "Foundryの初期モデル配備定義。3環境とも配備時に必要な最小容量で開始します。",
+  "common": {
+    "services": {
+      "modelDeployments": [
+        {
+          "name": "gpt-6.1-sol",
+          "modelName": "gpt-6.1-sol",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-09-29",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-6.1-sol",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-6-luna",
+          "modelName": "gpt-6-luna",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-09-22",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-6-luna",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-6-sol",
+          "modelName": "gpt-6-sol",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-09-22",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-6-sol",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-6-astra",
+          "modelName": "gpt-6-astra",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-09-03",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-6-astra",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-5.6-luna",
+          "modelName": "gpt-5.6-luna",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-07-09",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.6-luna",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-5.6-sol",
+          "modelName": "gpt-5.6-sol",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-07-09",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.6-sol",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-5.6-terra",
+          "modelName": "gpt-5.6-terra",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-07-09",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.6-terra",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "DeepSeek-V4-Flash",
+          "modelName": "DeepSeek-V4-Flash",
+          "modelFormat": "DeepSeek",
+          "modelVersion": "2026-04-23",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "AIServices.GlobalStandard.DeepSeek-V4-Flash",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "DeepSeek-V4-Pro",
+          "modelName": "DeepSeek-V4-Pro",
+          "modelFormat": "DeepSeek",
+          "modelVersion": "2026-04-23",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "AIServices.GlobalStandard.DeepSeek-V4-Pro",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "Mistral-Large-3",
+          "modelName": "Mistral-Large-3",
+          "modelFormat": "Mistral AI",
+          "modelVersion": "1",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "AIServices.GlobalStandard.Mistral-Large-3",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "grok-4.7",
+          "modelName": "grok-4.7",
+          "modelFormat": "xAI",
+          "modelVersion": "1",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "AIServices.GlobalStandard.grok-4.7",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-live-1",
+          "modelName": "gpt-live-1",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-09-10",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-live-1",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-realtime-2.1",
+          "modelName": "gpt-realtime-2.1",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-07-07",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-realtime-2.1",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-realtime-2.1-mini",
+          "modelName": "gpt-realtime-2.1-mini",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-07-07",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-realtime-2.1-mini",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-live-transcribe",
+          "modelName": "gpt-live-transcribe",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-07-28",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-live-transcribe",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-transcribe",
+          "modelName": "gpt-transcribe",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-07-28",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-transcribe",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-image-2.5-flare",
+          "modelName": "gpt-image-2.5-flare",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-09-08",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-image-2.5-flare",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-image-2.5-sunburst",
+          "modelName": "gpt-image-2.5-sunburst",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-09-08",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-image-2.5-sunburst",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "gpt-image-2",
+          "modelName": "gpt-image-2",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2026-04-21",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.gpt-image-2",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "FLUX.2-flex",
+          "modelName": "FLUX.2-flex",
+          "modelFormat": "Black Forest Labs",
+          "modelVersion": "1",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "AIServices.GlobalStandard.FLUX.2-flex",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "FLUX.2-pro",
+          "modelName": "FLUX.2-pro",
+          "modelFormat": "Black Forest Labs",
+          "modelVersion": "1",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "AIServices.GlobalStandard.FLUX.2-pro",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "text-embedding-3-large",
+          "modelName": "text-embedding-3-large",
+          "modelFormat": "OpenAI",
+          "modelVersion": "1",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.text-embedding-3-large",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "text-embedding-3-small",
+          "modelName": "text-embedding-3-small",
+          "modelFormat": "OpenAI",
+          "modelVersion": "1",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.text-embedding-3-small",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "embed-v-4-0",
+          "modelName": "embed-v-4-0",
+          "modelFormat": "Cohere",
+          "modelVersion": "1",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "AIServices.GlobalStandard.Embed-V-4-0",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "Cohere-rerank-v4.0-fast",
+          "modelName": "Cohere-rerank-v4.0-fast",
+          "modelFormat": "Cohere",
+          "modelVersion": "1",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "AIServices.GlobalStandard.Cohere-Rerank-V4-Fast",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "Cohere-rerank-v4.0-pro",
+          "modelName": "Cohere-rerank-v4.0-pro",
+          "modelFormat": "Cohere",
+          "modelVersion": "1",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "AIServices.GlobalStandard.Cohere-Rerank-V4-Pro",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "model-router",
+          "modelName": "model-router",
+          "modelFormat": "OpenAI",
+          "modelVersion": "2025-11-18",
+          "skuName": "GlobalStandard",
+          "quotaUsageName": "OpenAI.GlobalStandard.ModelRouter",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        },
+        {
+          "name": "decision-1",
+          "modelName": "Microsoft-Decision-1",
+          "modelFormat": "Microsoft",
+          "modelVersion": "1",
+          "skuName": "DataZoneStandard",
+          "quotaUsageName": "AIServices.DataZoneStandard.Microsoft-Decision-1",
+          "versionUpgradeOption": "NoAutoUpgrade"
+        }
+      ]
+    }
+  },
+  "profiles": {
+    "prod": {},
+    "stg": {},
+    "dev": {}
+  }
+}

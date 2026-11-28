@@ -29,6 +29,8 @@ var certificateVariables = {
   PORTAL_AUTH_IDENTITY_CLIENT_ID: authIdentity.clientId
 }
 var trialScope = apiAuthentication.?scope ?? ''
+var requiredAppRole = authentication.?requiredAppRole ?? ''
+var accessVariables = empty(requiredAppRole) ? {} : { PORTAL_AUTH_REQUIRED_APP_ROLE: requiredAppRole }
 var apiAuthenticationVariables = empty(apiAuthentication) ? {} : {
   PORTAL_API_AUTH_ENABLED: empty(trialScope) ? 'false' : 'true'
   PORTAL_API_AUTH_SCOPE: trialScope
@@ -36,7 +38,7 @@ var apiAuthenticationVariables = empty(apiAuthentication) ? {} : {
   PORTAL_API_AUTH_KEY_CLIENT_ID: apiAuthentication.identity.clientId
   PORTAL_API_AUTH_PREVIOUS_KEY_VERSIONS: join(apiAuthentication.previousKeyVersions, ',')
 }
-var variables = union(certificateVariables, apiAuthenticationVariables, {
+var variables = union(certificateVariables, accessVariables, apiAuthenticationVariables, {
   NODE_ENV: 'production'
   HOSTNAME: '0.0.0.0'
   PORT: '3000'

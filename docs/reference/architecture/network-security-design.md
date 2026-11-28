@@ -23,6 +23,7 @@
 | 参照 | 資材へ組み込む情報 | 依存・範囲 |
 | --- | --- | --- |
 | `subnet:agw`／`subnet:firewall`／`subnet:apim`／`subnet:portal`／`subnet:management`／`subnet:broker` | 各サブネットCIDR | `network.subnetPrefixes`の対応キー。構築するVNet内資源の範囲を表す。 |
+| `client-prefixes:agw` | AppGWに接続できるクライアントのIPv4 CIDR | `stg`はparamsの`network.stagingClientAddressPrefixes`。`prod`と`dev`は`0.0.0.0/0`。 |
 | `ip:firewallPublic` | Firewall公開IP | 構築FirewallのPublic IP出力を`/32`化。企業FirewallのIPを受ける公開入力ではない。 |
 | `ip:appGatewayPublic` | AppGW公開IP | 構築AppGWのPublic IP出力を`/32`化。 |
 | `ip:apim` | APIM内部VIP | 構築APIMのprivate VIP出力を`/32`化。 |
@@ -32,9 +33,11 @@
 | `ips:keyVault`／`ips:foundry`／`ips:sql`／`ips:registry` | 対応サービスのPE NIC全IP | 構築PE NICの全IPを重複除去して`/32`化。ACRはregistry／data endpointを漏らさない。 |
 | `ips:auditPlatformBlob`／`ips:auditFoundryBlob` | 2つの監査StorageのBlob PE全IP | 構築Blob PE NICの全IPを`/32`化。監査コンテナーの読取認可と別に到達を許可する。 |
 | `tag:...` | Azureサービスタグ | 名称・プロトコル・ポートは資材固定。タグのIP集合を公開入力で上書きしない。 |
-| `literal:*`／`literal:0.0.0.0/0` | Any／初期IPv4公開範囲 | 資材固定。企業環境に合わせた変更は初期構築後の運用とする。 |
+| `literal:*`／`literal:0.0.0.0/0` | Any／全IPv4アドレス | 資材固定。 |
 
 公開TLS用Vaultと証明書Jobの結果Blobは、[証明書用の追加NSG規則](../../../infra/modules/network/nsg/certificate-rules.json)で扱う。AppGWから公開TLS用Vault（`ips:certificateVault`）への送受信、専用JobからVault・Blob・ACRへの受信、管理VMと結果Blob（`ips:certificateBlob`）の送受信を、各Private EndpointのIPに限定する。Jobサブネット自身の許可と末尾拒否は[証明書用ネットワーク資材](../../../infra/modules/certificates/certificate-network.bicep)を参照する。
+
+Graph OBO署名用VaultのPrivate Endpointには、Brokerの署名、証明書Jobの発行、管理VMからの担当者本人による証明書更新を許可する。管理VMの送信元は専用NICの `/32` に限定し、更新に必要なAzure RBACを保守時間中だけ担当者に付与する。 [Graph OBO署名用Vaultの規則](../../../infra/modules/network/nsg/obo-rules.json)
 
 規則表の依存欄には、各規則へ入る構築情報を列挙する。基本構成の規則集合は固定であり、依存欄の値が作成スイッチを意味することはない。PEや資源の作成後に動的規則を設定し、終端Denyは必要なAllowが揃った後に設定する。
 
@@ -49,8 +52,8 @@
 | 優先度 | 規則名／設計ID | 送信元 → 宛先 | プロトコル／宛先ポート | 通信・判断ID | 用途・採用理由 | 構築情報への依存 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-firewall-public-https-ingress`<br>`N-AGW-IN-01` | `ip:firewallPublic` → `subnet:agw` | TCP／443 | [FLOW-FIREWALL-PUBLIC-APPGW](network-communication-requirements.md#flow-firewall-public-appgw) | FirewallのSNAT後に公開入口へ到達するHTTPS。構築したFirewall公開IPだけを送信元として明示する。 | `ip:firewallPublic`, `subnet:agw` |
-| 121 | `allow-client-http-ingress`<br>`N-AGW-IN-02-HTTP` | `0.0.0.0/0`（初期IPv4公開範囲） → `subnet:agw` | TCP／80 | [FLOW-CLIENT-HTTP](network-communication-requirements.md#flow-client-http) | 公開HTTP listenerへの到達とHTTPSリダイレクト。初期IPv4公開範囲を固定し、企業の接続元制限は構築後の手動変更とする。 | `subnet:agw` |
-| 122 | `allow-client-https-ingress`<br>`N-AGW-IN-02-HTTPS` | `0.0.0.0/0`（初期IPv4公開範囲） → `subnet:agw` | TCP／443 | [FLOW-CLIENT-HTTPS](network-communication-requirements.md#flow-client-https) | API／Portalの公開HTTPS入口。AppGWのTLS終端とWAFで処理する入口をHTTPとは別に記録する。 | `subnet:agw` |
+| 121 | `allow-client-http-ingress`<br>`N-AGW-IN-02-HTTP` | `client-prefixes:agw` → `subnet:agw` | TCP／80 | [FLOW-CLIENT-HTTP](network-communication-requirements.md#flow-client-http) | 許可された接続元からのHTTPをHTTPSへリダイレクトする。 | `client-prefixes:agw`, `subnet:agw` |
+| 122 | `allow-client-https-ingress`<br>`N-AGW-IN-02-HTTPS` | `client-prefixes:agw` → `subnet:agw` | TCP／443 | [FLOW-CLIENT-HTTPS](network-communication-requirements.md#flow-client-https) | 許可された接続元からのAPI／Portal接続をAppGWのTLS終端とWAFで処理する。 | `client-prefixes:agw`, `subnet:agw` |
 | 320 | `allow-gateway-manager-ingress`<br>`N-AGW-IN-04` | `tag:GatewayManager` → Any | TCP／65200-65535 | [FLOW-APPGW-GATEWAY-MANAGER](network-communication-requirements.md#flow-appgw-gateway-manager) | 標準AppGW v2の管理基盤通信。GatewayManagerの公式受信要件を維持する。 | 固定literal／Azureタグのみ |
 | 321 | `allow-azure-load-balancer-ingress`<br>`N-AGW-IN-05` | `tag:AzureLoadBalancer` → Any | Any／Any | [FLOW-APPGW-LOAD-BALANCER](network-communication-requirements.md#flow-appgw-load-balancer) | Azure Load Balancerの基盤probe。送信元タグを固定し、宛先・ポート・プロトコルはAnyとする採用判断を反映する。 | 固定literal／Azureタグのみ |
 | 4096 | `deny-any-ingress`<br>`N-AGW-IN-TERMINAL` | Any → Any | Any／Any | `POLICY-APPGW-IN-DENY` | 列挙した受信許可以外を既定許可より前で拒否する。既定Denyの再作成ではなくカスタム許可集合の終端である。 | 固定literal／Azureタグのみ |

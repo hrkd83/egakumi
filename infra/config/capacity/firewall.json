@@ -1,0 +1,20 @@
+{
+  "$schema": "./capacity.schema.json",
+  "$comment": "Azure FirewallのSKU、IDPS、脅威情報、ゾーン。容量はAzureの自動スケール。",
+  "common": {
+    "network": {
+      "firewall": {
+        "sku": "Premium",
+        "idpsMode": "Deny",
+        "threatIntelMode": "Alert",
+        "zones": [],
+        "signatureOverrides": []
+      }
+    }
+  },
+  "profiles": {
+    "prod": {},
+    "stg": {},
+    "dev": {}
+  }
+}

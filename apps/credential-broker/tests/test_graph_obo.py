@@ -1,8 +1,11 @@
 """Offline tests for the fixed Graph on-behalf-of exchange and Broker boundary."""
 import base64
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 import json
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 from urllib.parse import parse_qs
 
 import httpx
@@ -61,14 +64,18 @@ class TestGraphOboExchange(unittest.TestCase):
         self.token_status = 200
         self.token_result = {"token_type": "Bearer", "scope": "User.Read", "expires_in": 1000, "access_token": GRAPH_TOKEN}
         self.signing_result_changes = {}
+        self.signing_status = 200
+        self.now = 1000
         client = httpx.Client(transport=httpx.MockTransport(self.route), follow_redirects=False)
         self.addCleanup(client.close)
         credential = SimpleNamespace(get_token=lambda scope: self.mi_scopes.append(scope) or SimpleNamespace(token="synthetic-mi"))
-        self.obo = GraphOboClient(SETTINGS, client, credential, clock=lambda: 1000)
+        self.obo = GraphOboClient(SETTINGS, client, credential, clock=lambda: self.now)
 
     def route(self, request):
         self.calls.append(request)
         if str(request.url).startswith(KEY_URL + "/sign?"):
+            if self.signing_status != 200:
+                return httpx.Response(self.signing_status)
             body = json.loads(request.content)
             self.assertEqual(body["alg"], "PS256")
             self.assertEqual(request.headers["Authorization"], "Bearer synthetic-mi")
@@ -101,6 +108,46 @@ class TestGraphOboExchange(unittest.TestCase):
         self.assertEqual((client_assertion["iss"], client_assertion["sub"]), (CLIENT, CLIENT))
         self.assertEqual(client_assertion["exp"] - client_assertion["iat"], 120)
         self.assertTrue(client_assertion["jti"])
+
+    def test_caches_only_client_assertion_and_refreshes_before_expiry(self):
+        inputs = [assertion(jti=f"request-{number}") for number in range(3)]
+        for timestamp, user_assertion in zip((1000, 1059, 1060), inputs):
+            self.now = timestamp
+            self.assertEqual(self.obo.exchange(user_assertion, CALLER), GRAPH_TOKEN)
+        forms = [parse_qs(call.content.decode("ascii")) for call in self.calls if str(call.url) == TOKEN_URL]
+        self.assertEqual([form["assertion"][0] for form in forms], inputs)
+        self.assertEqual(forms[0]["client_assertion"], forms[1]["client_assertion"])
+        self.assertNotEqual(forms[1]["client_assertion"], forms[2]["client_assertion"])
+        self.assertEqual(self.mi_scopes, [KEY_VAULT_SCOPE] * 2)
+
+    def test_parallel_requests_share_one_signing_call(self):
+        inputs = [assertion(jti=f"parallel-{number}") for number in range(8)]
+        with ThreadPoolExecutor(max_workers=len(inputs)) as workers:
+            self.assertEqual(list(workers.map(lambda value: self.obo.exchange(value, CALLER), inputs)),
+                             [GRAPH_TOKEN] * len(inputs))
+        self.assertEqual(self.mi_scopes, [KEY_VAULT_SCOPE])
+        self.assertEqual(len(self.calls), 1 + len(inputs))
+
+    def test_refresh_recovers_after_key_vault_throttling_without_using_the_expired_cache(self):
+        user_assertion = assertion()
+        self.assertEqual(self.obo.exchange(user_assertion, CALLER), GRAPH_TOKEN)
+        self.now = 1060
+        self.signing_status = 429
+        with self.assertRaises(GraphOboError):
+            self.obo.exchange(user_assertion, CALLER)
+        self.assertEqual(len(self.calls), 3)
+        self.signing_status = 200
+        self.assertEqual(self.obo.exchange(user_assertion, CALLER), GRAPH_TOKEN)
+        self.assertEqual(self.mi_scopes, [KEY_VAULT_SCOPE] * 3)
+
+    def test_new_key_version_starts_with_an_empty_cache(self):
+        self.obo._client_assertion()
+        rotated_settings = replace(SETTINGS, key_url=KEY_URL.rsplit('/', 1)[0] + '/' + 'b' * 32)
+        rotated = GraphOboClient(rotated_settings, self.obo.client, self.obo.credential, clock=lambda: self.now)
+        with patch.object(rotated, '_sign_client_assertion', return_value='rotated-assertion') as sign:
+            self.assertEqual(rotated._client_assertion(), 'rotated-assertion')
+            self.assertEqual(rotated._client_assertion(), 'rotated-assertion')
+        sign.assert_called_once_with(self.now)
 
     def test_binding_rejections_do_not_sign_or_exchange(self):
         for args in ({"oid": CLIENT}, {"tid": CLIENT}, {"aud": OWNER}, {"iss": "https://issuer.example.com"},

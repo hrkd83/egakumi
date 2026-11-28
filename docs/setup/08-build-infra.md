@@ -64,7 +64,7 @@ azd env set AZURE_LOCATION "$DEPLOY_LOCATION"
 python3 scripts/deployment/lifecycle.py capacity
 ```
 
-結果は`.local/<environment>/state/capacity.json`です。モデルやVMの提供・クォータ不足、読取不能はその理由を確認します。新規Subscriptionで必要RPが未登録の場合も、読取検査が失敗することがあります。構築者の登録権限を確認してください。構築時は必要RPを登録してから内部の検査を進めます。
+結果は`.local/<environment>/state/capacity.json`です。Foundryはモデル・版・SKUごとに新規配備の最小容量を確認し、そのサブスクリプションの利用枠と配備可能量に照合します。モデルやVMの提供・クォータ不足、読取不能はその理由を確認します。新規Subscriptionで必要RPが未登録の場合も、読取検査が失敗することがあります。構築者の登録権限を確認してください。構築時は必要RPを登録してから内部の検査を進めます。 [Foundryの容量とクォータ](../reference/configuration/capacity/foundry.md)
 
 `management.encryptionAtHost=true`の場合は、`preprovision`で`Microsoft.Compute/EncryptionAtHost`の登録も確認します。未登録なら自動登録し、登録中なら重ねて要求せず待機します。機能登録済みの場合もCompute RPを再登録し、前回の中断などで反映が未完了でも確認してから構築へ進みます。機能登録とRP反映の待機上限は合計30分です。権限不足、未対応の状態、待機超過では構築を停止します。`false`の場合は機能の読取・登録を行いません。`validate`・`capacity`コマンドはこの登録処理を実行しません。
 
@@ -124,6 +124,8 @@ echo "終了コード: $?"
 4. Portal用のContainer AppにはMicrosoftのQuickstartイメージが載っています。この時点ではApp GatewayでPortalバックエンドが異常表示でも問題ありません。公開`/api/health`のHTTP 200は第12章のPortal本体配備後に確認します。
 
 後続の章でも同じ環境のparams・state・公開証明書を使います。同じ環境に対する構築・配備は順に実行します。基盤が完了したら[09. Entraに証明書を登録](09-egakumi-portal.md)へ進みます。
+
+モデルの実処理能力を試験する前に、対象サブスクリプションの承認済みクォータに応じて必要な配備の容量を調整します。基盤を再実行した場合は、配備名・モデル・版・SKUが一致し正常と確認できた既存配備の容量を保持します。既存配備を照合できない場合は原因を確認してから再開します。 [配備容量の変更手順](../operations/foundry.md#容量だけを変更する)
 
 ### 基盤構築時の補足
 

@@ -7,15 +7,16 @@
 | 項目 | 公開例・制約 | 用途 |
 | --- | --- | --- |
 | `schemaVersion` | `1` | 入力形式の版 |
-| `configFile` | `../../infra/config/test.json`または`../../infra/config/production.json` | 準備コマンドがprofileに合わせて設定する共通config参照 |
+| `configFile` | `../../infra/config/<profile>.json`（`prod`・`stg`・`dev`） | 準備コマンドがprofileに合わせて設定する共通config参照 |
 | `productName` | 最大12文字。公開例 `egakumi` | 資源名に使う製品名 |
-| `environmentName` | 最大4文字。公開例 `test`／`prod` | 資源名に使う環境名。SKU選択と独立 |
+| `environmentName` | 最大4文字。公開例 `prod`／`stg`／`dev` | 資源名に使う環境名。SKU選択と独立 |
 | `subscriptionId` | 非ゼロGUID | Azure構築先 |
 | `azureTenantId` | 非ゼロGUID | Azure構築・RBAC先 |
 | `entraTenantId` | 非ゼロGUID、省略可 | OAuth・社員認証先。省略時Azure側tenant |
 | `location` | 公開例のAzureリージョン | ネットワーク・APIM・管理VM等 |
 | `foundryLocation` | 公開例のAzureリージョン | Foundryモデル提供・利用枠を別途確認 |
 | `network.addressSpaces` | 公開例10.40系の独立した合成CIDR | VNet。利用者のIP計画を確認 |
+| `network.stagingClientAddressPrefixes` | `stg` 必須。管理者用IPv4 CIDRを1件以上 | App GatewayのHTTP/HTTPS入口の許可元。稼働確認には管理者用の接続元を使う |
 | `network.subnetPrefixes.agw` | VNet内IPv4 CIDR | AppGW |
 | `network.subnetPrefixes.pep` | VNet内IPv4 CIDR | Private Endpoint |
 | `network.subnetPrefixes.firewall` | VNet内IPv4 CIDR | AzureFirewallSubnet |
@@ -38,11 +39,24 @@
 | `tags` | 文字列map。公開例の `purpose` は `egakumi` | Azureリソースに付ける任意の利用者タグ。システムタグは別途生成 |
 | `portal.publicHostName` | `portal.example.com`の架空例 | Portal公開DNS名 |
 
+## 環境ごとに確定する容量
+
+[prod](../../../params/prod.example.json)・[stg](../../../params/stg.example.json)・[dev](../../../params/dev.example.json)の公開例は、`capacity` の全項目に標準値を記入しています。準備コマンドから作成した `params.local.json` を導入先の処理量に合わせて編集します。構築前の設定検証で、`capacity` の必須項目が欠落していればエラーになります。 [3環境の容量設計](environment-capacity.md)
+
+| 必須項目 | `prod` | `stg` | `dev` |
+| --- | --- | --- | --- |
+| `capacity.applicationGateway.minInstances`・`maxInstances` | 20・30 | 1・2 | 1・2 |
+| `capacity.apim.units` | 12（最低2） | 1 | 1固定 |
+| `capacity.credentialBroker.minReplicas`・`maxReplicas` | 5・10 | 1・2 | 1・2 |
+| `capacity.brokerSql.vCores`・`maxDataGiB` | 4・32 | 2・32 | 2・32 |
+
+Broker SQLは固定のGeneral Purpose standard-series（Gen5）と `vCores` から配備SKU名を決めます。Foundryのモデル・版・配備SKUはサービス別configの `modelDeployments` で確認できます。初期配備は3環境共通で最小容量を使い、運用上の容量は構築後にMicrosoft Foundryポータルで調整します。 [SQLのvCore上限](https://learn.microsoft.com/en-us/azure/azure-sql/database/resource-limits-vcore-single-databases#general-purpose-standard-series-gen5-part-1-of-3) · [Foundryの容量とクォータ](capacity/foundry.md)
+
 ## ネットワーク・監査の接続設定
 
 ### 公開例のVNet割り当て
 
-テストと本番の公開例は、初回から5つの `/24` をVNetの `addressSpaces` に登録します。8つのサブネットは最初の4区画に配置します。表のCIDRは独立した合成例です。導入先では予備を含む全区画を、接続済み・接続予定のアドレス範囲と照合します。
+3環境の公開例は、初回から5つの `/24` をVNetの `addressSpaces` に登録します。8つのサブネットは最初の4区画に配置します。表は `prod` の合成CIDR例です。`stg` は10.41系、`dev` は10.42系を使用します。導入先では予備を含む全区画を、接続済み・接続予定のアドレス範囲と照合します。
 
 | 区画 | paramsのキー | CIDRの公開例 | サブネット名 |
 | --- | --- | --- | --- |
@@ -73,9 +87,9 @@
 
 3つ目にはFirewall・APIM・管理VMを配置し、4つ目はPortal、Broker、証明書Jobの順に割り当てます。この順序を別のアドレス空間に適用する場合も、3つのCIDRを `network.subnetPrefixes` に明示します。5つ目はVNetのアドレス空間に含まれるため、ピアリング先との重複確認にも含めます。 [VNetピアリング](https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-peering-overview)
 
-- App Gateway v2は推奨の `/24` を確保し、自動スケールの上限はテスト2、本番5インスタンスです。Private Endpoint用の `/24` は251 IPを割り当て可能で、標準の8つのPrivate Endpointと、ACRが追加で使うデータエンドポイント用IPを収容できます。 [App Gatewayのサブネット要件](https://learn.microsoft.com/en-us/azure/application-gateway/configuration-infrastructure#size-of-the-subnet) · [ACRのPrivate Endpoint](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-private-endpoints)
-- Azure Firewallの `/26` は必須の最小サイズです。APIM Classicの `/26` は、標準設定のテスト Developer 1ユニット・本番 Premium 1ユニットに対して余裕があります。内部モードのPremiumではIP容量上29ユニットが上限です。管理VMの `/26` は、現在のVM 1台に対して余裕を持たせています。 [Firewallのサブネット要件](https://learn.microsoft.com/en-us/azure/networking/design-guide/azure-firewall#subnet-requirements) · [APIMのサブネット要件](https://learn.microsoft.com/en-us/azure/api-management/virtual-network-injection-resources?tabs=stv2#subnet-size)
-- 各ACAはWorkload profiles環境でConsumptionプロファイルを使います。Portalの `/26` は最大2レプリカとスキーマJob 1本、Brokerの `/26` は最大4レプリカとJob 2本、証明書の `/27` はJob 2本を収容できます。各Jobの並列度は1です。ACA環境の作成後はサブネットをリサイズできないため、レプリカ数や同時実行を増やす計画がある場合は、初回構築前にリビジョン更新中の重複も踏まえて見積もります。 [ACAのサブネット要件](https://learn.microsoft.com/en-us/azure/container-apps/custom-virtual-networks?tabs=workload-profiles-env#subnet)
+- App Gateway v2は推奨の `/24` を確保します。自動スケール上限を変更するときは、`capacity.applicationGateway.maxInstances` 分のIPとAzure予約分5個を見積もります。Private Endpoint用の `/24` には251 IPを割り当て可能です。 [App Gatewayのサブネット要件](https://learn.microsoft.com/en-us/azure/application-gateway/configuration-infrastructure#size-of-the-subnet) · [ACRのPrivate Endpoint](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-private-endpoints)
+- Azure Firewallの `/26` は必須の最小サイズです。APIM Classicの `/26` は公開例の `prod` のPremium 12ユニット・`stg` のPremium 1ユニット・`dev` のDeveloper 1ユニットを収容します。Internalモードでは、Azure予約5個と内部VIP 1個に加え、Premiumは1ユニットあたり2個、Developerは1個のプライベートIPを使います。管理VMの `/26` は、現在のVM 1台に対して余裕を持たせています。 [Firewallのサブネット要件](https://learn.microsoft.com/en-us/azure/networking/design-guide/azure-firewall#subnet-requirements) · [APIMのサブネット要件](https://learn.microsoft.com/en-us/azure/api-management/virtual-network-injection-resources#subnet-size)
+- 各ACAはWorkload Profiles環境でConsumptionプロファイルを使います。公開例の `/26` はPortalとBrokerそれぞれの常駐アプリとJobを、証明書用の `/27` は証明書Jobを収容します。レプリカ数やJobの同時実行を増やす場合は、初回構築前にリビジョン更新中の重複も踏まえて見積もります。 [ACAのサブネット要件](https://learn.microsoft.com/en-us/azure/container-apps/custom-virtual-networks?tabs=workload-profiles-env#subnet)
 
 全サブネットをVNet範囲内へ重複なく割り当てます。SNAT・IDPS private範囲・bypass、監査公開IP、証明書DNS名を独立したparamsに追加しません。実効経路や適用範囲は[通信要件](../architecture/network-communication-requirements.md)、[NSG判断記録](../architecture/network-security-design.md)、[Firewall判断記録](../architecture/firewall-policy-design.md)、[ネットワーク受入](../../testing/network-security-validation.md)を参照してください。
 

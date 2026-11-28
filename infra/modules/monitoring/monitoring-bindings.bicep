@@ -204,7 +204,7 @@ resource metricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for defini
 // 以下は KQL の監視クエリです。件数・利用量・状態を検索し、API の入力本文や生成本文を検索材料にはしません。
 var auditWriteQuery = '${loadTextContent('./audit-write-failures.kql')}\nAuditWriteFailures(StorageBlobLogs, now(), dynamic(["${storage.collectPlatform.name}", "${storage.collectFoundry.name}"]))'
 var ingestionQuery = 'union isfuzzy=true AppRequests, AppDependencies, AppExceptions, AppTraces, AppEvents, AppMetrics, AppPageViews, AppBrowserTimings, AppAvailabilityResults, AppGenAIContent\n| where TimeGenerated > ago(24h)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| where _IsBillable == "true"\n| summarize IngestedGB = sum(_BilledSize) / 1000000000.0'
-var failureRateQuery = 'AppRequests\n| where TimeGenerated > ago(15m)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| summarize Requests=count(), Failures=countif(Success == false)\n| where Requests >= 100\n| extend FailureRate=100.0 * Failures / Requests'
+var failureRateQuery = 'union isfuzzy=true ApiManagementGatewayLogs, datatable(TimeGenerated:datetime, _ResourceId:string, ResponseCode:int)[]\n| where TimeGenerated > ago(15m)\n| where _ResourceId =~ "${apimId}"\n| summarize Requests=count(), Failures=countif(ResponseCode between (500 .. 599))\n| where Requests >= 100\n| extend FailureRate=100.0 * Failures / Requests'
 var certificateMonitoringEnabled = !empty(certificateMonitoring)
 // During a first deployment, the log table may not have materialized. An empty
 // typed input keeps the startup and missing-worker queries evaluable.
@@ -261,9 +261,9 @@ resource logAlerts 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for de
     evaluationFrequency: 'PT5M'
     windowSize: 'PT5M'
     overrideQueryTimeRange: definition.range
-    // Initial creation may precede ingestion. The common workflow validates the
-    // queries with real data and permissions before enabling these same rules.
-    skipQueryValidation: !enableLogAlerts
+    // 初回作成時点ではシステム割当IDの検索権限がなく、収集開始前のテーブルもあります。
+    // 作成後にLog Analytics Readerを付け、実際の診断データで評価と通知を受け入れ確認します。
+    skipQueryValidation: true
     criteria: {
       allOf: [union({
         query: definition.query

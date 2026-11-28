@@ -145,12 +145,17 @@ def prepare_broker_only_update(config, state, transport):
     scale = props.get('template', {}).get('scale', {})
     if any(type(scale.get(key)) is not int for key in ('minReplicas', 'maxReplicas')):
         raise ValueError('Existing Broker replica settings must be explicit')
+    resources = containers[0].get('resources', {})
+    cpu, memory = resources.get('cpu'), resources.get('memory')
+    if type(cpu) not in (int, float) or {0.5: '1Gi', 1: '2Gi', 2: '4Gi'}.get(cpu) != memory:
+        raise ValueError('Existing Broker CPU and memory do not match a supported resource pair')
     values = {'stem': config['resourceStem'], 'location': config['location'],
         'registryName': foundation['registryName'], 'runtimeIdentity': runtime, 'schemaIdentity': foundation['schemaIdentity'],
         'sqlServer': foundation['sqlServer'], 'database': names['database'], 'profiles': profiles,
         'publicOrigin': expected['BROKER_PUBLIC_ORIGIN'], 'apimPrincipalId': foundation['apimPrincipalId'],
         'apimName': foundation['apimName'], 'brokerKeySecretUri': broker_uri, 'oidcSecrets': list(oidc.values()),
-        'minReplicas': scale['minReplicas'], 'maxReplicas': scale['maxReplicas'], 'imageDigest': '',
+        'minReplicas': scale['minReplicas'], 'maxReplicas': scale['maxReplicas'],
+        'cpu': str(cpu), 'memory': memory, 'imageDigest': '',
         'deployApplication': False, 'schemaAction': 'observe-schema', **{key: session[key] for key in timing}}
     if graph_obo:
         values['graphObo'] = graph_obo

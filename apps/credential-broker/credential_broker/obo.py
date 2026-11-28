@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import re
+from threading import Lock
 import time
 from uuid import uuid4
 
@@ -22,6 +23,8 @@ JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 CLIENT_ASSERTION = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 CLIENT_CAPABILITIES = '{"access_token":{"xms_cc":{"values":["cp1"]}}}'
 KEY_VAULT_SCOPE = "https://vault.azure.net/.default"
+CLIENT_ASSERTION_LIFETIME_SECONDS = 120
+CLIENT_ASSERTION_CACHE_SECONDS = 60
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_.~+/=-]{1,24000}")
 CLAIM_NAME = re.compile(r"[A-Za-z0-9_.:-]{1,80}")
 
@@ -93,6 +96,8 @@ class GraphOboClient:
         self.clock = clock
         self.issuer = f"https://login.microsoftonline.com/{settings.tenant_id}/v2.0"
         self.token_url = f"https://login.microsoftonline.com/{settings.tenant_id}/oauth2/v2.0/token"
+        self._assertion_lock = Lock()
+        self._cached_assertion = None
 
     @classmethod
     def from_settings(cls, settings):
@@ -134,10 +139,23 @@ class GraphOboClient:
             return response.status_code, payload
 
     def _client_assertion(self):
-        start = int(self.clock())
+        # Freeze the cache at this client's tenant, application and certificate version.
+        with self._assertion_lock:
+            start = int(self.clock())
+            if self._cached_assertion is not None:
+                issued_at, signed = self._cached_assertion
+                if 0 <= start - issued_at < CLIENT_ASSERTION_CACHE_SECONDS:
+                    return signed
+            self._cached_assertion = None
+            signed = self._sign_client_assertion(start)
+            self._cached_assertion = start, signed
+            return signed
+
+    def _sign_client_assertion(self, start):
         header = {"alg": "PS256", "typ": "JWT", "x5t#S256": self.settings.certificate_thumbprint}
         claims = {"aud": self.token_url, "iss": self.settings.client_id, "sub": self.settings.client_id,
-                  "jti": str(uuid4()), "iat": start, "nbf": start - 5, "exp": start + 120}
+                  "jti": str(uuid4()), "iat": start, "nbf": start - 5,
+                  "exp": start + CLIENT_ASSERTION_LIFETIME_SECONDS}
         unsigned = json_segment(header) + "." + json_segment(claims)
         digest = base64url(hashlib.sha256(unsigned.encode("ascii")).digest())
         token = self.credential.get_token(KEY_VAULT_SCOPE).token

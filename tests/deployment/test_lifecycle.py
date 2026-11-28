@@ -156,6 +156,30 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(events, ["apim-name", "monitoring", "cap"])
         self.assertEqual(json.loads(self.paths.parameters.read_text(encoding="utf-8"))["parameters"]["phase"]["value"], "core")
 
+    def test_standard_preprovision_writes_only_new_models_with_their_verified_capacity(self):
+        self.config["capacityProfile"] = "dev"
+        deployments = [
+            {"name": name, "modelName": name, "modelVersion": "2025-04-14",
+             "modelFormat": "OpenAI", "skuName": "GlobalStandard", "capacity": 1}
+            for name in ("existing-model", "new-model")
+        ]
+        self.config["services"]["modelDeployments"] = deployments
+        outputs = {**self.outputs(), "capacityProfile": "dev"}
+        new_deployments = [{**deployments[1], "capacity": 3}]
+        transport = self.preprovision_transport()
+        with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
+             mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
+             mock.patch.object(lifecycle, "capacity_preflight", return_value={"modelDeploymentsToCreate": new_deployments}), \
+             mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
+             mock.patch.object(lifecycle, "deploy_monitoring", return_value=outputs), \
+             mock.patch.object(lifecycle, "lock_and_verify_policies"), \
+             mock.patch.object(lifecycle, "configure_app_insights_cap"), contextlib.redirect_stdout(io.StringIO()):
+            lifecycle.preprovision(self.config)
+        generated = json.loads(self.paths.parameters.read_text(encoding="utf-8"))["parameters"]["configuration"]["value"]
+        self.assertEqual(generated["services"]["modelDeployments"], new_deployments)
+        self.assertEqual([(row["name"], row["capacity"]) for row in self.config["services"]["modelDeployments"]],
+                         [("existing-model", 1), ("new-model", 1)])
+
     def test_apim_name_conflict_stops_before_paid_deployment_and_does_not_choose_another_name(self):
         """固定名を使えないときは監視・VM等を作らず、同名の原因解消を待つ。"""
         self.apim_name.side_effect = lifecycle.ApimPreflightError("固定したAPIM名は利用できません。")
@@ -442,6 +466,22 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             lifecycle.capacity_preflight(self.config, transport, {"cleanup": {"value": self.outputs()["cleanup"]}})
         self.assertEqual(verify.call_args.kwargs["existing_resources"]["modelDeployments"], items)
         self.assertFalse(transport.mutations())
+
+    def test_standard_capacity_checks_for_existing_models_even_if_the_prior_output_is_missing(self):
+        self.config["capacityProfile"] = "stg"
+        self.config["services"]["modelDeployments"] = [{"name": "fixture"}]
+        for status, body in ((404, {}), (200, {"value": [{"name": "existing-fixture"}]})):
+            with self.subTest(status=status):
+                transport = ScriptedTransport([{"statusCode": 404, "body": {}}, {"statusCode": status, "body": body}])
+                with mock.patch.object(lifecycle, "verify_capacity", return_value={"status": "verified"}) as verify:
+                    if status == 404:
+                        lifecycle.capacity_preflight(self.config, transport, {})
+                        self.assertTrue(verify.call_args.kwargs["initialize_models"])
+                    else:
+                        with self.assertRaisesRegex(lifecycle.DeploymentError, "Recover the prior Foundry deployment outputs"):
+                            lifecycle.capacity_preflight(self.config, transport, {})
+                        verify.assert_not_called()
+                self.assertFalse(transport.mutations())
 
     def test_manually_added_models_are_read_without_deletion_during_capacity_preparation(self):
         self.config["services"]["modelDeployments"] = [{"name": "another-model", "modelFormat": "OpenAI"}]

@@ -6,8 +6,32 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
+from deployment import lifecycle
+from deployment.helpers.configuration import ConfigurationError, normalize_configuration
+from tests.support.configuration_fixtures import fixture
 from tests.support.powershell import PWSH
+
+
+class ApplicationInsightsCapConfigurationTests(unittest.TestCase):
+    def test_daily_cap_reaches_the_credential_protected_command(self):
+        raw = fixture()
+        raw["monitoring"]["appInsightsDailyCapGb"] = 150
+        config = normalize_configuration(raw)
+        with mock.patch.object(lifecycle, "arm_access_token", return_value={"accessToken": "<SYNTHETIC_ACCESS_TOKEN>"}), \
+                mock.patch.object(lifecycle, "locate_powershell", return_value="pwsh"), \
+                mock.patch.object(lifecycle, "powershell_environment", return_value={}), \
+                mock.patch.object(lifecycle, "run", return_value={"user": {"name": "operator@example.invalid"}}) as run:
+            lifecycle.configure_app_insights_cap(config, {"monitoring": {"appInsightsName": "appi-synthetic"}})
+        self.assertEqual(run.call_args.kwargs["payload"]["dailyCapGb"], 150)
+        self.assertNotIn("<SYNTHETIC_ACCESS_TOKEN>", run.call_args.args[0])
+
+    def test_ingestion_warning_must_precede_the_daily_cap(self):
+        raw = fixture()
+        raw["monitoring"].update(appInsightsDailyCapGb=80, appInsightsIngestionWarningGb=80)
+        with self.assertRaisesRegex(ConfigurationError, r"monitoring\.appInsightsIngestionWarningGb"):
+            normalize_configuration(raw)
 
 
 @unittest.skipUnless(PWSH, "PowerShell is required for the Application Insights cap")

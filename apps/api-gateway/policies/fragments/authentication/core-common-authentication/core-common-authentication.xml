@@ -60,6 +60,7 @@
           <claim name="scp" match="any" separator=" ">
             <value>{{core-entra-required-scope}}</value>
           </claim>
+          __ENTRA_REQUIRED_APP_ROLE__
         </required-claims>
       </validate-azure-ad-token>
       <!-- 標準トークン検証を通過した証拠を、この要求の中だけで保持します。

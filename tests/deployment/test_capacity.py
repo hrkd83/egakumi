@@ -93,9 +93,9 @@ class Runner:
 
 class CapacityTests(unittest.TestCase):
     """配備前のVM・モデル利用枠確認を、合成したAzure応答で検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
-    def check(self, config, responses, existing=None):
+    def check(self, config, responses, existing=None, *, initialize_models=False):
         runner = Runner(responses)
-        result = capacity.verify_capacity(config, runner, existing_resources=existing)
+        result = capacity.verify_capacity(config, runner, existing_resources=existing, initialize_models=initialize_models)
         self.assertEqual(result["operations"], "read-only")
         self.assertEqual(result["additionalAzureCostJPY"], 0)
         return result, runner
@@ -126,6 +126,66 @@ class CapacityTests(unittest.TestCase):
         self.assertEqual(report["vm"]["additionalVcpus"], 0)
         self.assertEqual(report["models"][0]["additionalCapacity"], 0)
         self.assertTrue(all(item["requested"] == 0 for item in report["vm"]["quota"]))
+
+    def test_initial_models_use_the_lowest_positive_capacity_allowed_by_the_sku(self):
+        cases = (
+            ({}, 1),
+            ({"minimum": 3, "maximum": 20, "step": 2, "default": 11}, 3),
+            ({"minimum": 0, "maximum": 20, "step": 5}, 5),
+            ({"minimum": 1, "step": 2, "allowedValues": [4, 7, 9]}, 7),
+        )
+        for limits, expected in cases:
+            with self.subTest(limits=limits):
+                config, responses = fixtures()
+                responses["models"][0]["model"]["skus"][0]["capacity"] = limits
+                report, _ = self.check(config, responses, initialize_models=True)
+                self.assertEqual(report["status"], "verified")
+                self.assertEqual(report["models"][0]["action"], "create")
+                self.assertEqual(report["models"][0]["quota"]["requested"], expected)
+                self.assertEqual(report["models"][0]["availability"]["requested"], expected)
+                self.assertEqual(report["modelDeploymentsToCreate"][0]["capacity"], expected)
+                self.assertEqual(config["services"]["modelDeployments"][0]["capacity"], 1)
+
+    def test_unverified_minimum_or_insufficient_quota_does_not_produce_create_plan(self):
+        for limits, quota, code in (
+            ({"step": 5}, 100, "MODEL_MINIMUM_CAPACITY_UNVERIFIED"),
+            ({"minimum": 2, "maximum": 10, "step": 2, "allowedValues": [3, 5]}, 100,
+             "MODEL_MINIMUM_CAPACITY_UNVERIFIED"),
+            ({"minimum": 8, "maximum": 20, "step": 2}, 7, "MODEL_QUOTA_INSUFFICIENT"),
+        ):
+            with self.subTest(limits=limits):
+                config, responses = fixtures()
+                responses["models"][0]["model"]["skus"][0]["capacity"] = limits
+                responses["model-usage"][0]["limit"] = quota
+                report, _ = self.check(config, responses, initialize_models=True)
+                self.assertEqual(report["status"], "blocked")
+                self.assertIn(code, self.codes(report))
+                self.assertNotIn("modelDeploymentsToCreate", report)
+
+    def test_standard_reapply_does_not_request_or_rewrite_portal_managed_capacity(self):
+        config, responses = fixtures()
+        existing = self.allocated(config)
+        existing["modelDeployments"][0]["sku"]["capacity"] = 17
+        responses["model-usage"][0]["currentValue"] = responses["model-usage"][0]["limit"]
+        report, runner = self.check(config, responses, existing, initialize_models=True)
+        self.assertEqual(report["status"], "verified")
+        self.assertEqual(report["modelDeploymentsToCreate"], [])
+        row = report["models"][0]
+        self.assertEqual((row["action"], row["capacity"], row["quota"]["requested"]), ("preserve", 17, 0))
+        self.assertFalse(any(call[:4] == ["az", "rest", "--method", "get"] for call in runner.calls))
+
+    def test_standard_reapply_stops_for_changed_or_incomplete_existing_models(self):
+        for section, field, value in (("sku", "capacity", 0), ("sku", "name", "GlobalStandard"),
+                                      ("properties", "provisioningState", "Creating"),
+                                      ("properties", "model", {"name": "different"})):
+            with self.subTest(field=field):
+                config, responses = fixtures()
+                existing = self.allocated(config)
+                existing["modelDeployments"][0][section][field] = value
+                report, _ = self.check(config, responses, existing, initialize_models=True)
+                self.assertEqual(report["status"], "blocked")
+                self.assertIn("EXISTING_MODEL_DEPLOYMENT_UNVERIFIED", self.codes(report))
+                self.assertNotIn("modelDeploymentsToCreate", report)
 
     def test_model_growth_uses_delta_but_different_sku_or_version_uses_full_capacity(self):
         for change in ("capacity", "sku", "version"):

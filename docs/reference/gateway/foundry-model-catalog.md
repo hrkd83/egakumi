@@ -1,12 +1,10 @@
 # Foundryの初期配備モデル
 
-初回配備の正本は `infra/config/test.json`・`infra/config/production.json` の `services.modelDeployments` です。配備先でモデルの版・リージョン・SKU・利用枠を確認してから構築します。 [モデルの変更・追加](../../operations/foundry.md)
+初回配備のモデル名・版・SKUはサービス別configの `modelDeployments` で管理します。配備先でモデルの版・リージョン・SKU・利用枠を確認してから最小容量で構築します。 [Foundryのサービス別config](../../../infra/config/capacity/foundry.json) · [モデルの変更・追加](../../operations/foundry.md)
 
 ## 初回配備する28モデル
 
-テスト用・本番用の`config`とAPI例は、次の28モデルを共通の初回配備対象とする。
-下記の67モデルの調査一覧は採用検討用のカタログであり、初回配備の正本は
-`infra/config/test.json`・`infra/config/production.json`の`services.modelDeployments`である。
+`prod`・`stg`・`dev` は次の28モデルを共通の初回配備対象とする。下記の67モデルの調査一覧は採用検討用のカタログである。 [Foundryの容量とクォータ](../configuration/capacity/foundry.md)
 
 | 分類 | プロバイダー | 初回配備モデル | 件数 |
 |---|---|---|---:|
@@ -29,8 +27,7 @@ Decisionは判断用のモデルである。
 配備版は`1`、SKUは`DataZoneStandard`、利用枠名は
 `AIServices.DataZoneStandard.Microsoft-Decision-1`を保持する。
 ほかの27モデルは`GlobalStandard`で配備する。
-初期capacityは`gpt-6.1-sol`が50、`gpt-5.6-luna`が5、ほかが1。
-これらは初期割当値であり、配備前に対象サブスクリプションのSKU・利用枠・提供容量を再確認する。
+3環境とも、各モデルの配備SKUが許容する最小容量を使う。構築後の割当は、対象サブスクリプションの承認済みクォータに合わせて画面で調整する。 [配備容量の変更手順](../../operations/foundry.md#容量だけを変更する)
 
 ### モデル配備後のAPI公開
 

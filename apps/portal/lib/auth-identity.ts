@@ -14,7 +14,7 @@ const identityClaims = z.object({
 });
 
 /** Microsoftの署名検証と対象テナントの固定に必要な、公開設定です。 */
-export type MicrosoftIdentityConfiguration = { tenantId: string; clientId: string };
+export type MicrosoftIdentityConfiguration = { tenantId: string; clientId: string; requiredAppRole?: string };
 
 /** SQLへ永続化しないOAuthの資格情報と、その有効期限の列です。 */
 type OAuthTokenField = "accessToken" | "refreshToken" | "idToken" | "accessTokenExpiresAt" | "refreshTokenExpiresAt";
@@ -66,6 +66,10 @@ export function createMicrosoftProfileResolver(
     const claims = identityClaims.parse(payload);
     if (claims.tid.toLowerCase() !== configuration.tenantId.toLowerCase()) {
       throw new Error("ENTRA_TENANT_NOT_ALLOWED");
+    }
+    if (configuration.requiredAppRole
+        && (!Array.isArray(payload.roles) || !payload.roles.includes(configuration.requiredAppRole))) {
+      throw new Error("ENTRA_ROLE_NOT_ALLOWED");
     }
     const tenantId = claims.tid.toLowerCase();
     const objectId = claims.oid.toLowerCase();

@@ -42,7 +42,7 @@ class ManualPortalPolicyTests(unittest.TestCase):
         self.assertEqual(json.loads(controls)["operationConstraints"], {
             "messages": {"kind": "registeredOperation", "bodyFormat": "json", "maxRequestBytes": 2048000},
         })
-        for profile in ("test", "production"):
+        for profile in ("prod", "stg", "dev"):
             gateway = json.loads((CORE / f"infra/config/{profile}.json").read_text(encoding="utf-8"))["gateway"]
             self.assertEqual(config["operations"][0]["maxRequestBytes"], gateway["wafMaxRequestBodySizeInKb"] * 1024)
         routes = list(inbound.iter("rewrite-uri"))

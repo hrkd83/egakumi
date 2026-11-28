@@ -87,10 +87,14 @@ class GatewayInfrastructureTests(unittest.TestCase):
         self.assertIn(role, access["resources"])
         self.assertEqual(gateway["parameters"]["graphObo"]["defaultValue"], {})
         self.assertEqual(access["parameters"]["oboKeyName"]["defaultValue"], "")
+        self.assertEqual(access["parameters"]["oboVaultName"]["defaultValue"], "")
         key_parameter = PolicyExpression(module["properties"]["parameters"]["oboKeyName"], gateway["variables"])
+        vault_parameter = PolicyExpression(module["properties"]["parameters"]["oboVaultName"], gateway["variables"])
         self.assertEqual(key_parameter.evaluate({"graphObo": {}}, 0), {"value": ""})
+        self.assertEqual(vault_parameter.evaluate({"graphObo": {}}, 0), {"value": ""})
         graph_obo = {"keyUrl": "https://vault.example.com/keys/gateway-obo/" + "a" * 32}
         self.assertEqual(key_parameter.evaluate({"graphObo": graph_obo}, 0), {"value": "gateway-obo"})
+        self.assertEqual(vault_parameter.evaluate({"graphObo": graph_obo}, 0), {"value": "vault"})
         condition = "[not(empty(parameters('oboKeyName')))]"
         self.assertEqual(role["condition"], condition)
         self.assertEqual(role["properties"]["assignableScopes"], ["[resourceGroup().id]"])
@@ -104,7 +108,7 @@ class GatewayInfrastructureTests(unittest.TestCase):
                        and item["properties"].get("roleDefinitionId") == role_id]
         self.assertEqual(assignment["condition"], condition)
         self.assertEqual(assignment["scope"],
-                         "[resourceId('Microsoft.KeyVault/vaults/keys', parameters('vaultName'), parameters('oboKeyName'))]")
+                         "[resourceId('Microsoft.KeyVault/vaults/keys', parameters('oboVaultName'), parameters('oboKeyName'))]")
         self.assertEqual(assignment["properties"]["principalId"], "[parameters('runtimeIdentity').principalId]")
         self.assertEqual(assignment["properties"]["principalType"], "ServicePrincipal")
 

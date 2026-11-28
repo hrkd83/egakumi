@@ -1,9 +1,21 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "egakumi 標準設定・任意オプション",
-  "description": "企業固有情報を含まない標準動作設定です。infra/configのtest.jsonまたはproduction.jsonを正本として使い、コピーは不要です。",
+  "description": "企業固有情報を含まない標準動作設定と、容量を合成した構築設定の形式です。サービス別ファイルのSKUやゾーン構成にparamsの容量を合成します。",
   "type": "object",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "not": { "required": ["capacityProfile"] } },
+      "then": {
+        "properties": {
+          "credentialProviders": {
+            "properties": { "graphDelegated": { "required": ["pool"] } }
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "$schema": {
       "type": "string",
@@ -43,19 +55,8 @@
           "items": {
             "type": "string"
           },
-          "default": [
-            "1",
-            "2",
-            "3"
-          ],
-          "examples": [
-            [
-              "1",
-              "2",
-              "3"
-            ]
-          ],
-          "description": "AppGW用公開IPの可用性ゾーン番号。gateway.zonesと同じ値にします。空配列は番号を明示しない意味で、ゾーン冗長性を無効にする指定ではありません。"
+          "default": [],
+          "description": "AppGW用公開IPの可用性ゾーン番号。既定の空配列はAzureの自動配置を使用します。明示指定する場合はgateway.zonesと同じ値にします。"
         },
         "firewall": {
           "type": "object",
@@ -216,7 +217,9 @@
           "items": {
             "type": "string"
           },
-          "uniqueItems": true
+          "uniqueItems": true,
+          "default": [],
+          "description": "AppGW本体の可用性ゾーン番号。既定の空配列はAzureの自動配置を使用します。明示指定する場合はnetwork.appGatewayZonesと同じ値にします。"
         },
         "wafCustomRules": {
           "type": "array",
@@ -481,10 +484,17 @@
           "maximum": 146000,
           "default": 2557
         },
+        "appInsightsDailyCapGb": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 1000,
+          "default": 100,
+          "description": "Application Insights側の日次取り込み上限（GB）。構築時に設定して再読み取りで確認します。"
+        },
         "appInsightsIngestionWarningGb": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 100000,
+          "maximum": 999,
           "default": 80
         },
         "enableLogAlerts": {
@@ -611,6 +621,24 @@
           "minimum": 1,
           "maximum": 30,
           "default": 4
+        },
+        "cpu": {
+          "type": "number",
+          "enum": [
+            0.5,
+            1
+          ],
+          "default": 0.5,
+          "description": "1レプリカあたりのvCPU。"
+        },
+        "memory": {
+          "type": "string",
+          "enum": [
+            "1Gi",
+            "2Gi"
+          ],
+          "default": "1Gi",
+          "description": "1レプリカあたりのメモリ。"
         }
       }
     },
@@ -717,7 +745,6 @@
           "required": [
             "displayName",
             "scopes",
-            "pool",
             "clientSecretFile"
           ],
           "properties": {
@@ -781,6 +808,15 @@
           "description": "Firewall TLS検査用の公開ルートCA証明書の標準ファイル名。選択した環境のparamsの親フォルダーを基準にします。"
         }
       }
+    },
+    "capacityProfile": {
+      "type": "string",
+      "enum": [
+        "prod",
+        "stg",
+        "dev"
+      ],
+      "description": "共通構築設定とサービス別の同名容量設定を選びます。"
     }
   },
   "$defs": {

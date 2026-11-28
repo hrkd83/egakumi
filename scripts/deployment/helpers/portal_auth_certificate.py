@@ -19,11 +19,22 @@ def application_vault_origin(stem):
     return 'https://' + name + '.vault.azure.net'
 
 
+def gateway_obo_vault_name(stem):
+    """Gateway専用の署名Vault名を選択済み環境から導出する。"""
+    return 'kvobo-' + stem
+
+
+def gateway_obo_vault_origin(stem):
+    """版固定のGateway OBO鍵を検証するためのデータプレーン起点。"""
+    return 'https://' + gateway_obo_vault_name(stem) + '.vault.azure.net'
+
+
 def certificate_record(value: dict, config: dict, *, allow_expired=False, certificate_name=None) -> dict:
     """取得元と版・期限・公開DERのthumbprintを照合し、想定外の項目を捨てます。"""
     try:
-        vault = application_vault_origin(config['resourceStem'])
         name = certificate_name or config['portal']['certificate']['certificateName']
+        vault_origin = gateway_obo_vault_origin if name == 'gateway-obo' else application_vault_origin
+        vault = vault_origin(config['resourceStem'])
         for field, kind in (('certificateId', 'certificates'), ('keyId', 'keys')):
             prefix = vault + '/' + kind + '/' + name + '/'
             if not value[field].startswith(prefix) or not re.fullmatch('[a-f0-9]{32}', value[field][len(prefix):]):

@@ -1,0 +1,14 @@
+{
+  "$schema": "./capacity.schema.json",
+  "$comment": "Application GatewayのSKU。可用性ゾーンは本体と公開IPの両方でAzureの自動配置を使用します。インスタンス数はparamsで指定します。",
+  "common": {
+    "gateway": {
+      "skuName": "WAF_v2"
+    }
+  },
+  "profiles": {
+    "prod": {},
+    "stg": {},
+    "dev": {}
+  }
+}

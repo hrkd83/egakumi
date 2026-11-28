@@ -99,6 +99,158 @@
   "literal_exceptions": [
     {
       "rule": "nonpublic-ip",
+      "value": "10.41.0.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/stg.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.41.1.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/stg.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.41.2.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/stg.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.41.3.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/stg.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.41.4.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/stg.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.41.2.64",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/stg.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.41.2.128",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/stg.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.41.3.64",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/stg.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.41.3.128",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/stg.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "203.0.113.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/stg.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.42.0.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/dev.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.42.1.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/dev.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.42.2.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/dev.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.42.3.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/dev.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.42.4.0",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/dev.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.42.2.64",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/dev.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.42.2.128",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/dev.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.42.3.64",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/dev.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.42.3.128",
+      "reason": "Independently synthesized address in a public environment template; exact value and source path only.",
+      "paths": [
+        "params/dev.example.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
       "value": "10.40.3.64",
       "reason": "Independently synthesized Broker subnet address in the public ACA allocation examples and test fixture; exact value and paths only.",
       "paths": [
@@ -108,6 +260,7 @@
         "params/params.schema.json",
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "tests/network/test_parameter_ip_ownership.py"
       ]
     },
@@ -130,6 +283,7 @@
         "params/params.schema.json",
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "tests/network/test_parameter_ip_ownership.py"
       ]
     },
@@ -161,6 +315,9 @@
       "paths": [
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
+        "params/stg.example.json",
+        "params/dev.example.json",
         "tests/audit_identification_fixture.py",
         "tests/support/audit_identification_fixture.py",
         "tests/test_api_request_preparation.py",
@@ -2218,6 +2375,7 @@
         "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "schemas/configuration.schema.json",
         "infra/config/configuration.schema.json",
         "schemas/params.schema.json",
@@ -2312,6 +2470,7 @@
         "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "schemas/configuration.schema.json",
         "infra/config/configuration.schema.json",
         "schemas/params.schema.json",
@@ -2443,6 +2602,7 @@
         "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "schemas/configuration.schema.json",
         "infra/config/configuration.schema.json",
         "schemas/params.schema.json",
@@ -2494,6 +2654,7 @@
         "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "schemas/configuration.schema.json",
         "infra/config/configuration.schema.json",
         "schemas/params.schema.json",
@@ -2546,6 +2707,7 @@
         "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "schemas/configuration.schema.json",
         "infra/config/configuration.schema.json",
         "schemas/params.schema.json",
@@ -2647,6 +2809,7 @@
         "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "schemas/configuration.schema.json",
         "infra/config/configuration.schema.json",
         "schemas/params.schema.json",
@@ -2717,6 +2880,7 @@
         "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "schemas/configuration.schema.json",
         "infra/config/configuration.schema.json",
         "schemas/params.schema.json",
@@ -2738,6 +2902,7 @@
       "paths": [
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "tests/test_parameter_ip_ownership.py",
         "tests/network/test_parameter_ip_ownership.py",
         "tests/test_split_configuration.py",
@@ -2757,6 +2922,7 @@
         "infra/modules/network/network.bicep",
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
         "schemas/configuration.schema.json",
         "infra/config/configuration.schema.json",
         "schemas/params.schema.json",
@@ -5715,6 +5881,9 @@
       "paths": [
         "params/production.example.json",
         "params/test.example.json",
+        "params/prod.example.json",
+        "params/stg.example.json",
+        "params/dev.example.json",
         "tests/audit_identification_fixture.py",
         "tests/support/audit_identification_fixture.py",
         "tests/test_api_request_preparation.py",

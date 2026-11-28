@@ -32,7 +32,7 @@ paramsの`credentialProviders.graphDelegated`にはClient IDを設定する。�
 python3 scripts/deployment/lifecycle.py validate --config "$DEPLOY_PARAMS_FILE"
 ```
 
-SQLの容量・バックアップ・ゾーン冗長化は`infra/config/test.json`または`infra/config/production.json`の`credentialBroker`で管理する。
+Broker SQLのvCore数・最大データ容量はparamsの `capacity.brokerSql` で指定する。バックアップ・ゾーン冗長化は[サービス別config](../../infra/config/capacity/azure-sql.json)の `credentialBroker` に従う。
 
 ## 3. 基盤と証明書の準備完了を確認する
 

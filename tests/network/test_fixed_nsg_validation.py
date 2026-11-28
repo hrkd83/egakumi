@@ -35,6 +35,7 @@ def fixture_config():
 
 def fixture_bindings(config):
     return {'subnets': copy.deepcopy(config['network']['subnetPrefixes']),
+            'agwClientSources': nsg._agw_client_sources(config),
             'ips': {'apim': '10.70.2.68', 'portal': '10.70.2.196', 'management': '10.70.2.132',
                     'broker': str(ip_network(config['network']['subnetPrefixes']['broker'])[4]),
                     'firewallPublic': '192.0.2.10', 'appGatewayPublic': '198.51.100.10'},
@@ -222,6 +223,19 @@ class MemoryTransport:
 
 
 class FixedNsgValidationTests(unittest.TestCase):
+    def test_staging_nsg_requires_approved_client_sources_on_both_listener_ports(self):
+        config = fixture_config()
+        config['capacityProfile'] = 'stg'
+        config['network']['stagingClientAddressPrefixes'] = ['203.0.113.128/26']
+        transport = MemoryTransport(config)
+        nsg.verify_fixed_nsg_after_deployment(config, transport)
+
+        open_config = copy.deepcopy(config)
+        open_config.pop('capacityProfile')
+        unrestricted = MemoryTransport(open_config)
+        with self.assertRaises(nsg.FixedNsgError):
+            nsg.verify_fixed_nsg_before_deployment(config, unrestricted)
+
     def setUp(self):
         self.config = fixture_config()
 
@@ -460,3 +474,26 @@ class FixedNsgValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(nsg.FixedNsgError, 'dedicated certificate subnet is missing'):
             nsg.verify_fixed_nsg_after_deployment(self.config, transport)
         self.assertFalse(transport.mutations())
+
+    def test_obo_vault_ingress_is_limited_to_broker_certificate_jobs_and_management_ip(self):
+        transport = MemoryTransport(self.config)
+        bindings = transport.bindings
+        bindings['subnets']['certificate'] = '192.0.2.0/27'
+        bindings['ipSets']['oboVault'] = ['10.70.1.17']
+        parent_id = transport.nsg_id('pep')
+        parent = transport.resources[parent_id]
+        ingress_sources = {
+            'allow-certificate-obo-vault-https-ingress': bindings['subnets']['certificate'],
+            'allow-broker-obo-vault-https-ingress': bindings['subnets']['broker'],
+            'allow-management-obo-vault-https-ingress': bindings['ips']['management'] + '/32',
+        }
+        rules = nsg._fixed_catalog(certificate=True, obo=True)['pep']['rules']
+        for name, expected_source in ingress_sources.items():
+            policy = nsg._definition(rules[name], bindings)
+            self.assertEqual(policy['sourceAddressPrefix'], [expected_source])
+            self.assertEqual(policy['destinationAddressPrefix'], ['10.70.1.17/32'])
+            parent['properties']['securityRules'].append(transport.child(parent_id, name, policy))
+        nsg.verify_fixed_nsg_inventory({'pep': parent}, bindings, obo=True)
+        parent['properties']['securityRules'][-1]['properties']['sourceAddressPrefix'] = bindings['subnets']['portal']
+        with self.assertRaisesRegex(nsg.FixedNsgError, 'manually modified'):
+            nsg.verify_fixed_nsg_inventory({'pep': parent}, bindings, obo=True)

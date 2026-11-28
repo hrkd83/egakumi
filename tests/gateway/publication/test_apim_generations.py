@@ -20,7 +20,7 @@ class ApimGenerationTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve()
         self.config = fixture()
-        self.config['configFile'] = '../../infra/config/test.json'
+        self.config['configFile'] = '../../infra/config/dev.json'
         self.paths = LocalPaths(self.root, self.config['environmentName'])
         self.paths.ensure()
         stem = self.config['environmentName'] + '-' + self.config['productName']
@@ -45,7 +45,7 @@ class ApimGenerationTests(unittest.TestCase):
         self.write(self.paths.state / 'cleanup-postdown.json', self.receipt)
 
     def prepare_next(self):
-        return prepare_local_environment.prepare(self.paths.environment, 'test', self.root, new_apim_instance=True)
+        return prepare_local_environment.prepare(self.paths.environment, 'dev', self.root, new_apim_instance=True)
 
     def test_active_instance_accepts_retry_but_rejects_another_identifier(self):
         generations.assert_current_instance(self.config, self.paths)
@@ -163,7 +163,7 @@ class ApimGenerationTests(unittest.TestCase):
     def test_lost_params_cannot_silently_allocate_another_identifier(self):
         self.paths.params.unlink()
         with self.assertRaisesRegex(ValueError, 'restore the exact'):
-            prepare_local_environment.prepare(self.paths.environment, 'test', self.root)
+            prepare_local_environment.prepare(self.paths.environment, 'dev', self.root)
         self.assertFalse(self.paths.params.exists())
 
     def test_missing_state_does_not_hide_a_retired_generation(self):

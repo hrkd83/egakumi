@@ -23,9 +23,9 @@ from tests.support.management_fixtures import client_core_outputs
 from tests.network.test_parameter_ip_ownership import NetworkArmExpression
 
 
-def raw_fixture():
+def raw_fixture(profile='prod'):
     value = fixture()
-    master = load_configuration_source(ROOT / 'params/test.example.json')
+    master = load_configuration_source(ROOT / 'params' / f'{profile}.example.json')
     value['credentialProviders'] = master['credentialProviders']
     value['gateway']['authentication']['credentialLogin'] = master['gateway']['authentication']['credentialLogin']
     value['gateway']['authentication']['credentialLogin'].pop('identity', None)
@@ -49,12 +49,15 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         self.assertEqual(original['credentialProviders'][0]['name'], 'graph-delegated')
 
     def test_public_broker_profiles_use_secret_environment_names(self):
-        config = configured()
-        public = build_bicep_configuration(config)
-        self.assertNotIn('clientSecretFile', json.dumps(public))
-        profile = logical_profiles(config)['graph-delegated']
-        self.assertEqual(profile['clientSecretEnv'], 'OIDC_SECRET_0')
-        self.assertEqual(profile['pools'][0], {'name':'graph-delegated-a', 'capacity':8000})
+        for name, count, capacity in (('prod', 12, 8000), ('stg', 2, 1000), ('dev', 2, 100)):
+            with self.subTest(profile=name):
+                config = normalize_configuration(raw_fixture(name))
+                public = build_bicep_configuration(config)
+                self.assertNotIn('clientSecretFile', json.dumps(public))
+                profile = logical_profiles(config)['graph-delegated']
+                self.assertEqual(profile['clientSecretEnv'], 'OIDC_SECRET_0')
+                self.assertEqual(len(profile['pools']), count)
+                self.assertEqual(profile['pools'][0], {'name': 'graph-delegated-a', 'capacity': capacity})
 
     def test_provider_preflight_allows_absence_and_prevents_in_place_registration_replacement(self):
         config = configured()

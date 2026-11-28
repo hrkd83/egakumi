@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from tests.support.configuration_fixtures import profile_options
 from tests.support.configuration_fixtures import CORE, api_fixture, fixture
 from deployment.helpers import configuration
 from catalog import standard_apis
@@ -14,7 +15,7 @@ from catalog import standard_apis
 def standard_fixture():
     """公開例と合成した架空環境を使い、実在環境や秘密をテストへ持ち込まない。"""
     raw = fixture()
-    raw["services"]["modelDeployments"] = json.loads((CORE / "infra/config/test.json").read_text(encoding="utf-8"))["services"]["modelDeployments"]
+    raw["services"]["modelDeployments"] = profile_options("dev", CORE)["services"]["modelDeployments"]
     raw["credentialProviders"] = [{
         "name": "graph-delegated", "displayName": "Fixture delegated Graph",
         "identityProvider": "aad", "clientId": "44444444-4444-4444-8444-444444444444",

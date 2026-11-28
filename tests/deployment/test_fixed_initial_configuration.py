@@ -21,6 +21,7 @@ CORE = REPOSITORY
 from deployment.helpers import configuration
 from deployment.helpers.credential_pools import logical_profiles, physical_providers
 from catalog.standard_apis import DEFINITION_FILES, load_api_definitions
+from tests.support.configuration_fixtures import profile_options
 from tests.support.configuration_fixtures import connection_fixture
 
 
@@ -43,9 +44,10 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         self.options_file = self.directory / "shared-options" / "options.json"
         self.manifest.parent.mkdir()
         self.options_file.parent.mkdir()
-        self.parameters = json.loads((CORE / "params/test.example.json").read_text(encoding="utf-8"))
+        self.parameters = json.loads((CORE / "params/prod.example.json").read_text(encoding="utf-8"))
         self.parameters["gateway"]["authentication"].pop("credentialLogin")
-        self.options = json.loads((CORE / "infra/config/test.json").read_text(encoding="utf-8"))
+        self.parameters.pop("capacity")
+        self.options = profile_options("prod", CORE)
         self.parameters["configFile"] = "../shared-options/options.json"
         self.parameters["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
         self.parameters["azureTenantId"] = "22222222-2222-4222-8222-222222222222"
@@ -213,10 +215,6 @@ class FixedInitialConfigurationTests(unittest.TestCase):
                 with self.subTest(path=".".join(path), value_kind=type(value).__name__):
                     self.options = copy.deepcopy(original)
                     put(self.options, path, value)
-                    # ネットワーク型不正が別のゾーン整合エラーで止まるだけでは
-                    # 足りない。通常のゾーン構成でもconfig自身の型を拒否する。
-                    if path == ("network",):
-                        self.options["gateway"]["zones"] = ["1", "2", "3"]
                     self.assert_rejected("config." + ".".join(path), "synthetic-private-shape-value")
         self.options = original
 

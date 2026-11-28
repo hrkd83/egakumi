@@ -28,6 +28,7 @@ from .ingress import apim_name_matches
 from .apim_naming import apim_instance_id, apim_name
 from .credential_pools import resource_names
 from .log_privacy import ARCHIVE_COLLECTORS, audit_storage_account_name
+from .portal_auth_certificate import gateway_obo_vault_name
 from .portal_resources import resource_names as portal_resource_names
 from .subnet_names import subnet_resource_id
 
@@ -56,6 +57,7 @@ API = {
     "diagnostics": "2021-05-01-preview",
     "keyVault": "2023-07-01",
     "certificateVault": "2023-07-01",
+    "oboVault": "2023-07-01",
     "foundry": "2025-06-01",
     "apim": "2024-05-01",
     "resources": "2021-04-01",
@@ -67,6 +69,7 @@ API = {
 SERVICE_TYPES = {
     "keyVault": ("Microsoft.KeyVault", "vaults"),
     "certificateVault": ("Microsoft.KeyVault", "vaults"),
+    "oboVault": ("Microsoft.KeyVault", "vaults"),
     "foundry": ("Microsoft.CognitiveServices", "accounts"),
     "apim": ("Microsoft.ApiManagement", "service"),
 }
@@ -141,8 +144,9 @@ def _validate_state(configuration: dict, state: Mapping[str, Any]) -> dict:
     for key in ("subscriptionId", "azureTenantId", "resourceStem"):
         if not _same(state.get(key), configuration[key]):
             _error("state-environment-mismatch", "配備記録が対象の環境・テナント・サブスクリプションと一致しません。")
-    if state.get("apimInstanceId") != apim_instance_id(configuration):
-        _error("state-environment-mismatch", "配備記録のAPIM構築識別子が今回の設定と一致しません。")
+    if (state.get("apimInstanceId") != apim_instance_id(configuration)
+            or state.get("capacityProfile") != configuration.get("capacityProfile")):
+        _error("state-environment-mismatch", "配備記録のAPIM構築識別子または容量プロファイルが今回の設定と一致しません。")
     if state.get("resourceGroupNames") != configuration["resourceGroupNames"]:
         _error("state-environment-mismatch", "配備記録の5つのResource Groupが対象環境と一致しません。")
 
@@ -184,6 +188,8 @@ def _validate_state(configuration: dict, state: Mapping[str, Any]) -> dict:
             _error("invalid-state", "完全削除の対象が現在のsvc RGの資源と一致しません。")
         if key == "certificateVault" and parts[-1] != "kvtls-" + configuration["resourceStem"]:
             _error("invalid-state", "公開TLS証明書用Vaultの名前が今回の配備先と一致しません。", resource_id)
+        if key == "oboVault" and parts[-1] != gateway_obo_vault_name(configuration["resourceStem"]):
+            _error("invalid-state", "Graph OBO署名用Vaultの名前が今回の配備先と一致しません。", resource_id)
         if key == "apim" and not apim_name_matches(configuration, parts[-1]):
             _error("apim-owner-mismatch", "APIMの削除先が今回の命名・配置先と一致しません。", resource_id)
 
@@ -1671,7 +1677,7 @@ def _tombstone(configuration: dict, current: dict, key: str) -> str:
     name = _parts(current["serviceIds"][key])[-1]
     prefix = f"/subscriptions/{configuration['subscriptionId']}/providers/"
     location = current["locations"][key]
-    if key in ("keyVault", "certificateVault"):
+    if key in ("keyVault", "certificateVault", "oboVault"):
         return prefix + f"Microsoft.KeyVault/locations/{location}/deletedVaults/{name}"
     if key == "foundry":
         group = configuration["resourceGroupNames"]["svc"]
@@ -1751,7 +1757,7 @@ def post_down(config_path: str | Path, state: Mapping[str, Any], transport: Tran
         if not _same(deleted.get("id"), tombstone_id):
             _error("tombstone-mismatch", "削除済み資源のIDが今回の配備記録と一致しません。", tombstone_id)
         properties = deleted.get("properties", {})
-        vault = key in ("keyVault", "certificateVault")
+        vault = key in ("keyVault", "certificateVault", "oboVault")
         source_key = "vaultId" if vault else "serviceId" if key == "apim" else None
         if source_key and not _same(properties.get(source_key), original_id):
             _error("tombstone-mismatch", "同名の削除済み資源の元Resource IDが異なるため完全削除しません。", tombstone_id)

@@ -1,0 +1,27 @@
+{
+  "$schema": "./capacity.schema.json",
+  "$comment": "監査BlobのSKU・WORM保護とプロファイルごとの期間。証明書Jobの状態は専用のStandard_LRS。",
+  "common": {
+    "monitoring": {
+      "auditStorageSku": "Standard_GRS",
+      "auditImmutabilityMode": "Locked"
+    }
+  },
+  "profiles": {
+    "prod": {
+      "monitoring": {
+        "auditRetentionDays": 2557
+      }
+    },
+    "stg": {
+      "monitoring": {
+        "auditRetentionDays": 2557
+      }
+    },
+    "dev": {
+      "monitoring": {
+        "auditRetentionDays": 7
+      }
+    }
+  }
+}

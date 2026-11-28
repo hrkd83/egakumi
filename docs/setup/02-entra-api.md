@@ -94,7 +94,15 @@ Graphの委任 `User.Read` と管理者同意は、基盤で生成したOBO用�
 
 [第09章](09-egakumi-portal.md#apiのobo用公開証明書を登録する)で、基盤が出力した公開証明書の登録と照合を行います。
 
-OBO証明書を手動更新する場合は、同じ証明書名で新しい非エクスポート鍵版を作り、公開CERを先にegakumi-apiへ追加します。保護paramsに版固定の `gateway.authentication.entra.obo.keyId` と、同じ公開証明書のSHA-256指紋 `certificateThumbprint` を設定します。Gateway再配備後にGraphの接続を確認し、切り戻しが不要になってから古い証明書を回収します。
+OBO証明書を手動更新する場合は、Azure側の担当者本人に署名専用Vault `kvobo-<environment>-<product>` の `Key Vault Certificates Officer` を作業中だけ付与し、管理VMからAzure側テナントの本人認証で接続します。`gateway-obo` の証明書ポリシーでエクスポート不可、新しい鍵の生成を確認し、新しい版を発行します。公開CERを認証側テナントの `egakumi-api` へ先に追加します。
+
+保護paramsに版固定の `gateway.authentication.entra.obo.keyId` と、同じ公開証明書のSHA-256指紋 `certificateThumbprint` を設定します。Gateway再配備で新しいBrokerリビジョンが新しい版を使い、アプリの署名キャッシュも新規になります。Graphの接続を確認し、切り戻しが不要になってから古いEntra証明書を回収し、作業用RBACを削除します。 [保守時の権限付与と回収](../operations/management-vm-access.md)
+
+### stgの管理者アクセス
+
+`stg` 専用のアプリ登録で「アプリ ロール」から、表示名を任意、許可するメンバーの種類を「ユーザー/グループ」、値を `Gateway.Staging.Access` として有効なロールを作成します。「エンタープライズ アプリケーション」から同じアプリを開き、「ユーザーとグループ」で管理者・承認済み検証ユーザーにこのロールを割り当てます。「プロパティ」の「割り当てが必要ですか」も有効にします。グループ割当を利用できない場合はユーザーを個別に割り当てます。
+
+Gatewayは `Gateway.Invoke` に加えて、API宛てのアクセストークンにこのロールが含まれることを検証します。Portal試用の操作者には、APIとPortalそれぞれでロールを割り当てます。
 
 ## 後続工程へ引き継ぐもの
 
