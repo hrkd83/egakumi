@@ -3,7 +3,7 @@
 
 targetScope = 'subscription'
 
-@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+@description('正式CLIが既存設定を照合して生成する診断設定の書き込みプロパティ。内部入力です。')
 param diagnosticSettingProperties object
 
 @description('製品名と環境名を連結した共通名。作成と更新で同じ値を使います。')

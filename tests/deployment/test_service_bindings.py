@@ -103,7 +103,7 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
                     walk(item)
         walk(self.templates["main"])
         self.assertEqual(login_templates, [])
-        # Coreの保守用カスタムロールと、CM用provider権限を分けて確認する。
+        # 基盤の保守用カスタムロールと、CM用provider権限を分けて確認する。
         roles.clear()
         walk(self.templates["gateway"])
         signer, = roles
@@ -132,7 +132,7 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
 
 
     def test_core_bindings_exclude_tool_host_roles_and_provision_only_owned_app_platforms(self):
-        """共用ACRと各専用ACA環境をCore、Broker本体はGatewayで構築する。"""
+        """基盤で共用ACRと各専用ACA環境を作り、Gateway配備でBroker本体を作る。"""
         template = self.templates["bindings"]
         self.assertNotIn("containerAppOperators", template["parameters"])
         self.assertNotIn("containerAppsOperatorRoleId", template.get("variables", {}))

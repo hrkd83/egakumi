@@ -4,7 +4,7 @@
 
 targetScope = 'resourceGroup'
 
-@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+@description('正式CLIが既存設定を照合して生成する診断設定の書き込みプロパティ。内部入力です。')
 param diagnosticSettingProperties object
 
 @minLength(1)
@@ -89,7 +89,7 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
 }
 
 // 監査ログのURL、WAF一致値、本文、クエリ本文をLAWへ保存する前に除去します。
-// 関連付けはmonitoring段階の配備後に限定PATCHし、次のcore段階へ実IDを引き継ぎます。
+// 監視の配備後に関連付けだけをPATCHし、基盤配備へ実IDを引き継ぎます。
 resource workspacePrivacy 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
   name: 'dcr-${resourceStem}-workspace'
   location: location

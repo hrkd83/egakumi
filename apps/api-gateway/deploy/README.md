@@ -19,14 +19,14 @@ apps/
 
 ## 配備する
 
-初回構築では、`azd up`によるCore構築と公開証明書のEntra登録を済ませた後、[Gatewayを個別配備](../../../docs/setup/11-deploy-gateway.md)します。個別更新・再試行では、構築済み基盤と同じparamsを使い、リポジトリのルートから実行します。
+初回構築では、`azd up`による基盤構築と公開証明書のEntra登録を済ませた後、[Gatewayを個別配備](../../../docs/setup/11-deploy-gateway.md)します。個別更新・再試行では、構築済み基盤と同じparamsを使い、リポジトリのルートから実行します。
 
 ```bash
 python3 scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
 python3 scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
-1行目は保存済みCore stateからのローカル計画、2行目はAzureへの配備です。`--deployment-name`を指定するCIでは、計画時にもCore配備結果をAzureから読み取ります。認証窓口のイメージ作成・登録後、credentials DB・CM・実行用ID、SQL初期化、Broker・照合ジョブ、API・ポリシー・製品、対象パスへのWAF調整の順に進みます。SQL初期化や起動が失敗した場合はAPI登録へ進みません。
+1行目は保存済み基盤の配備記録からのローカル計画、2行目はAzureへの配備です。`--deployment-name`を指定するCIでは、計画時にも基盤配備結果をAzureから読み取ります。認証窓口のイメージ作成・登録後、credentials DB・CM・実行用ID、SQL初期化、Broker・照合ジョブ、API・ポリシー・製品、対象パスへのWAF調整の順に進みます。SQL初期化や起動が失敗した場合はAPI登録へ進みません。
 
 既存のDB・CM接続・購読は同じIDで更新します。paramsやconfigを書き換えず、秘密値をイメージへ入れません。[apis/](../apis/)にある標準API正本を常用で解決します。公開params/configの`apiDefinitions`・`publishApis`によるAPI選択・切替は廃止し、旧項目は空配列やfalseでも拒否します。定義は`<API名>.json`の1 API 1ファイルで管理し、モデルの配備設定とCMプロバイダーの設定を含めません。標準Graphのアプリ登録・秘密参照はparamsの`credentialProviders.graphDelegated`、表示名・scope・poolはconfigの同slotで管理します。追加providerは定義／登録を`additional[]`の論理名で照合します。今回の配置整理だけで既存アプリID・secret・選択CM由来の本人確認fallbackを切り替えません。
 

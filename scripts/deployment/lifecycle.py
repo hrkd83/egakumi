@@ -35,7 +35,7 @@ azd upとazd provisionは同じ構築フローを使う。本体構築の前提�
 この処理の途中で失敗した場合は、生成済みのmain.parameters.jsonを削除して停止する。
 
 postprovision引数（python3 scripts/deployment/lifecycle.py postprovision）の目的と実行内容:
-main.bicepのcoreフェーズによる本体配備が成功した後、実際の構築結果を記録し、
+main.bicepによる基盤配備が成功した後、実際の構築結果を記録し、
 必要な入口設定を仕上げる。このhookの完了までがazd provisionの処理に含まれる。
   1. azdの環境設定から、今回の本体配備名CORE_DEPLOYMENT_NAMEを取得する。
   2. その配備のoutputsをAzureから読み、リソースグループが設定した5つのRGと
@@ -51,7 +51,7 @@ main.bicepのcoreフェーズによる本体配備が成功した後、実際の
   7. 入口設定の処理はfinallyで.local/<environment>/generated/main.parameters.jsonを削除する。仕上げが
      失敗しても生成した秘密入り入力は回収し、元の保護ファイルは保持する。
 正常終了すると、公開URLと基盤工程の完了を表示する。
-PortalのCAはcoreフェーズで初期イメージを使って作成する。
+PortalのCAは基盤の配備で初期イメージを使って作成する。
 azd upとazd provisionは基盤工程で終了する。認証用の公開証明書をEntraへ登録してから
 GatewayとPortalを順に個別配備する。
 入口設定の反映確認と、通常API・Realtimeなどの実際の疎通試験も別の確認として扱う。
@@ -93,7 +93,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     __package__ = "deployment"
 
-from .helpers.paths import REPOSITORY, configuration_path, local_paths, private_parent
+from .helpers.paths import AZD_PROJECT_NAME, REPOSITORY, configuration_path, local_paths, private_parent
 from .helpers.azd_parameters import ARM_PARAMETERS_ENV, arm_parameters_reference, complete_arm_parameters
 from .helpers.configuration import ConfigurationError, build_bicep_configuration, entra_tenant_id, load_configuration, load_firewall_tls_inspection, load_secret_inputs
 from .helpers.diagnostics import DiagnosticPreservationError, canonical_settings, prepare_settings
@@ -137,7 +137,7 @@ from .helpers.private_permissions import (
 )
 
 ROOT = REPOSITORY
-PROJECT_NAME = "ai-workforce-core"
+PROJECT_NAME = AZD_PROJECT_NAME
 PROVIDERS = (
     "Microsoft.Network", "Microsoft.ManagedIdentity", "Microsoft.KeyVault",
     "Microsoft.CognitiveServices", "Microsoft.ApiManagement",
@@ -430,7 +430,7 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
     diagnostics = ({key: item["properties"] for key, item in canonical_diagnostics.items()}
                    if diagnostic_setting_properties is None else copy.deepcopy(diagnostic_setting_properties))
     if not isinstance(diagnostics, dict) or set(diagnostics) != set(canonical_diagnostics):
-        raise DeploymentError("Core diagnostic generated properties are incomplete")
+        raise DeploymentError("Generated infrastructure diagnostic properties are incomplete")
     secure_inputs = {key: value for key, value in (secrets or {}).items() if key != "dnsPluginArgumentsJson"}
     values = {"configuration": configuration, "phase": phase,
               "manageAuditImmutabilityPolicies": manage_policies,
@@ -472,16 +472,16 @@ def _management_serial_vm_response(config: dict, transport: ArmTransport) -> dic
 
 
 def _serial_core_response(config: dict, transport: ArmTransport, provenance: dict) -> dict:
-    """元の内部世代を持つ、選択したCore配備だけを再開時に読む。"""
+    """元の内部世代を持つ、選択した基盤配備だけを再開時に読む。"""
     deployment = provenance.get("coreDeploymentId")
     if deployment is None:
         environment = run(["azd", "env", "get-values", "--environment", config["environmentName"], "-o", "json"])
         name = environment.get("CORE_DEPLOYMENT_NAME")
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.()-]{1,64}", name):
-            raise DeploymentError("The original native Core deployment reference is missing")
+            raise DeploymentError("The original native infrastructure deployment reference is missing")
         deployment = f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/{name}"
     if not isinstance(deployment, str):
-        raise DeploymentError("The original Core deployment reference is missing")
+        raise DeploymentError("The original infrastructure deployment reference is missing")
     response = transport.request("GET", deployment + "?api-version=2022-09-01")
     body = response.get("body")
     properties = body.get("properties", {}) if isinstance(body, dict) else {}
@@ -504,7 +504,7 @@ def _serial_core_response(config: dict, transport: ArmTransport, provenance: dic
 
 
 def _prepare_management_serial_password(config: dict, transport: ArmTransport) -> str:
-    """初回404だけ生成し、既存200の回復は元Core作成証跡の確認後だけ秘密を読む。"""
+    """初回404だけ生成し、既存200の回復は元の基盤配備の証跡の確認後だけ秘密を読む。"""
     try:
         workspace = local_paths(config, ROOT)
         response = _management_serial_vm_response(config, transport)
@@ -535,7 +535,7 @@ def _record_management_serial_creation(config: dict, password: str) -> None:
 
 
 def _confirm_management_serial_target(config: dict, transport: ArmTransport, password: str) -> None:
-    """Core引渡し直前に不存在または元作成証跡で固定したUUIDを再確認する。"""
+    """基盤配備への引渡し直前に不存在または元作成証跡で固定したUUIDを再確認する。"""
     response = _management_serial_vm_response(config, transport)
     if response["statusCode"] == 200:
         try:
@@ -544,11 +544,11 @@ def _confirm_management_serial_target(config: dict, transport: ArmTransport, pas
             if password or value is not None and value["target"] is not None and value["status"] != "complete":
                 vm_generation = str(response["body"].get("properties", {}).get("vmId", "")).lower()
                 if value is None or value["target"] is None or value["target"]["vmId"] != vm_generation:
-                    raise SerialCredentialError("The management VM changed during initial preparation; no Core deployment was started")
+                    raise SerialCredentialError("The infrastructure deployment was stopped before it started because the management VM changed during preparation")
         except SerialCredentialError as error:
             raise DeploymentError(str(error)) from None
     elif not password:
-        raise DeploymentError("The management VM changed during initial preparation; no Core deployment was started")
+        raise DeploymentError("The infrastructure deployment was stopped before it started because the management VM changed during preparation")
 
 
 def _bind_management_serial_password(config: dict, outputs: dict, transport: ArmTransport, password: str) -> None:
@@ -574,7 +574,7 @@ def _bind_management_serial_password(config: dict, outputs: dict, transport: Arm
 
 
 def _read_initial_serial_deployment_input(config: dict) -> str:
-    """生成ARM入力の回収後も、保護した元Core作成証跡の照合後だけ回復する。"""
+    """生成ARM入力の回収後も、保護した元の基盤配備の証跡の照合後だけ回復する。"""
     try:
         workspace = local_paths(config, ROOT)
         value = serial_initialization.journal(config, workspace)
@@ -842,7 +842,7 @@ def _registration_run(arguments: list[str], *, namespace: str, stage: str) -> di
         raise DeploymentError(
             f"Registration preparation failed: {namespace} ({stage}). "
             "Check Azure CLI sign-in, subscription registration permissions, and provider/feature registration state. "
-            "Core deployment was not started by this operation (external command output suppressed)."
+            "Infrastructure deployment was not started by this operation (external command output suppressed)."
         ) from None
 
 
@@ -864,17 +864,17 @@ def ensure_host_encryption(config: dict) -> None:
         properties = response.get("properties") if isinstance(response, dict) else None
         state = properties.get("state") if isinstance(properties, dict) else None
         if not isinstance(state, str) or state not in {"Registered", "Registering", "NotRegistered", "Unregistered", "Unregistering"}:
-            raise DeploymentError("EncryptionAtHost registration state is not supported or could not be verified; no core resources were deployed")
+            raise DeploymentError("EncryptionAtHost registration state is not supported or could not be verified. Infrastructure deployment has not started")
         return state
 
     deadline = time.monotonic() + 1800
     state = feature_state("feature-show")
     if state != "Registered":
-        print("Waiting for Microsoft.Compute/EncryptionAtHost registration before creating core resources.")
+        print("Waiting for Microsoft.Compute/EncryptionAtHost registration before creating infrastructure resources.")
     requested = False
     while state != "Registered":
         if time.monotonic() >= deadline:
-            raise DeploymentError("EncryptionAtHost registration is still pending; retry after it completes; no core resources were deployed")
+            raise DeploymentError("EncryptionAtHost registration is still pending. Retry infrastructure deployment after registration completes")
         if state in {"NotRegistered", "Unregistered"} and not requested:
             _registration_run(["az", "feature", "register", *arguments],
                               namespace="Microsoft.Compute/EncryptionAtHost", stage="feature-register")
@@ -887,7 +887,7 @@ def ensure_host_encryption(config: dict) -> None:
     # Do not use CLI --wait: bound both feature and RP polling by the same deadline.
     provider_arguments = ["--namespace", "Microsoft.Compute", "--subscription", subscription, "-o", "json"]
     if time.monotonic() >= deadline:
-        raise DeploymentError("EncryptionAtHost provider refresh timed out; no core resources were deployed")
+        raise DeploymentError("EncryptionAtHost provider refresh timed out. Infrastructure deployment has not started")
     _registration_run(["az", "provider", "register", *provider_arguments],
                       namespace="Microsoft.Compute", stage="provider-refresh-register")
     while True:
@@ -897,9 +897,9 @@ def ensure_host_encryption(config: dict) -> None:
         if state == "Registered":
             return
         if not isinstance(state, str) or state not in {"NotRegistered", "Registering", "Unregistering"}:
-            raise DeploymentError("EncryptionAtHost provider refresh could not be verified; no core resources were deployed")
+            raise DeploymentError("EncryptionAtHost provider refresh could not be verified. Infrastructure deployment has not started")
         if time.monotonic() >= deadline:
-            raise DeploymentError("EncryptionAtHost provider refresh is still pending; no core resources were deployed")
+            raise DeploymentError("EncryptionAtHost provider refresh is still pending. Infrastructure deployment has not started")
         time.sleep(10)
 
 
@@ -928,13 +928,13 @@ def register_providers(config: dict) -> None:
         ], namespace=namespace, stage="provider-poll").get("registrationState") != "Registered"]
         if pending:
             if time.monotonic() >= deadline:
-                raise DeploymentError("Resource provider registration is still pending; no core resources were deployed")
+                raise DeploymentError("Resource provider registration is still pending. Infrastructure deployment has not started")
             time.sleep(10)
     ensure_host_encryption(config)
 
 
 def prepare_diagnostic_settings(config: dict, transport: ArmTransport, phase: str, preserve_collection=False) -> dict:
-    """最初の監視PUTの前にも、Core全体の既存診断と転送の追加範囲を確認する。"""
+    """最初の監視PUTの前にも、基盤全体の既存診断と転送の追加範囲を確認する。"""
     try:
         return prepare_settings(build_bicep_configuration(config), transport, phase, preserve_collection)
     except DiagnosticPreservationError as error:
@@ -1155,19 +1155,19 @@ def state_from_outputs(config: dict, outputs: dict) -> dict:
 
 
 def _read_core_checkpoint(config: dict) -> dict | None:
-    """選択中のCoreに対応する状態を読み、Azure環境とAPIM識別子を照合する。"""
+    """選択した基盤配備に対応する状態を読み、Azure環境とAPIM識別子を照合する。"""
     try:
         previous = json.loads((local_paths(config, ROOT).state / "latest.json").read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
     except (OSError, ValueError):
-        raise DeploymentError("Existing Core state could not be verified; preserve it and review it before rebuilding") from None
+        raise DeploymentError("Preserve and review the existing deployment state before rebuilding because its ownership could not be verified") from None
     if not isinstance(previous, dict):
-        raise DeploymentError("Existing Core state could not be verified; preserve it and review it before rebuilding")
+        raise DeploymentError("Preserve and review the existing deployment state before rebuilding because its ownership could not be verified")
     if (any(not isinstance(previous.get(key), str) or previous[key].casefold() != config[key].casefold()
             for key in ("subscriptionId", "azureTenantId", "resourceStem"))
             or previous.get("resourceGroupNames") != config["resourceGroupNames"]):
-        raise DeploymentError("Existing application infrastructure checkpoint belongs to a different Core environment")
+        raise DeploymentError("Existing application infrastructure checkpoint belongs to a different infrastructure environment")
     try:
         verify_apim_state(config, previous)
     except ValueError as error:
@@ -1365,7 +1365,7 @@ def _preprovision(config: dict) -> None:
         diagnostic_setting_properties=monitoring_diagnostics,
     )
     _save_deployment_state(config, outputs)
-    # Workspace作成とDCR作成を終えてから関連付け、次のCore PUTでもその実参照を保持します。
+    # Workspace作成とDCR作成を終えてから関連付け、次の基盤配備のPUTでもその実参照を保持します。
     workspace_privacy_dcr_id = ensure_workspace_link(config, transport)
     # Action Groupは、この後の公開入口配備で作られます。確認メールが既に届いた
     # という案内にはせず、届いた時点から30分以内の本人確認が必要だと先に知らせます。
@@ -1401,7 +1401,7 @@ def _preprovision(config: dict) -> None:
         existing_apim_egress_fqdns=existing_apim_egress_fqdns,
         existing_workspace_privacy_dcr_id=workspace_privacy_dcr_id,
         diagnostic_setting_properties=core_diagnostics))
-    print("Monitoring destinations are prepared. Native azd provision will create the core resources.")
+    print("Monitoring destinations are prepared. Native azd provision will create the infrastructure resources.")
 
 
 def preprovision(config: dict) -> None:
@@ -1530,7 +1530,7 @@ def finish_public_dns(config, outputs, transport):
 
 
 def finish_certificate_core(config, outputs, transport, serial_password, l7_secret, firewall_root_ca):
-    """Coreの依存先を記録し、初回発行・公開・DNSを同じ順序で完了する。"""
+    """基盤の依存先を記録し、初回発行・公開・DNSを同じ順序で完了する。"""
     from .helpers.certificate_jobs import complete_initial_certificates
     from .helpers.gateway_obo_certificate import store_initial as store_gateway_obo_certificate
     from .helpers.portal_auth_certificate import store_initial_certificate
@@ -1574,7 +1574,7 @@ def finish_certificate_core(config, outputs, transport, serial_password, l7_secr
 
 
 def postprovision(config: dict) -> None:
-    """今回のネイティブCore配備を確認し、初回発行と公開入口を仕上げる。"""
+    """今回のazdによる基盤配備を確認し、初回発行と公開入口を仕上げる。"""
     workspace = local_paths(config, ROOT)
     try:
         env = run(["azd", "env", "get-values", "--environment", config["environmentName"], "-o", "json"])
@@ -1587,7 +1587,7 @@ def postprovision(config: dict) -> None:
         if outputs.get("resourceGroups") != config["resourceGroupNames"]:
             raise DeploymentError("The deployment group list differs from the configured five groups")
         if response["properties"].get("provisioningState") != "Succeeded" or not outputs.get("certificateBootstrap"):
-            raise DeploymentError("The Core foundation deployment did not succeed or has no certificate bootstrap output")
+            raise DeploymentError("The infrastructure deployment did not succeed or has no certificate bootstrap output")
         transport = ArmTransport(config)
         initial_password = _read_initial_serial_deployment_input(config)
         parameters_path = workspace.checked(workspace.parameters)
@@ -1642,7 +1642,7 @@ def main(argv=None) -> int:
         else:
             from .helpers.cleanup import CleanupError, pre_down, post_down
             if not (local_paths(config, ROOT).state / "latest.json").exists():
-                raise DeploymentError("No core deployment state is available; recover the exact deployment outputs before cleanup")
+                raise DeploymentError("Recover the original infrastructure deployment outputs before cleanup because deployment state is missing")
             state = json.loads((local_paths(config, ROOT).state / "latest.json").read_text())
             _read_application_infrastructure_checkpoint(config)
             if args.command == "predown":
@@ -1679,7 +1679,7 @@ def main(argv=None) -> int:
     except (ValueError, OSError, KeyError, DeploymentError, LogPrivacyError) as error:
         # 任意の辞書や外部コマンドのstderrを、そのまま利用者向け出力へ混ぜない。
         message = str(error) if isinstance(error, (DeploymentError, ValueError)) else type(error).__name__
-        print("Core operation failed: " + message, file=sys.stderr)
+        print("Infrastructure operation failed: " + message, file=sys.stderr)
         return 1
 
 

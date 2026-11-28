@@ -55,7 +55,7 @@ class Context:
         try:
             return self.state['serviceResourceIds'][name]
         except KeyError:
-            raise OperationError('The service is missing from Core state') from None
+            raise OperationError('The service is missing from the infrastructure deployment state') from None
 
     def record(self, kind, value):
         self.records.append((kind, value))

@@ -2,7 +2,7 @@
 
 [運用手順](../../docs/operations/README.md) · [運用テスト](../../docs/testing/operations-tests.md)
 
-現行資材で構築した環境のparamsとCore stateを使う。リポジトリルートで実行し、反映は`--execute`を明示する。計画と反映は別の結果として記録する。
+現行資材で構築した環境のparamsと基盤の配備記録を使う。リポジトリルートで実行し、反映は`--execute`を明示する。計画と反映は別の結果として記録する。
 
 | 入口 | 用途 | 計画時のAzure通信 |
 | --- | --- | --- |
@@ -33,4 +33,4 @@ python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --compon
 - ETagを提供するAPIでは条件付き更新する。APIが提供しない場合の直前比較は、外部操作との原子的な競合防止を保証しない。現物読戻しと、他の保守を同時実行しない前提を守る。
 - `applied`や`completed`はスクリプトの工程完了である。新規サインイン・本人接続・業務API・通知受信等、手順に指定する受入まで自動的にPASSへ変えない。
 
-初回は[共用基盤を構築](../../docs/setup/08-provision-core.md)してからアプリを個別配備する。利用終了の撤去は`azd down`で行う。通常保守のために基盤全体を作り直さない。
+初回は[共用基盤を構築](../../docs/setup/08-build-infra.md)してからアプリを個別配備する。利用終了の撤去は`azd down`で行う。通常保守のために基盤全体を作り直さない。

@@ -1,8 +1,8 @@
 # 07. paramsを完成させる
 
-Core初回構築では、`portal.publicHostName`を設定し、`portal.authentication`は省略します。公開サンプルもこの形です。`azd up`で専用ACA Jobが証明書を準備した後、Entra担当が専用アプリを作成して公開証明書を登録し、`portal.authentication.tenantId`・`clientId`を環境別の保護paramsへ追加します。鍵版とthumbprintは同じ環境の保護stateから読みます。 [08. Core構築](08-provision-core.md) · [09. Core構築後のEntra登録](09-egakumi-portal.md)
+基盤の初回構築では、`portal.publicHostName`を設定し、`portal.authentication`は省略します。公開サンプルもこの形です。`azd up`で専用ACA Jobが証明書を準備した後、Entra担当が専用アプリを作成して公開証明書を登録し、`portal.authentication.tenantId`・`clientId`を環境別の保護paramsへ追加します。鍵版とthumbprintは同じ環境の保護stateから読みます。 [08. 基盤構築](08-build-infra.md) · [09. 基盤構築後のEntra登録](09-egakumi-portal.md)
 
-前：[06. DNS用マネージドIDの準備](06-dns-identity.md) · [README](../../README.md#新規クローンから構築する) · 次：[08. Coreを構築する](08-provision-core.md)
+前：[06. DNS用マネージドIDの準備](06-dns-identity.md) · [README](../../README.md#新規クローンから構築する) · 次：[08. 基盤を構築する](08-build-infra.md)
 
 ## このページのゴール
 
@@ -93,7 +93,7 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 
 | 入口 | 実行範囲 |
 | --- | --- |
-| `azd up`（`azd provision`と同じ） | CoreとPortal初期サンプル、認証用公開証明書2枚を用意する |
+| `azd up`（`azd provision`と同じ） | 基盤とPortal初期サンプル、認証用公開証明書2枚を用意する |
 | 個別配備コマンド、`--execute`なし | 計画を確認する |
 | 個別配備コマンド、`--execute`あり | 指定したアプリの反映を実行する |
 
@@ -113,4 +113,4 @@ python3 -B scripts/deployment/helpers/configuration.py validate --config "$DEPLO
 - 参照したconfigと資材の固定契約を確認した。
 - ローカル入力検証と、Azure反映・実接続受入を区別した。
 
-次：[08. Coreを構築する](08-provision-core.md) · [標準configのリファレンス](../reference/configuration/config-options.md)
+次：[08. 基盤を構築する](08-build-infra.md) · [標準configのリファレンス](../reference/configuration/config-options.md)

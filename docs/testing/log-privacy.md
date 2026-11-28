@@ -4,7 +4,7 @@ Application Gatewayのアクセスログでは、URLのqueryを含み得る`Requ
 
 コマンドはリポジトリルートで実行し、[第01章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で設定した`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を使います。計画・実測記録は同じ環境の領域へ保存します。
 
-## Coreの保存経路
+## 基盤の保存経路
 
 `infra/modules/monitoring/log-privacy.json`をBicepと運用スクリプトで参照します。`AGWAccessLogs`に対する変換は次のとおりです。path、status、TransactionId、backend、時刻等の調査項目は保持します。
 
@@ -22,7 +22,7 @@ AppGW WAF    → WAF logScrubbing → LAW WorkspaceTransforms DCR → AGWFirewal
 
 WAFはURLのクエリとルールに一致したデータを除いた後、Log Analyticsと監査Storageで確認します。正常要求のパス・状態と、遮断時のルール・判定・TransactionIdが、どちらの保存先でも調べられることを確認します。
 
-通常の構築ではmonitoring段階でDCRと監査保存先を作成し、hookがWorkspaceへの関連付けを確認します。続くcore段階へ実DCR IDを引き継ぎ、Workspaceの再PUTで関連付けを消さないようにします。他者のWorkspace変換DCRが既に関連付いている場合、Coreがそれを置換せず、管理者による変換の統合を要求します。
+通常の構築では監視基盤の準備段階でDCRと監査保存先を作成し、hookがWorkspaceへの関連付けを確認します。後続の基盤配備へ実DCR IDを引き継ぎ、Workspaceの再PUTで関連付けを消さないようにします。他者のWorkspace変換DCRが既に関連付いている場合、基盤がそれを置換せず、管理者による変換の統合を要求します。
 
 ## FirewallのTLS検査ログ
 
@@ -40,9 +40,9 @@ APIMは標準診断の要求・応答本文を無効にします。`ApiManagemen
 
 ## 企業共通監査の別Workspace
 
-Azure Policyの`setByPolicy-LogAnalytics`等が同じAppGWから企業共通監査へ送る場合、CoreのWorkspace変換はその送信先には適用されません。配備前の検査で変換対象を送る管理外の診断設定が見つかると停止します。その診断設定は共通監査の所有者が扱います。新しい送信経路を設ける場合は、保存先ごとに資格情報の非保持を確認します。
+Azure Policyの`setByPolicy-LogAnalytics`等が同じAppGWから企業共通監査へ送る場合、基盤のWorkspace変換はその送信先には適用されません。配備前の検査で変換対象を送る管理外の診断設定が見つかると停止します。その診断設定は共通監査の所有者が扱います。新しい送信経路を設ける場合は、保存先ごとに資格情報の非保持を確認します。
 
-共通監査の所有者が別途query非保持を採用する場合の参考KQLを記載します。Coreの配備・更新スクリプトの実行範囲には含めません。Dedicatedの`AGWAccessLogs`なら上記3列の変換、`AzureDiagnostics`なら所有者が実schemaの列名を照合し、AppGWアクセスカテゴリだけへ例えば次を適用できます（実在する列だけを指定）。既存の別テーブルの変換は保持します。
+共通監査の所有者が別途query非保持を採用する場合の参考KQLを記載します。基盤の配備・更新スクリプトの実行範囲には含めません。Dedicatedの`AGWAccessLogs`なら上記3列の変換、`AzureDiagnostics`なら所有者が実schemaの列名を照合し、AppGWアクセスカテゴリだけへ例えば次を適用できます（実在する列だけを指定）。既存の別テーブルの変換は保持します。
 
 ```kusto
 source
@@ -55,7 +55,7 @@ source
 | project-away _stripQuery
 ```
 
-企業共通監査はCore運用ログの変更・検査範囲外として記録します。設定を読めない場合に、収集されていない・queryが残らないと推測しません。
+企業共通監査は基盤の運用ログの変更・検査範囲外として記録します。設定を読めない場合に、収集されていない・queryが残らないと推測しません。
 
 ## 検証記録
 

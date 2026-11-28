@@ -1,5 +1,5 @@
 {
-  "description": "検証専用の外部API定義。Coreの標準配備例・標準配備対象ではありません。",
+  "description": "外部APIの配備テストに使う合成定義。",
   "apiDefinitions": [
     {
       "name": "sample-rest-v1",

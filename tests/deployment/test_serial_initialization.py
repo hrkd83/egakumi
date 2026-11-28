@@ -49,7 +49,7 @@ class InitialCreationTests(unittest.TestCase):
         deployment = f"/subscriptions/{self.config['subscriptionId']}/providers/Microsoft.Resources/deployments/{self.config['resourceStem']}-core"
         output = {"id": vm["id"], "vmId": vm["properties"]["vmId"], "principalId": vm["identity"]["principalId"], "tenantId": vm["identity"]["tenantId"]}
         return {"statusCode": 200, "body": {"id": deployment,
-            "tags": {"azd-env-name": self.config["environmentName"], "azd-project-name": "ai-workforce-core", "azd-layer-name": ""},
+            "tags": {"azd-env-name": self.config["environmentName"], "azd-project-name": "egakumi", "azd-layer-name": ""},
             "properties": {"provisioningState": "Succeeded", "parameters": {"managementInitialSerialGeneration": {"value": value["credentialGeneration"]}},
                 "outputs": {"managementInitialSerialCreation": {"value": {"generation": value["credentialGeneration"], "coreDeploymentId": deployment, "managementVm": output}}}}}}
 
@@ -71,7 +71,7 @@ class InitialCreationTests(unittest.TestCase):
     def test_existing_vm_without_original_receipt_never_opens_or_regenerates_credentials(self):
         with mock.patch.object(serial, "_read", side_effect=AssertionError("Existing VM must not read credentials")), \
              mock.patch.object(serial, "_new", side_effect=AssertionError("Existing VM must not regenerate credentials")):
-            self.assertEqual(initial.recover_password(self.config, self.paths, self.vm(), lambda value: self.fail("No Core read without provenance"), self.writer), "")
+            self.assertEqual(initial.recover_password(self.config, self.paths, self.vm(), lambda value: self.fail("No deployment read without provenance"), self.writer), "")
         self.assertFalse(self.paths.secrets.exists())
 
     def test_empty_generation_lookup_never_opens_credentials(self):
@@ -92,7 +92,7 @@ class InitialCreationTests(unittest.TestCase):
         self.record()
         core = self.core()
         core["body"]["properties"]["parameters"]["managementInitialSerialGeneration"]["value"] = "33333333-3333-4333-8333-333333333333"
-        with mock.patch.object(serial, "_read", side_effect=AssertionError("Core mismatch must precede secret access")):
+        with mock.patch.object(serial, "_read", side_effect=AssertionError("Deployment mismatch must precede secret access")):
             with self.assertRaises(serial.SerialCredentialError): self.recover(core)
 
     def test_each_owned_core_proof_field_is_enforced_before_secret_access(self):
@@ -123,7 +123,7 @@ class InitialCreationTests(unittest.TestCase):
         response["body"]["properties"]["provisioningState"] = "Failed"
         response["body"]["properties"]["outputs"] = {}
         response["managementCreation"] = creation
-        with mock.patch.object(serial, "_read", side_effect=AssertionError("Failed Core must not open credentials")):
+        with mock.patch.object(serial, "_read", side_effect=AssertionError("A failed deployment must not open credentials")):
             self.assertEqual(self.recover(response), "")
         value = initial.journal(self.config, self.paths)
         self.assertIsNotNone(value["target"])

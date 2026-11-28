@@ -80,7 +80,7 @@ ARM配備、Gの配備記録とジョブを読み、実行中・完了・失敗�
 
 ## TLS証明書を更新し、公開HTTPSまで確認する
 
-入口は[certificate.py](../../scripts/operations/certificate.py)です。Coreの保護stateに記録された公開TLS用Key Vaultと、構築済みの公開TLS Job、AppGWの版なし参照、公開ホストを照合します。コマンドは既定で計画を表示します。内容を確認して実際に操作する場合は、同じコマンドに`--execute`を付けます。
+入口は[certificate.py](../../scripts/operations/certificate.py)です。保護された基盤の配備記録に記録された公開TLS用Key Vaultと、構築済みの公開TLS Job、AppGWの版なし参照、公開ホストを照合します。コマンドは既定で計画を表示します。内容を確認して実際に操作する場合は、同じコマンドに`--execute`を付けます。
 専用ACA Jobの結果には公開証明書の情報だけを含めます。 [証明書用Job](certificate-jobs.md)
 
 1. まず次を計画・反映する。実行時は専用ACA Jobで公開証明書の情報を
@@ -126,6 +126,6 @@ DNS権限・Key Vault権限と経路・ACAのスケジュール・参照の対�
 
 ## DNS用マネージドIDと権限を更新する
 
-Azure Public DNSは事前作成したUAMIを使います。IDを変更する場合は、新しいIDへDNS権限を付与し、paramsの`certificate.azureDnsManagedIdentityResourceId`と、必要なら`certificate.azureDnsSubscriptionId`を更新して同じ環境へ反映します。公開TLS Jobへの関連付け・実際の証明書更新を確認してから旧権限を回収します。外部で作成したDNS用ID・公開ゾーンはCoreの撤去対象に含めません。
+Azure Public DNSは事前作成したUAMIを使います。IDを変更する場合は、新しいIDへDNS権限を付与し、paramsの`certificate.azureDnsManagedIdentityResourceId`と、必要なら`certificate.azureDnsSubscriptionId`を更新して同じ環境へ反映します。公開TLS Jobへの関連付け・実際の証明書更新を確認してから旧権限を回収します。外部で作成したDNS用ID・公開ゾーンは基盤の撤去対象に含めません。
 
 IDや権限の変更前に[DNS事前準備](../setup/05-public-dns.md)を確認してください。

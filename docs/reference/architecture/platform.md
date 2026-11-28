@@ -4,7 +4,7 @@
 
 | 工程 | 主な資材と役割 |
 | --- | --- |
-| Core | VNet・NSG・経路、App Gateway、Firewall、APIM、Foundry、SQLサーバー、ACA環境、非公開ACR、初期公開TLSとEntra登録用証明書 |
+| 基盤 | VNet・NSG・経路、App Gateway、Firewall、APIM、Foundry、SQLサーバー、ACA環境、非公開ACR、初期公開TLSとEntra登録用証明書 |
 | Gateway | 公開API・ポリシー・Product・WAF、Credential Manager、Credential Broker・定期照合Jobと資格情報DB |
 | Portal | Entraサインイン、本人のBearerによるAPI試用、専用セッションDBとアプリ |
 | 管理・監査 | 管理VMの保守経路、Log Analytics、Application Insightsと監査Storage |

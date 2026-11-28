@@ -1,4 +1,4 @@
-"""同名のCore診断設定を、既存の転送先・分類を失わずに配備する純粋な準備処理。"""
+"""同名の基盤診断設定を、既存の転送先・分類を失わずに配備する純粋な準備処理。"""
 from __future__ import annotations
 
 import copy
@@ -27,7 +27,7 @@ class DiagnosticPreservationError(ValueError):
 
 def _need(value, code):
     if not value:
-        raise DiagnosticPreservationError("Core diagnostic preservation: " + code)
+        raise DiagnosticPreservationError("Infrastructure diagnostic preservation: " + code)
 
 
 def _missing(response):
@@ -168,7 +168,7 @@ def merge_properties(existing, desired):
 
 
 def canonical_settings(config, phase, preserve_collection=False):
-    """Coreの診断分類と送信先を一か所で定義し、Bicepへ同じ名前・scopeで渡す。"""
+    """基盤の診断分類と送信先を一か所で定義し、Bicepへ同じ名前・scopeで渡す。"""
     _need(phase in ("monitoring", "core"), "phase")
     subscription, stem = config["subscriptionId"], config["resourceStem"]
     groups, location = config["resourceGroupNames"], config["location"]
@@ -276,7 +276,7 @@ def canonical_settings(config, phase, preserve_collection=False):
 
 
 def prepare_settings(config, transport, phase, preserve_collection=False):
-    """最初の監視PUTより先に全Core設定を照合し、その段階で必要なpropertiesだけ返す。"""
+    """最初の監視PUTより先に基盤の全診断設定を照合し、その段階で必要なpropertiesだけ返す。"""
     all_settings = canonical_settings(config, "core", True)
     requested = canonical_settings(config, phase, preserve_collection)
     expected_tags = {"product": config["productName"], "environment": config["environmentName"], "azd-env-name": config["environmentName"]}
@@ -341,7 +341,7 @@ def prepare_settings(config, transport, phase, preserve_collection=False):
               and _same(body.get("type"), "Microsoft.Insights/diagnosticSettings")
               and _same(body.get("name"), item["id"].rsplit("/", 1)[-1]), "setting-identity")
         props = normalized_properties(body.get("properties"))
-        # 管理対象の単一sinkを置換する場合は、以前のsinkもCore所有と確認する。
+        # 管理対象の単一sinkを置換する場合は、以前のsinkも基盤の管理対象と確認する。
         # 外部追加sinkは同じfieldの別primaryと決めつけず、衝突として止める。
         for field, provider, version, region in (("workspaceId", "Microsoft.OperationalInsights/workspaces", "2023-09-01", config["location"]),
                                                   ("storageAccountId", "Microsoft.Storage/storageAccounts", "2023-05-01", item["location"])):

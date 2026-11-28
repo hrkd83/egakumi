@@ -1,4 +1,4 @@
-# Core API・Operation定義
+# GatewayのAPI・Operation定義
 
 初期配備28モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../../apps/api-gateway/apis/)と [モデル設定](../../../infra/config/test.json)。初回は`azd up`で共通基盤を構築し、Entra登録後にGatewayとPortalを個別に配備する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
 

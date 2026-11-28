@@ -14,7 +14,7 @@
 | [monitoring](modules/monitoring/) | ログ送信、監査BlobとそのPrivate Endpoint、アラート |
 | [guest](guest/) | 管理VMで実行するスクリプトと証明書Jobイメージに入れるワーカー |
 
-空のAzure環境に [正式手順](../docs/setup/08-provision-core.md) で構築します。この資材での構築を再開するときは、NSGカタログが対象とするサブネットの作成済みルールを読み取り、現行の定義と照合します。規則名・通信条件が一致しない場合は、Coreのネットワーク配備に進む前に停止します。
+空のAzure環境に [正式手順](../docs/setup/08-build-infra.md) で構築します。この資材での構築を再開するときは、NSGカタログが対象とするサブネットの作成済みルールを読み取り、現行の定義と照合します。規則名・通信条件が一致しない場合は、基盤のネットワーク配備に進む前に停止します。
 
 導入先固有の設定は[paramsの例とSchema](../params/)を基に、環境別の保護paramsに記入します。 [入力手順](../docs/setup/07-params.md)
 

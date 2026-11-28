@@ -1,4 +1,4 @@
-"""Share the Azure subnet names used by Core Bicep and the deployment tools."""
+"""Share the Azure subnet names used by the infrastructure templates and the deployment tools."""
 from __future__ import annotations
 
 import json

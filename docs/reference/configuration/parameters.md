@@ -69,7 +69,7 @@
 | Credential Broker | `cae-<stem>-broker` | `CredentialBrokerSubnet` |
 | 証明書Job | `cae-<stem>-certificate` | `CertificateJobSubnet` |
 
-監査ログは既存の監視リソースへ集約します。 [Coreの構成](../../../infra/main.bicep)
+監査ログは既存の監視リソースへ集約します。 [基盤の構成](../../../infra/main.bicep)
 
 3つ目にはFirewall・APIM・管理VMを配置し、4つ目はPortal、Broker、証明書Jobの順に割り当てます。この順序を別のアドレス空間に適用する場合も、3つのCIDRを `network.subnetPrefixes` に明示します。5つ目はVNetのアドレス空間に含まれるため、ピアリング先との重複確認にも含めます。 [VNetピアリング](https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-peering-overview)
 

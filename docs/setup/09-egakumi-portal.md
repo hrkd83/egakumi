@@ -1,10 +1,10 @@
-# 09. Core完成後のEntra登録
+# 09. 基盤構築後のEntra登録
 
-前：[08. 共用基盤を構築](08-provision-core.md) · [README](../../README.md) · 次：[10. ハブ＆スポーク（任意）](10-hub-spoke.md) · [11. Gatewayを配備](11-deploy-gateway.md)
+前：[08. 共用基盤を構築](08-build-infra.md) · [README](../../README.md) · 次：[10. ハブ＆スポーク（任意）](10-hub-spoke.md) · [11. Gatewayを配備](11-deploy-gateway.md)
 
-[第08章](08-provision-core.md#8-5-coreの完了を確認する)で取得した公開証明書2枚を、認証用の`entraTenantId`の各アプリに登録します。この作業はEntraの登録・同意の権限を持つ担当が実施します。公開`.cer`だけを渡し、秘密の署名鍵はKey Vault内で管理します。
+[第08章](08-build-infra.md#8-5-基盤構築の完了を確認する)で取得した公開証明書2枚を、認証用の`entraTenantId`の各アプリに登録します。この作業はEntraの登録・同意の権限を持つ担当が実施します。公開`.cer`だけを渡し、秘密の署名鍵はKey Vault内で管理します。
 
-| Coreの出力 | Entraでの登録先 | 確認すること |
+| 基盤の配備出力 | Entraでの登録先 | 確認すること |
 | --- | --- | --- |
 | `generated/gateway-obo-public.cer` | 第02章で登録した`egakumi-api` | API用の証明書と、Microsoft Graphの委任`User.Read`の管理者同意 |
 | `generated/portal-auth-public.cer` | この章で作成する`egakumi-portal` | Portal用の証明書、2つのWeb戻り先、GraphのOIDCとGateway APIの委任許可・管理者同意 |
@@ -23,11 +23,11 @@ PortalログインとBearerによるAPI試用のために、専用のWebアプ�
 
 ### 初期構築で用意するもの
 
-第08章のCore構築で共有資源とPortal ACAの初期サンプルを用意します。証明書専用ACAのPortal署名Jobから要求し、KVが認証専用の3072bit RSA鍵と自己署名証明書を生成します。秘密鍵は非exportableです。HTTPS用のACME証明書とは別です。
+第08章の基盤構築で共有資源とPortal ACAの初期サンプルを用意します。証明書専用ACAのPortal署名Jobから要求し、KVが認証専用の3072bit RSA鍵と自己署名証明書を生成します。秘密鍵は非exportableです。HTTPS用のACME証明書とは別です。
 
 `postprovision`は開始したACA Job実行の正常終了と保護された結果を照合し、公開証明書を`.local/<environment>/generated/portal-auth-public.cer`へ、固定参照を同じ環境の`state/portal-auth-certificate.json`へ保存します。単にファイルが存在するだけで初期構築の成功とは判断せず、今回のJob実行の終了結果を確認してください。
 
-Core構築で用意した公開`.cer`を使い、以下の一度のEntra登録依頼へ進みます。Jobが失敗した場合は、[Coreの発行結果と再開手順](../operations/portal-authentication.md#初期証明書の発行と確認)を確認してください。
+基盤構築で用意した公開`.cer`を使い、以下の一度のEntra登録依頼へ進みます。Jobが失敗した場合は、[基盤の発行結果と再開手順](../operations/portal-authentication.md#初期証明書の発行と確認)を確認してください。
 
 ```mermaid
 flowchart LR
@@ -74,7 +74,7 @@ KVの秘密鍵、PFX、backing secretは取り出しません。Entra担当へ�
 | 新Portalのclient secret | 作成しない |
 | 利用者割当・条件付きアクセス | 組織のルールを確認し、割当必須の場合は受入利用者の割当も同じ作業で実施 |
 
-Portalログインで要求する`openid profile email`はOIDCのscopeです。API用OAuthの`offline_access`は更新トークンを要求するscopeです。どちらもKV鍵やGraph Application権限を表すものではありません。Portalログイン用ID tokenをAPI試行へ送信しません。GraphのBearer試用はAPIアプリのOBO資格情報と委任許可を使います。 [APIアプリのOBO設定](02-entra-api.md#6-core配備後にobo用の公開証明書を登録する)
+Portalログインで要求する`openid profile email`はOIDCのscopeです。API用OAuthの`offline_access`は更新トークンを要求するscopeです。どちらもKV鍵やGraph Application権限を表すものではありません。Portalログイン用ID tokenをAPI試行へ送信しません。GraphのBearer試用はAPIアプリのOBO資格情報と委任許可を使います。 [APIアプリのOBO設定](02-entra-api.md#6-基盤構築後にobo用の公開証明書を登録する)
 
 `/api/api-auth/complete`はPortal内部の完了処理で、Entraの戻り先には登録しません。既存APIアプリへPortalの証明書や戻り先を追加する操作はありません。公開済みの`Gateway.Invoke`を新しいPortalクライアントへ許可し、管理者同意を付与します。
 
@@ -106,6 +106,6 @@ Portalログインで要求する`openid profile email`はOIDCのscopeです。A
 }
 ```
 
-値の例はプレースホルダーです。Coreで使用した同じparamsに専用アプリの登録結果を追加します。鍵の版と指紋は保護stateから取得し、明示入力がある場合は記録と照合します。Portal専用アプリのClient IDは、API・Tools・Credentialとは別の値を使います。
+値の例はプレースホルダーです。基盤で使用した同じparamsに専用アプリの登録結果を追加します。鍵の版と指紋は保護stateから取得し、明示入力がある場合は記録と照合します。Portal専用アプリのClient IDは、API・Tools・Credentialとは別の値を使います。
 
 企業ハブに接続する場合は[10. ハブ＆スポーク対応](10-hub-spoke.md)、接続が不要な場合は[11. Gatewayを配備する](11-deploy-gateway.md)へ進みます。Gatewayの配備を確認してから第12章でPortal本体を配備し、第13章でサインイン・Graph・API試用を確認します。証明書の更新は[Portal認証の運用](../operations/portal-authentication.md)を参照してください。

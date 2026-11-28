@@ -103,7 +103,7 @@ def _targets(config, outputs):
                 'portalJobId': app_scope + '/jobs/' + b['portalJobName'],
                 'receiptContainers': {'tls': b['receiptContainerName'], 'portal': ids['portalStateContainerName']}}
     except (ValueError, KeyError, TypeError, AttributeError):
-        raise ValueError('The certificate job outputs differ from the selected Core deployment') from None
+        raise ValueError('The certificate job outputs differ from the selected infrastructure deployment') from None
 
 
 def _sleep(sleep, clock, deadline, response=None):

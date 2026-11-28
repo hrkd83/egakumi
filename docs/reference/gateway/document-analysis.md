@@ -1,6 +1,6 @@
 # Document Intelligenceの文書解析
 
-Tool Gatewayは、CoreのFoundryリソース（`AIServices`）にAPIMのマネージドIDで接続します。
+Tool Gatewayは、基盤のFoundryリソース（`AIServices`）にAPIMのマネージドIDで接続します。
 
 ## 公開API
 

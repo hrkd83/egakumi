@@ -239,7 +239,7 @@ class PortalDeploymentTests(unittest.TestCase):
                         'empty-url': '',
                     }[change]
                 original = copy.deepcopy((config, state))
-                with self.assertRaisesRegex(ValueError, '^Current Core Gateway public URL output is required$'):
+                with self.assertRaisesRegex(ValueError, '^The current Gateway public URL output is required$'):
                     portal.deployment_inputs(config, state)
                 self.assertEqual((config, state), original)
 
@@ -261,7 +261,7 @@ class PortalDeploymentTests(unittest.TestCase):
                 with self.assertRaises(ValueError) as rejected:
                     portal.deployment_inputs(config, state)
                 self.assertEqual(str(rejected.exception),
-                                 'Core Gateway public URL differs from the selected configuration')
+                                 'The provisioned Gateway public URL differs from the selected configuration')
                 self.assertNotIn(url, str(rejected.exception))
                 self.assertNotIn(config['gateway']['publicHostName'], str(rejected.exception))
                 self.assertEqual((config, state), original)
@@ -270,7 +270,7 @@ class PortalDeploymentTests(unittest.TestCase):
         config, state = fixture()
         config['gateway']['publicHostName'] = 'new-gateway.example.com'
         original = copy.deepcopy((config, state))
-        with self.assertRaisesRegex(ValueError, '^Core Gateway public URL differs from the selected configuration$'):
+        with self.assertRaisesRegex(ValueError, '^The provisioned Gateway public URL differs from the selected configuration$'):
             portal.deployment_inputs(config, state)
         self.assertEqual((config, state), original)
 
@@ -293,7 +293,7 @@ class PortalDeploymentTests(unittest.TestCase):
                      mock.patch.object(portal, 'run_json') as cli, \
                      mock.patch.object(portal, 'ArmTransport') as transport, \
                      mock.patch.object(portal, 'protected_json') as write:
-                    with self.assertRaisesRegex(ValueError, 'Core Gateway public URL'):
+                    with self.assertRaisesRegex(ValueError, 'Gateway public URL'):
                         portal.main(['--config', str(workspace.params), '--state-file', str(state_file), '--execute'])
                     for boundary in (bundle, cli, transport, write):
                         boundary.assert_not_called()

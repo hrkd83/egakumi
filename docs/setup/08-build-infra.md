@@ -2,9 +2,9 @@
 
 前：[07. 構築パラメーター](07-params.md) · [README](../../README.md) · 次：[09. Entraに証明書を登録](09-egakumi-portal.md)
 
-第02〜04章で登録したEntraアプリと[公開DNS](05-public-dns.md)、環境別paramsを使い、`azd up`で共用基盤（Core）を作ります。このリポジトリの`azd up`は共用基盤の準備で終了します。`azd provision`でも同じ工程を実行できます。CoreはAPIM本体、Portal用の仮Container Appと、API OBO用・Portal署名用の公開証明書を準備します。証明書のEntra登録、GatewayのAPI公開、Portal本体の配備は第09〜12章で行います。
+第02〜04章で登録したEntraアプリと[公開DNS](05-public-dns.md)、環境別paramsを使い、`azd up`で共用基盤を作ります。このリポジトリの`azd up`は共用基盤の準備で終了します。`azd provision`でも同じ工程を実行できます。基盤はAPIM本体、Portal用の仮Container Appと、API OBO用・Portal署名用の公開証明書を準備します。証明書のEntra登録、GatewayのAPI公開、Portal本体の配備は第09〜12章で行います。
 
-この章の`azd up`からCore設備の作成と課金が始まります。事前準備で別途作成した公開DNS等の費用は[第05章](05-public-dns.md)で確認します。 [費用の目安](../../README.md#費用を確認する) · [構成と設定項目](../reference/configuration/config-options.md)
+この章の`azd up`から基盤リソースの作成と課金が始まります。事前準備で別途作成した公開DNS等の費用は[第05章](05-public-dns.md)で確認します。 [費用の目安](../../README.md#費用を確認する) · [構成と設定項目](../reference/configuration/config-options.md)
 
 ## 8-1. 実行フォルダと入力を確認する
 
@@ -26,7 +26,7 @@ python3 scripts/deployment/lifecycle.py validate
 
 paramsの`services.apimInstanceId`は第1章の初回prepareが公開マーカー`<AUTO_GENERATED_APIM_INSTANCE_ID>`を6文字IDへ置換して保存した値を使います。未解決マーカーは配備入力として受け付けません。第03章で算出したCM戻り先がEntraに保存されていることを確認してください。構築や途中再開で識別子を生成し直すことはありません。撤去後の新規構築は[新しいAPIM識別子を準備](../operations/teardown.md#撤去後に新しく構築する)してから、この章を進めます。
 
-標準APIの公開は[Gatewayの個別配備](11-deploy-gateway.md)で行います。Coreの初回入力では`portal.publicHostName`を設定し、`portal.authentication`は第09章で追加します。
+標準APIの公開は[Gatewayの個別配備](11-deploy-gateway.md)で行います。基盤の初回入力では`portal.publicHostName`を設定し、`portal.authentication`は第09章で追加します。
 
 第01章で作成した環境別paramsを使います。`secrets/`・`state/`・`generated/`は同じ`.local/<environment>/`の下に置き、`.azure/`はazdだけが管理します。まだ秘密や配備記録がないことは正常です。第03章と第04章で用意したTools用とCredential用の各client secretを安全な保管先から非表示入力できる状態にし、第05章と第06章で確認したAzure DNS側Subscription IDとUAMIのリソースIDを用意します。DNS用IDの公開参照はparamsへ事前設定します。Entraのsecretをparams／configへ書き込まず、案内に従って非表示入力します。
 
@@ -72,7 +72,7 @@ python3 scripts/deployment/lifecycle.py capacity
 
 ## 8-4. azd upを実行し、対話入力する
 
-ローカルの通常ターミナルで実行し、対話を有効にします。Coreが正常終了した後に、第09章でEntraへ証明書を登録します。
+ローカルの通常ターミナルで実行し、対話を有効にします。基盤が正常終了した後に、第09章でEntraへ証明書を登録します。
 
 ```sh
 export AZD_NON_INTERACTIVE=false
@@ -88,9 +88,9 @@ echo "終了コード: $?"
 4. **端末の保護保存**：Tools用とCredential用のclient secretをそれぞれ `secrets/entra-client-secret.txt` と `secrets/entra-credential-secret.txt` へ保存し、POSIX権限600とする。同じsecret保存先を使うCM providerが複数ある場合は1回だけ入力する。
 5. **SSH鍵**：公開鍵・秘密鍵が両方ない場合だけ、`.local/<environment>/secrets/` へ管理VM用の鍵対を生成。有効な既存鍵は再利用し、秘密鍵はAzureへ送らない。
 
-Core配備の直前には、所有RGと管理VMの正確なGET結果を確認します。VMが未作成の404の場合だけ、`management.adminUsername`のローカル認証用パスワードを生成し、`.local/<environment>/secrets/management-serial-credential.json`へ保護保存します。元の404・生成世代・Core引渡しの証跡は`.local/<environment>/state/management-serial-initialization.json`へ先に保存し、Coreには非秘密の内部世代だけを渡します。公開params/configにパスワードや作成フラグを追加せず、OSProfileへパスワードを渡しません。
+基盤配備の直前には、所有RGと管理VMの正確なGET結果を確認します。VMが未作成の404の場合だけ、`management.adminUsername`のローカル認証用パスワードを生成し、`.local/<environment>/secrets/management-serial-credential.json`へ保護保存します。元の404・生成世代・基盤の配備への引き渡しの証跡は`.local/<environment>/state/management-serial-initialization.json`へ先に保存し、基盤には非秘密の内部世代だけを渡します。公開params/configにパスワードや作成フラグを追加せず、OSProfileへパスワードを渡しません。
 
-Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenantを照合して保護記録へ確定し、公開Managed Run Command資材の名前付き`protectedParameters`だけへ元のパスワードを渡します。guestはSSHの有効設定を確認し、初期ローカル認証とlogin PAMの確認後だけ完了を記録します。SSHのパスワード認証無効と鍵認証は維持します。部分失敗でVMだけ作成済みの場合も、元Core入力とmanagement子配備の同世代・VM出力を照合するまで秘密を読みません。初期化要求が不明になった後の回復は、パスワードを再設定せず、元の資格情報によるPAM認証を最大1回だけ行います。元の初期作成証跡がない既存VMは、この秘密ファイルを読まず、既存パスワードも変更しません。
+基盤構築の成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenantを照合して保護記録へ確定し、公開Managed Run Command資材の名前付き`protectedParameters`だけへ元のパスワードを渡します。guestはSSHの有効設定を確認し、初期ローカル認証とlogin PAMの確認後だけ完了を記録します。SSHのパスワード認証無効と鍵認証は維持します。部分失敗でVMだけ作成済みの場合も、元の基盤の配備入力とmanagement子配備の同世代・VM出力を照合するまで秘密を読みません。初期化要求が不明になった後の回復は、パスワードを再設定せず、元の資格情報によるPAM認証を最大1回だけ行います。元の初期作成証跡がない既存VMは、この秘密ファイルを読まず、既存パスワードも変更しません。
 
 これはSerial Console用のローカル認証準備です。PAM認証には認証ログやロックアウトへの影響があり、完了記録は実Serial接続の成功を示しません。Managed Run Commandの保護設定やrootプロセスのメモリー等に値が残り得るため、保持がゼロとは扱いません。実ログインの成功は[管理VMの保守手順](../operations/management-vm-access.md#serial-consoleのローカル認証を準備する)で別に確認します。
 
@@ -116,20 +116,20 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 
 `preprovision`は生成JSONを保護保存し、その相対パスだけをazd環境の`EGAKUMI_ARM_PARAMETERS_FILE`へ設定します。公開の`infra/main.bicepparam`をazdがhook後と配備直前に評価して、JSONの値を配備パラメーターへ渡します。秘密値を公開テンプレートへ埋め込んだり、azdの`.env`へ設定したりする必要はありません。通常はこの受渡しを手作業で設定しません。
 
-## 8-5. Coreの完了を確認する
+## 8-5. 基盤構築の完了を確認する
 
 1. 基盤構築コマンドの終了コードが`0`であることと、今回の`postprovision`の成功を確認します。
 2. 今回更新された`.local/<environment>/state/latest.json`で、5つのリソースグループ、APIM・Foundry・App Gatewayの出力を対象環境と照合します。同じ環境の`state/public-dns.json`で、Gateway・Portal用Aエイリアスが対象のApp Gateway Public IPに接続されたことを確認します。
 3. 今回の証明書Jobの成功を確認し、`.local/<environment>/generated/`に`gateway-obo-public.cer`と`portal-auth-public.cer`が揃ったことを確認します。両ファイルはEntra認証用の公開証明書です。App GatewayのHTTPSリスナーが使うACME証明書はKey Vaultに保存されます。
 4. Portal用のContainer AppにはMicrosoftのQuickstartイメージが載っています。この時点ではApp GatewayでPortalバックエンドが異常表示でも問題ありません。公開`/api/health`のHTTP 200は第12章のPortal本体配備後に確認します。
 
-後続の章でも同じ環境のparams・state・公開証明書を使います。同じ環境に対する構築・配備は順に実行します。Coreが完了したら[09. Entraに証明書を登録](09-egakumi-portal.md)へ進みます。
+後続の章でも同じ環境のparams・state・公開証明書を使います。同じ環境に対する構築・配備は順に実行します。基盤が完了したら[09. Entraに証明書を登録](09-egakumi-portal.md)へ進みます。
 
 ### 基盤構築時の補足
 
 空環境での証明書発行、非公開ACRの通信、途中再開の条件は [証明書用Job](../operations/certificate-jobs.md) を参照します。
 
-管理VMの保守クライアントと担当者本人用のロール定義はCoreの資材で準備し、Gateway／Portalが後段で作成したApp・JobのIDを保護inventoryへ追加します。対象は構築出力から取得し、公開params/configによる作成フラグはありません。[管理VMからの保守操作](../operations/management-client.md#管理vmから保守データを取得する)で、監査Blob・保存ログ・ACAログ・App execの認可と実取得を確認してください。資材のローカル試験通過と、初期Azure配備・保守操作の実環境確認は別の結果です。
+管理VMの保守クライアントと担当者本人用のロール定義は基盤の資材で準備し、Gateway／Portalが後段で作成したApp・JobのIDを保護inventoryへ追加します。対象は構築出力から取得し、公開params/configによる作成フラグはありません。[管理VMからの保守操作](../operations/management-client.md#管理vmから保守データを取得する)で、監査Blob・保存ログ・ACAログ・App execの認可と実取得を確認してください。資材のローカル試験通過と、初期Azure配備・保守操作の実環境確認は別の結果です。
 
 標準API正本を常用で読み込み、接続先は作成済み基盤の出力からメモリー内で解決します。公開paramsにAPI一覧の選択欄は設けず、内部配列も書き戻しません。標準APIに必要なWAFの経路・本文形式と監査ログ等の情報は基盤工程へ先に反映します。
 
@@ -145,6 +145,6 @@ ARMのemail receiverの`status: Enabled`は、メールアドレスの確認完�
 
 エラーが出た段階・配備名・エラーコード・correlation IDを控え、秘密値を含めず原因を確認します。失敗した配備やAzure側の利用制限は、同じコマンドを繰り返す前に対象工程の配備状態を確認します。既存モデルの更新失敗では、旧モデルが稼働している可能性もあるため、状態だけで自動削除しません。
 
-失敗した工程の終了コードを確認し、原因を修正してから次の工程へ進みます。作成済みの基盤と記録を保持し、Coreで失敗した場合は同じ環境の入力で`azd up`を再試行します。
+失敗した工程の終了コードを確認し、原因を修正してから次の工程へ進みます。作成済みの基盤と記録を保持し、基盤で失敗した場合は同じ環境の入力で`azd up`を再試行します。
 
 途中まで作成された資源にも費用が発生します。撤去する場合は[同じparamsでのdownとstate不足時の扱い](../operations/README.md)へ進みます。構築したcloneの`.azure/`・`.local/<environment>/state/`と設定を消してから撤去を始めないでください。

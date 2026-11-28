@@ -152,7 +152,7 @@ class StandardApiTests(unittest.TestCase):
                     standard_apis.resolve_publication_configuration(self.raw, state)
 
     def test_missing_deployment_record_fails(self):
-        with self.assertRaisesRegex(ValueError, "completed core deployment record"):
+        with self.assertRaisesRegex(ValueError, "completed infrastructure deployment record"):
             standard_apis.resolve_publication_configuration(self.raw, {})
 
     def test_unknown_binding_fails(self):

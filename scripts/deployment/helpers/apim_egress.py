@@ -1,4 +1,4 @@
-"""APIMの追加HTTPS規則を、GatewayとCoreの配備で共通の条件で照合する。"""
+"""APIMの追加HTTPS規則を、Gatewayと基盤の配備で共通の条件で照合する。"""
 from __future__ import annotations
 
 import re

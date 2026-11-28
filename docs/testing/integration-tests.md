@@ -1,6 +1,6 @@
 # 構築後の動作テスト
 
-Core・Entra登録・Gateway・[Portal配備](../setup/12-deploy-portal.md)を終えた環境で、[第13章の実接続受入](../setup/13-verify-deployment.md#gatewayとportalの実接続)として行います。採用したAPIと通信方式を[API契約](../reference/gateway/api-contracts.md)から選び、合成データと検証用の利用者・購読を用意します。 [Entraテストデータの準備](entra-fixtures.md)
+基盤・Entra登録・Gateway・[Portal配備](../setup/12-deploy-portal.md)を終えた環境で、[第13章の実接続受入](../setup/13-verify-deployment.md#gatewayとportalの実接続)として行います。採用したAPIと通信方式を[API契約](../reference/gateway/api-contracts.md)から選び、合成データと検証用の利用者・購読を用意します。 [Entraテストデータの準備](entra-fixtures.md)
 
 ## 実施順と記録
 

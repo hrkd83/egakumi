@@ -6,11 +6,11 @@
 
 | 工程 | 確認すること |
 | --- | --- |
-| 事前準備 | 公開DNSの委任、DNS更新用IDと対象ゾーンの権限、Azureと認証Entraの構築先、Core前に作成するAPI・Tools・Credentialの3登録を確認する |
+| 事前準備 | 公開DNSの委任、DNS更新用IDと対象ゾーンの権限、Azureと認証Entraの構築先、基盤構築前に作成するAPI・Tools・Credentialの3登録を確認する |
 | params | 公開例から新しい環境を作り、保存済みAPIM IDとヒモ付く名前を確認する。再実行は既存の保護ファイルを保持する。不正なID、重複サブネット、不足する入力は配備前に検出する |
-| Core | `azd up` が共用基盤、Portalの初期Container App、公開TLS、Portal署名・API OBO用の公開証明書を準備する。Gateway APIとPortal本体の個別配備は後続で実施する |
+| 基盤 | `azd up` が共用基盤、Portalの初期Container App、公開TLS、Portal署名・API OBO用の公開証明書を準備する。Gateway APIとPortal本体の個別配備は後続で実施する |
 | 証明書 | 専用ACA Jobの実行結果とKey Vaultの版、公開TLSのDNSと信頼チェーン、Entra登録に使う2枚の公開証明書と保護stateを照合する |
-| Entra登録 | Core後にegakumi-apiのOBO用公開証明書とegakumi-portalの登録・公開証明書を設定する。固定の戻り先、委任スコープ、同意を照合する |
+| Entra登録 | 基盤構築後にegakumi-apiのOBO用公開証明書とegakumi-portalの登録・公開証明書を設定する。固定の戻り先、委任スコープ、同意を照合する |
 | 任意のハブ接続 | 採用時は個別配備前に経路を確認する。経路の往復、DNS転送、APIM制御プレーン、管理接続の許可元を実構成で照合する |
 | Gateway | 計画で対象環境を確認し、Gatewayを個別配備する。Broker、照合Job、資格情報DB、APIM API・Product・ポリシー・WAFを確認する |
 | Portal | Gatewayの受入後にPortalを個別配備する。専用DBの認証スキーマ、稼働リビジョンとイメージ、公開ヘルス、サインイン、Bearer試用を確認する |
@@ -21,7 +21,7 @@
 
 | 試験 | 確認すること |
 | --- | --- |
-| Core再実行 | 同じ環境の所有記録・APIM ID・証明書版を保持する。Portal配備済みなら正常な本体リビジョンを維持する |
+| 基盤再実行 | 同じ環境の所有記録・APIM ID・証明書版を保持する。Portal配備済みなら正常な本体リビジョンを維持する |
 | 個別配備中断 | 最後に成功した段階を控え、同一の保護params・stateで再試行する。正常化後に実効イメージ、DBスキーマ、公開状態を読み戻す |
 | 配備内容の保持 | 既存の承認済み購読・API・Firewall許可を保持し、今回の対象API・WAFだけが期待した設定になる |
 | 公開TLS発行中断 | 初回Jobと証明書の記録を照合し、発行結果が確定してから再開する。正しい公開証明書と状態でプローブが回復する |

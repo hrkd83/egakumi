@@ -177,7 +177,7 @@ class CredentialClient:
 
     def _send_json(self, method, path, operation, *, body=None, headers=None, api_path=None, allow_login=False,
                    allow_update=True):
-        values = {"Accept": "application/json", "User-Agent": "egakumi-core-credential-client/2.0",
+        values = {"Accept": "application/json", "User-Agent": "egakumi-credential-client/2.0",
                   self.key_header: self.api_key, **(headers or {})}
         data = None if body is None else json.dumps(body).encode()
         if data is not None:

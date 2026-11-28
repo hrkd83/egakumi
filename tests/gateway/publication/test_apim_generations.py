@@ -169,7 +169,7 @@ class ApimGenerationTests(unittest.TestCase):
     def test_missing_state_does_not_hide_a_retired_generation(self):
         self.completed()
         (self.paths.state / 'latest.json').unlink()
-        with self.assertRaisesRegex(ValueError, 'Restore the previous Core state'):
+        with self.assertRaisesRegex(ValueError, 'Restore the previous deployment state'):
             generations.assert_current_instance(self.config, self.paths)
 
     def test_symlink_history_cannot_move_state_outside_the_environment(self):

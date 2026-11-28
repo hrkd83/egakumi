@@ -46,7 +46,7 @@ Claudeは手動公開するため、初回構築のモデル配備一覧に含�
 
 `[]`は空配列、`{}`は空オブジェクトです。空配列の意味は項目ごとに異なります。追加OAuthプロバイダーの相対ファイル参照は、記載したparamsのフォルダーを基準に解決します。両ファイルの`$schema`はエディター補助、`$comment`は説明で、Azureへ送信しません。
 
-初期Projectの表示名は`core-platform`、実リソース名は`proj-<環境>-<製品>`です。表示名とリソース名は[MicrosoftのProject定義](https://learn.microsoft.com/en-us/azure/templates/microsoft.cognitiveservices/2025-06-01/accounts/projects)でも別の属性です。
+初期Projectの表示名は`egakumi`、実リソース名は`proj-<環境>-<製品>`です。表示名とリソース名は[MicrosoftのProject定義](https://learn.microsoft.com/en-us/azure/templates/microsoft.cognitiveservices/2025-06-01/accounts/projects)でも別の属性です。
 
 #### 環境の標準ファイル
 
@@ -104,8 +104,8 @@ Firewallのゾーン対応と新規配備の容量条件は構築するリージ
 | `services.vaultSkuName` | `"standard"` | Key Vaultのstandard/premium。 |
 | `services.vaultRetentionDays` | テスト：`7`／本番：`90` | Key Vault論理削除の保持日数、7〜90。 |
 | `services.vaultPurgeProtection` | テスト：`false`／本番：`true` | Key Vaultの完全削除保護。trueは保護。撤去でも保護を回避しない。 |
-| `services.projectDisplayName` | `"core-platform"` | 初期Foundry Projectの表示名。core-platformは役割が分かる名前として採用。実リソース名proj-<環境>-<製品>とは別。 |
-| `services.projectDescription` | `"Core platform project for shared model, agent, and tool capabilities."` | 初期Projectの説明。 |
+| `services.projectDisplayName` | `"egakumi"` | 初期Foundry Projectの表示名。実リソース名は `proj-<環境>-<製品>`。 |
+| `services.projectDescription` | `"Shared project for model, agent, and tool capabilities."` | 初期Projectの説明。 |
 | `services.speechEnabled` | `true` | APIMのMIへ対象FoundryのSpeech権限を付与。音声モデル全体の配備フラグではない。 |
 | `services.grantApimFoundryModelsAccess` | `true` | APIMへ対象Foundryの非OpenAIモデル用の組み込み利用権限を付与。 |
 | `services.grantApimSecretAccess` | テスト：`true`／本番：`false` | バックエンド資格情報のためAPIMへKey Vaultのsecret読取権限を付与。常設L7入口証明等に必要なKV読取権限は、この指定と別にAPIM自身へ付与。通信許可とは別。 |
@@ -148,7 +148,7 @@ APIMはシステム割り当てマネージドIDで業務用Key VaultのNamed Va
 
 AppGWは公開側のHTTP/2を受け付け、内部APIMとPortalへはFirewallのTLS検査を経由してHTTPS 443で転送します。APIMの`Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2`は文字列`"false"`に固定します。
 
-API公開前には、通常HTTP用の配備出力`ingressSecrets`と、常設L7入口証明のKey Vault参照・Named Value・AppGW rewrite・APIM検査が整合することを確認します。不一致の基盤へは公開せず、Coreの入口設備を先に揃えます。Realtime・文書ジョブの所有者署名鍵の準備条件は維持します。
+API公開前には、通常HTTP用の配備出力`ingressSecrets`と、常設L7入口証明のKey Vault参照・Named Value・AppGW rewrite・APIM検査が整合することを確認します。不一致の基盤へは公開せず、基盤の入口設備を先に揃えます。Realtime・文書ジョブの所有者署名鍵の準備条件は維持します。
 
 #### 共通認証・OAuth・Portal初期設定
 
@@ -166,7 +166,7 @@ APIの初回公開は標準定義を使います。Azureポータルから業務
 
 #### Linux管理VM（management）
 
-管理VMはUbuntu 24.04 LTS amd64＋SSH公開鍵認証です。現在の自動構築が対応するイメージはCanonical / ubuntu-24_04-lts / serverで、別ディストリビューション・custom imageを指定して動作保証するものではありません。SSHのパスワード認証・RDPは構成しません。初期VMのSerial Console用ローカル認証は[配備工程](../../setup/08-provision-core.md)で別に準備します。OSログ収集はLinux AMA/DCRで行います。公開TLSの取得・更新は固定版PowerShellを含むイメージで動く、専用ACAのJobが担当します。
+管理VMはUbuntu 24.04 LTS amd64＋SSH公開鍵認証です。現在の自動構築が対応するイメージはCanonical / ubuntu-24_04-lts / serverで、別ディストリビューション・custom imageを指定して動作保証するものではありません。SSHのパスワード認証・RDPは構成しません。初期VMのSerial Console用ローカル認証は[配備工程](../../setup/08-build-infra.md)で別に準備します。OSログ収集はLinux AMA/DCRで行います。公開TLSの取得・更新は固定版PowerShellを含むイメージで動く、専用ACAのJobが担当します。
 
 管理VMはUbuntu 24.04のChronyでAzureホストのPHCを同期元にします。ゲスト設定、管理VM側で観測する時刻とAPIMの外部NTPは [時刻同期の設計](../architecture/platform-communications.md#管理vmのazureホスト時刻とapimの外部ntp) を参照してください。
 
@@ -244,7 +244,7 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 3. 本番は組織PKI、テストは分離した検証用PKIで中間CAを準備します。公式例はRSA 4096ビット、エクスポート可能な鍵、クリティカルな`KeyUsage`の`keyCertSign`、クリティカルな`BasicConstraints`の`CA:TRUE`と`pathlen:1`を使います。有効期限まで1年以上ある中間CAを、当該中間証明書と秘密鍵だけを含むパスワードなしPFXにします。公開ルートで中間証明書を検証し、ルートの秘密鍵はPKI側で保護します。[中間CA要件とテスト用証明書の作成例](https://learn.microsoft.com/en-us/azure/firewall/premium-certificates#intermediate-ca-certificate-requirements)
 4. Vaultの **Certificates** で中間CAのPFXをインポートします。有効な証明書バージョンに対応する **Secret Identifier** を取得します。識別子が`/secrets/<name>/<version>`になっていることを確認します。**Certificate Identifier** を指定すると失敗します。
 5. `params.local.json`の`firewallTlsInspection`に専用IDの `managedIdentityResourceId` とバージョン付き `intermediateCaSecretId` を設定します。共通configで定義した `.local/<environment>/secrets/firewall-root-ca.cer` に単一のX.509公開証明書（DERまたはPEM）を保護保存します。構築資材は参照と公開証明書を渡します。
-6. [新規テスト環境](../../setup/08-provision-core.md)で、Firewallが指定バージョンを取得し、APIMのApp Gatewayプローブが正常になり、Portal本体配備後にはPortalのプローブも正常になることを確認します。独立したテストでは、存在しないバージョン、無許可の専用ID、対応しない有効なルートを使った場合に検査が成立しないことを確認します。証明書検証を無効化せず、正しい参照へ戻して正常化を確認します。Portal認証の実試用前に監査ログの[クエリ保護](../../testing/log-privacy.md#firewallのtls検査ログ)も確認します。[App GatewayのバックエンドTLS](https://learn.microsoft.com/en-us/azure/application-gateway/ssl-overview)
+6. [新規テスト環境](../../setup/08-build-infra.md)で、Firewallが指定バージョンを取得し、APIMのApp Gatewayプローブが正常になり、Portal本体配備後にはPortalのプローブも正常になることを確認します。独立したテストでは、存在しないバージョン、無許可の専用ID、対応しない有効なルートを使った場合に検査が成立しないことを確認します。証明書検証を無効化せず、正しい参照へ戻して正常化を確認します。Portal認証の実試用前に監査ログの[クエリ保護](../../testing/log-privacy.md#firewallのtls検査ログ)も確認します。[App GatewayのバックエンドTLS](https://learn.microsoft.com/en-us/azure/application-gateway/ssl-overview)
 
 中間CA更新時はKey Vaultの新しいバージョンを明示し、チェーンや発行元が変わる場合はApp Gatewayの信頼も含めて切替を計画します。プローブと業務通信、IDPSログをテスト環境で確認してから本番へ適用します。[既知のTLS検査制約](https://learn.microsoft.com/en-us/troubleshoot/azure/firewall/firewall-known-issues)
 

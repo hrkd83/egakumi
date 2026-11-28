@@ -121,6 +121,6 @@ guest Storage HTTPS443、ARMによる資源操作、Diskのimport／export、SAS
 
 ## 再構築と運用確認の境界
 
-Coreは固定NSG、標準DNS、APIMの外部NTP、管理VMのホストPHC同期、用途別管理ID、Agent／AMA／DCR、managed OS Diskとmanaged Boot Diagnosticsを構成する。企業ネットワークに引き渡すときは、運用側で変更するDNS、経路、時刻同期の責任範囲を確認する。
+基盤は固定NSG、標準DNS、APIMの外部NTP、管理VMのホストPHC同期、用途別管理ID、Agent／AMA／DCR、managed OS Diskとmanaged Boot Diagnosticsを構成する。企業ネットワークに引き渡すときは、運用側で変更するDNS、経路、時刻同期の責任範囲を確認する。
 
 合成試験では資材の生成条件と変更範囲を検証する。実環境では、名前解決、管理IDの用途・認可、Agentの版とhostchannel、DHCP、AMAの実local転送と収集、時刻同期と保守復帰、Disk I/O、診断保存・閲覧を確認する。現在構成の受入確認と、未公開のACA内部保守wire・将来のレジストリ／Storage依存の留保を区別する。結果と制約は[検証文書](../../testing/network-security-validation.md)の保護実施票で管理し、文書化だけで実通信検証完了としない。

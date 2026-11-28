@@ -24,7 +24,7 @@
 | ACA環境ログ | `environmentLogs` ／ 対象ACA環境 | 環境情報とDev APIトークン。環境トークンはログ取得以外にも使える |
 | ACA Jobログ | `jobLogs` ／ 対象Job | Jobと子資源の参照、Jobトークン、実行ログ |
 
-ACAロール定義のIDはCore出力 `managementMaintenance.roleDefinitionIds`、対象のResource IDは配備出力から取得します。既存割当と継承を確認してから、権限管理者が手動割当を行います。以下のIDはプレースホルダーです。
+ACAロール定義のIDは基盤の配備出力 `managementMaintenance.roleDefinitionIds`、対象のResource IDは配備出力から取得します。既存割当と継承を確認してから、権限管理者が手動割当を行います。以下のIDはプレースホルダーです。
 
 ```sh
 az role assignment create --assignee-object-id '<OPERATOR_OBJECT_ID>' \

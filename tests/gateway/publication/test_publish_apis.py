@@ -792,7 +792,7 @@ class PublicationTests(unittest.TestCase):
                 feature["publicHostName"] += ".invalid"
             else:
                 feature["l7IngressEnabled"] = False
-            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "update the Core"):
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "Deploy the infrastructure"):
                 publish.prepare_plan(self.config, state)
 
     def test_publication_plan_and_template_validate_api_types(self):

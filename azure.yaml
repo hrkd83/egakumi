@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=https://aka.ms/azure-dev-cli-schema.json
 # azdが最初に読む構築の入口。設定本体はWORKFORCE_CONFIGで指定するparamsにある。
 # このファイルにSubscription、client secret、DNS tokenなどの実値は書かない。
-name: ai-workforce-core
+name: egakumi
 metadata:
-  template: ai-workforce-core@1.0.0
+  template: egakumi@1.0.0
 infra:
   # ネイティブのazd provisionが、main.bicepをSubscription scopeで実行する。
   provider: bicep

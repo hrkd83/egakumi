@@ -1,4 +1,4 @@
-"""Core配備で使うARM応答の状態とリージョンを照合する。"""
+"""基盤の配備で使うARM応答の状態とリージョンを照合する。"""
 
 
 class DeploymentError(RuntimeError):

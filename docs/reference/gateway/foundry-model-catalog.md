@@ -73,7 +73,7 @@ Foundryは、生成AIモデルとSpeech・Languageなどの専用サービスを
 | 文章の読み上げ・TTS | Azure SpeechのText to speech | テキスト・SSML → 音声 | 標準のニューラル音声を使う。音声名・言語・話速などをリクエストで指定する |
 | 音声会話アプリの構成 | Azure SpeechのVoice Live | 音声 → 認識・会話処理・音声応答 | Speech側の会話サービスとして接続先・対応モデルを設定する |
 | PDF・帳票・画像の読取 | Azure Document IntelligenceのRead・Layout | 文書・画像 → 文字・表・文書構造 | `prebuilt-read`・`prebuilt-layout`をサービスAPIから指定する |
-| PII検出・文章分析 | Azure Language | テキスト → 個人情報・分類・感情などの分析結果 | CoreのPII APIはLanguageの機能を使う |
+| PII検出・文章分析 | Azure Language | テキスト → 個人情報・分類・感情などの分析結果 | GatewayのPII APIはLanguageの機能を使う |
 
 ### TTSはAzure Speechを使う
 
@@ -82,7 +82,7 @@ Foundryは、生成AIモデルとSpeech・Languageなどの専用サービスを
 独自の音声を作るCustom Voiceや、独自の音声認識モデルを学習するCustom Speechには、それぞれ追加の準備がある。
 標準音声の利用とカスタムモデルの配備は区別する。
 
-Coreの`services.speechEnabled`は、APIMのマネージドIDへSpeech呼出権限を付ける設定である。
+基盤の`services.speechEnabled`は、APIMのマネージドIDへSpeech呼出権限を付ける設定である。
 SpeechのAPI例にはSSML読み上げとWAV認識がある。Foundryに配備する音声モデルの選択は
 `services.modelDeployments`で管理する。
 
@@ -104,14 +104,14 @@ Voice Liveの処理地域は、接続方式とモデルを選んだ上で確認�
 Layoutは文字に加えて表・文書構造の抽出を扱う。サービス内の事前構築済みモデルIDを指定して利用するため、
 このカタログのMistral OCRモデルをFoundryへ配備する操作とは分けて管理する。
 
-Coreの標準API定義には、既存Foundryを使う`document-analysis-v1`を含む。
+Gatewayの標準API定義には、既存Foundryを使う`document-analysis-v1`を含む。
 `POST /tools/documents/v1/analyze?model=<PROVIDER_MODEL_ID>`へ原本または提供元のJSON入力を送り、202受付後に状態GETで文字・ページ・表などの解析結果を取得する。モデルの利用可否は提供元が判定する。Portalの試用ではReadとLayoutを選べる。 [入力上限・権限・配備と応答仕様](document-analysis.md)
 Languageは、OCRで文字を抽出した後のテキスト分析にも利用できる。
 
 ### 配備数の上限
 
-現在のCoreはFoundryリソースを1つ作り、その配下へモデルを配備する。
-Coreの設定Schemaと入力検査は`services.modelDeployments`を最大32件に制限する。導入先のAzure上限・利用枠は配備前に別途確認する。標準Speech音声やDocument Intelligenceの
+現在の基盤はFoundryリソースを1つ作り、その配下へモデルを配備する。
+基盤の設定Schemaと入力検査は`services.modelDeployments`を最大32件に制限する。導入先のAzure上限・利用枠は配備前に別途確認する。標準Speech音声やDocument Intelligenceの
 事前構築済みモデルIDをAPIで指定することは、この`services.modelDeployments`配列への追加とは別の操作となる。
 32件を使い切った場合は、モデルを追加する前に配備の入れ替えかFoundryの追加を計画する。
 

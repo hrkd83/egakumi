@@ -152,7 +152,7 @@ CMは、必要なAPIが利用する共通の下流OAuth機能である。`graph-
 
 本人接続は、CM共通APIでサインインを開始し、確認済みの呼出主体・本人・provider・接続・期限をセッションに結び付ける。キーでは同じ購読、Bearerでは同じテナント・ユーザーを照合し、両方式の間でセッションの所有者を移さない。対象APIへ`X-Core-Connection-Session`を送る。任意のUPNや接続名の指定を本人確認の代わりに使わない。
 
-サービス共有接続は、サーバー設定のproviderとconnectionを使う。どちらもCMの`get-authorization-context identity-type=managed`がAPIM自身の接続利用権限を確認し、CMが下流tokenを取得・更新する。本人セッションの検査は、その前のCoreポリシーで行う。
+サービス共有接続は、サーバー設定のproviderとconnectionを使う。どちらもCMの`get-authorization-context identity-type=managed`がAPIM自身の接続利用権限を確認し、CMが下流tokenを取得・更新する。本人セッションの検査は、その前のGatewayの共通ポリシーで行う。
 
 初回のログインURL提示、サインイン、状態照会、元要求の再実行は[CM接続手順](../identity/credential-manager-login.md)を参照する。API応答だけで利用者のブラウザを開くとは扱わない。Dify等は対応ツール／プラグインで連携する。
 
@@ -198,7 +198,7 @@ AppGWでは新しいパスに実際に効くWAFとAPIMへのHTTPS経路を確認
 
 追加したAPIでは、要求IDによるメタデータの照合と、SSEの逐次配信を受け入れる。エージェントの本文はFoundry側で着信を確認する。 [監査の受入](../audit/request-body-audit.md) · [APIMのSSEと診断](https://learn.microsoft.com/en-us/azure/api-management/how-to-server-sent-events)
 
-API、Product、固定バックエンド、診断、WAF関連付けを変更台帳に記録し、Core再配備前の差分確認に使います。具体的なGUI操作は[Claudeの手動追加手順](../../operations/claude-messages.md#構築後にclaudeをguiで追加する)にまとめています。
+API、Product、固定バックエンド、診断、WAF関連付けを変更台帳に記録し、基盤再配備前の差分確認に使います。具体的なGUI操作は[Claudeの手動追加手順](../../operations/claude-messages.md#構築後にclaudeをguiで追加する)にまとめています。
 
 ## GUIで確認する場所
 

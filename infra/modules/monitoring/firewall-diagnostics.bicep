@@ -4,7 +4,7 @@
 
 targetScope = 'resourceGroup'
 
-@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+@description('正式CLIが既存設定を照合して生成する診断設定の書き込みプロパティ。内部入力です。')
 param diagnosticSettingProperties object
 
 @description('既存 Firewall の名前。親が作成した実リソース ID から受け取ります。')

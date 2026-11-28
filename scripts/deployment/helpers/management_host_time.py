@@ -62,7 +62,7 @@ def require_management_host_time_core_ready(config, transport):
     command = target + "/runCommands/configure-linux-audit"
     response = _response(transport.request("GET", command + "?api-version=" + COMPUTE_API + "&$expand=instanceView"))
     if response.get("statusCode") != 200:
-        raise ManagementHostTimeError("The Core Linux audit command could not be inspected")
+        raise ManagementHostTimeError("The management VM's Linux audit command could not be inspected")
     properties = _owned(response.get("body"), command, "Microsoft.Compute/virtualMachines/runCommands")
     source = properties.get("source")
     script = source.get("script") if isinstance(source, dict) else None

@@ -1014,7 +1014,7 @@ resource entraOpenProduct 'Microsoft.ApiManagement/service/products@2024-05-01' 
   parent: apim
   name: entraOpenProductId
   properties: {
-    displayName: 'Core Entra model users'
+    displayName: 'Entra model users'
     description: 'core-owned-entra-model-users-v1'
     subscriptionRequired: false
     // APIM rejects approvalRequired in the payload of a subscription-free Product.

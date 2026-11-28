@@ -12,6 +12,7 @@ from .private_permissions import check_private_permissions, protect_new_path
 
 
 REPOSITORY = Path(__file__).resolve().parents[3]
+AZD_PROJECT_NAME = "egakumi"
 STANDARD_CONFIG_DIRECTORY = Path("infra/config")
 STANDARD_CONFIG_PROFILES = ("test", "production")
 

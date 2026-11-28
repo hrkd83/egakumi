@@ -262,7 +262,7 @@ Azure提供DNS、VM IMDS、DHCP、Agent host channel、ホスト時刻提供、l
 | [credential-broker-network.bicep](../../../infra/modules/network/credential-broker-network.bicep) | 共有SQL PE全IP、APIM→ACAと管理VM→SQL。 |
 | [fixed_nsg.py](../../../scripts/deployment/helpers/fixed_nsg.py) | 配備前に作成済みの規則を照合し、配備後に全規則と関連付けを検証。 |
 
-構築再開時は作成済みの現行規則と必要なアドレスだけを照合する。未知の規則や通信条件のずれを検知するとCoreのネットワーク配備に進む前に停止する。
+構築再開時は作成済みの現行規則と必要なアドレスだけを照合する。未知の規則や通信条件のずれを検知すると基盤のネットワーク配備に進む前に停止する。
 
 ## 受入確認
 

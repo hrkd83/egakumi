@@ -402,7 +402,7 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
                    required=not (_required_bindings is None and permit_pending_bindings
                                  and key.startswith(('auditStorage', 'certificate'))))
         if pe is None:
-            # Core preparation precedes creation of the two audit endpoints.
+            # Infrastructure preparation precedes creation of the two audit endpoints.
             # No missing binding is supplied to a rule or completion check.
             continue
         _read(config, transport, target_id, kind, api=api, state=False,
@@ -484,7 +484,7 @@ def _etag(value):
 
 
 def verify_fixed_nsg_before_deployment(config, transport):
-    """Use only resources already required by present rules when resuming Core."""
+    """Use only resources already required by present rules when resuming infrastructure deployment."""
     parents = _parents(config, transport)
     _, _, prefixes = _scope(config)
     fixed = _fixed_catalog(certificate='certificate' in prefixes)
@@ -510,16 +510,16 @@ def verify_fixed_nsg_before_deployment(config, transport):
     bindings = read_fixed_nsg_bindings(config, transport, **options)
     verify_fixed_nsg_inventory(parents, bindings)
     if bindings != read_fixed_nsg_bindings(config, transport, **options):
-        raise FixedNsgError('Resource addresses changed before Core deployment')
+        raise FixedNsgError('Resource addresses changed before infrastructure deployment')
     verify_fixed_nsg_inventory(_parents(config, transport), bindings)
 
 
 def verify_fixed_nsg_after_deployment(config, transport):
-    """Confirm the complete NSG catalog and its live bindings after Core deployment."""
+    """Confirm the complete NSG catalog and its live bindings after infrastructure deployment."""
     parents = _parents(config, transport)
     bindings = read_fixed_nsg_bindings(config, transport)
     if 'certificate' in config['network']['subnetPrefixes'] and 'certificate' not in bindings['subnets']:
-        raise FixedNsgError('The dedicated certificate subnet is missing after Core deployment')
+        raise FixedNsgError('The dedicated certificate subnet is missing after infrastructure deployment')
     verify_fixed_nsg_inventory(parents, bindings, require_complete=True)
     if bindings != read_fixed_nsg_bindings(config, transport):
         raise FixedNsgError('Resource addresses changed during NSG verification')

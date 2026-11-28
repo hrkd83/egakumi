@@ -328,7 +328,7 @@ def bind_initial_serial_password(configuration: dict, workspace: LocalPaths, con
 
 
 def prepared_initial_serial_generation(configuration: dict, workspace: LocalPaths, password: str) -> str:
-    """初回404または元作成証跡の照合済み回復だけ、保存世代を内部Core入力へ取得する。"""
+    """初回404または元作成証跡の照合済み回復だけ、保存世代を基盤配備の内部入力へ取得する。"""
     if not password:
         return ""
     if workspace.environment != configuration["environmentName"] or not _valid_password(password):

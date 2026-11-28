@@ -144,7 +144,7 @@ class LifecycleFixture:
         privacy_link.start()
         self.addCleanup(privacy_link.stop)
         # NSGの規則と所有境界は専用試験で検査します。
-        # hook試験では実wrapperを通し、Coreの前後に照合する順序を検査します。
+        # hook試験では実wrapperを通し、基盤配備の前後に照合する順序を検査します。
         host_time = mock.patch.object(lifecycle, "require_management_host_time_core_ready", return_value={})
         self.host_time_gate = host_time.start()
         self.addCleanup(host_time.stop)
@@ -228,7 +228,7 @@ class LifecycleFixture:
         return ScriptedTransport(list(responses), expected_get_paths=paths)
 
     def core_completion_response(self, outputs):
-        """生成入力とネイティブCore出力を同じ合成環境へ束縛する。"""
+        """生成入力とazdの基盤配備出力を同じ合成環境に対応させる。"""
         outputs.setdefault("endpoints", {"public": "https://fixture.example.com"})
         outputs["gateway"] = {"publicUrl": outputs["endpoints"]["public"]}
         outputs["gatewayPlan"] = {}

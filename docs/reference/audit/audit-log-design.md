@@ -43,19 +43,19 @@ Application Insights接続とFoundryプロジェクトのマネージドIDへの
 
 | 配備 | リソースとスコープ | Log Analyticsで取得するもの | 本番の7年保管 |
 | --- | --- | --- | --- |
-| Core | App Gateway、Firewall、APIMサービス、Foundryアカウントとプロジェクト | 上表。診断設定は各親リソースに付ける。APIM各APIの診断は記録項目を決める既存設定を使う | 上表 |
-| Core | サブスクリプション | Activity Logの管理、セキュリティ、ポリシー、構成変更、正常性。独自のログを出さないリソースのARM操作もここで確認 | 診断設定から並行保存 |
-| Core | 共有Key Vaultと公開TLS用Key Vault | `AuditEvent`。認証主体、鍵・秘密への操作、結果 | 診断設定から並行保存 |
-| Core | ACR | `ContainerRegistryLoginEvents` と `ContainerRegistryRepositoryEvents`。ログイン、イメージのpush・pull・削除 | 診断設定から並行保存 |
-| Core | 所有する各NSG | `NetworkSecurityGroupEvent` と `NetworkSecurityGroupRuleCounter`。ルール評価とカウンターの記録 | 診断設定から並行保存 |
-| Core | VNet、Public IP | 対象機能が発行する `VMProtectionAlerts` やDDoS通知等を、カテゴリと機能の有効状態を確認して登録。通常の通信判定はFirewall／NSGで確認 | 有効にしたセキュリティ通知を並行保存 |
-| Core | 管理VM | 現行のAzure Monitor Agent＋DCRでLinux認証・警告の `Syslog` と性能。対応する更新ログはVMの診断で検索。VM・NIC・ディスクの構成変更はActivity Log | 認証・警告のSyslogをData Export |
-| Core | 監査用Storageと証明書の状態保存StorageのBlobサービス | `StorageRead`、`StorageWrite`、`StorageDelete`。アクセス主体、操作、成否。アクセスURLに資格情報がないことを確認 | 監査Storage自身のアクセスログはLog Analyticsで90日。監査Blobへの書き込みを同じ保管先へ記録すると循環するため、`StorageBlobLogs` 全体のData Exportは設定しない。証明書の状態保存Blobは監査Storageへ並行保存 |
-| Core | Log Analytics、Application Insights、DCR・アラート | ワークスペースの `Audit` と、接続済みApplication Insightsの `App*`。Data Exportの正常性・失敗・設定変更を監視 | ワークスペースの検索監査はKQL本文を取り込み時に除いてData Export。監査に使うアプリテレメトリーもData Export |
-| Core／Gateway／Portal | Portal・Credential Broker・証明書JobのACA環境と配備するアプリ・Job | 環境でコンソールとシステムログを一度だけ収集。リビジョン、Job成否、再起動。IngressのHTTP診断は既存ログで追えない運用上の用途がある場合に追加 | ACAコンソールとシステムログは90日。証明書への操作はKey Vaultと証明書状態Blobの監査で長期保管 |
-| Core／Gateway／Portal | Coreの共有SQL論理サーバー、GatewayのBroker DB、PortalのDB | 共有サーバー側でSQL監査を有効にし、`SQLSecurityAuditEvents` で認証と権限・DB主体の変更を収集。二つのDBの記録を確認する。EntraがSQL到達前に拒否した認証は、Entraテナント側のサインインログで確認する。SQL本文を一括採取する既定のバッチ分類は対象から外す | `AzureDiagnostics` に入るため同リージョンのBlobへ標準の並行保存。SQL監査ポリシーから直接Blobへ書く場合は、SQL側の保持日数をWORM期間より長く設定し、保護付き追記を確認する |
-| Core／Gateway／Portal | APIM内部のAPI／ポリシー／Product／Credential Manager、Foundryモデル配備、Key Vault子リソース | 親サービスの診断やActivity Logで操作を確認する | 親の監査経路に従う |
-| Core／Gateway／Portal | リソースグループ、マネージドID、RBAC、サブネット、UDR、Firewall／WAFポリシー、Private Endpoint、DNSゾーン／レコード／リンク、各構成用子リソース | 変更はActivity Log。通信・データアクセスはApp Gateway、Firewall、NSG、接続先サービスを使う。参照する公開DNSゾーンの変更は管理サブスクリプションのActivity Logで確認する。ACAが管理する内部ロードバランサーはACA環境の診断で追う | サブスクリプションの監査経路に従う |
+| 基盤 | App Gateway、Firewall、APIMサービス、Foundryアカウントとプロジェクト | 上表。診断設定は各親リソースに付ける。APIM各APIの診断は記録項目を決める既存設定を使う | 上表 |
+| 基盤 | サブスクリプション | Activity Logの管理、セキュリティ、ポリシー、構成変更、正常性。独自のログを出さないリソースのARM操作もここで確認 | 診断設定から並行保存 |
+| 基盤 | 共有Key Vaultと公開TLS用Key Vault | `AuditEvent`。認証主体、鍵・秘密への操作、結果 | 診断設定から並行保存 |
+| 基盤 | ACR | `ContainerRegistryLoginEvents` と `ContainerRegistryRepositoryEvents`。ログイン、イメージのpush・pull・削除 | 診断設定から並行保存 |
+| 基盤 | 所有する各NSG | `NetworkSecurityGroupEvent` と `NetworkSecurityGroupRuleCounter`。ルール評価とカウンターの記録 | 診断設定から並行保存 |
+| 基盤 | VNet、Public IP | 対象機能が発行する `VMProtectionAlerts` やDDoS通知等を、カテゴリと機能の有効状態を確認して登録。通常の通信判定はFirewall／NSGで確認 | 有効にしたセキュリティ通知を並行保存 |
+| 基盤 | 管理VM | 現行のAzure Monitor Agent＋DCRでLinux認証・警告の `Syslog` と性能。対応する更新ログはVMの診断で検索。VM・NIC・ディスクの構成変更はActivity Log | 認証・警告のSyslogをData Export |
+| 基盤 | 監査用Storageと証明書の状態保存StorageのBlobサービス | `StorageRead`、`StorageWrite`、`StorageDelete`。アクセス主体、操作、成否。アクセスURLに資格情報がないことを確認 | 監査Storage自身のアクセスログはLog Analyticsで90日。監査Blobへの書き込みを同じ保管先へ記録すると循環するため、`StorageBlobLogs` 全体のData Exportは設定しない。証明書の状態保存Blobは監査Storageへ並行保存 |
+| 基盤 | Log Analytics、Application Insights、DCR・アラート | ワークスペースの `Audit` と、接続済みApplication Insightsの `App*`。Data Exportの正常性・失敗・設定変更を監視 | ワークスペースの検索監査はKQL本文を取り込み時に除いてData Export。監査に使うアプリテレメトリーもData Export |
+| 基盤／Gateway／Portal | Portal・Credential Broker・証明書JobのACA環境と配備するアプリ・Job | 環境でコンソールとシステムログを一度だけ収集。リビジョン、Job成否、再起動。IngressのHTTP診断は既存ログで追えない運用上の用途がある場合に追加 | ACAコンソールとシステムログは90日。証明書への操作はKey Vaultと証明書状態Blobの監査で長期保管 |
+| 基盤／Gateway／Portal | 基盤の共有SQL論理サーバー、GatewayのBroker DB、PortalのDB | 共有サーバー側でSQL監査を有効にし、`SQLSecurityAuditEvents` で認証と権限・DB主体の変更を収集。二つのDBの記録を確認する。EntraがSQL到達前に拒否した認証は、Entraテナント側のサインインログで確認する。SQL本文を一括採取する既定のバッチ分類は対象から外す | `AzureDiagnostics` に入るため同リージョンのBlobへ標準の並行保存。SQL監査ポリシーから直接Blobへ書く場合は、SQL側の保持日数をWORM期間より長く設定し、保護付き追記を確認する |
+| 基盤／Gateway／Portal | APIM内部のAPI／ポリシー／Product／Credential Manager、Foundryモデル配備、Key Vault子リソース | 親サービスの診断やActivity Logで操作を確認する | 親の監査経路に従う |
+| 基盤／Gateway／Portal | リソースグループ、マネージドID、RBAC、サブネット、UDR、Firewall／WAFポリシー、Private Endpoint、DNSゾーン／レコード／リンク、各構成用子リソース | 変更はActivity Log。通信・データアクセスはApp Gateway、Firewall、NSG、接続先サービスを使う。参照する公開DNSゾーンの変更は管理サブスクリプションのActivity Logで確認する。ACAが管理する内部ロードバランサーはACA環境の診断で追う | サブスクリプションの監査経路に従う |
 
 [Azureのリソース種別ごとのログ一覧](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/logs-index) · [ACR](https://learn.microsoft.com/en-us/azure/container-registry/monitor-container-registry-reference#resource-logs) · [NSG](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/supported-logs/microsoft-network-networksecuritygroups-logs) · [ACA環境](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/microsoft-app_managedenvironments) · [Azure SQL監査](https://learn.microsoft.com/en-us/azure/sql-database/sql-database-auditing-get-started) · [Blob診断の出力先制約](https://learn.microsoft.com/en-us/azure/storage/blobs/monitor-blob-storage#destination-limitations)
 
@@ -70,7 +70,7 @@ Application Insights接続とFoundryプロジェクトのマネージドIDへの
 
 ## 資材と配備後の確認
 
-1. **Coreの診断設定を完成させる。** [診断設定の中央定義](../../../scripts/deployment/helpers/diagnostics.py)と各リソースのBicepで上表の分類を追加する。Gateway・Portalで後から作る対象は各配備モジュールから設定し、構築の配備段階と診断の所有者を揃える。管理VMのDCRと、Foundryの[Application Insights接続](../../../infra/modules/services/services.bicep#L129)を使う。各配備の受入時に `az monitor diagnostic-settings categories list` と診断設定の読み戻しで、対応分類、送信先、対象外の理由を確認する。Activity Logのみで扱うものにも配備一覧で理由を残す。
-2. **既存の保管基盤を使う。** [監視モジュール](../../../infra/modules/monitoring/monitoring.bicep#L49)の保持テーブル・Data Exportと、同リージョンのBlobコンテナー定義を更新する。取り込み変換は[既存の変換定義](../../../infra/modules/monitoring/log-privacy.json)に追加し、[CoreのDCR検証](../../../scripts/deployment/helpers/log_privacy.py)も同時に揃える。新規コンテナーは配備のロック・再実行・撤去判定にも追加する。WAF、APIMのGateway／LLMログ、ワークスペースのクエリ監査は変換後のレコードへ切り替え、未変換のBlob直送を止める。APIMの `core-audit` 設定にはWebSocketの並行保存を残す。既存のAPIM `gateway-request` トレースは `ApiManagementGatewayLogs.TraceRecords` とともに保全する。 [既存のAPIM監査クエリ](../../../scripts/audit/audit-usage.kql#L10)
+1. **基盤の診断設定を完成させる。** [診断設定の中央定義](../../../scripts/deployment/helpers/diagnostics.py)と各リソースのBicepで上表の分類を追加する。Gateway・Portalで後から作る対象は各配備モジュールから設定し、構築の配備段階と診断の所有者を揃える。管理VMのDCRと、Foundryの[Application Insights接続](../../../infra/modules/services/services.bicep#L129)を使う。各配備の受入時に `az monitor diagnostic-settings categories list` と診断設定の読み戻しで、対応分類、送信先、対象外の理由を確認する。Activity Logのみで扱うものにも配備一覧で理由を残す。
+2. **既存の保管基盤を使う。** [監視モジュール](../../../infra/modules/monitoring/monitoring.bicep#L49)の保持テーブル・Data Exportと、同リージョンのBlobコンテナー定義を更新する。取り込み変換は[既存の変換定義](../../../infra/modules/monitoring/log-privacy.json)に追加し、[基盤のDCR検証](../../../scripts/deployment/helpers/log_privacy.py)も同時に揃える。新規コンテナーは配備のロック・再実行・撤去判定にも追加する。WAF、APIMのGateway／LLMログ、ワークスペースのクエリ監査は変換後のレコードへ切り替え、未変換のBlob直送を止める。APIMの `core-audit` 設定にはWebSocketの並行保存を残す。既存のAPIM `gateway-request` トレースは `ApiManagementGatewayLogs.TraceRecords` とともに保全する。 [既存のAPIM監査クエリ](../../../scripts/audit/audit-usage.kql#L10)
 3. **Gatewayを標準の転送経路に戻す。** Chat CompletionsとResponsesは既存のAPIMマネージドIDとFoundry Private Endpointを使う。Claudeの手動配備ひな型もFoundry直結にする。認証・認可、既存のモデル指定、応答本文とSSEの逐次配信を回帰確認する。DocumentやPIIの公開API契約を作る処理からは監査提出部分だけを外す。 [OpenAIの定義](../../../apps/api-gateway/apis/openai-inference-v1.json) · [APIMの配備テンプレート](../../../apps/api-gateway/api-publication.bicep) · [Claudeの手動追加](../../../apps/api-gateway/policies/portal-examples/claude-messages.md)
 4. **空の環境からの受入を行う。** ローカルでは各段階のBicepコンパイル、診断設定・出力先の整合、再実行、API／SSEの回帰を確認する。Azureでは、WAF遮断、Firewallの許可・拒否とTLS検査、APIMの認証・制限、Foundryの推論診断、エージェントの合成プロンプトと応答を発生させる。Log AnalyticsとBlobの実着信、要求の照合、秘密値の除外、権限の拒否、WORMロック、配送欠落の復旧を確認する。

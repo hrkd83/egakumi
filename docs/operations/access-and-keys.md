@@ -4,7 +4,7 @@
 
 ## 1. APIMで例外の購読キーを発行する
 
-CoreはAPIMのDeveloper Portalを無効にします。基盤管理者はAzureポータルのAPIM管理画面で購読を管理します。 [APIMの構成仕様](https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement/2024-05-01/service)
+基盤はAPIMのDeveloper Portalを無効にします。基盤管理者はAzureポータルのAPIM管理画面で購読を管理します。 [APIMの構成仕様](https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement/2024-05-01/service)
 
 1. 基盤管理者は、Bearerを利用できない理由、利用アプリ、必要なAPI、管理担当、利用終了の予定を確認する。
 2. Azureポータルの対象 **API Management → API → サブスクリプション → サブスクリプションの追加** を開く。対象のAPIまたは必要なAPIだけを含む製品をスコープに選ぶ。

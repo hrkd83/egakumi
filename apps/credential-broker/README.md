@@ -2,11 +2,11 @@
 
 APIM経由で本人接続を管理する内部FastAPIサービスです。MSALの認可コードフローで本人を確認し、Azure SQLの永続台帳でプール割当・接続・取引・セッションを管理します。業務API用のアクセストークンと更新トークンはCredential Managerが管理します。
 
-Broker本体、SQL初期化ジョブ、定期照合ジョブは、Coreが準備する専用サブネットの内部CAE（`cae-${stem}-broker`）に配置します。APIMは専用CAEの既定ドメインへ直接HTTPSで接続します。アプリの`external: true`は内部CAEのプライベートロードバランサーに発行するための設定で、Broker用NSGがAPIMサブネットを許可します。ブラウザーの本人接続とcallbackは引き続き公開GatewayのURLを使います。 [Azure Container Appsのingress](https://learn.microsoft.com/en-us/azure/container-apps/ingress)
+Broker本体、SQL初期化ジョブ、定期照合ジョブは、基盤が準備する専用サブネットの内部CAE（`cae-${stem}-broker`）に配置します。APIMは専用CAEの既定ドメインへ直接HTTPSで接続します。アプリの`external: true`は内部CAEのプライベートロードバランサーに発行するための設定で、Broker用NSGがAPIMサブネットを許可します。ブラウザーの本人接続とcallbackは引き続き公開GatewayのURLを使います。 [Azure Container Appsのingress](https://learn.microsoft.com/en-us/azure/container-apps/ingress)
 
-Core構築と公開証明書のEntra登録後、Gatewayの個別配備でBrokerを用意します。初回配備・更新はリポジトリのルートから`python3 scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute`を実行します。既存管理VMでのイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、本体と照合ジョブ、APIMのAPI登録まで一括実行します。`--execute`なしはローカル計画だけです。[配備手順](../../docs/setup/11-deploy-gateway.md#4-gatewayを配備する)と[CM共通接続手順](../../docs/reference/identity/credential-manager-login.md)を参照してください。
+基盤構築と公開証明書のEntra登録後、Gatewayの個別配備でBrokerを用意します。初回配備・更新はリポジトリのルートから`python3 scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute`を実行します。既存管理VMでのイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、本体と照合ジョブ、APIMのAPI登録まで一括実行します。`--execute`なしはローカル計画だけです。[配備手順](../../docs/setup/11-deploy-gateway.md#4-gatewayを配備する)と[CM共通接続手順](../../docs/reference/identity/credential-manager-login.md)を参照してください。
 
-Gateway配備は同じCoreのBroker専用CAE出力を参照し、実行前に実環境のドメイン、サブネット、既存のアプリとジョブの所属を照合します。旧共有CAEに同名の資源がある場合は、既存のSQL台帳とCM接続を引き継ぐ切替を別途計画するため、配備を停止します。
+Gateway配備は同じ基盤のBroker専用CAE出力を参照し、実行前に実環境のドメイン、サブネット、既存のアプリとジョブの所属を照合します。旧共有CAEに同名の資源がある場合は、既存のSQL台帳とCM接続を引き継ぐ切替を別途計画するため、配備を停止します。
 
 Broker本体・実行用ID・credentials DB・SQL初期化ジョブ・定期照合ジョブを初期構築で作成します。本人接続の認証プロファイルが未設定でも構築し、`BROKER_PROFILES_JSON={}`で起動します。OIDCのproviderや秘密を補完せず、本人接続APIとcallback用WAFは業務認証の設定に応じて用意します。空プロファイルでのSQL初期化はスキーマと実行IDの権限を準備し、既存プールを無効化しません。定期照合は期限切れ状態だけを掃除し、CM接続の照合・削除や既存割当の変更は行いません。
 

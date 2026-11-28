@@ -1,4 +1,4 @@
-"""Portal証明書の初期状態の照合とCoreの公開証明書取得を確認する。"""
+"""Portal証明書の初期状態の照合と基盤構築時の公開証明書取得を確認する。"""
 from __future__ import annotations
 
 import contextlib
@@ -56,7 +56,7 @@ class InitializationTests(unittest.TestCase):
 
     def test_missing_core_certificate_job_stops_initialization(self):
         del self.ctx.state['outputs']['certificateBootstrap']
-        with self.assertRaisesRegex(OperationError, 'requires Core with the ACA certificate job'):
+        with self.assertRaisesRegex(OperationError, 'requires the deployed ACA certificate job'):
             initial.initialize(self.ctx, execute=True)
         self.assertEqual(list(self.workspace.state.iterdir()), [])
         self.ctx.transport.request.assert_not_called()

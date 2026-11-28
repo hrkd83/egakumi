@@ -1,4 +1,4 @@
-"""Coreの初回発行と公開順序を、合成状態・応答だけで確認する。"""
+"""基盤構築時の証明書の初回発行と公開順序を、合成状態・応答で確認する。"""
 from contextlib import nullcontext
 import json
 from pathlib import Path

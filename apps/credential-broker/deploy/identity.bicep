@@ -1,4 +1,4 @@
-// Gatewayアプリだけが使用する実行IDです。共有スキーマ管理IDはCoreから参照します。
+// Gatewayアプリだけが使用する実行IDです。基盤で作成した共有スキーマ管理IDを参照します。
 targetScope = 'resourceGroup'
 param stem string
 param location string

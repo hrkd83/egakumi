@@ -1,6 +1,6 @@
 # 開発ルール・保守手順
 
-本書はEgakumi CoreのIaC、Gateway・Portal、配備・運用スクリプトを変更する担当者向けに、コーディング規約、コメント、テストの共通ルールと実行方法、保守用の開発手順をまとめたものです。
+本書はegakumiのIaC、Gateway・Portal、配備・運用スクリプトを変更する担当者向けに、コーディング規約、コメント、テストの共通ルールと実行方法、保守用の開発手順をまとめたものです。
 
 作業開始前に[リポジトリ共通ルール](AGENTS.md)を確認します。本プロジェクトはWIPです。公開資材は1つのcheckoutを正本とし、実設定・秘密・実行記録はルートの`.local/<environment>/`、azd専用情報は`.azure/`へ保護保存します。実情報をGit管理する資材・文書・履歴へ含めません。この2領域以外のignore対象は実情報の保存先になりません。以下の記録指示もこの境界に従います。
 
@@ -31,7 +31,7 @@
 
 新規実装と変更箇所に以下を適用します。既存の公開名・API契約・設定・保存データとの互換性を保ち、規約のための一括整形や改名は機能変更と分けます。書式の例外が必要な場合は、周辺コードとの整合と理由を変更説明へ残します。Portal固有のルールは [apps/portal/AGENTS.md](apps/portal/AGENTS.md)も参照してください。
 
-Coreの資源名は`<環境>-<製品>`を共通部分とし、APIM名は`apim-<環境>-<製品>-<apimInstanceId>`です。WAFポリシーは用途が分かる`wafpol-g-<用途>-<ID>`／`wafpol-p-<用途>-<ID>`とし、同じparamsの`services.apimInstanceId`を末尾へ使います。公開例の`<AUTO_GENERATED_APIM_INSTANCE_ID>`は初回prepareだけが英小文字・数字6文字へ置換してparamsに保存します。構築・更新・途中再開・撤去では保存済みIDを保持し、未解決マーカーを受け付けず、読込時に再生成しません。撤去後の新規構築では[運用手順](docs/operations/teardown.md#撤去後に新しく構築する)で新しい識別子を用意し、EntraのCM戻り先を更新します。名前計算はPythonの共通ヘルパーとBicepで一致させ、任意のAPIM名を指定する別設定は追加しません。[主要名と長さ](README.md#作成される構成)と[WAFの用途別構成](docs/testing/waf-compatibility.md#用途別のポリシー構成)を確認します。
+基盤の資源名は`<環境>-<製品>`を共通部分とし、APIM名は`apim-<環境>-<製品>-<apimInstanceId>`です。WAFポリシーは用途が分かる`wafpol-g-<用途>-<ID>`／`wafpol-p-<用途>-<ID>`とし、同じparamsの`services.apimInstanceId`を末尾へ使います。公開例の`<AUTO_GENERATED_APIM_INSTANCE_ID>`は初回prepareだけが英小文字・数字6文字へ置換してparamsに保存します。構築・更新・途中再開・撤去では保存済みIDを保持し、未解決マーカーを受け付けず、読込時に再生成しません。撤去後の新規構築では[運用手順](docs/operations/teardown.md#撤去後に新しく構築する)で新しい識別子を用意し、EntraのCM戻り先を更新します。名前計算はPythonの共通ヘルパーとBicepで一致させ、任意のAPIM名を指定する別設定は追加しません。[主要名と長さ](README.md#作成される構成)と[WAFの用途別構成](docs/testing/waf-compatibility.md#用途別のポリシー構成)を確認します。
 
 ### Python
 
@@ -56,7 +56,7 @@ Coreの資源名は`<環境>-<製品>`を共通部分とし、APIM名は`apim-<�
 | --- | --- |
 | PowerShell | インデントはスペース4つ。関数は承認済み動詞による`Verb-Noun`、引数は`PascalCase`を使います。公開スクリプト・関数は[コメントベースヘルプ](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_comment_based_help)で`.SYNOPSIS`・`.DESCRIPTION`・`.PARAMETER`・`.EXAMPLE`等を記述し、必要権限・変更対象・失敗時の状態を説明します。 |
 | Bash・shell | shebangと対応シェルを明示し、インデントは既存ファイルのスペースに揃えます。変数展開を引用し、配列で引数境界を保ち、終了コードと一時ファイルの回収を扱います。[Shell Style Guide](https://google.github.io/styleguide/shellguide.html)のコメント構成を参考に、冒頭で目的・実行環境、関数前で引数・出力・終了状態・副作用を説明します。 |
-| Bicep・bicepparam | [Bicepの推奨事項](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/best-practices)を基準とし、インデントはスペース2つ、シンボルは`camelCase`を使います。公開パラメーターは`@description`で用途・単位・範囲を示し、機密入力には`@secure`を使います。複雑な依存・保持条件は`//`で説明します。Azure資源名は本書のCore命名規則に従います。 |
+| Bicep・bicepparam | [Bicepの推奨事項](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/best-practices)を基準とし、インデントはスペース2つ、シンボルは`camelCase`を使います。公開パラメーターは`@description`で用途・単位・範囲を示し、機密入力には`@secure`を使います。複雑な依存・保持条件は`//`で説明します。Azure資源名は本書のリソースの命名規則に従います。 |
 | APIM policy XML・埋込みC#式 | インデントは周辺XMLに合わせ、ポリシーの適用順・継承・失敗時の応答を追える構成にします。XMLコメントでポリシーの目的・認可境界・順序の理由を説明し、C#式は処理を短く分け、外部値を検証してから使います。生成処理を変えたときは生成後のXML・式も検証します。 |
 | SQL ServerのSQL | 既存schema・表・列・procedureの命名を維持し、SQLキーワードは大文字、処理単位を改行して記述します。migration冒頭の`--`コメントで目的・適用順・データへの影響を説明します。値はパラメーターで渡し、更新のトランザクション境界・権限・再実行時の扱いを明示します。 |
 | KQL | `let`で定義する値や集計の目的が分かる名前を使い、パイプラインを改行します。`//`コメントで対象期間・出典・相関キー・欠測や重複の扱いを説明します。 |
@@ -79,7 +79,7 @@ Coreの資源名は`<環境>-<製品>`を共通部分とし、APIM名は`apim-<�
 - 純粋なロジック、HTTP、SQL、実Azureの検証を分けます。同じBicepソースのコンパイルは共有し、各テストには独立した結果を渡します。
 - 試験データ・資源は生成した識別子で隔離し、所有した範囲だけを後片付けします。
 
-protocol中継の回帰試験は[tests/fixtures/external-api-definitions.json](tests/fixtures/external-api-definitions.json)の合成入力を使い、Coreのローカル試験として実行します。
+protocol中継の回帰試験は[tests/fixtures/external-api-definitions.json](tests/fixtures/external-api-definitions.json)の合成入力を使い、このリポジトリのローカル試験として実行します。
 
 変更内容に応じてローカル試験・型検査・lint・ビルドを実行し、不具合修正には再現条件を検証する回帰テストを追加・更新します。書式や説明文だけの変更は差分・参照先・整合性を確認します。実行した検査、失敗・スキップと理由、残る確認事項を変更説明へ記録します。
 
@@ -163,7 +163,7 @@ SQL統合試験は通常の `npm test` ではスキップします。[SQL統合�
 | 順番 | 入口 | 分かること |
 | --- | --- | --- |
 | 1 | [params](params/test.example.json)・[config](infra/config/test.json) | 自社の値と標準値。JSONの説明はSchemaとREADMEに記載 |
-| 2 | [azure.yaml](azure.yaml) | Coreのup/downのhookと処理順序 |
+| 2 | [azure.yaml](azure.yaml) | 基盤のup/downのhookと処理順序 |
 | 3 | [configuration.py](scripts/deployment/helpers/configuration.py)・[lifecycle.py](scripts/deployment/lifecycle.py) | 合成、入力・秘密参照検査、事前確認、構築後の設定 |
 | 4 | [main.bicep](infra/main.bicep)・[資材一覧](infra/README.md) | 5RG、ネットワーク、ID、サービスの依存関係 |
 | 5 | [certificate.ps1](infra/guest/certificate.ps1)・[configure-audit.sh](infra/guest/configure-audit.sh)・[prepare-management-client.sh](infra/guest/prepare-management-client.sh) | 証明書Jobのワーカー、管理VMのOS監視、保守クライアントの準備 |
@@ -176,11 +176,11 @@ Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshe
 
 `scripts/`には構築以外の手動コマンドや疎通試験クライアントも含まれます。基盤のhookは`deployment/lifecycle.py`、アプリの個別配備は`deploy_gateway.py`と`deploy_portal.py`が担当し、補助処理は`deployment/helpers/`にまとめています。[用途別の一覧](scripts/README.md)で、構築時に使う処理とAPI登録・試験・運用で使う処理を確認できます。
 
-`infra/`は共通基盤です。Gatewayは`apps/api-gateway/`と`apps/credential-broker/`の資材を統合配備し、Portalは`apps/portal/`から配備します。証明書Jobのワーカーと管理VMのOS設定・保守クライアントは[infra/guest/](infra/guest/)に置き、BrokerとPortalのイメージ構築は各アプリの`deploy/build-image.sh`に置きます。初回の`azd up`はAPIM、共通SQLサーバー、ネットワーク、Private Endpoint、ACA環境、非公開ACRを用意します。`azd provision`も同じCore工程を実行し、`postprovision`で認証用公開証明書2枚と入口設定を確認します。証明書のEntra登録とPortalアプリの登録後にGatewayを配備し、APIと製品の登録が成功したらPortalを配備します。
+`infra/`は共通基盤です。Gatewayは`apps/api-gateway/`と`apps/credential-broker/`の資材を統合配備し、Portalは`apps/portal/`から配備します。証明書Jobのワーカーと管理VMのOS設定・保守クライアントは[infra/guest/](infra/guest/)に置き、BrokerとPortalのイメージ構築は各アプリの`deploy/build-image.sh`に置きます。初回の`azd up`はAPIM、共通SQLサーバー、ネットワーク、Private Endpoint、ACA環境、非公開ACRを用意します。`azd provision`も同じ基盤の構築工程を実行し、`postprovision`で認証用公開証明書2枚と入口設定を確認します。証明書のEntra登録とPortalアプリの登録後にGatewayを配備し、APIと製品の登録が成功したらPortalを配備します。
 
-初回構築では[空環境からの構築手順](docs/setup/08-provision-core.md)に沿って段階的に行います。標準APIは[API正本](apps/api-gateway/apis/)から解決します。[環境別params](docs/setup/07-params.md)には環境固有の入力を置きます。基盤に必要なWAF・監査ログの情報も同じ正本から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
+初回構築では[空環境からの構築手順](docs/setup/08-build-infra.md)に沿って段階的に行います。標準APIは[API正本](apps/api-gateway/apis/)から解決します。[環境別params](docs/setup/07-params.md)には環境固有の入力を置きます。基盤に必要なWAF・監査ログの情報も同じ正本から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
 
-構築済み環境の更新・途中失敗からの再開では、同じparamsとCoreの`.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。
+構築済み環境の更新・途中失敗からの再開では、同じparamsと基盤の配備記録 `.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。
 
 APIM全体ポリシーは[service.xml](apps/api-gateway/policies/service.xml)、各APIのXMLは`apps/api-gateway/policies/`、標準APIのJSONは[apps/api-gateway/apis/](apps/api-gateway/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。モデルの配備・SKU・容量は`infra/config/test.json`または`infra/config/production.json`、標準GraphのClient ID・秘密参照と環境固有値はparams、Graph表示名・scope・poolはconfigの`credentialProviders.graphDelegated`で管理します。追加providerは双方の`additional[]`を論理名で照合します。`apps/api-gateway/api-publication.bicep`と`apps/api-gateway/deploy/api_publication.py`が登録を担当し、`apps/credential-broker/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
 
@@ -207,7 +207,7 @@ python3 -B scripts/policy/render_apim_policy.py --config "$DEPLOY_PARAMS_FILE" \
 
 ## 設定生成と独立した回帰確認
 
-通常の構築・更新は[準備コマンド](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で公開例から作成した環境別paramsと、その参照先configを使います。[標準API定義](apps/api-gateway/apis/)を常用で読み、Gateway配備時にCoreの実outputsから接続先を解決します。標準導入で回帰用の合成設定やbindingsを別に作る必要はありません。
+通常の構築・更新は[準備コマンド](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で公開例から作成した環境別paramsと、その参照先configを使います。[標準API定義](apps/api-gateway/apis/)を常用で読み、Gateway配備時に基盤の配備出力から接続先を解決します。標準導入で回帰用の合成設定やbindingsを別に作る必要はありません。
 
 設定を変更するときは [params](docs/setup/07-params.md)・[config](docs/reference/configuration/config-options.md)・Schemaを揃え、[ローカル確認](#ローカル確認)を実行します。配備・API公開・撤去では同じ正本設定を使います。
 
@@ -252,6 +252,6 @@ DecisionのCLIは既定で計画表示だけです。標準Gatewayの実行に�
 
 ## 固定依存と配布物
 
-CoreのPython依存は[共通requirements](scripts/clients/integration-requirements.txt)、[Brokerのrequirements](apps/credential-broker/requirements.txt)で管理します。PortalのNode依存は[package.json](apps/portal/package.json)と[package-lock.json](apps/portal/package-lock.json)で管理します。変更内容に応じたローカル検査と、該当する仕様書の実環境試験で確認します。
+リポジトリのPython依存は[共通requirements](scripts/clients/integration-requirements.txt)、[Brokerのrequirements](apps/credential-broker/requirements.txt)で管理します。PortalのNode依存は[package.json](apps/portal/package.json)と[package-lock.json](apps/portal/package-lock.json)で管理します。変更内容に応じたローカル検査と、該当する仕様書の実環境試験で確認します。
 
 公開ソースには架空値と配布可能な素材だけを含めます。秘密・実環境の導入先設定・証明書・実行証跡は環境別のGit管理外領域`.local/<environment>/`で管理し、wheel／image／ZIP等の配布物にも混入させません。実情報の保存を認めるのはルートの`.local/`とazd専用の`.azure/`だけであり、ignore対象一般を保存・公開の許可と解釈しません。不要な生成物は個別に回収し、別用途のデータを一括削除しません。

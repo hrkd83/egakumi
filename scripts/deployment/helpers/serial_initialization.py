@@ -11,6 +11,7 @@ import secrets
 import time
 
 from . import serial_credentials as credential
+from .paths import AZD_PROJECT_NAME
 
 SOURCE = "managed-serial-initialization-v1"
 FILE = "management-serial-initialization.json"
@@ -67,7 +68,7 @@ def verify_target(config, value, vm, creation):
             or value["coreDeploymentId"] is not None and value["coreDeploymentId"].casefold() != creation["coreDeploymentId"].casefold()
             or properties.get("provisioningState") != "Succeeded" or profile.get("adminUsername") != value["adminUsername"]
             or profile.get("linuxConfiguration", {}).get("disablePasswordAuthentication") is not True):
-        raise credential.SerialCredentialError("The original Core creation and VM could not be verified; retain pending credentials")
+        raise credential.SerialCredentialError("Retain pending credentials until the original infrastructure deployment and VM can be verified")
     output = creation["managementVm"]
     expected = {"resourceId": value["targetVmResourceId"], "vmId": str(properties.get("vmId", "")).lower(),
                 "principalId": str(identity.get("principalId", "")).lower(), "tenantId": str(identity.get("tenantId", "")).lower(),
@@ -110,16 +111,16 @@ def recover_password(config, workspace, vm, read_core, writer):
     body = response.get("body")
     props = body.get("properties") if isinstance(body, dict) else None
     tags = body.get("tags") if isinstance(body, dict) else None
-    owner_tags = {"azd-env-name": config["environmentName"], "azd-project-name": "ai-workforce-core", "azd-layer-name": ""}
+    owner_tags = {"azd-env-name": config["environmentName"], "azd-project-name": AZD_PROJECT_NAME, "azd-layer-name": ""}
     if (response.get("statusCode") != 200 or not isinstance(props, dict) or props.get("provisioningState") not in {"Succeeded", "Failed", "Canceled"}
             or not isinstance(tags, dict) or any(tags.get(k) != v for k, v in owner_tags.items())
             or props.get("parameters", {}).get("managementInitialSerialGeneration", {}).get("value") != value["credentialGeneration"]):
-        raise credential.SerialCredentialError("The original Core request must be verified before credential recovery")
+        raise credential.SerialCredentialError("The original infrastructure deployment request must be verified before credential recovery")
     complete_core = props["provisioningState"] == "Succeeded"
     creation = (props.get("outputs", {}).get("managementInitialSerialCreation", {}).get("value")
                 if complete_core else response.get("managementCreation"))
     if not isinstance(creation, dict) or str(body.get("id", "")).casefold() != str(creation.get("coreDeploymentId", "")).casefold():
-        raise credential.SerialCredentialError("The original Core deployment identity differs")
+        raise credential.SerialCredentialError("The original infrastructure deployment identity differs")
     value = confirm_creation(config, workspace, vm, creation, writer)
     return saved_password(config, workspace, value) if complete_core else ""
 

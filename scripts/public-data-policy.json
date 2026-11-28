@@ -5620,7 +5620,7 @@
     {
       "rule": "credential-assignment",
       "value": "INITIAL_SERIAL_GENERATION_FIXTURE",
-      "reason": "Non-secret synthetic generation label returned by the isolated lifecycle mock; Core receives no password. Exact file/value only.",
+      "reason": "Non-secret synthetic generation label returned by the isolated lifecycle mock for infrastructure provisioning. Exact file/value only.",
       "paths": [
         "tests/test_lifecycle.py",
         "tests/deployment/test_lifecycle.py"

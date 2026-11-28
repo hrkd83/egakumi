@@ -1,5 +1,5 @@
 // GatewayのAPI設定・Credential Manager・SQL接続台帳・Brokerを配備する入口です。
-// 共有APIM本体・SQLサーバー・ネットワーク・ACRとBroker専用CAEはCoreで準備します。
+// 共有APIM本体・SQLサーバー・ネットワーク・ACRとBroker専用CAEは基盤構築で準備します。
 targetScope = 'resourceGroup'
 param configuration object
 param foundation object

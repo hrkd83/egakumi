@@ -1,4 +1,4 @@
-"""CoreのACA Jobが保存したPortal認証証明書の初期状態を確認する。"""
+"""ACA Jobが保存したPortal認証証明書の初期状態を確認する。"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -38,9 +38,9 @@ def load_context(config_path, runtime_root=None):
 
 
 def initialize(ctx, *, execute=False):
-    """Coreの発行結果を保護stateから照合する。"""
+    """初回発行の結果を保護された配備記録から照合する。"""
     if not ctx.state['outputs'].get('certificateBootstrap'):
-        raise OperationError('Portal certificate initialization requires Core with the ACA certificate job')
+        raise OperationError('Portal certificate initialization requires the deployed ACA certificate job')
     current = ctx.workspace.checked(ctx.workspace.state / 'portal-auth-certificate.json')
     if not current.is_file():
         raise OperationError('Resume azd up to complete the initial Portal certificate job')

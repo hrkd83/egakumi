@@ -76,7 +76,7 @@ class SerialLifecycleTests(unittest.TestCase):
 
     def deployment(self, status="Succeeded"):
         return {"statusCode": 200, "body": {"id":self.outputs()["managementInitialSerialCreation"]["coreDeploymentId"],
-            "tags":{"azd-env-name":self.config["environmentName"],"azd-project-name":"ai-workforce-core","azd-layer-name":""},
+            "tags":{"azd-env-name":self.config["environmentName"],"azd-project-name":"egakumi","azd-layer-name":""},
             "properties": {"parameters":{"managementInitialSerialGeneration":{"value":self.generation}},"provisioningState": status,
             "outputs": {key: {"value": value} for key, value in self.outputs().items()}}}}
 

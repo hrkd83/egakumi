@@ -62,15 +62,15 @@ def verify_state(config: dict, state: dict) -> None:
                 "resourceStem": stem, "apimInstanceId": apim_instance_id(config)}
     if any(not isinstance(state.get(key), str) or state[key].casefold() != str(value).casefold()
            for key, value in expected.items()):
-        raise ValueError("Core state belongs to a different APIM instance; preserve its parameters and complete its cleanup first")
+        raise ValueError("Deployment state belongs to a different APIM instance. Preserve its parameters and complete its cleanup first")
     services = state.get("serviceResourceIds", {})
     if not isinstance(services, dict) or state.get("apimInstanceId") != expected["apimInstanceId"]:
-        raise ValueError("Core state has invalid APIM instance metadata")
+        raise ValueError("Infrastructure deployment state has invalid APIM instance metadata")
     actual = services.get("apim")
     expected_id = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/rg-{stem}-svc"
                    f"/providers/Microsoft.ApiManagement/service/{apim_name(config)}")
     if actual is not None and (not isinstance(actual, str) or actual.casefold() != expected_id.casefold()):
-        raise ValueError("Core APIM resource ID differs from the selected APIM instance")
+        raise ValueError("The provisioned APIM resource ID differs from the selected APIM instance")
 
 
 def _verify_down(config: dict, state: dict, receipt: dict) -> None:
@@ -87,16 +87,16 @@ def _verify_down(config: dict, state: dict, receipt: dict) -> None:
         raise ValueError("A completed postdown record is required before preparing another APIM instance")
     groups = state.get("resourceGroupNames", {})
     if not isinstance(groups, dict) or set(groups) != {"id", "nw", "monitor", "svc", "maint"}:
-        raise ValueError("The previous Core resource group inventory is incomplete")
+        raise ValueError("The previous infrastructure resource group inventory is incomplete")
     if any(name != f"rg-{state['resourceStem']}-{kind}" for kind, name in groups.items()):
-        raise ValueError("The previous Core resource groups differ from this environment")
+        raise ValueError("The previous infrastructure resource groups differ from this environment")
     expected = {f"/subscriptions/{state['subscriptionId']}/resourceGroups/{name}".casefold()
                 for name in groups.values()}
     rows = result.get("resourceGroups", [])
     if (not isinstance(rows, list) or len(rows) != len(expected)
             or {str(row.get("resourceId", "")).casefold() for row in rows if isinstance(row, dict)} != expected
             or any(not isinstance(row, dict) or row.get("status") != "absent" or row.get("httpStatus") != 404 for row in rows)):
-        raise ValueError("All previous Core resource groups must have confirmed GET 404 records")
+        raise ValueError("All previous infrastructure resource groups must have confirmed GET 404 records")
     inventory = state.get("applicationInfrastructure", [])
     managed = result.get("applicationInfrastructure", [])
     if (not isinstance(inventory, list) or not isinstance(managed, list)
@@ -121,7 +121,7 @@ def assert_current_instance(config: dict, paths: LocalPaths) -> None:
         raise ValueError("This APIM identifier is retired; finish explicit --new-apim-instance preparation")
     latest = paths.checked(paths.state / "latest.json")
     if not latest.exists() and paths.checked(paths.state / "cleanup-postdown.json").exists():
-        raise ValueError("Restore the previous Core state before preparing another APIM instance")
+        raise ValueError("Restore the previous deployment state before preparing another APIM instance")
     if latest.exists():
         state = _read(paths, latest)
         verify_state(config, state)
@@ -211,4 +211,4 @@ def _prepare_next_instance(paths: LocalPaths, config: dict) -> dict:
     return {"status": "new-apim-instance-prepared", "parameters": str(paths.params.relative_to(paths.repository)),
             "apimInstanceId": next_id, "apimName": apim_name(updated),
             "history": str(archive.relative_to(paths.repository)), "azureAccessPerformed": False,
-            "next": "Display registration URIs from these parameters and update the Entra CM redirect URI before Core provisioning."}
+            "next": "Display registration URIs from these parameters and update the Entra CM redirect URI before provisioning the infrastructure."}

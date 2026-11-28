@@ -24,7 +24,7 @@ SERVICE_POLICY = CORE / "apps/api-gateway/policies/service.xml"
 
 
 def bound_coverage():
-    """現行のCore出力を使うGateway公開処理から、正式APIの合成設定を作る。"""
+    """基盤の配備出力を使うGateway公開処理から、正式APIの合成設定を作る。"""
     raw, state = standard_fixture()
     published = standard_apis.resolve_publication_configuration(raw, state)
     return {**raw, "apiDefinitions": published["apiDefinitions"]}

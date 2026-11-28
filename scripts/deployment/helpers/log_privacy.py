@@ -48,7 +48,7 @@ def existing_workspace_link(config: dict, transport) -> str:
     workspace = _read(transport, ids["workspace"], WORKSPACE_API, missing=True)
     link = workspace.get("properties", {}).get("defaultDataCollectionRuleResourceId", "") if workspace else ""
     if link and link.casefold() != ids["dcr"].casefold():
-        raise LogPrivacyError("Workspace uses another transformation DCR; its owner must merge privacy before Core redeployment")
+        raise LogPrivacyError("If the workspace uses another transformation DCR, its owner must merge the privacy settings before redeployment")
     if workspace:
         _validate_existing_dcr(_read(transport, ids["dcr"], DCR_API, missing=True), desired_dcr(config))
     return link
@@ -99,11 +99,11 @@ def _validate_existing_dcr(current: dict | None, desired: dict) -> None:
             or not _contains(properties, {key: value for key, value in expected.items() if key != "dataFlows"})
             or not all(sum(_contains(flow, target) for flow in previous_flows) <= 1 for target in expected["dataFlows"])
             or not all(any(_contains(flow, target) for target in expected["dataFlows"]) for flow in previous_flows)):
-        raise LogPrivacyError("Existing Core transformation has different flows; preserve it and review the merge")
+        raise LogPrivacyError("Preserve the existing managed transformation and review its different data flows before merging")
 
 
 def workspace_plan(config: dict, transport) -> list[dict]:
-    """他者DCRを置換せず、Core所有DCRとWorkspace関連付けの2項目を計画する。"""
+    """他者DCRを置換せず、基盤が所有するDCRとWorkspace関連付けの2項目を計画する。"""
     ids = resource_ids(config)
     workspace = _read(transport, ids["workspace"], WORKSPACE_API)
     link = workspace["properties"].get("defaultDataCollectionRuleResourceId")
@@ -160,6 +160,6 @@ def _apply_workspace_plan(steps, transport, *, sleep=time.sleep) -> None:
 
 
 def ensure_workspace_link(config: dict, transport) -> str:
-    """初期monitoring完了後に関連付けを仕上げ、次のCore配備へ実IDを引き継ぐ。"""
+    """初期monitoring完了後に関連付けを仕上げ、次の基盤配備へ実IDを引き継ぐ。"""
     _apply_workspace_plan(workspace_plan(config, transport), transport)
     return resource_ids(config)["dcr"]

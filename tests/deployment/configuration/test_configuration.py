@@ -134,7 +134,7 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertTrue(required.issubset({model["name"] for model in models}))
                 self.assertTrue(options["services"]["grantApimFoundryModelsAccess"])
                 self.assertTrue(options["services"]["speechEnabled"])
-                self.assertEqual(options["services"]["projectDisplayName"], "core-platform")
+                self.assertEqual(options["services"]["projectDisplayName"], "egakumi")
                 # Decisionだけは既存APIの配備名を保持し、提供者の正式名へ対応付ける。
                 aliases = {model["name"]: model["modelName"] for model in models
                            if model["name"] != model["modelName"]}
