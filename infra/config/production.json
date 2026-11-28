@@ -23,12 +23,10 @@
   },
   "services": {
     "apimSkuName": "Premium",
-    "apiCenterSkuName": "Free",
     "apimCapacity": 1,
     "vaultSkuName": "standard",
     "vaultRetentionDays": 90,
     "vaultPurgeProtection": true,
-    "enableApiCenterIntegration": true,
     "grantApimSecretAccess": false,
     "modelDeployments": [
       {
@@ -312,8 +310,6 @@
         "versionUpgradeOption": "NoAutoUpgrade"
       }
     ],
-    "catalogEnvironmentKind": "production",
-    "catalogLifecycleStage": "production",
     "projectDisplayName": "core-platform",
     "projectDescription": "Core platform project for shared model, agent, and tool capabilities.",
     "speechEnabled": true,
@@ -358,7 +354,10 @@
         "rotationIntervalSeconds": 86400,
         "rotationGraceSeconds": 300,
         "rotationHandoffSeconds": 600,
-        "rotationCandidateTtlSeconds": 600
+        "rotationCandidateTtlSeconds": 600,
+        "identity": {
+          "clientSecretFile": "./secrets/entra-credential-secret.txt"
+        }
       }
     }
   },
@@ -376,7 +375,8 @@
     "enableAcceleratedNetworking": true,
     "encryptionAtHost": true,
     "patchAssessmentMode": "AutomaticByPlatform",
-    "patchMode": "AutomaticByPlatform"
+    "patchMode": "AutomaticByPlatform",
+    "sshPublicKeyFile": "./secrets/management-ssh.pub"
   },
   "monitoring": {
     "retentionInDays": 90,
@@ -425,7 +425,11 @@
       "pool": {
         "count": 12,
         "capacity": 8000
-      }
+      },
+      "clientSecretFile": "./secrets/entra-client-secret.txt"
     }
+  },
+  "firewallTlsInspection": {
+    "rootCaCertificateFile": "./secrets/firewall-root-ca.cer"
   }
 }

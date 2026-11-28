@@ -26,7 +26,7 @@ azd本体の撤去も`infra/main.bicepparam`を評価するため、`predown`は
 | 変更前 | stateと現物のID・種類・命名・region・所有タグ・接続先、全監査保持を照合し、ACA管理RGの実IDを保存する |
 | `predown` | モデル→CMの接続権限・接続・provider→APIM→Broker・全ジョブ→Portal CA→Portal用CAE→Portalサブネット解放→管理VM・残存する所有NICの順で回収する |
 | azd本体 | 所有5RGを削除する。専用DB・ACR／イメージ・Vault秘密・専用IDも所有RGと共に回収する |
-| `postdown` | 5RGと記録済みACA管理RGの404、対象3サービスの削除記録・保護による保持、API Centerの削除履歴を記録する |
+| `postdown` | 5RGと記録済みACA管理RGの404、Key Vault・Foundry・APIMの削除記録と保護による保持を記録する |
 
 Gateway／Portalの配備成功記録がなくても、固定IDと実資源の所有・接続先を照合します。全アプリ・ジョブの不存在を確認してからCAEを削除し、サブネットの解放を待ちます。ACAの`infrastructureResourceGroup`はAzure側の削除を待ち、名前で`ME-*`を探索・直接削除しません。構築時・撤去時に記録した管理RGを確認します。
 
@@ -70,7 +70,7 @@ providerのDELETE成功・一覧不在・親APIMの404・削除履歴の404だ�
 - CMの個別削除と親APIMの削除を分ける。一覧消失を用いる限定条件でもprovider自身のGET404とは記録せず、`deletionVerified`・`listAbsenceVerified`・`parentDeletionVerified`を区別する。
 - ACA管理RGだけが残る場合はAzureの削除完了を確認し、同じparamsで`python3 scripts/deployment/lifecycle.py postdown --config "$DEPLOY_PARAMS_FILE"`を再実行する。
 - Key Vaultの完全削除が非同期で受け付けられた場合は、Azureが返す待機間隔に従って操作状態を読み、最後に対象の削除履歴の404も確認する。既定の待機枠は15分で、要求をその場で再送しない。上限・失敗で止まったら同じ入力と記録を保持し、操作と削除履歴の現在状態を確認してから再開する。
-- Log Analyticsのforce完全削除やAPI Centerのpurgeは通常処理に含めない。`apiCenterRetention`が`unverified`の場合も確認不能の理由を保持する。
+- Log Analyticsのforce完全削除は通常処理に含めない。
 - モデル消失と利用枠・費用の反映は別に確認する。利用枠は次の`capacity`で再確認し、他環境の割当まで0にしない。
 
 ### 一部の所有RGが残る、またはResourceGroupNotFoundで止まる場合

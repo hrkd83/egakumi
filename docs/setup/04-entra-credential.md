@@ -26,13 +26,12 @@
 
 1. 「証明書とシークレット」→「クライアント シークレット」→「新しいクライアント シークレット」を開きます。用途の分かる説明と組織の方針に合う有効期限を設定して追加します。
 2. 発行直後の「値（Value）」を、Tools用と分けて組織の保護された秘密保管先に保存します。有効期限と更新担当を記録します。 [クライアントシークレットの発行](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials)
-3. [第07章](07-params.md)で同じ環境のparamsに下表を設定します。[第08章の `azd up`](08-provision-core.md) で「CM本人確認（OIDC）」の欄に値を非表示入力すると、環境別の秘密ファイルに保存されます。paramsにはファイル参照だけを置きます。
+3. [第07章](07-params.md)で同じ環境のparamsに下表を設定します。[第08章の `azd up`](08-provision-core.md) で「CM本人確認（OIDC）」の欄に値を非表示入力すると、共通configで定義した `.local/<environment>/secrets/entra-credential-secret.txt` に保存されます。
 
 | paramsの項目 | 設定する値 |
 | --- | --- |
 | `entraTenantId` | API・Tools・Credentialで共通の認証用テナントID |
 | `gateway.authentication.credentialLogin.identity.clientId` | `egakumi-credential` のアプリケーション（クライアント）ID |
-| `gateway.authentication.credentialLogin.identity.clientSecretFile` | 標準は `./secrets/entra-credential-secret.txt` |
 
 Coreの構築前に、Web戻り先、Graphデータアクセス許可の不在、クライアントID、Tools用と異なる秘密ファイル参照を確認します。本人確認からGraph接続までの動作は[Gateway配備後](11-deploy-gateway.md#5-本人接続を試験する)に確認します。
 

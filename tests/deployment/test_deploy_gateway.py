@@ -45,7 +45,6 @@ def fixture():
         'registryName': 'acr' + stem.replace('-', ''),
     }
     host = config['gateway']['publicHostName']
-    state['outputs'].pop('grpc', None)
     state['outputs'].setdefault('ingressSecrets', {}).update(enabled=True, l7IngressEnabled=True, publicHostName=host)
     state['outputs'].update(client_core_outputs(config))
     return config, state

@@ -42,15 +42,26 @@ Claudeは手動公開するため、初回構築のモデル配備一覧に含�
 
 ### 標準値を変える場合だけ確認する項目（config）
 
-以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・このVNet内のIP計画・アプリ登録・VMログイン主体は前節のparamsへ記載します。標準APIはAPI正本を常用し、追加Foundry／API Center権限と監査readerは初期空に固定します。VNetとFirewallのDNSはBicep内でAzure提供DNSに固定し、JSONの入力項目にはしません。NSG／Firewallの初期規則、APIMの外部NTP許可と管理VMのAzureホスト時刻同期も資材内で固定します。API・権限の要素形式は[paramsの記述形式](../gateway/api-definitions.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
+以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・このVNet内のIP計画・アプリ登録・VMログイン主体は前節のparamsへ記載します。標準APIはAPI正本を常用し、追加Foundry権限と監査readerは初期空に固定します。VNetとFirewallのDNSはBicep内でAzure提供DNSに固定し、JSONの入力項目にはしません。NSG／Firewallの初期規則、APIMの外部NTP許可と管理VMのAzureホスト時刻同期も資材内で固定します。API・権限の要素形式は[paramsの記述形式](../gateway/api-definitions.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
 
-`[]`は空配列、`{}`は空オブジェクトです。空配列の意味は項目ごとに異なります。相対ファイル参照は**それを記載したJSONのフォルダー基準**で解決し、2ファイルを合成しても参照先を変えません。両ファイルの`$schema`はエディター補助、`$comment`は説明で、Azureへ送信しません。
+`[]`は空配列、`{}`は空オブジェクトです。空配列の意味は項目ごとに異なります。追加OAuthプロバイダーの相対ファイル参照は、記載したparamsのフォルダーを基準に解決します。両ファイルの`$schema`はエディター補助、`$comment`は説明で、Azureへ送信しません。
 
 初期Projectの表示名は`core-platform`、実リソース名は`proj-<環境>-<製品>`です。表示名とリソース名は[MicrosoftのProject定義](https://learn.microsoft.com/en-us/azure/templates/microsoft.cognitiveservices/2025-06-01/accounts/projects)でも別の属性です。
 
-真偽値は肯定形で命名します。`network.bgpRoutePropagation`配下の各値はtrueで経路を伝搬し、falseで伝搬しません。
+#### 環境の標準ファイル
+
+初回構築ではプロファイルのファイル名をそのまま使います。各パスの解決先は `.local/<environment>/` です。ToolsとCredentialのシークレットは `azd up` の非表示入力で保存し、Firewallの公開ルートCA証明書はあらかじめ所定の場所へ配置します。
+
+| configの項目 | 同じ環境での保存先 |
+| --- | --- |
+| `credentialProviders.graphDelegated.clientSecretFile` | `secrets/entra-client-secret.txt` |
+| `gateway.authentication.credentialLogin.identity.clientSecretFile` | `secrets/entra-credential-secret.txt` |
+| `management.sshPublicKeyFile` | `secrets/management-ssh.pub` |
+| `firewallTlsInspection.rootCaCertificateFile` | `secrets/firewall-root-ca.cer` |
 
 #### ネットワークの通信機能（network）
+
+真偽値は肯定形で命名します。`network.bgpRoutePropagation`配下の各値はtrueで経路を伝搬し、falseで伝搬しません。
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
@@ -90,13 +101,9 @@ Firewallのゾーン対応と新規配備の容量条件は構築するリージ
 | --- | --- | --- |
 | `services.apimSkuName` | テスト：`"Developer"`／本番：`"Premium"` | APIM classicのDeveloper/Premium。環境名による切替なし。 |
 | `services.apimCapacity` | `1` | APIMユニット数。Developerは1のみ。 |
-| `services.apiCenterSkuName` | `"Free"` | API CenterのFree/Standard。基本Portal検索・閲覧はFreeで利用可能。Standardの料金・APIM連携特典を確認し、採用時はこの値も変更。 |
 | `services.vaultSkuName` | `"standard"` | Key Vaultのstandard/premium。 |
 | `services.vaultRetentionDays` | テスト：`7`／本番：`90` | Key Vault論理削除の保持日数、7〜90。 |
 | `services.vaultPurgeProtection` | テスト：`false`／本番：`true` | Key Vaultの完全削除保護。trueは保護。撤去でも保護を回避しない。 |
-| `services.enableApiCenterIntegration` | `true` | APIM→API Centerの連携を構成。PortalのGUI設定・公開は別工程。 |
-| `services.catalogEnvironmentKind` | テスト：`"testing"`／本番：`"production"` | API Centerの環境区分。development/production/staging/testing。 |
-| `services.catalogLifecycleStage` | テスト：`"testing"`／本番：`"production"` | API Centerのライフサイクル区分。候補はSchema参照。 |
 | `services.projectDisplayName` | `"core-platform"` | 初期Foundry Projectの表示名。core-platformは役割が分かる名前として採用。実リソース名proj-<環境>-<製品>とは別。 |
 | `services.projectDescription` | `"Core platform project for shared model, agent, and tool capabilities."` | 初期Projectの説明。 |
 | `services.speechEnabled` | `true` | APIMのMIへ対象FoundryのSpeech権限を付与。音声モデル全体の配備フラグではない。 |
@@ -236,7 +243,7 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 2. **Key vaults** でこの中間CA専用のVaultを用意します。**Access configuration** ではVault access policyを選び、**Access policies** で専用IDにSecretのGet／Listを付与します。**Networking** では接続元を制限し、Azure Firewallの信頼済みサービス経由の取得を許可します。インポート作業に使う接続元は必要な時間だけ許可します。[Firewall PremiumのKey Vault要件](https://learn.microsoft.com/en-us/azure/firewall/premium-certificates#azure-key-vault)、[Key Vaultのネットワーク制御](https://learn.microsoft.com/en-us/azure/key-vault/general/network-security)
 3. 本番は組織PKI、テストは分離した検証用PKIで中間CAを準備します。公式例はRSA 4096ビット、エクスポート可能な鍵、クリティカルな`KeyUsage`の`keyCertSign`、クリティカルな`BasicConstraints`の`CA:TRUE`と`pathlen:1`を使います。有効期限まで1年以上ある中間CAを、当該中間証明書と秘密鍵だけを含むパスワードなしPFXにします。公開ルートで中間証明書を検証し、ルートの秘密鍵はPKI側で保護します。[中間CA要件とテスト用証明書の作成例](https://learn.microsoft.com/en-us/azure/firewall/premium-certificates#intermediate-ca-certificate-requirements)
 4. Vaultの **Certificates** で中間CAのPFXをインポートします。有効な証明書バージョンに対応する **Secret Identifier** を取得します。識別子が`/secrets/<name>/<version>`になっていることを確認します。**Certificate Identifier** を指定すると失敗します。
-5. `params.local.json`の`firewallTlsInspection`に専用IDの`managedIdentityResourceId`、バージョン付き`intermediateCaSecretId`、公開ルートへの`rootCaCertificateFile`を設定します。初期準備が生成した参照は`./secrets/firewall-root-ca.cer`です。ルートは単一のX.509公開証明書（DERまたはPEM）を保護ファイルに保存します。構築資材は参照と公開証明書を渡します。
+5. `params.local.json`の`firewallTlsInspection`に専用IDの `managedIdentityResourceId` とバージョン付き `intermediateCaSecretId` を設定します。共通configで定義した `.local/<environment>/secrets/firewall-root-ca.cer` に単一のX.509公開証明書（DERまたはPEM）を保護保存します。構築資材は参照と公開証明書を渡します。
 6. [新規テスト環境](../../setup/08-provision-core.md)で、Firewallが指定バージョンを取得し、APIMのApp Gatewayプローブが正常になり、Portal本体配備後にはPortalのプローブも正常になることを確認します。独立したテストでは、存在しないバージョン、無許可の専用ID、対応しない有効なルートを使った場合に検査が成立しないことを確認します。証明書検証を無効化せず、正しい参照へ戻して正常化を確認します。Portal認証の実試用前に監査ログの[クエリ保護](../../testing/log-privacy.md#firewallのtls検査ログ)も確認します。[App GatewayのバックエンドTLS](https://learn.microsoft.com/en-us/azure/application-gateway/ssl-overview)
 
 中間CA更新時はKey Vaultの新しいバージョンを明示し、チェーンや発行元が変わる場合はApp Gatewayの信頼も含めて切替を計画します。プローブと業務通信、IDPSログをテスト環境で確認してから本番へ適用します。[既知のTLS検査制約](https://learn.microsoft.com/en-us/troubleshoot/azure/firewall/firewall-known-issues)

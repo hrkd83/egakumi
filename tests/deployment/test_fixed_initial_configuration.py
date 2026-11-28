@@ -53,8 +53,6 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         self.parameters["services"]["apimInstanceId"] = "abc123"
         self.parameters["gateway"]["authentication"]["entra"]["audience"] = "44444444-4444-4444-8444-444444444444"
         self.parameters["credentialProviders"]["graphDelegated"]["clientId"] = "55555555-5555-4555-8555-555555555555"
-        self.parameters["credentialProviders"]["graphDelegated"]["clientSecretFile"] = "./reference-only/graph.secret"
-        self.parameters["management"]["sshPublicKeyFile"] = "./reference-only/management.pub"
         self.parameters["certificate"]["azureDnsSubscriptionId"] = self.parameters["subscriptionId"]
         self.parameters["certificate"]["azureDnsManagedIdentityResourceId"] = (
             "/subscriptions/" + self.parameters["subscriptionId"]
@@ -132,7 +130,6 @@ class FixedInitialConfigurationTests(unittest.TestCase):
     def test_authentication_combines_shared_policy_with_registration_and_fixed_contract(self):
         identity = {
             "clientId": "77777777-7777-4777-8777-777777777777",
-            "clientSecretFile": "./reference-only/broker.secret",
         }
         put(self.parameters, ("gateway", "authentication", "credentialLogin", "identity"), identity)
         actual = self.normalized()
@@ -143,7 +140,8 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         self.assertEqual(authentication["entra"]["userLimits"], self.options["gateway"]["authentication"]["entra"]["userLimits"])
         login = authentication["credentialLogin"]
         for key, value in self.options["gateway"]["authentication"]["credentialLogin"].items():
-            self.assertEqual(login[key], value)
+            if key != "identity":
+                self.assertEqual(login[key], value)
         self.assertEqual(login["identity"]["tenantId"], self.parameters["entraTenantId"])
         self.assertEqual(login["identity"]["clientId"], identity["clientId"])
         self.assertEqual(actual["credentialProviders"][0]["clientId"], self.parameters["credentialProviders"]["graphDelegated"]["clientId"])
@@ -167,7 +165,6 @@ class FixedInitialConfigurationTests(unittest.TestCase):
                 if use_independent_identity:
                     put(self.parameters, ("gateway", "authentication", "credentialLogin", "identity"), {
                         "clientId": "77777777-7777-4777-8777-777777777777",
-                        "clientSecretFile": "./reference-only/broker.secret",
                     })
                 actual = self.normalized()
                 self.assertEqual(actual["entraTenantId"], self.parameters["azureTenantId"])
@@ -194,9 +191,7 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         registration_paths = (
             ("gateway", "authentication", "entra", "audience"),
             ("gateway", "authentication", "credentialLogin", "identity", "clientId"),
-            ("gateway", "authentication", "credentialLogin", "identity", "clientSecretFile"),
             ("credentialProviders", "graphDelegated", "clientId"),
-            ("credentialProviders", "graphDelegated", "clientSecretFile"),
         )
         original = copy.deepcopy(self.options)
         for path in registration_paths:
@@ -234,10 +229,9 @@ class FixedInitialConfigurationTests(unittest.TestCase):
                     self.assert_rejected("config." + key)
             self.options[key] = original
 
-    def test_config_rejects_empty_foreign_identity_and_portal_containers(self):
+    def test_config_rejects_missing_credential_file_and_foreign_portal_containers(self):
         put(self.parameters, ("gateway", "authentication", "credentialLogin", "identity"), {
             "clientId": "77777777-7777-4777-8777-777777777777",
-            "clientSecretFile": "./reference-only/broker.secret",
         })
         for value in ({}, [], None):
             with self.subTest(container="identity", value_kind=type(value).__name__):
@@ -265,7 +259,6 @@ class FixedInitialConfigurationTests(unittest.TestCase):
     def test_relative_references_use_the_declaring_params_folder(self):
         put(self.parameters, ("gateway", "authentication", "credentialLogin", "identity"), {
             "clientId": "77777777-7777-4777-8777-777777777777",
-            "clientSecretFile": "./reference-only/broker.secret",
         })
         self.options["credentialProviders"]["additional"] = [{
             "name": "synthetic-aad-service", "displayName": "Synthetic additional service",
@@ -279,14 +272,15 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         }]
         actual = self.normalized()
         references = (
-            (actual["management"]["sshPublicKeyFile"], "management.pub"),
-            (actual["credentialProviders"][0]["clientSecretFile"], "graph.secret"),
-            (actual["credentialProviders"][1]["clientSecretFile"], "additional.secret"),
-            (actual["gateway"]["authentication"]["credentialLogin"]["identity"]["clientSecretFile"], "broker.secret"),
+            (actual["management"]["sshPublicKeyFile"], "secrets/management-ssh.pub"),
+            (actual["credentialProviders"][0]["clientSecretFile"], "secrets/entra-client-secret.txt"),
+            (actual["credentialProviders"][1]["clientSecretFile"], "reference-only/additional.secret"),
+            (actual["gateway"]["authentication"]["credentialLogin"]["identity"]["clientSecretFile"], "secrets/entra-credential-secret.txt"),
+            (actual["firewallTlsInspection"]["rootCaCertificateFile"], "secrets/firewall-root-ca.cer"),
         )
         for reference, filename in references:
             with self.subTest(reference_kind=filename):
-                self.assertTrue(Path(reference) == (self.manifest.parent / "reference-only" / filename).resolve(),
+                self.assertTrue(Path(reference) == (self.manifest.parent / filename).resolve(),
                                 "reference must retain its declaring folder")
                 self.assertFalse(Path(reference).exists(), "references are not secret files created by this test")
 
@@ -337,7 +331,7 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         actual = self.normalized()
         self.assertEqual(actual["authorization"], {
             "projectAdministrators": [], "projectDevelopers": [],
-            "foundryReaders": [], "catalogReaders": [],
+            "foundryReaders": [],
         })
         self.assertEqual(actual["gateway"]["existingWafPolicyId"], "")
         self.assertEqual(actual["monitoring"]["auditAllowedIpAddresses"], [])
@@ -368,7 +362,7 @@ class FixedInitialConfigurationTests(unittest.TestCase):
             (("network", "firewall", "idpsPrivateRanges"), ["192.0.2.0/24"]),
         ]
         cases += [(('authorization', key), [principal]) for key in
-                  ("projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders")]
+                  ("projectAdministrators", "projectDevelopers", "foundryReaders")]
         for path, value in cases:
             internal = copy.deepcopy(original)
             put(internal, path, value)
@@ -438,7 +432,7 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         self.options["unexpectedOption"] = sentinel
         self.assert_rejected("config", sentinel)
         self.options.pop("unexpectedOption")
-        self.parameters["credentialProviders"]["graphDelegated"]["clientSecretFile"] = " " + sentinel
+        self.options["credentialProviders"]["graphDelegated"]["clientSecretFile"] = " " + sentinel
         self.assert_rejected("clientSecretFile", sentinel)
 
 

@@ -35,8 +35,7 @@ class ResourceNamingTests(unittest.TestCase):
                          "[format('{0}-{1}', variables('environmentName'), variables('product'))]")
         expected_names = {
             key: "[format('" + prefix + "-{0}', variables('stem'))]"
-            for key, prefix in (("keyVault", "kv"), ("foundry", "aif"),
-                                ("project", "proj"), ("apiCenter", "apic"))
+            for key, prefix in (("keyVault", "kv"), ("foundry", "aif"), ("project", "proj"))
         }
         expected_names["apim"] = "[format('apim-{0}-{1}', variables('stem'), parameters('configuration').services.apimInstanceId)]"
         self.assertEqual(self.variables["serviceNames"], expected_names)

@@ -94,7 +94,19 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertEqual(provider["oauthTenantId"], actual["entraTenantId"])
                 self.assertEqual(provider["connectionNames"], [])
                 self.assertEqual(provider["identityEndpoint"], "https://graph.microsoft.com/v1.0/me")
-                self.assertEqual(parameters["credentialProviders"]["graphDelegated"]["clientSecretFile"], "../secrets/entra-client-secret.txt")
+                params_identity = parameters["gateway"]["authentication"]["credentialLogin"]["identity"]
+                config_identity = options["gateway"]["authentication"]["credentialLogin"]["identity"]
+                for params_section, config_section, key, filename in (
+                    (parameters["credentialProviders"]["graphDelegated"], options["credentialProviders"]["graphDelegated"],
+                     "clientSecretFile", "entra-client-secret.txt"),
+                    (params_identity, config_identity, "clientSecretFile", "entra-credential-secret.txt"),
+                    (parameters["management"], options["management"], "sshPublicKeyFile", "management-ssh.pub"),
+                    (parameters["firewallTlsInspection"], options["firewallTlsInspection"],
+                     "rootCaCertificateFile", "firewall-root-ca.cer"),
+                ):
+                    self.assertNotIn(key, params_section)
+                    self.assertEqual(config_section[key], "./secrets/" + filename)
+                self.assertEqual(parameters["tags"]["purpose"], "egakumi")
                 deployed = configuration.build_bicep_configuration(actual)
                 self.assertNotIn("clientSecretFile", deployed["credentialProviders"][0])
                 self.assertEqual([item["name"] for item in deployed["credentialPhysicalProviders"]],
@@ -109,7 +121,6 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertNotIn("azureTenantId", options)
                 self.assertNotIn("entraTenantId", options)
                 self.assertNotIn("publicHostName", options["gateway"])
-                self.assertNotIn("sshPublicKeyFile", options["management"])
                 self.assertNotIn("publisherEmail", options["services"])
 
     def test_both_samples_supply_full_model_catalogue_and_access(self):

@@ -41,7 +41,7 @@ azd auth login --tenant-id "$DEPLOY_AZURE_TENANT_ID"
 azd auth login --check-status
 ```
 
-表示されたTenant／Subscriptionがparamsと一致することを確認します。Azure CLIのログインだけでazdのログインを省略しません。`DEPLOY_LOCATION`はネットワーク等の配置先で、Foundry／API Centerの配置先はparamsの別項目です。
+表示されたTenant／Subscriptionがparamsと一致することを確認します。Azure CLIのログインだけでazdのログインを省略しません。`DEPLOY_LOCATION`はネットワーク等の配置先で、Foundryの配置先はparamsの別項目です。
 
 ## 8-3. azd環境を作る
 
@@ -85,8 +85,8 @@ echo "終了コード: $?"
 1. **端末の検査**：ツール・PowerShell依存と、params／環境の整合を確認。
 2. **Azure DNS用IDの確認**：paramsへ事前設定したDNS側Subscription IDとUAMIリソースIDを検査する。不足・不正な参照があれば構築前に停止する。
 3. **秘密入力の案内**：対象アプリ・取得元・保存先を表示し、ToolsのCM用とCredentialの本人確認用のclient secretを用途ごとに非表示入力する。DNS用の秘密入力はない。
-4. **端末の保護保存**：CM用Core client secretは既定で`.local/<environment>/secrets/entra-client-secret.txt`へ保存し、POSIX権限600とする。同じsecret保存先を使うCM providerが複数ある場合は1回だけ入力する。
-5. **SSH鍵**：公開鍵・秘密鍵が両方ない場合だけ、指定した`.local/<environment>/secrets/`へ鍵対を生成。有効な既存鍵は再利用し、秘密鍵はAzureへ送らない。
+4. **端末の保護保存**：Tools用とCredential用のclient secretをそれぞれ `secrets/entra-client-secret.txt` と `secrets/entra-credential-secret.txt` へ保存し、POSIX権限600とする。同じsecret保存先を使うCM providerが複数ある場合は1回だけ入力する。
+5. **SSH鍵**：公開鍵・秘密鍵が両方ない場合だけ、`.local/<environment>/secrets/` へ管理VM用の鍵対を生成。有効な既存鍵は再利用し、秘密鍵はAzureへ送らない。
 
 Core配備の直前には、所有RGと管理VMの正確なGET結果を確認します。VMが未作成の404の場合だけ、`management.adminUsername`のローカル認証用パスワードを生成し、`.local/<environment>/secrets/management-serial-credential.json`へ保護保存します。元の404・生成世代・Core引渡しの証跡は`.local/<environment>/state/management-serial-initialization.json`へ先に保存し、Coreには非秘密の内部世代だけを渡します。公開params/configにパスワードや作成フラグを追加せず、OSProfileへパスワードを渡しません。
 
@@ -103,8 +103,9 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 | 入力 | 対話直後 | 構築後・運用中 |
 | --- | --- | --- |
 | DNS用公開ID（Azure） | paramsの`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId` | 証明書用ACA JobからDNS用UAMIを使い、DNS側のRBAC権限で更新 |
-| Tools client secret | `credentialProviders.graphDelegated.clientSecretFile`が指す保護ファイル | Graph委任接続のAPIM OAuth providerへsecure入力 |
-| Credential client secret | `gateway.authentication.credentialLogin.identity.clientSecretFile`が指す別の保護ファイル | BrokerのOIDC本人確認専用。Key Vault経由で参照 |
+| Tools client secret | `secrets/entra-client-secret.txt` | Graph委任接続のAPIM OAuth providerへsecure入力 |
+| Credential client secret | `secrets/entra-credential-secret.txt` | BrokerのOIDC本人確認専用。Key Vault経由で参照 |
+| Firewallの公開ルートCA証明書 | `secrets/firewall-root-ca.cer` | 事前配置した証明書をApp Gatewayのバックエンド検証に使用 |
 | 管理VMのSSH秘密鍵 | 端末のsecrets内 | 端末だけで保持。公開鍵だけをVMへ設定 |
 | 初期管理VMのローカル認証パスワード | `.local/<environment>/secrets/management-serial-credential.json`へ自動生成・保護保存 | 初回のsecure入力だけで設定。配備成功後にVM個体へ結び付け、既存VMの更新では上書きしない |
 | azdへの一時配備入力 | `.local/<environment>/generated/main.parameters.json`へ保護保存 | 基盤の後処理で回収。再試行には元のparams・secret・stateを使う |
@@ -133,8 +134,6 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 標準API正本を常用で読み込み、接続先は作成済み基盤の出力からメモリー内で解決します。公開paramsにAPI一覧の選択欄は設けず、内部配列も書き戻しません。標準APIに必要なWAFの経路・本文形式と監査ログ等の情報は基盤工程へ先に反映します。
 
 `postprovision`は、第05章で準備したAzure Public DNSゾーンのGateway・Portal用Aエイリアスを、対象環境のAppGW Public IPリソースへ接続します。作成したAエイリアスは同じ環境の`state/public-dns.json`で照合します。
-
-API Centerの同名削除履歴が残る場合は、5RG作成後に対象環境のsvc RG内の同名1件だけを所有照合して復元し、Bicepを再適用します。確認不能なら停止します。個別に別名の資源を追加しません。
 
 APIMのドメイン・基盤更新は15分以上かかる場合があります。Developerでは更新中の通信も一時中断し得ます。コマンドを再起動せず、同じ更新の完了を待ちます。[Microsoftの更新仕様](https://learn.microsoft.com/azure/api-management/configure-custom-domain)
 

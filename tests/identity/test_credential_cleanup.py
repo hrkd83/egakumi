@@ -15,7 +15,7 @@ from deployment.helpers.configuration import load_configuration
 
 
 from tests.support.cleanup_fixtures import (
-    CleanupFixture, FakeTransport, ApiCenterListTransport, ModelTransport,
+    CleanupFixture, FakeTransport, ModelTransport,
     CredentialTransport, ProviderGetInconsistencyTransport, InventoryTransport, ManagementTransport,
 )
 
@@ -44,23 +44,6 @@ class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
     def listed_provider_page(self, transport, provider_id):
         """削除前の一覧と、削除後の一覧の応答を別々に再現する。"""
         return {"statusCode": 200, "body": {"value": [copy.deepcopy(transport.resources[provider_id])]}, "headers": {}}
-
-    def test_api_center_404_permission_and_provider_errors_do_not_block_other_purges(self):
-        collection = self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices"
-        for status in (404, 403, 502):
-            with self.subTest(status=status):
-                transport = FakeTransport(self.tombstones())
-                transport.forced["GET", collection] = status
-                result = self.post(transport)
-                self.assertEqual(result["status"], "complete-with-unverified-api-center-retention")
-                self.assertEqual(result["apiCenterRetention"]["status"], "unverified")
-                self.assertFalse(result["apiCenterRetention"]["listReadVerified"])
-                if status == 404:
-                    self.assertEqual(result["apiCenterRetention"]["httpStatus"], 404)
-                self.assertNotIn("PRIVATE_SENTINEL", json.dumps(result))
-                self.assertEqual(len(transport.mutations()), 3)
-                self.assertEqual(transport.calls[-1]["id"], collection)
-                self.assertTrue(all(item["status"] == "absent" for item in result["softDeletedServices"]))
 
     def test_model_then_cm_policies_connections_provider_then_apim_deletion_and_receipt(self):
         """モデル→接続権限→本人接続→providerの不在確認後にAPIMを削除する。"""

@@ -88,7 +88,6 @@ export DEPLOY_PRODUCT='<資源名に使う製品名>'
 export DEPLOY_ENVIRONMENT='<資源名とazd環境に使う環境名>'
 export DEPLOY_LOCATION='<ネットワーク等の配置リージョン識別子>'
 export DEPLOY_FOUNDRY_LOCATION='<選択モデルを提供するFoundryリージョン識別子>'
-export DEPLOY_API_CENTER_LOCATION='<API Centerの配置リージョン識別子>'
 export DEPLOY_GATEWAY_FQDN='<Gatewayの公開FQDN。httpsやパスを含めない>'
 export DEPLOY_PORTAL_FQDN='<Portalの公開FQDN。httpsやパスを含めない>'
 ```
@@ -126,7 +125,7 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 
 初回の準備コマンドは`services.apimInstanceId`をparamsへ保存します。同じコマンドで再開した場合は既存の値を保持します。構築・更新・撤去には同じ識別子を使い、手作業で変更しません。撤去後の新規構築は[運用手順](../operations/teardown.md#撤去後に新しく構築する)で新しい識別子を用意します。
 
-第02章へ進む前に、作成されたparamsの`productName`・`environmentName`・`apiCenterLocation`・`gateway.publicHostName`を、この章で決めた値へ揃えます。Entraへ登録するCM戻り先は、このparamsから計算します。その他の項目は、第02〜06章の結果を受け取ってから第07章で設定します。
+第02章へ進む前に、作成されたparamsの`productName`・`environmentName`・`gateway.publicHostName`を、この章で決めた値へ揃えます。Entraへ登録するCM戻り先は、このparamsから計算します。その他の項目は、第02〜06章の結果を受け取ってから第07章で設定します。
 
 | 保存先 | 用途 |
 | --- | --- |

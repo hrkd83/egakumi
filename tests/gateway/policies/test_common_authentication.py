@@ -186,7 +186,6 @@ public static class CommonAuthenticationFixture {
    if (item["claims"] is JObject claims) {
     c.Token = new Jwt(); foreach (var property in claims.Properties()) c.Token.Claims[property.Name] = property.Value is JArray ? property.Value.Select(x=>(string)x).ToArray() : new [] {(string)property.Value};
    }
-   if ((bool?)item["grpc"] == true) c.Variables["coreNativeGrpc"] = true;
    if (item["challenge"] != null) c.Variables["gatewayMcpChallenge"] = (string)item["challenge"];
    if (item["marker"] != null) c.Variables["gatewayCommonAuthenticationValidated"] = (bool)item["marker"];
    if (item["requestContext"] != null) c.Variables["gatewayRequestContext"] = item["requestContext"].ToString(Formatting.None);
@@ -239,7 +238,6 @@ class CommonAuthenticationPolicyTests(unittest.TestCase):
           {"id":"missing-ingress","headers":{"X-Gateway-Key":"SYNTHETIC_KEY"},"subscription":True},
           {"id":"overwrite-request-context","headers":key,"subscription":True,
            "requestContext":{"requestId":"untrusted","apiId":"untrusted","operationId":"untrusted"}},
-          {"id":"grpc","headers":{"X-Gateway-Key":"SYNTHETIC_KEY"},"subscription":True,"grpc":True},
           {"id":"unregistered-metadata","api":"unregistered-metadata-api","operation":"metadata-gateway","method":"GET","path":"/unregistered/metadata","headers":good},
           {"id":"unregistered-login","api":"unregistered-login-api","operation":"login","method":"GET","path":"/unregistered/login","headers":good},
         ]
@@ -277,15 +275,14 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
     def test_common_authentication_keeps_the_trusted_ingress_requirement(self):
         self.assertEqual(self.results["missing-ingress"]["status"],403)
-        self.assertEqual(self.results["grpc"]["status"],403)
-        self.assertFalse(self.results["grpc"]["authenticated"])
+        self.assertFalse(self.results["missing-ingress"]["authenticated"])
 
     def test_request_identity_is_initialized_even_before_ingress_or_authentication_rejection(self):
         expected={"requestId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","apiId":"gui-added-api","operationId":"invoke",
                   "requestReceivedAt":"2026-01-02T03:04:05Z","httpMethod":"POST",
                   "operationTemplate":"/tools/{tool}/invoke","apimPeerIp":"192.0.2.10",
                   "reportedUserAgent":None,"appGatewayTraceId":None}
-        for name in ("key","unknown-key","missing","missing-ingress","grpc","overwrite-request-context"):
+        for name in ("key","unknown-key","missing","missing-ingress","overwrite-request-context"):
             with self.subTest(case=name):
                 self.assertEqual(self.results[name]["requestContext"],expected)
 

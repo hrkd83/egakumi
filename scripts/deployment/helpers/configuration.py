@@ -45,7 +45,7 @@ from .apim_naming import apim_instance_id
 from .apim_input_contract import validate_input_contract
 from .apim_document_contract import DOCUMENT_API_VERSION
 from .credential_login import SESSION_POLICY_DEFAULTS, SESSION_POLICY_BOUNDS, MAX_TRANSACTION_LIFETIME_SECONDS
-from .paths import STANDARD_CONFIG_DIRECTORY
+from .paths import STANDARD_CONFIG_DIRECTORY, _no_links
 
 
 class ConfigurationError(ValueError):
@@ -64,7 +64,7 @@ QUERY_OBSERVATION_ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 TOP_KEYS = {
     "$schema", "$comment",
     "schemaVersion", "productName", "environmentName", "subscriptionId",
-    "azureTenantId", "entraTenantId", "location", "foundryLocation", "apiCenterLocation", "tags", "network",
+    "azureTenantId", "entraTenantId", "location", "foundryLocation", "tags", "network",
     "services", "gateway", "management", "monitoring", "certificate", "firewallTlsInspection", "authorization",
     "apiDefinitions", "publishApis", "credentialProviders", "portal", "credentialBroker", "portalAuthentication", "codex",
 }
@@ -80,7 +80,7 @@ PARAMETER_KEYS = {
     "$schema", "$comment", "configFile", "schemaVersion", "productName",
     "environmentName", "subscriptionId", "azureTenantId", "entraTenantId", "services", "gateway",
     "management", "monitoring", "certificate", "firewallTlsInspection",
-    "credentialProviders", "portal", "codex", "network", "location", "foundryLocation", "apiCenterLocation", "tags",
+    "credentialProviders", "portal", "codex", "network", "location", "foundryLocation", "tags",
 }
 # このVNet内で構築する資材のアドレスだけをNSGへ動的に渡します。
 # VNet・Firewall DNSとNSG初期集合はBicep内で固定し、公開入力では変更しません。
@@ -105,9 +105,10 @@ PARAMETER_SECTION_KEYS = {
     "network": PARAMETER_NETWORK_IP_KEYS,
     "services": {"publisherName", "publisherEmail", "apimInstanceId"},
     "gateway": {"publicHostName", "authentication"},
-    "management": {"adminUsername", "sshPublicKeyFile"},
+    "management": {"adminUsername"},
     "monitoring": {"operatorEmailAddresses"},
     "certificate": {"contactEmail", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"},
+    "firewallTlsInspection": {"managedIdentityResourceId", "intermediateCaSecretId"},
 }
 
 
@@ -120,19 +121,18 @@ PARAMETER_GATEWAY_NESTED_KEYS = {
 }
 PARAMETER_OWNED_PATHS = (
     *((key,) for key in ("schemaVersion", "productName", "environmentName", "subscriptionId", "azureTenantId", "entraTenantId",
-                         "location", "foundryLocation", "apiCenterLocation", "tags",
+                         "location", "foundryLocation", "tags",
                          )),
     *(("network", key) for key in PARAMETER_NETWORK_IP_KEYS),
     *(("network", "firewall", key) for key in PARAMETER_FIREWALL_KEYS),
-    *((section, key) for section in ("services", "management", "monitoring", "certificate", "portal")
+    *((section, key) for section in ("services", "management", "monitoring", "certificate", "firewallTlsInspection", "portal")
       for key in PARAMETER_SECTION_KEYS[section]),
-    ("firewallTlsInspection",),
     ("gateway", "publicHostName"),
     ("portal",), ("codex",),
     ("gateway", "authentication", "entra", "audience"),
     ("gateway", "authentication", "entra", "obo"),
-    *(("gateway", "authentication", "credentialLogin", "identity", key) for key in ("clientId", "clientSecretFile")),
-    *(("credentialProviders", "graphDelegated", key) for key in ("clientId", "clientSecretFile")),
+    ("gateway", "authentication", "credentialLogin", "identity", "clientId"),
+    ("credentialProviders", "graphDelegated", "clientId"),
 )
 
 # 旧入力は空値でも受け付けず、値の意味を変える自動移行をしません。
@@ -1066,7 +1066,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     c["subscriptionId"] = _guid(c.get("subscriptionId"), "subscriptionId")
     c["azureTenantId"] = _guid(c.get("azureTenantId"), "azureTenantId")
     c["entraTenantId"] = _guid(entra_tenant_id(c), "entraTenantId")
-    for key in ("location", "foundryLocation", "apiCenterLocation"):
+    for key in ("location", "foundryLocation"):
         # 配置先は企業のデータ所在地・利用枠に関わるため、暗黙の別地域へ配備しません。
         value = c.get(key)
         if not isinstance(value, str) or not REGION.fullmatch(value):
@@ -1088,7 +1088,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _fail("tags", "keys and values must be strings")
     c["tags"] = {**tags, "product": c["productName"], "environment": c["environmentName"]}
     c["network"] = _network(c.get("network"))
-    s = _object(c.get("services"), "services", {"publisherName", "publisherEmail", "apimInstanceId", "apimSkuName", "apimCapacity", "apiCenterSkuName", "vaultSkuName", "vaultRetentionDays", "vaultPurgeProtection", "modelDeployments", "projectDisplayName", "projectDescription", "enableApiCenterIntegration", "catalogEnvironmentKind", "catalogLifecycleStage", "grantApimSecretAccess", "speechEnabled", "grantApimFoundryModelsAccess"})
+    s = _object(c.get("services"), "services", {"publisherName", "publisherEmail", "apimInstanceId", "apimSkuName", "apimCapacity", "vaultSkuName", "vaultRetentionDays", "vaultPurgeProtection", "modelDeployments", "projectDisplayName", "projectDescription", "grantApimSecretAccess", "speechEnabled", "grantApimFoundryModelsAccess"})
     try:
         apim_instance_id(c)
     except ValueError:
@@ -1097,19 +1097,15 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     if not EMAIL.fullmatch(_string(s.get("publisherEmail"), "services.publisherEmail")):
         _fail("services.publisherEmail", "must be an email address")
     _choice(s.setdefault("apimSkuName", "Premium"), "services.apimSkuName", ("Developer", "Premium"))
-    _choice(s.setdefault("apiCenterSkuName", "Free"), "services.apiCenterSkuName", ("Free", "Standard"))
     _integer(s.setdefault("apimCapacity", 1), "services.apimCapacity", 1, 12)
     if s["apimSkuName"] == "Developer" and s["apimCapacity"] != 1:
         _fail("services.apimCapacity", "Developer supports a single unit")
     _choice(s.setdefault("vaultSkuName", "standard"), "services.vaultSkuName", ("standard", "premium"))
     _integer(s.setdefault("vaultRetentionDays", 90), "services.vaultRetentionDays", 7, 90)
     _bool(s.setdefault("vaultPurgeProtection", True), "services.vaultPurgeProtection")
-    _bool(s.setdefault("enableApiCenterIntegration", True), "services.enableApiCenterIntegration")
     _bool(s.setdefault("grantApimSecretAccess", False), "services.grantApimSecretAccess")
     _bool(s.setdefault("speechEnabled", False), "services.speechEnabled")
     _bool(s.setdefault("grantApimFoundryModelsAccess", False), "services.grantApimFoundryModelsAccess")
-    _choice(s.setdefault("catalogEnvironmentKind", "production"), "services.catalogEnvironmentKind", ("development", "production", "staging", "testing"))
-    _choice(s.setdefault("catalogLifecycleStage", "production"), "services.catalogLifecycleStage", ("deprecated", "design", "development", "preview", "production", "retired", "testing"))
     for key, default in (("projectDisplayName", "core-platform"), ("projectDescription", "Core platform project for shared model, agent, and tool capabilities.")):
         _string(s.setdefault(key, default), "services." + key)
     models = _list(s.setdefault("modelDeployments", []), "services.modelDeployments")
@@ -1339,8 +1335,8 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     # Azure Public DNS is the only supported issuance backend. Other DNS
     # plugin converters remain internal and cannot widen this deployment path.
     c["certificate"] = cert
-    auth = _object(c.get("authorization", {}), "authorization", {"projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders"})
-    for key in ("projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders"):
+    auth = _object(c.get("authorization", {}), "authorization", {"projectAdministrators", "projectDevelopers", "foundryReaders"})
+    for key in ("projectAdministrators", "projectDevelopers", "foundryReaders"):
         _principals(auth.setdefault(key, []), "authorization." + key)
     c["authorization"] = auth
     # OAuth接続は公開IDと秘密ファイル参照だけを持つ。公開設定やrender結果に
@@ -1558,11 +1554,25 @@ def _file_reference_fields(raw: dict):
         yield identity, "clientSecretFile", "gateway.authentication.credentialLogin.identity.clientSecretFile"
 
 
-def _resolve_file_references(raw: dict, base_directory: Path) -> dict:
-    """各JSONで宣言されたファイル参照を、そのJSONの親フォルダー基準で解決する。"""
+def _resolve_file_references(raw: dict, base_directory: Path, *, standard_secret_paths: bool = False) -> dict:
+    """共通configのファイル名は環境のsecretsへ、その他の参照は宣言元から解決する。"""
     result = copy.deepcopy(raw)
     for parent, key, label in _file_reference_fields(result):
-        parent[key] = _secret_path(parent[key], label, base_directory)
+        if standard_secret_paths:
+            label = "config." + label
+            path = _string(parent[key], label)
+            if not re.fullmatch(r"(?:\./)?secrets/[A-Za-z0-9][A-Za-z0-9._-]*", path):
+                _fail(label, "must name a file in the selected environment's secrets directory")
+            target = base_directory / path
+            try:
+                _no_links(target, base_directory)
+            except OSError:
+                _fail(label, "cannot verify the selected environment's secrets directory")
+            except ValueError as error:
+                _fail(label, str(error))
+            parent[key] = str(target)
+        else:
+            parent[key] = _secret_path(parent[key], label, base_directory)
     return result
 
 
@@ -1645,8 +1655,16 @@ def _reject_config_environment_inputs(standard: dict) -> None:
     if "entra" in authentication:
         _object(authentication["entra"], "config.gateway.authentication.entra", {"userLimits"})
     if "credentialLogin" in authentication:
-        _object(authentication["credentialLogin"], "config.gateway.authentication.credentialLogin",
-                {"providerNames", "transactionLifetimeSeconds", "loginCallsPerMinute", *SESSION_POLICY_DEFAULTS})
+        login = _object(authentication["credentialLogin"], "config.gateway.authentication.credentialLogin",
+                        {"providerNames", "identity", "transactionLifetimeSeconds", "loginCallsPerMinute", *SESSION_POLICY_DEFAULTS})
+        if "identity" in login:
+            identity = _object(login["identity"], "config.gateway.authentication.credentialLogin.identity", {"clientSecretFile"})
+            if "clientSecretFile" not in identity:
+                _fail("config.gateway.authentication.credentialLogin.identity.clientSecretFile", "is required")
+    if "firewallTlsInspection" in standard:
+        tls_inspection = _object(standard["firewallTlsInspection"], "config.firewallTlsInspection", {"rootCaCertificateFile"})
+        if "rootCaCertificateFile" not in tls_inspection:
+            _fail("config.firewallTlsInspection.rootCaCertificateFile", "is required")
     gateway = standard.get("gateway", {})
     if isinstance(gateway, dict) and "grpc" in gateway:
         _fail("config.gateway", "contains unsupported field(s): grpc")
@@ -1678,8 +1696,8 @@ def _reject_fixed_initial_inputs(value: dict, label: str) -> None:
 def load_configuration_source(path: Path | str) -> dict:
     """paramsが参照するconfigと企業固有入力を合成し、未正規化の設定を返す。
 
-    configFileはparamsの場所を基準に読む。各ファイル内の相対パスは合成前に
-    宣言元基準で解決するため、出力先や実行ディレクトリーが変わっても参照先がぶれない。
+    configFileはparamsの場所を基準に読む。共通configの秘密ファイル名は
+    paramsがある環境のsecretsを基準にし、configの配置や実行ディレクトリーに依存しない。
     従来の合成済みJSONも読めるが、企業paramsの入力範囲は小さく制限する。
     """
     source = Path(path).expanduser().resolve()
@@ -1700,6 +1718,7 @@ def _compose_configuration_source(source: Path, raw: dict) -> dict:
     if isinstance(raw.get("network"), dict) and "firewall" in raw["network"]:
         _object(raw["network"]["firewall"], "network.firewall", PARAMETER_FIREWALL_KEYS)
     gateway = raw.get("gateway", {})
+    credential_registered = False
     if isinstance(gateway, dict):
         for key, allowed in PARAMETER_GATEWAY_NESTED_KEYS.items():
             if key in gateway:
@@ -1711,7 +1730,8 @@ def _compose_configuration_source(source: Path, raw: dict) -> dict:
             if "credentialLogin" in authentication:
                 login = _object(authentication["credentialLogin"], "gateway.authentication.credentialLogin", {"identity"})
                 if "identity" in login:
-                    _object(login["identity"], "gateway.authentication.credentialLogin.identity", {"clientId", "clientSecretFile"})
+                    _object(login["identity"], "gateway.authentication.credentialLogin.identity", {"clientId"})
+                    credential_registered = True
     reference = _string(raw["configFile"], "configFile", maximum=4096)
     if "://" in reference or "\x00" in reference or Path(reference).suffix.lower() != ".json":
         _fail("configFile", "must reference a local JSON config file")
@@ -1733,9 +1753,13 @@ def _compose_configuration_source(source: Path, raw: dict) -> dict:
     _reject_config_environment_inputs(standard)
     parameters = copy.deepcopy(raw)
     parameters.pop("configFile")
-    # 相対参照を宣言元ごとに先に解決する。合成後に1つの基準で解決すると、
-    # configとparamsが別フォルダーにある場合に違う秘密ファイルを指し得る。
-    resolved_standard = _resolve_file_references(standard, config_source.parent)
+    # configにはファイル名だけを置き、参照先は選択した環境のparamsから決める。
+    # ファイル名だけで認証やTLS検査の登録を有効化しない。
+    resolved_standard = _resolve_file_references(standard, source.parent, standard_secret_paths=True)
+    if not credential_registered:
+        resolved_standard.get("gateway", {}).get("authentication", {}).get("credentialLogin", {}).pop("identity", None)
+    if "firewallTlsInspection" not in parameters:
+        resolved_standard.pop("firewallTlsInspection", None)
     resolved_parameters = _resolve_file_references(parameters, source.parent)
     from .credential_provider_inputs import compose_credential_providers
     provider_options = resolved_standard.pop("credentialProviders", None)
@@ -1774,7 +1798,7 @@ def _reject_ignored_material_overrides(configuration: dict) -> None:
         reject("gateway.existingWafPolicyId")
     for section, keys in (
         ("monitoring", ("auditAllowedIpAddresses", "auditReaders")),
-        ("authorization", ("projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders")),
+        ("authorization", ("projectAdministrators", "projectDevelopers", "foundryReaders")),
     ):
         source = configuration.get(section, {})
         for key in keys:

@@ -26,7 +26,7 @@ CoreのAPIM、共通SQL、非公開ACR、ACA環境を使い、BrokerとCredentia
 
 ## 2. 本人接続の設定を確認する
 
-公開paramsの`credentialProviders.graphDelegated`にはClient IDと`clientSecretFile`を設定する。共通configの同slotには表示名・scope・pool、`config.gateway.authentication.credentialLogin`にはprovider選択とセッション設定を置く。標準の論理名`graph-delegated`とtenantは固定資材から導出する。追加providerは双方の`additional[]`で定義と登録を論理名照合する。最終構成の本人確認には`gateway.authentication.credentialLogin.identity`を必須とする。
+paramsの`credentialProviders.graphDelegated`にはClient IDを設定する。共通configの同じ項目には表示名・scope・pool・秘密ファイル名を置く。`config.gateway.authentication.credentialLogin`にはprovider選択・セッション設定・Credentialアプリ用の秘密ファイル名を置く。標準の論理名`graph-delegated`とtenantは固定資材から導出する。追加providerは双方の`additional[]`で定義と登録を論理名照合する。最終構成の本人確認には`gateway.authentication.credentialLogin.identity`を必須とする。
 
 ```bash
 python3 scripts/deployment/lifecycle.py validate --config "$DEPLOY_PARAMS_FILE"

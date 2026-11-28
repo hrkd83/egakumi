@@ -67,7 +67,7 @@ Azure基盤は `azureTenantId`、ユーザー認証は `entraTenantId` で指定
 | 汎用外部中継（個別連携時） | APIM → 許可した外向き経路 → 外部REST／MCP／A2A。サンプル入口はCore標準APIに含めない |
 | WebSocket音声 | 制御・音声をAppGW → Firewall → APIMで中継 |
 | WebRTC音声 | 接続準備・制御はGateway。音声本体は端末とAzureの間 |
-| 運用 | Linux管理VM、Key Vault、Log Analytics／Application Insights、監査Storage、API Center |
+| 運用 | Linux管理VM、Key Vault、Log Analytics／Application Insights、監査Storage |
 
 gRPCは基盤の提供要件から廃止しました。専用TCP入口と新規gRPC APIは作成せず、以前の設備・生成元は所有照合と撤去に限って扱います。
 
@@ -76,7 +76,7 @@ gRPCは基盤の提供要件から廃止しました。専用TCP入口と新規g
 | `rg-<environment>-<product>-id` | AppGW・Gateway・Portal・SQL初期化等のマネージドID |
 | `rg-<environment>-<product>-nw` | VNet、NSG、ルート、Firewall、AppGW、PE、Private DNS |
 | `rg-<environment>-<product>-monitor` | 監視・監査 |
-| `rg-<environment>-<product>-svc` | APIM、Foundry・Project・モデル、API Center、Key Vault、共用SQL、ACA環境・Gateway／Portal・ジョブ、ACR |
+| `rg-<environment>-<product>-svc` | APIM、Foundry・Project・モデル、Key Vault、共用SQL、ACA環境・Gateway／Portal・ジョブ、ACR |
 | `rg-<environment>-<product>-maint` | Ubuntu管理VM、保守と非公開ACR向けイメージビルド |
 
 RGと共通基盤用マネージドIDは`azd up`が作成します。[管理ポータル](docs/setup/12-deploy-portal.md)用のACA環境・初期CA・非公開ACRと、`portal.<domain>`のApp Gateway入口も共通基盤に含みます。Portal本体・専用DB・SQL初期化・ヘルス監視・WAF調整は`deploy_portal.py`で配備します。認証窓口の実行用ID・credentials DB・CM・アプリは`deploy_gateway.py`が担当します。
@@ -90,7 +90,7 @@ RGと共通基盤用マネージドIDは`azd up`が作成します。[管理ポ�
 | 費用の対象 | 現行構成で確認するもの |
 | --- | --- |
 | ネットワーク・入口 | Application Gateway、Firewall、Public IP、Private Endpoint、Private DNS、通信処理・転送量 |
-| API・AI | APIM、Foundryで採用するモデル・PII・文書解析・音声等の利用量、採用するAPI Centerのプラン |
+| API・AI | APIM、Foundryで採用するモデル・PII・文書解析・音声等の利用量 |
 | Portal・Broker | Portal用とBroker用のContainer Apps環境、各アプリのレプリカとCPU・メモリー、SQL初期化・定期ジョブ、非公開ACRとイメージ保存 |
 | 監査 | 各サービスの診断設定、Log Analyticsの90日保持、本番監査Storageの約7年WORM、FoundryのApplication Insights接続 |
 | 永続化・運用 | 共用SQLサーバー内のPortal／credentials DB、管理VMとディスク、Key Vault、LAW／App Insights、ログexport、監査Storageと保持・複製、アラート・通知 |

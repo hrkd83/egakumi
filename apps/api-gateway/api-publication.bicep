@@ -975,8 +975,7 @@ resource apis 'Microsoft.ApiManagement/service/apis@2025-09-01-preview' = [for (
   name: api.name
   properties: union({
     displayName: api.displayName
-    // native azd/APIだけの再公開とも、同じ公開契約から生成した説明を正本にします。
-    // API Centerへ直接descriptionを書かず、APIMからの同期で維持します。
+    // 通常配備とAPIの再公開では、同じ公開契約からAPIMの説明を生成します。
     description: api.?catalogDescription ?? api.displayName
     apiRevision: '1'
     path: api.path

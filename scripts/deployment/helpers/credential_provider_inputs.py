@@ -1,6 +1,6 @@
 """標準接続の定義と企業の登録情報から、内部用の接続配列を組み立てる。
 
-configは接続先の契約、paramsは登録IDと秘密ファイル参照を受け持つ。
+configは接続先の契約と標準Graphの秘密ファイル名、paramsは登録IDと追加接続の秘密参照を受け持つ。
 配列の位置や汎用マージでは結び付けず、追加接続の名前を完全一致で照合する。
 秘密ファイルを読まず、解決済みの参照文字列も変更しない。
 """
@@ -15,8 +15,8 @@ from typing import Any, NoReturn
 _GRAPH_NAME = "graph-delegated"
 _GRAPH_CLIENT_ID = re.compile(r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\Z")
 _SECTION_KEYS = {"graphDelegated", "additional"}
-_GRAPH_OPTION_KEYS = {"displayName", "scopes", "pool"}
-_GRAPH_REGISTRATION_KEYS = {"clientId", "clientSecretFile"}
+_GRAPH_OPTION_KEYS = {"displayName", "scopes", "pool", "clientSecretFile"}
+_GRAPH_REGISTRATION_KEYS = {"clientId"}
 _ADDITIONAL_OPTION_KEYS = {
     "name", "displayName", "identityProvider", "scopes", "resourceUri",
     "authorizationUrl", "tokenUrl", "refreshUrl", "connectionNames",

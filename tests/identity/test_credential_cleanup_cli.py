@@ -36,11 +36,7 @@ class CredentialCleanupCliTests(LifecycleFixture, unittest.TestCase):
         for path in self.generated_credentials:
             lifecycle.protected_json(path, {"value": "SYNTHETIC_PRIVATE_INPUT"})
         # Five owned RGs and four exact service tombstones (including both vaults) are already absent.
-        # The last response is the complete, empty owned API Center history page.
-        return ScriptedTransport(
-            [{"statusCode": 404, "body": None, "headers": {}} for _ in range(9)]
-            + [{"statusCode": 200, "body": {"value": []}, "headers": {}}]
-        )
+        return ScriptedTransport([{"statusCode": 404, "body": None, "headers": {}} for _ in range(9)])
 
     def run_successful_postdown(self, *, credential_manager):
         transport = self.prepare_postdown(credential_manager=credential_manager)
@@ -79,7 +75,7 @@ class CredentialCleanupCliTests(LifecycleFixture, unittest.TestCase):
             self.assertEqual(stat.S_IMODE(receipt_path.stat().st_mode), 0o600)
         self.assertFalse(self.paths.parameters.exists())
         self.assertTrue(all(not path.exists() for path in self.generated_credentials))
-        self.assertEqual(len(transport.calls), 10)
+        self.assertEqual(len(transport.calls), 9)
         vault, = [item for item in receipt["result"]["softDeletedServices"] if item["kind"] == "certificateVault"]
         self.assertTrue(vault["resourceId"].endswith("/deletedVaults/kvtls-" + self.config["resourceStem"]))
         self.assertEqual(vault["status"], "absent")

@@ -54,6 +54,7 @@ NETWORK_API = "2025-01-01"
 DEPLOYMENT_API = "2022-09-01"
 MONITOR_API = "2021-05-01-preview"
 ARM_TEMPLATE_FUNCTION_LIMIT = 64
+PUBLICATION_API_TYPES = ("http", "websocket", "mcp")
 MODULE = ROOT / "apps/api-gateway/api-publication.bicep"
 LAYERS = ("id", "nw", "monitor", "svc", "maint")
 SOURCE_GENERATION_OUTPUT = "publicationSourceGenerationId"
@@ -105,14 +106,12 @@ def prepare_plan(config: dict, state: dict) -> dict:
     outputs = state.get("outputs", {})
     if outputs.get("resourceGroups") != expected_groups:
         raise ValueError("Core output groups differ from the selected environment")
-    names = outputs.get("names", {})
-    # 全サービスで「種別-環境名-プロダクト名」を使う。配備出力を名前の
-    # 根拠にせず、現在の設定から期待値を作って照合し、別名の資源を公開しない。
+    output_names = outputs.get("names")
+    # 公開処理が使う資源名を現在の設定から導出し、Core出力と照合する。
     stem = config["resourceStem"]
-    expected_names = {"apim": apim_name(config), "keyVault": "kv-" + stem,
-        "foundry": "aif-" + stem, "project": "proj-" + stem,
-        "apiCenter": "apic-" + stem}
-    if names != expected_names:
+    names = {"apim": apim_name(config), "keyVault": "kv-" + stem,
+        "foundry": "aif-" + stem, "project": "proj-" + stem}
+    if not isinstance(output_names, dict) or any(output_names.get(key) != name for key, name in names.items()):
         raise ValueError("Core service names differ from the selected naming policy")
     service_types = {"apim": "Microsoft.ApiManagement/service", "keyVault": "Microsoft.KeyVault/vaults",
                      "foundry": "Microsoft.CognitiveServices/accounts"}
@@ -143,8 +142,8 @@ def prepare_plan(config: dict, state: dict) -> dict:
         raise ValueError("API publication requires resolved API definitions")
     authentication = common_authentication_settings(config)
     for api in config["apiDefinitions"]:
-        if api.get("apiType") not in ("http", "websocket", "mcp") or "grpc" in api:
-            raise ValueError("API publication supports HTTP, WebSocket and MCP only; retired gRPC inputs are not accepted")
+        if api.get("apiType") not in PUBLICATION_API_TYPES:
+            raise ValueError("API publication supports HTTP, WebSocket and MCP API types")
         if not _same(api.get("subscriptionKeyHeader"), authentication["core-subscription-key-header"]):
             raise ValueError("API key headers must match the foundation gateway.authentication settings")
     # 初期CoreとAPI再公開が同じ業務設定・同じTLS/FQDN検査から宛先を生成します。
@@ -740,8 +739,6 @@ def validate_publication_template(template):
         raise ValueError("API publication requires valid ARM function groups")
     if sum(len(group["members"]) for group in functions) > ARM_TEMPLATE_FUNCTION_LIMIT:
         raise ValueError("API publication exceeds the ARM template function limit")
-    if "coreNativeGrpc" in json.dumps(template):
-        raise ValueError("API publication must not generate retired gRPC ingress exemptions")
     resources = template.get("resources")
     symbolic = isinstance(resources, dict)
     if symbolic:
@@ -760,10 +757,12 @@ def validate_publication_template(template):
                 or ("existing" in resource and type(resource["existing"]) is not bool)):
             raise ValueError(message)
         resource_type = resource["type"].lower()
-        if (resource_type == "microsoft.apimanagement/service/apis"
-                and isinstance(resource.get("properties"), dict)
-                and resource["properties"].get("type") == "grpc"):
-            raise ValueError("API publication must not generate retired gRPC APIs")
+        if resource_type == "microsoft.apimanagement/service/apis" and isinstance(resource.get("properties"), dict):
+            api_type = resource["properties"].get("type")
+            # パラメーターから決まるAPI型は、配備プランの入力で検査する。
+            if (isinstance(api_type, str) and api_type not in PUBLICATION_API_TYPES
+                    and not (api_type.startswith("[") and api_type.endswith("]"))):
+                raise ValueError("API publication template requires a supported API type")
         if resource_type == "microsoft.apimanagement/service/policies":
             raise ValueError("API publication must preserve the APIM global policy")
         if (resource_type == "microsoft.apimanagement/service/namedvalues"

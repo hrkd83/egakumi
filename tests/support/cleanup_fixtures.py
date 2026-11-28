@@ -61,22 +61,6 @@ class FakeTransport:
         return [call for call in self.calls if call["method"] != "GET"]
 
 
-class ApiCenterListTransport(FakeTransport):
-    """API Centerの一覧ページだけを順番に返す。実HTTPには接続しない。"""
-    def __init__(self, collection_id, pages, resources=None):
-        super().__init__(resources)
-        self.collection_id = collection_id
-        self.pages = copy.deepcopy(pages)
-
-    def request(self, method, path, *, body=None, headers=None):
-        if method == "GET" and urlsplit(path).path == self.collection_id:
-            self.calls.append({"method": method, "id": self.collection_id, "path": path, "headers": headers, "body": body})
-            if not self.pages:
-                raise AssertionError("Unexpected API Center page request")
-            return {"statusCode": 200, "body": self.pages.pop(0), "headers": {}}
-        return super().request(method, path, body=body, headers=headers)
-
-
 class ModelTransport(FakeTransport):
     """Represent paged models, delayed deletes and unrelated accounts offline."""
     def __init__(self, account, deployments, *, page_size=1):
@@ -267,7 +251,7 @@ class CleanupFixture:
                 "apim": self.svc_rg + "/providers/Microsoft.ApiManagement/service/apim-test-egakumi-abc123",
             },
             "serviceLocations": {"keyVault": "japaneast", "foundry": "eastus2", "apim": "japaneast"},
-            "outputs": {"names": {"apiCenter": "apic-test-egakumi"}},
+            "outputs": {},
         }
 
     def write_configuration(self):
@@ -309,9 +293,6 @@ class CleanupFixture:
                                 apim_max_checks=2, apim_wait_seconds=0, **options)
 
     def post(self, transport, **options):
-        # 通常ケースは削除済みAPI Centerなし。専用ケースでは明示した一覧を使う。
-        collection = self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices"
-        transport.resources.setdefault(collection, {"value": []})
         return cleanup.post_down(self.config_path, self.state, transport, max_checks=2, wait_seconds=0, **options)
 
     def assert_code(self, code, function):
@@ -319,14 +300,6 @@ class CleanupFixture:
             function()
         self.assertEqual(code, raised.exception.code)
         self.assertNotIn("PRIVATE_SENTINEL", str(raised.exception))
-
-    def api_center_tombstone(self):
-        """Bicep出力の名前とexact svc RGに一致する、削除済み一件を作る。"""
-        name = self.state["outputs"]["names"]["apiCenter"]
-        return {"id": self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices/" + name,
-                "name": name, "type": "Microsoft.ApiCenter/deletedServices", "properties": {
-                    "softDeletionDate": "2026-10-19T08:17:39.1335362Z",
-                    "scheduledPurgeDate": "2026-10-26T08:17:39.1335362Z"}}
 
     def credential_transport(self, names=("approved-oauth",), models=0):
         """所有 APIM と設定済み provider を用意する。実 secret ファイルは作成しない。"""

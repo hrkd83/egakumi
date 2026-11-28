@@ -130,36 +130,6 @@
           ],
           "default": "standard"
         },
-        "apiCenterSkuName": {
-          "type": "string",
-          "enum": [
-            "Free",
-            "Standard"
-          ],
-          "default": "Free",
-          "description": "API Centerの料金プラン。基本PortalはFreeでも利用可能。Standardの料金・APIM連携特典は事前確認します。"
-        },
-        "catalogEnvironmentKind": {
-          "type": "string",
-          "enum": [
-            "development",
-            "production",
-            "staging",
-            "testing"
-          ]
-        },
-        "catalogLifecycleStage": {
-          "type": "string",
-          "enum": [
-            "deprecated",
-            "design",
-            "development",
-            "preview",
-            "production",
-            "retired",
-            "testing"
-          ]
-        },
         "modelDeployments": {
           "type": "array",
           "items": {
@@ -194,10 +164,6 @@
           "type": "string",
           "minLength": 1,
           "default": "Core platform project for shared model, agent, and tool capabilities."
-        },
-        "enableApiCenterIntegration": {
-          "type": "boolean",
-          "default": true
         },
         "grantApimSecretAccess": {
           "type": "boolean",
@@ -385,6 +351,20 @@
                   "maximum": 1000,
                   "default": 10,
                   "description": "購読IDごとのログイン開始回数を1分単位で制限します。"
+                },
+                "identity": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "clientSecretFile"
+                  ],
+                  "properties": {
+                    "clientSecretFile": {
+                      "type": "string",
+                      "pattern": "^(?:\\./)?secrets/[A-Za-z0-9][A-Za-z0-9._-]*$",
+                      "description": "独立したCredentialアプリの秘密ファイル名。選択した環境のparamsの親フォルダーを基準にします。"
+                    }
+                  }
                 }
               }
             }
@@ -451,6 +431,11 @@
         "encryptionAtHost": {
           "type": "boolean",
           "default": true
+        },
+        "sshPublicKeyFile": {
+          "type": "string",
+          "pattern": "^(?:\\./)?secrets/[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "description": "管理VMのSSH公開鍵の標準ファイル名。選択した環境のparamsの親フォルダーを基準にします。"
         }
       },
       "additionalProperties": false
@@ -732,7 +717,8 @@
           "required": [
             "displayName",
             "scopes",
-            "pool"
+            "pool",
+            "clientSecretFile"
           ],
           "properties": {
             "displayName": {
@@ -763,6 +749,11 @@
                   "maximum": 8000
                 }
               }
+            },
+            "clientSecretFile": {
+              "type": "string",
+              "pattern": "^(?:\\./)?secrets/[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "description": "標準Graph委任接続用Toolsアプリの秘密ファイル名。選択した環境のparamsの親フォルダーを基準にします。"
             }
           }
         },
@@ -776,6 +767,20 @@
       "required": [
         "graphDelegated"
       ]
+    },
+    "firewallTlsInspection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootCaCertificateFile"
+      ],
+      "properties": {
+        "rootCaCertificateFile": {
+          "type": "string",
+          "pattern": "^(?:\\./)?secrets/[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "description": "Firewall TLS検査用の公開ルートCA証明書の標準ファイル名。選択した環境のparamsの親フォルダーを基準にします。"
+        }
+      }
     }
   },
   "$defs": {

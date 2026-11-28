@@ -259,9 +259,7 @@ def _xml(value, *, fragment=False, inherited=False, previous_prm_guard=False):
             raise ValueError("Inbound policy inheritance must execute exactly once")
         before = list(section)[:list(section).index(bases[0])]
         validate_api_settings_inheritance(root)
-        # Retired metadata is accepted only while reading an explicitly owned
-        # previous source. New templates are rejected before deployment.
-        metadata = ("gatewayAuditSettings", "gatewayControlSettings", "coreNativeGrpc", API_SETTINGS_SOURCE_VARIABLE)
+        metadata = ("gatewayAuditSettings", "gatewayControlSettings", API_SETTINGS_SOURCE_VARIABLE)
         guards = [_structure(ET.fromstring(PRM_GUARD))]
         if previous_prm_guard:
             guards.append(_structure(ET.fromstring(PREVIOUS_PRM_GUARD)))

@@ -14,7 +14,7 @@
 | Entra client secret・公開TLS・DNS用IDの更新 | [認証情報と公開TLSの更新](secrets-and-certificates.md) |
 | PortalのEntra署名証明書の更新 | [Portal認証証明書](portal-authentication.md) |
 | 公開TLSとPortal署名証明書のJobを確認 | [証明書Job](certificate-jobs.md) |
-| WAF・外向き通信・監視・サービス容量の調整 | [基盤設定](platform-settings.md) · [API Center](platform-settings.md#api-centerのカタログ管理) · [NSG](network-security-groups.md) |
+| WAF・外向き通信・監視・サービス容量の調整 | [基盤設定](platform-settings.md) · [NSG](network-security-groups.md) |
 | 管理VMへの接続・権限の付与と回収・Serial Console | [管理VMへの本人接続](management-vm-access.md) |
 | Foundryエージェントの本文と長期保管 | [本文監査の有効化](foundry-agent-audit.md) |
 | 管理VMからの監査・ログ取得、ACA exec、SQL保守 | [管理VMの保守操作](management-client.md) · [SQLの権限と接続](management-sql-access.md) |

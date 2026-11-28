@@ -273,12 +273,9 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
             "obo": {"keyId": "https://" + f"kv-{self.config['resourceStem']}" + ".vault.azure.net/keys/gateway-obo/" + "1" * 32,
                     "certificateThumbprint": "2" * 64},
         }
-        raw["gateway"]["authentication"]["credentialLogin"]["identity"]["clientSecretFile"] = "./secrets/entra-credential-secret.txt"
         raw["services"]["apimInstanceId"] = "abc123"
         raw["credentialProviders"]["graphDelegated"]["clientId"] = "44444444-4444-4444-8444-444444444444"
         raw["configFile"] = "../../infra/config/test.json"
-        raw["management"]["sshPublicKeyFile"] = "./secrets/management-ssh.pub"
-        raw["credentialProviders"]["graphDelegated"]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
         source.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n")
         (self.root / "infra/config/test.json").write_bytes((core / "infra/config/test.json").read_bytes())
         return source

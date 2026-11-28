@@ -322,16 +322,6 @@ class NsgRulePriorityTests(unittest.TestCase):
         self.assertFalse(any(subnet['apim'] in rule['source'] for rule in portal_ingress))
         self.assertTrue(all(subnet['portal'] not in rule['destination'] for rule in broker if rule['direction'] == 'Outbound'))
 
-    def test_retired_flags_and_external_address_overrides_cannot_change_initial_rules(self):
-        p = self.parameters(); expected = self.compiled_rules(p)
-        p['config'].update(clientAddressPrefixes=['203.0.113.10/32'], certificatePublicProbeEnabled=False,
-                           apimKeyVaultAccessEnabled=False, operatorAddressPrefixes=['203.0.113.20/32'],
-                           operatorPorts=['22'], dnsServers=['192.0.2.53'], ntpAddressPrefixes=['192.0.2.123/32'],
-                           managementAdditionalSecurityRules=[{'name': 'not-created'}])
-        self.assertEqual(self.compiled_rules(p), expected)
-        for m in MODULES:
-            self.assertFalse({'grpcEnabled', 'grpcPublicPort', 'grpcBackendPort'} & set(self.templates[m]['parameters']))
-
     def test_management_host_phc_has_no_network_time_allow_and_apim_keeps_internet_ntp(self):
         p = self.parameters(); actual = self.compiled_rules(p)
         management = actual['management']

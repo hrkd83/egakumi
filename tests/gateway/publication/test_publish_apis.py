@@ -72,7 +72,7 @@ def publication_fixture():
             authorization={"mode": "subscriptionKey",
                 "operationConstraints": {"invoke": {"kind": "registeredOperation", "maxRequestBytes": 32768}}})
     names = {"apim": "apim-test-fixture-abc123", "keyVault": "kv-test-fixture",
-        "foundry": "aif-test-fixture", "project": "proj-test-fixture", "apiCenter": "apic-test-fixture"}
+        "foundry": "aif-test-fixture", "project": "proj-test-fixture"}
     svc = publish._scope(config, "svc")
     ids = {key: svc + "/providers/" + value + "/" + names[key] for key, value in {
         "apim": "Microsoft.ApiManagement/service", "keyVault": "Microsoft.KeyVault/vaults", "foundry": "Microsoft.CognitiveServices/accounts"}.items()}
@@ -266,8 +266,10 @@ class PublicationTests(unittest.TestCase):
     def test_standard_service_names_share_the_environment_product_stem(self):
         self.assertEqual(self.plan["parameters"]["names"]["value"], {
             "apim": "apim-test-fixture-abc123", "keyVault": "kv-test-fixture",
-            "foundry": "aif-test-fixture", "project": "proj-test-fixture",
-            "apiCenter": "apic-test-fixture"})
+            "foundry": "aif-test-fixture", "project": "proj-test-fixture"})
+        state = copy.deepcopy(self.state)
+        state["outputs"]["names"]["additionalService"] = "fixture-extra"
+        self.assertEqual(publish.prepare_plan(self.config, state), self.plan)
 
     def test_other_or_missing_instance_state_and_same_environment_old_apim_are_rejected(self):
         for value in (None, 'def456'):
@@ -793,18 +795,19 @@ class PublicationTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, "update the Core"):
                 publish.prepare_plan(self.config, state)
 
-    def test_retired_grpc_publication_inputs_and_template_exemptions_fail_before_azure(self):
-        for field, value in (("apiType", "grpc"), ("grpc", {})):
-            config = copy.deepcopy(self.config)
-            config["apiDefinitions"][0][field] = value
-            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "retired"):
-                publish.prepare_plan(config, self.state)
-        template = {"resources": [{"type": "Microsoft.ApiManagement/service/apis", "properties": {"type": "grpc"}}]}
-        with self.assertRaisesRegex(ValueError, "retired"):
+    def test_publication_plan_and_template_validate_api_types(self):
+        config = copy.deepcopy(self.config)
+        config["apiDefinitions"][0]["apiType"] = "unsupported"
+        with self.assertRaisesRegex(ValueError, "supports HTTP, WebSocket and MCP"):
+            publish.prepare_plan(config, self.state)
+        properties = {"type": "unsupported"}
+        template = {"resources": [{"type": "Microsoft.ApiManagement/service/apis", "properties": properties}]}
+        with self.assertRaisesRegex(ValueError, "requires a supported API type"):
             publish.validate_publication_template(template)
-        template["resources"][0]["properties"] = {"value": '<set-variable name="coreNativeGrpc" value="@(true)" />'}
-        with self.assertRaisesRegex(ValueError, "retired"):
-            publish.validate_publication_template(template)
+        for api_type in ("http", "websocket", "mcp"):
+            with self.subTest(api_type=api_type):
+                properties["type"] = api_type
+                publish.validate_publication_template(template)
 
     def test_foreign_state_names_identity_and_unprepared_feature_flags_fail_offline(self):
         for key in ("subscription", "groups", "names", "identity", "l7", "realtime"):

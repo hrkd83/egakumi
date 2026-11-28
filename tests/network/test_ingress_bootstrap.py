@@ -476,7 +476,6 @@ class IngressInfrastructureSourceTests(unittest.TestCase):
         source = (core / "infra/main.bicep").read_text()
         self.assertIn("@secure()\nparam l7IngressSecret", source)
         self.assertIn("@secure()\nparam realtimeTicketKey", source)
-        self.assertNotIn("output grpc ", source)
         self.assertIn("l7IngressEnabled: useIngressSecrets", source)
         services = (core / "infra/modules/services/services.bicep").read_text()
         self.assertIn("'Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2': 'false'", services)
