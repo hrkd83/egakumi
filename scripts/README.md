@@ -8,7 +8,7 @@
 | [policy/](policy/) | APIMの共通ポリシーや手動追加API用のポリシーXMLをローカル生成 | [render_apim_policy.py](policy/render_apim_policy.py)、[render_apim_portal_policy.py](policy/render_apim_portal_policy.py) |
 | [clients/](clients/) | Entra認証、REST・MCP、本人接続、音声の試験と組み込み例 | [動作テスト](../docs/testing/integration-tests.md)、[本人接続クライアント](../docs/reference/identity/connection-session-clients.md) |
 | [validation/](validation/) | APIの疎通とWAFの検査、公開WAF manifestの生成 | [coverage_client.py](validation/coverage_client.py)、[waf_probe.py](validation/waf_probe.py)、[waf_contracts.py](validation/waf_contracts.py) |
-| [audit/](audit/) | 監査ログのKQLとダウンロード済み本文証跡の復元 | [audit_body.py](audit/audit_body.py)、[監査資料](../docs/reference/audit/request-body-audit.md) |
+| [audit/](audit/) | 監査ログの照合・利用量集計用KQL | [監査資料](../docs/reference/audit/request-body-audit.md) |
 | [portal_local/](portal_local/) | Portalのローカル認証設定と開発用起動 | [ローカル認証テスト](../docs/testing/portal-local-auth.md) |
 | [catalog/](catalog/) | 標準APIとモデル上限の読込・合成 | 配備とローカル検査で共用するPythonモジュール |
 

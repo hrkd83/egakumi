@@ -14,12 +14,12 @@
 
 ## ストリーミングと音声
 
-SSEは最初のイベントが全応答終了前に届くかを測り、受信した増分と保護された監査を照合します。WebSocket・WebRTCは基盤で接続・制御の記録を照合します。業務システムは送受信した業務テキストと取得できる文字起こしを記録し、利用できる基盤の接続IDと関連付けます。試用用のPortalは業務側の記録対象から外します。 [リアルタイム音声の契約](../reference/gateway/realtime-audio.md) · [本文監査](../reference/audit/request-body-audit.md)
+SSEは最初のイベントが全応答終了前に届くかを測り、応答の要求IDをAPIMとFoundryのメタデータに照合します。WebSocket・WebRTCは基盤で接続・制御の記録を照合します。業務システムは送受信した業務テキストと取得できる文字起こしを記録し、利用できる基盤の接続IDと関連付けます。試用用のPortalは業務側の記録対象から外します。 [リアルタイム音声の契約](../reference/gateway/realtime-audio.md) · [本文監査](../reference/audit/request-body-audit.md)
 
 ## 確認に使うクライアント
 
 - [統合クライアント](../../scripts/clients/integration_client.py)で採用したHTTP／SSEの方式を選ぶ。
 - [音声クライアント](../../scripts/clients/voice_client.py)と[ブラウザー検証入口](../../scripts/clients/realtime_browser.py)で採用した音声の方式を確認する。
-- [本文監査の確認クライアント](../../scripts/validation/coverage_client.py)で監査対象の方式を選ぶ。
+- [API経路の確認クライアント](../../scripts/validation/coverage_client.py)で監査対象の方式を選ぶ。
 
 実行するコマンドの `--help` で対応方式と必要な入力を確認し、ファイル出力先を環境の保護領域に指定します。

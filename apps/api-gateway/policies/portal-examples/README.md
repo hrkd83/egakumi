@@ -4,7 +4,7 @@
 
 ## APIとProductを設定する
 
-1. **API Management → Backends → Add**でHTTPSのバックエンドを登録します。IDは`manual-`で始めます。ポリシーは固定のバックエンドIDへ送ります。使用する場合はAPIMのシステム割り当てマネージドIDに、対象先が要求する権限をその資源のスコープで付与します。Claude本文監査では配備済みの `core-audit-relay` を選びます。バックエンドの固定ホストと証明書の名前を照合します。 [Claudeの公開手順](claude-messages.md)
+1. **API Management → Backends → Add**でHTTPSのバックエンドを登録します。IDは`manual-`で始めます。ポリシーは固定のバックエンドIDへ送ります。使用する場合はAPIMのシステム割り当てマネージドIDに、対象先が要求する権限をその資源のスコープで付与します。バックエンドの固定ホストと証明書の名前を照合します。 [Claudeの公開手順](claude-messages.md)
 2. **APIs → Add API → HTTP**でIDを`manual-`で始め、未使用の公開prefixを設定します。**Subscription required**を有効にし、購読用ヘッダーは共通のNamed Value `core-subscription-key-header` と揃えます。初期値は`api-key`です。公開する操作のIDとメソッドを手順3のJSONへ記載します。ワイルドカードを使う汎用操作、コネクションを所有者に結び付ける処理、動的なバックエンド切替は別設計で扱います。 [APIMの手動API作成](https://learn.microsoft.com/en-us/azure/api-management/add-api-manually)
 3. JSON例を保護領域へコピーし、API・Product・バックエンドのID、各操作の固定下流パスと入力サイズを選びます。**API → All operations → Inbound processing → Code editor**に生成XML全体を貼り付けます。保存してから個別操作を登録し、APIMで表示されるOperation IDを設定と照合します。**Calculate effective policy**で共通入口が一度だけ適用され、選択した固定の下流へ転送が一度だけ行われることを確認します。個別操作に追加ポリシーがある場合は各sectionの継承位置も確認します。 [APIMのポリシースコープと継承](https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-policies)
 4. **Products**でキー用の購読必須Productを未公開で作成し、このAPIを追加します。IDは`manual-`で始め、キーを必要とする利用者・サービスに限り、基盤管理者がそのProductの購読を例外発行します。Bearerも提供する場合は、IDが`manual-entra-users`の購読不要Productを公開し、追加する`manual-` APIだけを所属させます。両Productのポリシーは各sectionに`<base />`を置き、共通認証を継承します。API自体のSubscription requiredは維持します。開発者ポータルの公開状態は表示を切り替える設定です。アクセス停止にはAPIとProductの関連付け解除、購読の停止、または対象操作の削除を使います。 [APIMの購読](https://learn.microsoft.com/en-us/azure/api-management/api-management-subscriptions)
@@ -29,11 +29,10 @@ python3 -B scripts/policy/render_apim_portal_policy.py --environment test \
 | `apiId`・`keyProductId`・`backendId` | Azureポータルで登録したID。表示名と区別する |
 | `operations` | Operation IDとメソッドで許可する操作を選び、固定下流パスへ書き換える。`copyUnmatchedParams`で転送するクエリの扱いを選ぶ。URL内とヘッダーの入口資格情報を下流へ転送する前に除去する |
 | `bodyFormat`・`maxRequestBytes` | `json`・`binary`・`multipart`・`text`で受信バイト数を制限する。`none`と`null`はこの検査の対象外。提供元の本文スキーマ・モデル名・機能可否は提供元が扱う |
-| `backendAuthentication` | `none`は下流認証が不要な経路。`managedIdentity`は固定のHTTPS audienceを使う。`auditRelay`はClaude Messages／Count Tokens専用で、Gateway配備済みの本文監査中継を使う。マネージドIDのトークンを取得できない場合は転送を止める |
+| `backendAuthentication` | `none`は下流認証が不要な経路。`managedIdentity`は固定のHTTPS audienceを使う。マネージドIDのトークンを取得できない場合は転送を止める |
 | `responseTransport` | `rest`は通常HTTP、`sse`はAPIMの応答バッファを無効にする。App Gateway側も別途確認する |
-| `bodyAudit` | 通常RESTの例では`true`で配備済みの本文監査部品を使う。認可・利用枠の確認後に入力と応答を提出する。個別操作で応答を書き換える場合は、操作ポリシーの最終変換後に応答の提出を置く。SSEは対応する監査中継を使う |
 
-共通監査で受入・拒否・下流応答・ポリシー処理を記録します。モデル名や使用量は、対応する提供元のログと要求IDで照合します。ポータルの診断設定では本文の記録を0、許可ヘッダーを空または既存の安全な項目だけに設定し、キー・Bearer・トークンを記録対象から外します。Anthropicの本文やSSEを読み切って計数するポリシーは追加していません。 [APIMのSSE構成](https://learn.microsoft.com/en-us/azure/api-management/how-to-server-sent-events)
+共通監査で受入・拒否・下流応答・ポリシー処理を記録します。モデル名や使用量は、対応する提供元のログと要求IDで照合します。ポータルの診断設定では本文の記録を0、許可ヘッダーを空または既存の安全な項目だけに設定し、キー・Bearer・トークンを記録対象から外します。Anthropicの本文とSSEはFoundryへ直接転送し、公開APIの要求IDとFoundry側の記録を照合します。 [APIMのSSE構成](https://learn.microsoft.com/en-us/azure/api-management/how-to-server-sent-events)
 
 ## 手動設定を維持する
 

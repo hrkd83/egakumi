@@ -1,0 +1,9 @@
+# Foundryエージェントの本文監査を有効にする
+
+対象はFoundryに登録されたエージェントです。モデルのRESTエンドポイントを直接呼ぶAPIは、APIMとFoundryの診断メタデータを使います。エージェント本文の保存には、既設のApplication Insights、Log Analytics、監査Blobを使います。 [監査構成](../reference/audit/audit-log-design.md)
+
+1. AzureポータルのFoundryプロジェクトで **Connected resources** を開き、Coreが接続したワークスペースベースのApplication Insightsを確認します。FoundryプロジェクトのマネージドIDには、対象Application Insightsの `Monitoring Metrics Publisher` が必要です。独自の計装を持つエージェントの実行IDは、必要な場合に別途同じ接続先への送信権限を付与します。 [Foundryのトレース設定](https://learn.microsoft.com/en-us/azure/foundry/observability/how-to/trace-agent-setup)
+2. 本文を記録する対象エージェントをテストし、独立した合成の入力・出力がLog Analyticsの `AppGenAIContent` に記録されることを確認します。`TraceId` と `SpanId` を使ってアプリケーショントレースと照合し、`AppTraces` や `AppDependencies` に本文自体が重複していないことを確認します。ヘッダーやツール引数に資格情報が流れないことも合成データで確認します。 [エージェントの本文テーブル](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/appgenaicontent)
+3. Log Analyticsの **Tables** で `AppGenAIContent` をAnalyticsプラン、保持90日にします。保護テーブルを有効にし、本文を扱う担当者と必要な保管処理にだけアクセスを付与します。一般監視者のアカウントでも本文の読み取りができないことを確認します。保護テーブルを採用できない環境では、専用のワークスペースによる分離を検討し、本文を保護できる構成が整ってから公開します。 [保持期間](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/data-retention-configure) · [生成AI本文のアクセス制御](https://learn.microsoft.com/en-us/azure/azure-monitor/app/protect-sensitive-content)
+4. ワークスペースの **Data Export** でCoreが作成した `export-<環境>-<製品>-audit` を編集します。保存先は既設の基盤監査Storageのままとし、現在のテーブルを維持して `AppGenAIContent` を追加します。本番では `am-appgenaicontent` の不変ポリシーが `Locked` であることと、保護された追記が有効であることを確認します。正式CLIの再構築は、この宛先で有効になっている `AppGenAIContent` の転送を維持します。 [Data Exportの設定](https://learn.microsoft.com/en-us/azure/azure-monitor/logs/logs-data-export)
+5. 有効化後に別の合成リクエストを送り、Log AnalyticsとBlobの双方でその入力・出力を確認します。調査者として、記録した合成値、Trace ID、Span IDを使って同一リクエストを復元します。診断設定の作成結果と、Blobの実着信を別々に確認します。受入が完了してから監査対象のトラフィックを開始します。

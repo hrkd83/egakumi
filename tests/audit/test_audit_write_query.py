@@ -100,7 +100,7 @@ class AuditWriteQueryTests(unittest.TestCase):
         alerts = next(row for row in self.compiled['resources']
                       if row['type'] == 'Microsoft.Insights/scheduledQueryRules')
         self.assertEqual(alerts['properties']['overrideQueryTimeRange'],
-                         "[variables('allQueryDefinitions')[copyIndex()].range]")
+                         "[variables('queryDefinitions')[copyIndex()].range]")
         self.assertEqual(alerts['properties']['evaluationFrequency'], 'PT5M')
         self.assertIs(alerts['properties']['autoMitigate'], True)
 

@@ -34,7 +34,6 @@ HTTPS_RESOURCE = re.compile(rf"https://(?P<host>(?:{DNS_LABEL}\.)+{DNS_LABEL})(:
 METHODS = {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 MAX_APIM_PATH_SEGMENT_LENGTH = 1024
 MAX_APIM_POLICY_BYTES = 512 * 1024
-CLAUDE_AUDIT_PATHS = {"/anthropic/v1/messages", "/anthropic/v1/messages/count_tokens"}
 PORTAL_POLICY_FIELDS = "apiId keyProductId backendId backendService backendAuthentication responseTransport operations"
 
 
@@ -66,9 +65,6 @@ def backend_auth_xml(authentication):
     if mode == "none":
         require_fields(authentication, "mode")
         return ""
-    if mode == "auditRelay":
-        require_fields(authentication, "mode")
-        return '<authentication-managed-identity resource="{{core-audit-relay-audience}}" ignore-error="false" />'
     if mode != "managedIdentity":
         raise ValueError("Use no authentication or fixed managed identity for the manual HTTP example")
     require_fields(authentication, "mode resource")
@@ -128,10 +124,7 @@ def insert_block(text, marker, value):
 
 
 def render_portal_policy(configuration):
-    fields = PORTAL_POLICY_FIELDS
-    if isinstance(configuration, dict) and "bodyAudit" in configuration:
-        fields += " bodyAudit"
-    require_fields(configuration, fields)
+    require_fields(configuration, PORTAL_POLICY_FIELDS)
     for field in ("apiId", "keyProductId"):
         require_identifier(configuration[field], manual=True)
     if configuration["keyProductId"] == "manual-entra-users":
@@ -140,24 +133,12 @@ def render_portal_policy(configuration):
     transport = configuration["responseTransport"]
     if transport not in {"rest", "sse"}:
         raise ValueError("Use a REST or SSE HTTP response transport")
-    body_audit = configuration.get("bodyAudit", False)
-    if type(body_audit) is not bool or (body_audit and transport != "rest"):
-        raise ValueError("APIM body submission requires a buffered REST policy")
     auth = configuration["backendAuthentication"]
     backend_auth = backend_auth_xml(auth)
     routes, control = operation_settings(configuration["operations"])
-    use_audit_relay = auth["mode"] == "auditRelay"
-    if use_audit_relay:
-        if (configuration["backendId"] != "core-audit-relay" or transport != "sse"
-                or configuration["backendService"] != "foundry"
-                or any(operation["method"] != "POST" or operation["backendPath"] not in CLAUDE_AUDIT_PATHS
-                       or operation["bodyFormat"] != "json" for operation in configuration["operations"])):
-            raise ValueError("Use the fixed Claude Messages audit backend and SSE policy")
-    else:
-        require_identifier(configuration["backendId"], manual=True)
+    require_identifier(configuration["backendId"], manual=True)
     audit = {"serviceClass": "platform", "backendService": configuration["backendService"],
-             "backendAuthentication": "managedIdentity" if use_audit_relay else auth["mode"],
-             "measurementRole": "execution", "llmOperationIds": []}
+             "backendAuthentication": auth["mode"], "measurementRole": "execution", "llmOperationIds": []}
     settings = "\n".join(("http", json.dumps(audit, separators=(",", ":")), json.dumps(control, separators=(",", ":"))))
     xml = (POLICIES / "portal-examples/rest.xml").read_text(encoding="utf-8")
     for key, value in {
@@ -170,14 +151,6 @@ def render_portal_policy(configuration):
     for marker, block in (("REGISTERED_ROUTES_XML", routes), ("BACKEND_AUTH_XML", backend_auth),
                           ("RATE_LIMIT_ERROR_XML", rate_error)):
         xml = insert_block(xml, f"__{marker}__", block)
-    for stage in ("snapshot", "request", "response"):
-        block = (f'<set-variable name="gatewayEvidenceDirection" value="{stage}" />\n'
-                 '<include-fragment fragment-id="core-http-body-evidence" />') if body_audit else ""
-        marker = f"__BODY_AUDIT_{stage.upper()}_XML__"
-        if not block:
-            xml = re.sub(r"(?m)^[ \t]*" + marker + r"\n", "", xml)
-        else:
-            xml = insert_block(xml, marker, block)
     # C#の展開で字下げだけが入った空行を手動貼り付け用のXMLでは空行に揃える。
     xml = re.sub(r"(?m)^[ \t]+$", "", render_audit_policy(xml))
     if len(xml.encode("utf-8")) > MAX_APIM_POLICY_BYTES:

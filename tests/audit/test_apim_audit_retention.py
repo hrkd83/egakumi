@@ -10,19 +10,11 @@ import unittest
 
 from tests.waf.test_ssml_waf import GatewayExpression
 from tests import REPOSITORY
+from deployment.helpers.log_privacy import ARCHIVE_CONTAINERS, EXPORT_TABLES
 
 CORE = REPOSITORY
-APIM_CONTAINERS = {'insights-logs-gatewaylogs', 'insights-logs-gatewayllmlogs',
+APIM_CONTAINERS = {'am-apimanagementgatewaylogs', 'am-apimanagementgatewayllmlog',
                    'insights-logs-websocketconnectionlogs'}
-JAPAN_CONTAINERS = {
-    'insights-activity-logs', 'insights-logs-audit', 'insights-logs-vmprotectionalerts',
-    'insights-logs-applicationgatewayaccesslog', 'insights-logs-applicationgatewayfirewalllog',
-    'insights-logs-azfwnetworkrule', 'insights-logs-azfwapplicationrule',
-    'insights-logs-azfwidpssignature', 'insights-logs-azfwthreatintel',
-    'insights-logs-auditevent', *APIM_CONTAINERS,
-    'am-apprequests', 'am-appdependencies', 'am-appexceptions', 'am-apptraces',
-    'am-appevents', 'am-syslog', 'am-agwaccesslogs',
-}
 
 
 class AuditExpression(GatewayExpression):
@@ -41,6 +33,9 @@ class AuditExpression(GatewayExpression):
         if tree[0] == 'call' and tree[1] in ('toLower', 'replace'):
             values = [self.evaluate(parameters, index, argument, bindings) for argument in tree[2]]
             return values[0].lower() if tree[1] == 'toLower' else values[0].replace(values[1], values[2])
+        if tree[0] == 'call' and tree[1] == 'items':
+            values = self.evaluate(parameters, index, tree[2][0], bindings)
+            return [{'key': key, 'value': value} for key, value in sorted(values.items())]
         return super().evaluate(parameters, index, tree, bindings)
 
 
@@ -62,6 +57,7 @@ class ApimAuditRetentionTests(unittest.TestCase):
         cls.template = cls.module['properties']['template']
         cls.policy = next(resource for resource in cls.template['resources']
                           if resource['type'].endswith('/immutabilityPolicies'))
+        cls.export = next(resource for resource in cls.template['resources'] if resource['type'].endswith('/dataExports'))
 
     def parameters(self, environment='production', **overrides):
         result = {key: copy.deepcopy(value['defaultValue'])
@@ -92,15 +88,20 @@ class ApimAuditRetentionTests(unittest.TestCase):
     def test_production_protects_all_three_apim_categories_in_the_japan_collector(self):
         params = self.parameters()
         definitions = self.definitions(params)
-        self.assertEqual(len(definitions), 21)
         japan = {item['name'] for item in definitions if item['accountIndex'] == 0}
-        self.assertEqual(japan, JAPAN_CONTAINERS)
-        self.assertEqual([item for item in definitions if item['accountIndex'] == 1],
-                         [{'accountIndex': 1, 'name': 'insights-logs-audit'}])
+        self.assertEqual(japan, ARCHIVE_CONTAINERS['collectJapan'])
+        self.assertEqual({item['name'] for item in definitions if item['accountIndex'] == 1}, ARCHIVE_CONTAINERS['collectFoundry'])
         self.assertTrue(APIM_CONTAINERS <= japan)
         self.assertTrue(APIM_CONTAINERS <= set(self.selected(params)))
         self.assertEqual(self.evaluate(self.policy['properties']['immutabilityPeriodSinceCreationInDays'], params), 2557)
         self.assertTrue(self.policy['properties']['allowProtectedAppendWrites'])
+
+    def test_archive_protects_optional_agent_content_without_enabling_it_on_initial_build(self):
+        expression = self.export['properties']['tableNames']
+        self.assertEqual(set(self.evaluate(expression, self.parameters())), set(EXPORT_TABLES))
+        self.assertIn('am-appgenaicontent', self.selected(self.parameters()))
+        self.assertEqual(set(self.evaluate(expression, self.parameters(preserveAgentContentExport=True))),
+                         {*EXPORT_TABLES, 'AppGenAIContent'})
 
     def test_test_environment_does_not_create_immutability_policies(self):
         self.assertEqual(self.selected(self.parameters('test')), [])
@@ -108,7 +109,7 @@ class ApimAuditRetentionTests(unittest.TestCase):
     def test_retained_container_policies_only_add_two_missing_apim_categories(self):
         params = self.parameters()
         definitions = self.definitions(params)
-        added = APIM_CONTAINERS - {'insights-logs-gatewaylogs'}
+        added = APIM_CONTAINERS - {'insights-logs-websocketconnectionlogs'}
         params['retainedAuditImmutabilityPolicyIds'] = [policy_id.upper()
             for definition, policy_id in zip(definitions, self.policy_ids(params))
             if definition['name'] not in added]

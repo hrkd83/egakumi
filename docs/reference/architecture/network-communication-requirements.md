@@ -10,7 +10,7 @@
 
 | 判断 | 採用する設計 | 理由と境界 |
 | --- | --- | --- |
-| 初期ネットワーク | 独立VNetと用途別のサブネット・NSG・ルートテーブル | AppGW、APIM、Private Endpoint、管理VM、Portal用ACA、Broker用ACA、証明書用ACA、本文監査用ACAへNSGを関連付ける。AzureFirewallSubnetには顧客NSGを関連付けない |
+| 初期ネットワーク | 独立VNetと用途別のサブネット・NSG・ルートテーブル | AppGW、APIM、Private Endpoint、管理VM、Portal用ACA、Broker用ACA、証明書用ACAへNSGを関連付ける。AzureFirewallSubnetには顧客NSGを関連付けない |
 | 固定ルール集合 | NSGとFirewallの名称・優先度・用途を資材で固定 | ルール作成の条件は資材にあり、構築した資源のアドレスを設定する |
 | 公開入口 | AppGWのHTTP80とHTTPS443 | HTTPはHTTPSへのリダイレクト用。公開IPv4の初期範囲は`0.0.0.0/0`。企業の許可元IP制限は引渡し後に手動で変更する |
 | AppGWのバックエンド | APIMとPortalのACA入口へHTTPS443 | AppGWで再暗号化し、Firewall PremiumでTLS検査後に再暗号化する。 |
@@ -73,7 +73,7 @@ NSGはstatefulである。許可された接続への応答に逆向きの新規
 
 AppGWは公開TLSを終端してWAFで検査し、Firewall経由でAPIMとPortalへHTTPS 443で転送する。Firewallはその2経路で復号・検査し、それぞれのバックエンドとTLSを確立する。APIMから上流への通信およびACAの外部接続は、それぞれのルートと認証に従う。 [FirewallのTLS検査設計](firewall-policy-design.md)
 
-証明書用ACAと本文監査用ACAの専用経路は、各機能の構築・受入資料を参照する。 [証明書Job](../../operations/certificate-jobs.md) · [本文監査](../audit/request-body-audit.md)
+証明書用ACAの専用経路は[証明書Job](../../operations/certificate-jobs.md)、監査の送信先は[監査設計](../audit/audit-log-design.md)を参照する。
 
 ## 管理VMからの保守接続
 

@@ -29,9 +29,9 @@ NETWORK_INPUTS = {
     "addressSpaces": ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24", "10.40.3.0/24", "10.40.4.0/24"],
     "subnetPrefixes": {"agw": "10.40.0.0/24", "pep": "10.40.1.0/24",
                        "firewall": "10.40.2.0/26", "apim": "10.40.2.64/26",
-                       "portal": "10.40.2.128/26", "audit": "10.40.2.192/26",
-                       "broker": "10.40.3.0/25", "certificate": "10.40.3.128/27",
-                       "management": "10.40.3.192/26"},
+                       "management": "10.40.2.128/26",
+                       "portal": "10.40.3.0/26", "broker": "10.40.3.64/26",
+                       "certificate": "10.40.3.128/27"},
 }
 FIREWALL_INPUTS = {
     "snatPrivateRanges": ["IANAPrivateRanges"],
@@ -375,7 +375,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
             "auditStorageJapanPrivateIps": ["10.70.1.12"], "auditStorageFoundryPrivateIps": ["10.70.1.14"],
             "managementPrivateIp": str(management.network_address + 4), "firewallPublicIpAddress": "192.0.2.10",
             "apimPrivateIp": "10.70.2.68", "appGatewayPublicIpAddress": "198.51.100.10",
-            "existingNetworkSecurityGroupNames": [], "auditEvidenceEnabled": False,
+            "existingNetworkSecurityGroupNames": [],
             "nsgNames": {key: "nsg-test-fixture-" + suffix
                          for key, suffix in (("agw", "agw"), ("apim", "apim"), ("pep", "pep"),
                                              ("management", "vm"), ("portal", "portal"), ("broker", "broker"))}}
@@ -384,10 +384,10 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
     def test_custom_vnet_address_spaces_and_subnets_are_in_compiled_arm(self):
         config = self.configuration()
         expression, parameters = self.resolver("network", config)
-        parameters["auditEvidenceEnabled"] = True
         template = self.templates["network"]
         properties = template["resources"]["vnet"]["properties"]
-        self.assertEqual(expression.resolve(properties["addressSpace"], parameters), {"addressPrefixes": config["network"]["addressSpaces"]})
+        address_spaces = expression.resolve(properties["addressSpace"], parameters)["addressPrefixes"]
+        self.assertEqual(address_spaces, config["network"]["addressSpaces"])
         self.assertEqual(expression.resolve(properties["dhcpOptions"], parameters), {"dnsServers": []})
         declared = expression.resolve(properties["subnets"], parameters)
         subnets = {subnet["name"]: subnet["properties"] for subnet in declared}
@@ -399,7 +399,6 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
             ("management", "ManagementSubnet", "vm"),
             ("portal", "PortalSubnet", "portal"),
             ("broker", "CredentialBrokerSubnet", "broker"),
-            ("audit", "AuditEvidenceSubnet", "audit"),
             ("certificate", "CertificateJobSubnet", "certificate"),
         )
         self.assertEqual(len(declared), len(expected))
@@ -424,11 +423,23 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                 else:
                     self.assertEqual(subnet["routeTable"]["id"],
                                      "/mock/Microsoft.Network/routeTables/rt-test-fixture-" + suffix)
-                if role in ("portal", "broker", "audit", "certificate"):
+                if role in ("portal", "broker", "certificate"):
                     self.assertEqual(subnet["delegations"][0]["properties"]["serviceName"],
                                      "Microsoft.App/environments")
         self.assertEqual(subnets["PrivateEndpointSubnet"]["privateEndpointNetworkPolicies"],
                          "NetworkSecurityGroupEnabled")
+        certificate = ip_network(subnets["CertificateJobSubnet"]["addressPrefix"])
+        reserved_networks = (
+            ip_network("10.70.2.192/26"),
+            ip_network((certificate.broadcast_address + 1, certificate.prefixlen)),
+            ip_network((certificate.supernet().broadcast_address + 1, 26)),
+            ip_network(address_spaces[-1]),
+        )
+        for reserved in reserved_networks:
+            with self.subTest(reserved_prefix=reserved):
+                self.assertTrue(any(reserved.subnet_of(ip_network(space)) for space in address_spaces))
+                self.assertFalse(any(reserved.overlaps(ip_network(subnet["addressPrefix"]))
+                                     for subnet in subnets.values()))
 
     def test_firewall_and_its_public_ip_default_to_azure_zone_allocation(self):
         config = self.configuration()

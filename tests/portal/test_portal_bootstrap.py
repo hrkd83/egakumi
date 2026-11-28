@@ -187,7 +187,11 @@ class PortalBootstrapBicepTests(unittest.TestCase):
         self.assertIn('portal-identity', registry['properties']['parameters']['pullIdentityPrincipalId']['value'])
         nested = registry['properties']['template']['resources']
         self.assertEqual({r['type'] for r in nested},
-                         {'Microsoft.ContainerRegistry/registries', 'Microsoft.Authorization/roleAssignments'})
+                         {'Microsoft.ContainerRegistry/registries', 'Microsoft.Authorization/roleAssignments',
+                          'Microsoft.Insights/diagnosticSettings'})
+        audit = next(r for r in nested if r['type'] == 'Microsoft.Insights/diagnosticSettings')
+        self.assertEqual(audit['name'], 'core-audit')
+        self.assertIn('Microsoft.ContainerRegistry/registries', audit['scope'])
         role = next(r for r in nested if r['type'] == 'Microsoft.Authorization/roleAssignments')
         self.assertEqual(role['properties']['principalId'], "[parameters('pullIdentityPrincipalId')]")
         network = module('portal-network')

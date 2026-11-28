@@ -74,7 +74,7 @@ class NsgRulePriorityTests(unittest.TestCase):
                 'apimPrefix': subnets['apim'], 'agwPrefix': subnets['agw'], 'managementPrefix': subnets['management'],
                 'entraLoginHost': 'login.microsoftonline.com',
                 'firewallTlsInspection': {'intermediateCaSecretId': 'synthetic-ca-reference'},
-                'existingNetworkSecurityGroupNames': [], 'auditEvidenceEnabled': False,
+                'existingNetworkSecurityGroupNames': [],
                 '__ips': ips, '__sets': sets}
 
     def resolve(self, module, value, parameters):

@@ -2,13 +2,12 @@
 
 前：[09. Core構築後のEntra登録](09-egakumi-portal.md) · [10. ハブ＆スポーク（任意）](10-hub-spoke.md) · [README](../../README.md) · 次：[12. Portalの個別配備](12-deploy-portal.md)
 
-CoreのAPIM、共通SQL、非公開ACR、ACA環境を使い、BrokerとCredential Managerの本人接続基盤を配備する。その後、APIMのAPI定義、バックエンド、ポリシー、製品を登録する。購読キーの例外発行は基盤管理者がAzureポータルで行う。本文監査の中継と保存ワーカーも配備する。 [購読キーの運用](../operations/access-and-keys.md) · [本文監査の構成と受入条件](../reference/audit/request-body-audit.md)
+CoreのAPIM、共通SQL、非公開ACR、ACA環境を使い、BrokerとCredential Managerの本人接続基盤を配備する。その後、APIMのAPI定義、バックエンド、ポリシー、製品を登録する。購読キーの例外発行は基盤管理者がAzureポータルで行う。APIMは各バックエンドへ転送し、要求のメタデータをLog Analyticsへ記録する。 [購読キーの運用](../operations/access-and-keys.md) · [監査の構成と受入条件](../reference/audit/request-body-audit.md)
 
 | `apps` 配下の資材 | Gateway個別配備での役割 |
 | --- | --- |
 | [api-gateway](../../apps/api-gateway/README.md) | 統合配備のBicep、Credential Manager設定、API定義、APIMポリシー、Gateway入口のWAF設定 |
 | [credential-broker](../../apps/credential-broker/README.md) | Broker本体、credentials DB、SQL初期化、定期照合ジョブ |
-| [audit-relay](../../apps/audit-relay/) | 本文監査の中継アプリと保存ワーカー |
 
 対応表をAzure SQLで管理し、同じ本人には同じCM接続を再利用する。クライアントは論理名`graph-delegated`を指定し、基盤が設定されたプールから割当先を選ぶ。共通configの初期`pool.count=12`・`pool.capacity=8000`を使い、内部の物理名`graph-delegated-a`〜`graph-delegated-l`を保持する。UPNは表示と初期命名に使い、本人確認にはEntraのテナントID・オブジェクトIDを使う。
 

@@ -214,7 +214,7 @@ API登録処理が全体ポリシーのXMLとETagを確認し、API登録の成�
 
 購読キーでGraphなどのCMを使うAPIを呼ぶ場合は、セッション未指定・期限切れ・CM再認証時にHTTP 409 `ConnectionRequired`と認証URL・完了確認用の情報を返す。基盤がMicrosoft認証・CM・SQLを担当し、呼び出しアプリはURL表示・完了確認・利用者ごとのセッション保存・元要求の1回再実行を行う。BearerによるGraph APIはOBOを使う。[本人接続の利用手順](../identity/credential-manager-login.md)
 
-`azureTenantId`はAzure配置・Key Vault・RBAC・構築用認証、`entraTenantId`はGatewayとCMの本人認証テナントとして扱う。本文監査の中継を認証するため両者を揃え、後者の省略時は前者を使う。CMは購読ID・provider・確認済み本人・期限に結び付けた接続セッションを参照する。BFFはログイン利用者と保存セッションを対応付ける。[Entraの準備](../../setup/07-params.md#azureとentraのテナント指定)
+`azureTenantId`はAzure配置・Key Vault・RBAC・構築用認証、`entraTenantId`はGatewayとCMの本人認証テナントとして扱う。後者の省略時は前者を使う。CMは購読ID・provider・確認済み本人・期限に結び付けた接続セッションを参照する。BFFはログイン利用者と保存セッションを対応付ける。[Entraの準備](../../setup/07-params.md#azureとentraのテナント指定)
 
 すべてのXMLポリシーに、各処理の目的・入力・適用条件・失敗時の応答が分かる日本語コメントを付ける。
 

@@ -25,4 +25,4 @@
 
 ## 監査
 
-- [API本文監査](audit/request-body-audit.md)と[監査で使う識別情報](audit/audit-identification.md)
+- [監査ログの設計](audit/audit-log-design.md)、[監査ログの確認](audit/request-body-audit.md)、[監査で使う識別情報](audit/audit-identification.md)

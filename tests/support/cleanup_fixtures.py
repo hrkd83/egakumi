@@ -244,7 +244,7 @@ class CleanupFixture:
         self.addCleanup(self.temp.cleanup)
         self.config_path = Path(self.temp.name) / "configuration.json"
         from tests.support.configuration_fixtures import fixture
-        self.raw = fixture(audit_evidence=True)
+        self.raw = fixture()
         self.write_configuration()
         sub = self.configuration["subscriptionId"]
         groups = self.configuration["resourceGroupNames"]

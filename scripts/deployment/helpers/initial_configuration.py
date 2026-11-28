@@ -19,8 +19,6 @@ def apply_initial_configuration(configuration: dict, *, fail) -> dict:
     result["publishApis"] = True
     # 空の内部配列は、Coreの投影とGateway公開で同じ標準API正本を読む指定。
     result["apiDefinitions"] = []
-    audit_evidence = section(result, "auditEvidence", "auditEvidence")
-    audit_evidence["enabled"] = True
     result["authorization"] = {
         key: [] for key in ("projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders")
     }

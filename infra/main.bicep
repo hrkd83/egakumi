@@ -36,6 +36,8 @@ param manageAuditImmutabilityPolicies bool = true
 param retainedAuditImmutabilityPolicyIds array = []
 @description('監視保存先だけを更新するときも、既に稼働中の監査出力を維持するか。')
 param preserveAuditCollection bool = false
+@description('稼働中の同じ監査Storage向け本文トレース転送を維持するか。正式CLIが確認する内部入力です。')
+param preserveAgentContentExport bool = false
 @description('azd が実在と所有を確認した NSG 名。初回は空で、再 up 時の親 NSG の再 PUT を避けます。利用者向けの設定項目ではありません。')
 param existingNetworkSecurityGroupNames array = []
 @description('azd が同じ環境の実ルート表から確認した既存経路。再 up 時も後続段階の経路を保ち、公開 config では指定しません。')
@@ -60,8 +62,6 @@ var location = configuration.location
 var tags = union(configuration.tags, { product: product, environment: environmentName, 'azd-env-name': environmentName })
 var groupKinds = ['id', 'nw', 'monitor', 'svc', 'maint']
 var deployCore = phase == 'core'
-// 本文監査はCoreの常設構成です。標準設定は保存方式と保持期間だけを選びます。
-var auditEvidenceConfig = configuration.?auditEvidence ?? {}
 var servicesConfig = configuration.services
 var managementConfig = configuration.management
 var monitoringConfig = configuration.monitoring
@@ -165,6 +165,7 @@ module monitoring 'modules/monitoring/monitoring.bicep' = {
     manageAuditImmutabilityPolicies: manageAuditImmutabilityPolicies
     retainedAuditImmutabilityPolicyIds: retainedAuditImmutabilityPolicyIds
     enableAuditCollection: deployCore || preserveAuditCollection
+    preserveAgentContentExport: preserveAgentContentExport
     existingWorkspaceDataCollectionRuleResourceId: existingWorkspaceDataCollectionRuleResourceId
   }
 }
@@ -190,8 +191,9 @@ module network 'modules/network/network.bicep' = if (deployCore) {
     portalPublicHostName: portalConfig.publicHostName
     existingNetworkSecurityGroupNames: existingNetworkSecurityGroupNames
     existingRouteTableRoutes: existingRouteTableRoutes
-    auditEvidenceEnabled: true
+    diagnosticSettingProperties: diagnosticSettingProperties
   }
+  dependsOn: [monitoring]
 }
 
 
@@ -280,6 +282,7 @@ module management 'modules/management/management.bicep' = if (deployCore) {
     tags: tags
     subnetId: network!.outputs.subnetIds.management
     linuxDataCollectionRuleId: monitoring.outputs.monitoring.linuxDataCollectionRuleId
+    diagnosticSettingProperties: diagnosticSettingProperties
     vmSize: managementConfig.vmSize
     imageReference: managementConfig.imageReference
     diskControllerType: managementConfig.diskControllerType
@@ -400,7 +403,15 @@ module credentialIdentities 'modules/services/shared-sql-identity.bicep' = if (d
 module credentialSql 'modules/services/shared-sql.bicep' = if (deployCore) {
   name: '${stem}-credential-sql'
   scope: svcGroup
-  params: { stem: stem, location: location, tags: tags, tenantId: configuration.azureTenantId, schemaIdentity: credentialIdentities!.outputs.schema }
+  params: {
+    stem: stem
+    location: location
+    tags: tags
+    tenantId: configuration.azureTenantId
+    schemaIdentity: credentialIdentities!.outputs.schema
+    diagnosticSettingProperties: diagnosticSettingProperties
+  }
+  dependsOn: [monitoring]
 }
 module sharedEntraSecrets 'modules/services/shared-entra-secrets.bicep' = if (deployCore) {
   name: '${stem}-shared-entra-secrets'
@@ -470,7 +481,9 @@ module portalRegistry 'modules/container-apps/portal-registry.bicep' = if (deplo
     tags: tags
     pullIdentityId: portalPullIdentity!.outputs.id
     pullIdentityPrincipalId: portalPullIdentity!.outputs.principalId
+    diagnosticSettingProperties: diagnosticSettingProperties
   }
+  dependsOn: [monitoring]
 }
 
 // PE・Private DNS・NSG・Firewall規則を準備してから、CAEを起動します。
@@ -635,91 +648,6 @@ module credentialNetwork 'modules/network/credential-broker-network.bicep' = if 
   dependsOn: [portalNetworkBindings, brokerDns]
 }
 
-var auditRelayName = 'ca-${stem}-audit-relay'
-var auditWorkerName = 'ca-${stem}-audit-store'
-
-module auditEvidenceIdentities 'modules/audit-evidence/audit-evidence-identities.bicep' = if (deployCore) {
-  name: '${stem}-audit-evidence-identities'
-  scope: idGroup
-  params: {
-    stem: stem
-    location: location
-    tags: tags
-    serviceResourceGroupName: svcGroup.name
-    registryName: portalRegistry!.outputs.name
-    foundryName: serviceNames.foundry
-  }
-  dependsOn: [services]
-}
-
-module auditEvidenceData 'modules/audit-evidence/audit-evidence-data.bicep' = if (deployCore) {
-  name: '${stem}-audit-evidence-data'
-  scope: monitorGroup
-  params: {
-    stem: stem
-    location: location
-    tags: tags
-    relayPrincipalId: auditEvidenceIdentities!.outputs.identities.relay.principalId
-    workerPrincipalId: auditEvidenceIdentities!.outputs.identities.worker.principalId
-    eventHubsSku: auditEvidenceConfig.eventHubsSku
-    payloadRetentionDays: auditEvidenceConfig.payloadRetentionDays
-    payloadImmutabilityMode: auditEvidenceConfig.?payloadImmutabilityMode ?? 'Disabled'
-    manageAuditImmutabilityPolicies: manageAuditImmutabilityPolicies
-    retainedAuditImmutabilityPolicyIds: retainedAuditImmutabilityPolicyIds
-  }
-}
-
-module auditEvidenceNetwork 'modules/audit-evidence/audit-evidence-network.bicep' = if (deployCore) {
-  name: '${stem}-audit-evidence-network'
-  scope: nwGroup
-  params: {
-    stem: stem
-    location: location
-    tags: tags
-    data: auditEvidenceData!.outputs.data
-    vnetId: network!.outputs.vnetId
-    pepSubnetId: network!.outputs.subnetIds.pep
-    nsgNames: network!.outputs.nsgNames
-    prefixes: network!.outputs.subnetPrefixes
-    managementPrivateIp: management!.outputs.managementVm.privateIp
-    foundryPrivateIps: endpoints!.outputs.foundryPrivateIps
-    registryPrivateIps: portalNetwork!.outputs.registryPrivateIps
-    blobZoneId: auditPrivateDns!.outputs.privateDnsZoneId
-    firewallPolicyName: network!.outputs.firewallPolicyName
-  }
-  // Serialize network updates shared with the Core and Credential Broker.
-  // The certificate network also writes Private Endpoint NSG children.
-  dependsOn: [credentialNetwork, auditPrivateDnsLink, certificateNetwork]
-}
-
-module auditEvidenceEnvironment 'modules/audit-evidence/audit-evidence-environment.bicep' = if (deployCore) {
-  name: '${stem}-audit-evidence-environment'
-  scope: svcGroup
-  params: {
-    stem: stem
-    location: location
-    tags: tags
-    subnetId: network!.outputs.subnetIds.audit
-    diagnosticSettingProperties: diagnosticSettingProperties.?auditEvidence ?? diagnosticSettingProperties
-  }
-  dependsOn: [auditEvidenceNetwork]
-}
-
-module auditEvidenceIngress 'modules/audit-evidence/audit-evidence-ingress.bicep' = if (deployCore) {
-  name: '${stem}-audit-evidence-ingress'
-  scope: nwGroup
-  params: {
-    stem: stem
-    relayName: auditRelayName
-    defaultDomain: auditEvidenceEnvironment!.outputs.platform.environmentDomain
-    privateIp: auditEvidenceEnvironment!.outputs.platform.privateIp
-    vnetId: network!.outputs.vnetId
-    tags: tags
-    nsgNames: network!.outputs.nsgNames
-    prefixes: network!.outputs.subnetPrefixes
-  }
-}
-
 // Coreで実際に構築した対象だけを渡します。App配備は後段で作成したJobを追加します。
 var managementClientInventory = deployCore ? {
   schemaVersion: 1
@@ -804,7 +732,6 @@ output ingressMonitoringPlan object = deployCore ? {
   storage: monitoring.outputs.storage
   apimId: services!.outputs.serviceResourceIds.apim
   firewallId: network!.outputs.firewallId
-  auditEvidenceEventHubsId: deployCore ? auditEvidenceData!.outputs.data.eventHubsNamespaceId : ''
   networkResourceIds: network!.outputs.monitoredResourceIds
   resourceGroupIds: [idGroup.id, nwGroup.id, monitorGroup.id, svcGroup.id, maintGroup.id]
   enableLogAlerts: monitoringConfig.enableLogAlerts
@@ -971,18 +898,6 @@ output portal object = deployCore ? union(portal!.outputs.platform, {
 }) : {}
 
 output brokerPlatform object = deployCore ? brokerEnvironment!.outputs.platform : {}
-output auditEvidence object = deployCore ? union(auditEvidenceEnvironment!.outputs.platform, auditEvidenceData!.outputs.data, {
-  location: location
-  tags: tags
-  infrastructureSubnetId: network!.outputs.subnetIds.audit
-  apimSubnetPrefix: network!.outputs.subnetPrefixes.apim
-  apimPrincipalId: services!.outputs.principalIds.apim
-  registryName: portalRegistry!.outputs.name
-  foundryOpenAiEndpoint: services!.outputs.foundryOpenAiEndpoint
-  relay: union(auditEvidenceIdentities!.outputs.identities.relay, { name: auditRelayName })
-  worker: union(auditEvidenceIdentities!.outputs.identities.worker, { name: auditWorkerName })
-  relayFqdn: '${auditRelayName}.${auditEvidenceEnvironment!.outputs.platform.environmentDomain}'
-}) : {}
 
 // Gateway配備が参照する共通基盤の公開メタデータ。アプリ固有リソースや秘密値は含めません。
 output gatewayFoundation object = deployCore ? {

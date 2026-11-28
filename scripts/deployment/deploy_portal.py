@@ -31,11 +31,13 @@ from deployment.helpers.portal_gateway import configure_portal_callback_waf, req
 from deployment.helpers.public_health_http import read_public_json
 from deployment.helpers.management_client_assets import management_client_inventory, update_management_client_assets
 from deployment.helpers.credential_image import checked
+from deployment.helpers.subnet_names import subnet_resource_id
 from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, state_from_outputs
 from operations.waf_policy import reconcile as configure_data_waf
 
 APP_API = '2025-01-01'
 ARM_API = '2022-09-01'
+NETWORK_API = '2024-05-01'
 
 
 def run_json(arguments):
@@ -153,12 +155,24 @@ def verify_foundation(config, values, transport):
     if (server.get('properties', {}).get('fullyQualifiedDomainName') != values['sqlServer']
             or server.get('properties', {}).get('publicNetworkAccess') != 'Disabled'):
         raise ValueError('Shared SQL server must use its existing private connection')
-    environment = checked(transport, 'GET', prefix + 'Microsoft.App/managedEnvironments/' + values['environmentName'] + '?api-version=' + APP_API,
+    environment_id = prefix + 'Microsoft.App/managedEnvironments/' + values['environmentName']
+    environment = checked(transport, 'GET', environment_id + '?api-version=' + APP_API,
                           label='Read existing Container Apps environment')
-    environment_properties = environment.get('properties', {})
+    environment_properties = environment.get('properties') or {}
+    vnet = environment_properties.get('vnetConfiguration') or {}
     if (environment_properties.get('provisioningState') != 'Succeeded'
-            or environment_properties.get('vnetConfiguration', {}).get('internal') is not True):
+            or vnet.get('internal') is not True):
         raise ValueError('The existing private Container Apps environment is not ready')
+    subnet_id = subnet_resource_id(config, 'portal')
+    if (str(environment.get('id', '')).casefold() != environment_id.casefold()
+            or str(vnet.get('infrastructureSubnetId', '')).casefold() != subnet_id.casefold()):
+        raise ValueError('The private Portal environment does not match the selected Portal subnet')
+    subnet = checked(transport, 'GET', subnet_id + '?api-version=' + NETWORK_API,
+                     allowed=(200,), label='Read Portal subnet')
+    properties = subnet.get('properties') or {}
+    prefixes = properties.get('addressPrefixes') or [properties.get('addressPrefix')]
+    if str(subnet.get('id', '')).casefold() != subnet_id.casefold() or prefixes != [values['portalPrefix']]:
+        raise ValueError('The live Portal subnet does not match the configured Firewall source CIDR')
 
 
 def signing_secret(config, values, transport, root=REPOSITORY):
@@ -350,7 +364,7 @@ def main(argv=None):
         'imageBuild': values['imageDigest'] is None,
         'apiAuthenticationEnabled': bool(values['apiAuthentication'].get('scope')),
         'imageReuseVerificationPending': not args.execute and not args.image_digest,
-        'steps': ['verify-gateway-backend-tls', 'build-and-push-image', 'prepare-database-and-permissions', 'initialize-sql', 'configure-portal-auth-callback-waf', 'update-application', 'verify-expected-image-and-https-ingress', 'verify-public-health']}
+        'steps': ['verify-gateway-backend-tls', 'verify-portal-subnet', 'build-and-push-image', 'prepare-database-and-permissions', 'initialize-sql', 'configure-portal-auth-callback-waf', 'update-application', 'verify-expected-image-and-https-ingress', 'verify-public-health']}
     protected_json(workspace.state / 'portal-plan.json', {**plan, 'parameters': values, 'sourceSha256': source_hash})
     if not args.execute:
         print(json.dumps(plan, ensure_ascii=False))

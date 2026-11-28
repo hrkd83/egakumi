@@ -13,7 +13,7 @@ from unittest import mock
 from tests.support.bicep_helpers import compile_bicep
 from tests.support.lifecycle_fixtures import LifecycleFixture, ScriptedTransport
 from deployment import lifecycle
-from deployment.helpers.log_privacy import resource_ids
+from deployment.helpers.log_privacy import EXPORT_TABLES, resource_ids
 
 
 class Clock:
@@ -33,12 +33,7 @@ class MonitoringExportReapplyTests(LifecycleFixture, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.template = compile_bicep('infra/main.bicep')
-        module = next(item['properties']['template'] for item in cls.template['resources']
-                      if isinstance(item.get('properties', {}).get('template', {}).get('variables', {}).get('exportTables'), list))
-        privacy = json.loads((Path(__file__).resolve().parents[2] / 'infra/modules/monitoring/log-privacy.json').read_text())
-        cls.tables = [privacy['table'] if value == "[variables('privacy').table]" else value
-                      for value in module['variables']['exportTables']]
-        assert len(cls.tables) == 7 and all(isinstance(value, str) and not value.startswith('[') for value in cls.tables)
+        cls.tables = list(EXPORT_TABLES)
 
     def responses(self):
         ids = resource_ids(self.config)
@@ -271,7 +266,7 @@ class MonitoringExportReapplyTests(LifecycleFixture, unittest.TestCase):
     def test_unused_table_catalog_does_not_authorize_reapply(self):
         template = copy.deepcopy(self.template)
         module = next(item['properties']['template'] for item in template['resources']
-                      if isinstance(item.get('properties', {}).get('template', {}).get('variables', {}).get('exportTables'), list))
+                      if item.get('name') == "[format('{0}-monitoring', variables('stem'))]")
         export = next(item for item in module['resources']
                       if item.get('type', '').casefold() == 'microsoft.operationalinsights/workspaces/dataexports')
         export['properties']['tableNames'] = ['OtherTable']

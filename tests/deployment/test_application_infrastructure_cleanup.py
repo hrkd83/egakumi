@@ -108,34 +108,6 @@ class ApplicationInfrastructureCleanupTests(CleanupFixture, unittest.TestCase):
         self.assertEqual(transport.mutations(), [])
         self.assertIn(self.environment_id, transport.resources)
 
-    def test_body_audit_apps_are_deleted_before_their_environment(self):
-        transport = self.transport()
-        environment_id = self.environment_id + '-audit'
-        subnet_id = self.subnet_prefix + 'AuditEvidenceSubnet'
-        managed_group = self.managed_group + '-audit'
-        environment = copy.deepcopy(transport.resources[self.environment_id])
-        environment.update(id=environment_id, name=environment_id.rsplit('/', 1)[-1])
-        environment['properties'].update(infrastructureResourceGroup=managed_group.rsplit('/', 1)[-1],
-            vnetConfiguration={'infrastructureSubnetId': subnet_id, 'internal': True})
-        transport.resources[environment_id] = environment
-        transport.resources[subnet_id] = {'id': subnet_id, 'properties': {}}
-        self.state['outputs']['auditEvidence'] = {'environmentId': environment_id, 'infrastructureSubnetId': subnet_id}
-        applications = []
-        for role in ('relay', 'store'):
-            name = 'ca-' + self.configuration['resourceStem'] + '-audit-' + role
-            app_id = self.svc_rg + '/providers/Microsoft.App/containerApps/' + name
-            applications.append(app_id)
-            transport.resources[app_id] = {'id': app_id, 'name': name, 'type': 'Microsoft.App/containerApps',
-                'location': environment['location'], 'tags': environment['tags'],
-                'properties': {'managedEnvironmentId': environment_id, 'provisioningState': 'Succeeded'}}
-
-        snapshots = []
-        result = self.pre(transport, checkpoint=snapshots.append)
-        deletes = [call['id'] for call in transport.mutations()]
-        self.assertTrue(all(deletes.index(app) < deletes.index(environment_id) for app in applications))
-        self.assertEqual(result['auditEvidenceEnvironment']['subnet']['status'], 'released')
-        self.assertIn({'environmentId': environment_id, 'resourceGroupId': managed_group}, snapshots[0])
-
     def test_locked_retention_is_checked_before_checkpoint_and_all_mutations(self):
         transport = self.transport()
         transport.resources[self.policy_ids[0]] = self.policy(self.policy_ids[0], mode="Locked")
@@ -146,21 +118,12 @@ class ApplicationInfrastructureCleanupTests(CleanupFixture, unittest.TestCase):
         self.assertEqual(snapshots, [])
         self.assertEqual(transport.mutations(), [])
 
-    def test_locked_body_evidence_prevents_down_even_when_current_profile_has_worm_disabled(self):
+    def test_retained_evidence_from_a_previous_deployment_blocks_cleanup(self):
         transport = self.transport()
-        body_policy = cleanup.evidence_policy_id(self.configuration)
-        self.state['outputs']['auditEvidence'] = {
-            'environmentId': self.environment_id + '-audit',
-            'infrastructureSubnetId': self.subnet_prefix + 'AuditEvidenceSubnet',
-            'evidenceContainerId': cleanup.evidence_container_id(self.configuration),
-            'payloadImmutability': {'policyId': body_policy, 'mode': 'Locked', 'retentionInDays': 2557},
-        }
-        transport.resources[body_policy] = self.policy(body_policy, mode='Locked')
-        snapshots = []
+        self.state["outputs"]["auditEvidence"] = {"environmentId": self.environment_id + "-audit"}
         with self.assertRaises(cleanup.CleanupError) as raised:
-            self.pre(transport, checkpoint=snapshots.append)
-        self.assertEqual((raised.exception.code, raised.exception.resource_id), ('locked-retention', body_policy))
-        self.assertEqual(snapshots, [])
+            self.pre(transport)
+        self.assertEqual(raised.exception.code, "prior-audit-deployment")
         self.assertEqual(transport.mutations(), [])
 
     def test_foreign_environment_is_rejected_before_checkpoint(self):

@@ -86,8 +86,8 @@
     <set-query-parameter name="api-key" exists-action="delete" />
     <set-query-parameter name="subscription-key" exists-action="delete" />
     <set-query-parameter name="x-api-key" exists-action="delete" />
-    <set-backend-service backend-id="core-audit-relay" />
-    <authentication-managed-identity resource="{{core-audit-relay-audience}}" ignore-error="false" />
+    <set-backend-service backend-id="manual-claude-messages-backend" />
+    <authentication-managed-identity resource="https://ai.azure.com" ignore-error="false" />
     <set-variable name="gatewayAuditPhase" value="accepted" />
     <set-variable name="gatewayAuditCode" value="GATEWAY_ALLOWED" />
     <set-variable name="gatewayAuditStatus" value="@(0)" />

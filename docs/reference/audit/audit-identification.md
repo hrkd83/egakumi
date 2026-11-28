@@ -1,6 +1,6 @@
 # APIM監査の識別情報
 
-[audit-identification.kql](../../../scripts/audit/audit-identification.kql)は、APIM要求ごとに認証主体、要求情報、App Gatewayで観測した情報を表示する。利用量は[audit-usage.kql](../../../scripts/audit/audit-usage.kql)、実際の入出力は[本文監査](request-body-audit.md)で確認する。調査では認証主体と、担当者や委任関係を管理する台帳を照合する。
+[audit-identification.kql](../../../scripts/audit/audit-identification.kql)は、APIM要求ごとに認証主体、要求情報、App Gatewayで観測した情報を表示する。利用量は[audit-usage.kql](../../../scripts/audit/audit-usage.kql)、Foundryで取得できるエージェントの入出力は[監査の本文トレース](request-body-audit.md)で確認する。調査では認証主体と、担当者や委任関係を管理する台帳を照合する。
 
 ## 情報源と要求の相関
 

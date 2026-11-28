@@ -25,7 +25,6 @@ from typing import Any, Protocol
 from urllib.parse import parse_qs, parse_qsl, urlsplit
 from uuid import UUID
 
-from .audit_evidence import evidence_container_id, evidence_policy_id
 from .configuration import API_NAME, load_configuration
 from .ingress import apim_name_matches
 from .apim_naming import apim_instance_id, apim_name
@@ -173,19 +172,8 @@ def _validate_state(configuration: dict, state: Mapping[str, Any]) -> dict:
             _error("invalid-state", "監査保持ポリシーのResource IDが不正です。")
 
     outputs = state.get("outputs", {})
-    evidence = outputs.get("auditEvidence") if isinstance(outputs, Mapping) else None
-    body_policy_id = None
-    if evidence or configuration.get("auditEvidence", {}).get("enabled"):
-        body_policy_id = evidence_policy_id(configuration)
-        if evidence:
-            if not isinstance(evidence, Mapping):
-                _error("invalid-state", "本文監査の配備出力が不正です。")
-            container_id = evidence_container_id(configuration)
-            if ("evidenceContainerId" in evidence and not _same(evidence["evidenceContainerId"], container_id)
-                    or "payloadImmutability" in evidence and (not isinstance(evidence["payloadImmutability"], Mapping)
-                        or not _same(evidence["payloadImmutability"].get("policyId"), body_policy_id))):
-                _error("invalid-state", "本文監査の配備出力が対象の保存先に一致しません。")
-        policy_ids = [*policy_ids, body_policy_id]
+    if isinstance(outputs, Mapping) and outputs.get("auditEvidence"):
+        _error("prior-audit-deployment", "本文証跡を保全するため、この資材から以前の専用監査環境を撤去しません。")
 
     service_ids = state.get("serviceResourceIds") or {}
     if not isinstance(service_ids, Mapping) or set(service_ids) - SERVICE_TYPES.keys():
@@ -206,7 +194,7 @@ def _validate_state(configuration: dict, state: Mapping[str, Any]) -> dict:
         expected_location = configuration["foundryLocation"] if key == "foundry" else configuration["location"]
         if locations.get(key) != expected_location or not re.fullmatch(r"[a-z][a-z0-9]+", locations[key]):
             _error("invalid-state", "サービスの実配置region codeが配備記録と環境設定で一致しません。")
-    return {"storage": storage, "policyIds": policy_ids, "bodyPolicyId": body_policy_id, "serviceIds": service_ids,
+    return {"storage": storage, "policyIds": policy_ids, "serviceIds": service_ids,
             "locations": locations}
 
 
@@ -1047,7 +1035,7 @@ def _application_infrastructure(configuration: dict, inventory: Any) -> list[dic
     environment_prefix = (_rg_id(configuration, 'svc')
                           + '/providers/Microsoft.App/managedEnvironments/cae-' + configuration['resourceStem'])
     environments = {(environment_prefix + suffix).casefold(): environment_prefix + suffix
-                    for suffix in ('', '-certificate', '-broker', '-audit')}
+                    for suffix in ('', '-certificate', '-broker')}
     own_groups = {_rg_id(configuration, kind).casefold() for kind in ('id', 'nw', 'monitor', 'svc', 'maint')}
     result, seen = [], {}
     for item in inventory:
@@ -1458,59 +1446,6 @@ def _portal_children_preflight(configuration, targets, transport):
     return [resource_id]
 
 
-def _audit_preflight(configuration, state, portal, transport):
-    record = state.get('outputs', {}).get('auditEvidence')
-    if not record and not configuration.get('auditEvidence', {}).get('enabled'):
-        return None
-    stem = configuration['resourceStem']
-    targets = {'environmentId': portal['environmentId'] + '-audit',
-               'environmentApi': '2025-07-01',
-               'subnetId': subnet_resource_id(configuration, 'audit'),
-               'applicationInfrastructure': portal['applicationInfrastructure'],
-               'applicationIds': [_rg_id(configuration, 'svc') + '/providers/Microsoft.App/containerApps/ca-'
-                                  + stem + '-audit-' + name for name in ('relay', 'store')]}
-    if record and (not isinstance(record, Mapping)
-                   or not _same(record.get('environmentId'), targets['environmentId'])
-                   or not _same(record.get('infrastructureSubnetId'), targets['subnetId'])):
-        _error('audit-state-mismatch', '本文監査のCAE・subnetの記録が対象環境と一致しません。')
-    _audit_applications(configuration, targets, transport)
-    _capture_application_infrastructure(configuration, targets, _read_dedicated_environment(configuration, targets, transport))
-    portal['applicationInfrastructure'] = targets['applicationInfrastructure']
-    return targets
-
-
-def _audit_applications(configuration, targets, transport):
-    apps = {}
-    for resource_id in targets['applicationIds']:
-        observed = _expect_read(_request(transport, 'GET', resource_id, API['containerApps']), resource_id)
-        if observed is not None:
-            _app_resource_owner(configuration, resource_id, targets['environmentId'], observed, code='audit-owner-mismatch')
-            apps[resource_id] = observed
-    return apps
-
-
-def _delete_audit_before_network(configuration, targets, transport, *, max_checks, wait_seconds, sleep):
-    targets['infrastructureFrozen'] = True
-    for resource_id, app in _audit_applications(configuration, targets, transport).items():
-        if str(app['properties'].get('provisioningState', '')).casefold() != 'deleting':
-            _request(transport, 'DELETE', resource_id, API['containerApps'])
-    for attempt in range(max_checks):
-        if not _audit_applications(configuration, targets, transport):
-            break
-        if attempt + 1 < max_checks:
-            sleep(wait_seconds)
-    else:
-        _error('cleanup-pending', '本文監査用アプリの削除が完了していません。', targets['environmentId'])
-    environment = _read_dedicated_environment(configuration, targets, transport)
-    if environment is not None:
-        if str(environment['properties'].get('provisioningState', '')).casefold() not in ('deleting', 'scheduledfordelete'):
-            _request(transport, 'DELETE', targets['environmentId'], targets['environmentApi'])
-        _wait_portal_absent(configuration, targets, 'environment', transport,
-                            max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
-    return {'resourceId': targets['environmentId'], 'status': 'absent',
-            'subnet': _wait_portal_subnet_released(targets, transport, max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)}
-
-
 def _delete_app_children(configuration, targets, state, transport, *, max_checks, wait_seconds, sleep):
     """削除直前と待機中も所有を照合し、全ての既知の子が404になるまで待つ。"""
     result = []
@@ -1634,7 +1569,6 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
     portal_targets = _portal_preflight(configuration, state, transport)
     certificate_targets = _certificate_environment_preflight(configuration, state, transport)
     portal_targets['broker'] = _broker_preflight(configuration, state, portal_targets, transport)
-    audit_targets = _audit_preflight(configuration, state, portal_targets, transport)
     portal_children = _portal_children_preflight(configuration, portal_targets, transport)
     credential_apps = _credential_apps_preflight(configuration, state, transport, portal_targets['credentialEnvironmentId'])
     policies: list[tuple[str, dict]] = []
@@ -1661,8 +1595,7 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
             _error("locked-retention", "監査StorageにLocked WORMがあります。保持を回避せずazd downを停止します。保持期限と本番の保全手順を確認してください。", policy_id)
         if mode != "Unlocked":
             _error("unknown-retention", "監査保持ポリシーの状態を判定できません。", policy_id)
-        requested_mode = (configuration.get("auditEvidence", {}).get("payloadImmutabilityMode", "Disabled")
-                          if policy_id == current["bodyPolicyId"] else configuration["monitoring"]["auditImmutabilityMode"])
+        requested_mode = configuration["monitoring"]["auditImmutabilityMode"]
         if requested_mode != "Disabled":
             _error("configured-retention", "監査保持を有効にした構成のため、Unlockedポリシーもこの撤去処理では解除しません。保持方針を確認してください。", policy_id)
         etag = policy.get("etag") or next((value for key, value in response["headers"].items() if key.lower() == "etag"), None)
@@ -1684,9 +1617,6 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
     apim = _delete_apim_before_network(configuration, current, transport,
                                       max_checks=apim_max_checks,
                                       wait_seconds=apim_wait_seconds, sleep=sleep)
-    audit = (_delete_audit_before_network(configuration, audit_targets, transport,
-                                        max_checks=apim_max_checks, wait_seconds=apim_wait_seconds, sleep=sleep)
-             if audit_targets else None)
     portal = _delete_portal_before_network(configuration, portal_targets, transport,
         max_checks=apim_max_checks, wait_seconds=apim_wait_seconds, sleep=sleep, state=state)
     certificate = _delete_certificate_environment(configuration, certificate_targets, transport,
@@ -1731,8 +1661,6 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
               "activityDiagnostic": {"resourceId": diagnostic_id, "status": "absent", "httpStatus": 404}}
     if certificate is not None:
         result["certificateEnvironment"] = certificate
-    if audit is not None:
-        result['auditEvidenceEnvironment'] = audit
     credential_manager = _credential_manager_release(configuration)
     if credential_manager is not None:
         credential_manager["apimServiceDeletionVerified"] = apim.get("apimDeletionVerified") is True

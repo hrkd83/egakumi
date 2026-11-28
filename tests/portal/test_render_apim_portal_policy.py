@@ -55,9 +55,9 @@ class ManualPortalPolicyTests(unittest.TestCase):
         for expected in ('context.Api.Id == "manual-claude-messages"', 'context.Product.Id == "manual-model-users"',
                          'context.Product.Id == "manual-entra-users"'):
             self.assertIn(expected, product_gate)
-        self.assertEqual(inbound.find("set-backend-service").attrib, {"backend-id": "core-audit-relay"})
+        self.assertEqual(inbound.find("set-backend-service").attrib, {"backend-id": "manual-claude-messages-backend"})
         mi = inbound.find("authentication-managed-identity")
-        self.assertEqual(mi.attrib, {"resource": "{{core-audit-relay-audience}}", "ignore-error": "false"})
+        self.assertEqual(mi.attrib, {"resource": "https://ai.azure.com", "ignore-error": "false"})
         for names in ("Authorization", "{{core-subscription-key-header}}", "x-api-key", "api-key", "X-Core-L7-Ingress", "Cookie"):
             header = inbound.find(f"set-header[@name='{names}']")
             self.assertEqual(header.get("exists-action"), "delete")
@@ -86,9 +86,7 @@ class ManualPortalPolicyTests(unittest.TestCase):
         owned_fragments = {item.stem for item in (portal.POLICIES / "fragments").glob("*/*/*.xml")}
         used_fragments = {item.get("fragment-id") for item in root.iter("include-fragment")}
         self.assertLessEqual(used_fragments, owned_fragments)
-        self.assertEqual([node.get("value") for node in inbound.findall("set-variable[@name='gatewayEvidenceDirection']")],
-                         ["snapshot", "request"])
-        self.assertIsNotNone(root.find("outbound/include-fragment[@fragment-id='core-http-body-evidence']"))
+        self.assertIsNotNone(root.find("outbound/include-fragment[@fragment-id='core-backend-audit']"))
 
     def test_invalid_routes_owned_products_and_backend_credentials_fail_closed_in_renderer(self):
         sample = load_example("claude-messages")
@@ -96,11 +94,10 @@ class ManualPortalPolicyTests(unittest.TestCase):
                          {"keyProductId": "manual-entra-users"}, {"backendId": "openai-inference-v1-backend"},
                          {"backendAuthentication": []}, {"backendAuthentication": {"mode": "managedIdentity", "resource": 1}},
                          {"backendAuthentication": {"mode": "managedIdentity", "resource": "https://example.com/?credential=synthetic"}},
-                         {"responseTransport": "websocket"}, {"responseTransport": "rest"}, {"bodyAudit": True},
+                         {"responseTransport": "websocket"},
                          {"operations": [{**sample["operations"][0], "backendPath": "//example.com"}]},
                          {"operations": [{**sample["operations"][0], "backendPath": "/v1/../private"}]},
                          {"operations": [{**sample["operations"][0], "backendPath": "/v1/{destination}"}]},
-                         {"operations": [{**sample["operations"][0], "backendPath": "/other/resource"}]},
                          {"operations": [{**sample["operations"][0], "backendPath": "/" + "x" * 1025}]},
                          {"operations": [copy.deepcopy(sample["operations"][0])] * 2}):
             with self.subTest(settings=settings), self.assertRaises(ValueError):

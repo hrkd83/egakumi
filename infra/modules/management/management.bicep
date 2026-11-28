@@ -22,6 +22,7 @@ param subnetId string
 @minLength(1)
 @description('Linux の Syslog と性能値を収集する DCR の ID。VM の AMA に関連付けます。')
 param linuxDataCollectionRuleId string
+param diagnosticSettingProperties object = {}
 @description('Linux 管理 VM のサイズ。リージョンの利用枠とディスク・NIC の対応を事前確認します。')
 param vmSize string = 'Standard_D2s_v5'
 @description('Ubuntu 24.04 LTS x64 Gen2 のイメージ指定。OS と証明書ランタイムの対応をそろえます。')
@@ -121,6 +122,13 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
     }
     diagnosticsProfile: { bootDiagnostics: { enabled: true } }
   }
+}
+
+// Azureのパッチ評価・適用を選択したVMではプラットフォームの更新診断も収集します。
+resource patchDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (contains(diagnosticSettingProperties, 'management-patch-logs')) {
+  scope: vm
+  name: 'core-patch-logs'
+  properties: diagnosticSettingProperties['management-patch-logs']
 }
 
 // Entra SSH ログイン拡張を追加。実際のログイン可否は Azure RBAC の VM ロールで制御します。

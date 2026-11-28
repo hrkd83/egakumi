@@ -144,6 +144,52 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertEqual(values['tenantId'], config['credentialProviders'][0]['oauthTenantId'])
         self.assertEqual(state, original)
 
+    def test_portal_firewall_source_must_match_the_live_environment_and_subnet(self):
+        for mismatch in (None, 'cae-subnet', 'cidr', 'subnet-id'):
+            with self.subTest(mismatch=mismatch):
+                config, state = fixture()
+                config['portal']['apiAuthentication']['enabled'] = False
+                values = portal.deployment_inputs(config, state)
+                environment_id = (portal.group_scope(config) + '/providers/Microsoft.App/managedEnvironments/'
+                                  + values['environmentName'])
+                subnet_id = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/rg-test-sample-nw"
+                             '/providers/Microsoft.Network/virtualNetworks/vnet-test-sample/subnets/PortalSubnet')
+                subnet = {'id': subnet_id.upper(), 'properties': {'addressPrefix': values['portalPrefix']}}
+                environment = {'id': environment_id.upper(), 'properties': {'provisioningState': 'Succeeded',
+                    'vnetConfiguration': {'internal': True, 'infrastructureSubnetId': subnet_id.upper()}}}
+                if mismatch == 'cae-subnet':
+                    environment['properties']['vnetConfiguration']['infrastructureSubnetId'] = subnet_id + '-other'
+                elif mismatch == 'cidr':
+                    subnet['properties'] = {'addressPrefixes': [config['network']['subnetPrefixes']['apim']]}
+                elif mismatch == 'subnet-id':
+                    subnet['id'] += '-other'
+                identities = {values[key]['id'] for key in ('runtimeIdentity', 'schemaIdentity', 'authIdentity')}
+                sql_id = portal.group_scope(config) + '/providers/Microsoft.Sql/servers/sql-test-sample'
+                inventory = {environment_id: environment, subnet_id: subnet, sql_id: {'properties': {
+                    'fullyQualifiedDomainName': values['sqlServer'], 'publicNetworkAccess': 'Disabled'}}}
+
+                def request(method, url, body):
+                    self.assertEqual(method, 'GET')
+                    self.assertIsNone(body)
+                    resource_id = url.split('?', 1)[0]
+                    if resource_id in identities:
+                        resource = {'id': resource_id, 'name': resource_id.rsplit('/', 1)[1],
+                                    'properties': {'clientId': config['subscriptionId'],
+                                                   'principalId': config['azureTenantId']}}
+                    else:
+                        resource = inventory[resource_id]
+                    return {'statusCode': 200, 'body': resource}
+
+                transport = mock.Mock()
+                transport.request.side_effect = request
+                if mismatch is None:
+                    portal.verify_foundation(config, values, transport)
+                    subnet['properties'] = {'addressPrefixes': [values['portalPrefix']]}
+                    portal.verify_foundation(config, values, transport)
+                else:
+                    with self.assertRaisesRegex(ValueError, 'Portal subnet'):
+                        portal.verify_foundation(config, values, transport)
+
     def test_app_preparation_requires_core_maintenance_inventory(self):
         config, state = fixture()
         del state['outputs']['managementClientInventory']

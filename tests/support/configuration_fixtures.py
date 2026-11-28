@@ -36,7 +36,7 @@ def public_fixture(profile="test"):
     return parameters, options
 
 
-def fixture(*, audit_evidence=False):
+def fixture():
     """設定試験で使う最小の独立した設定を作る。呼出元が変更しても公開サンプルは書き換えない。"""
     value = configuration.load_configuration_source(CORE / "params/test.example.json")
     # The published sample deliberately requires the adopter's target IDs.
@@ -53,9 +53,6 @@ def fixture(*, audit_evidence=False):
     value["services"]["modelDeployments"] = []
     # Generic unit cases opt out of application publication independently of shipped defaults.
     value["publishApis"] = False
-    if not audit_evidence:
-        value["auditEvidence"]["enabled"] = False
-        value["network"]["subnetPrefixes"].pop("audit")
     # 基礎fixtureはCMを使わず、接続試験ではconnection_fixtureで追加する。
     value["credentialProviders"] = []
     value["gateway"]["authentication"].pop("credentialLogin", None)

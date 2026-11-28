@@ -834,10 +834,6 @@ def read_stage_shared_resources(manifest, plan, template, transport):
         if api.get('backendAuthentication', {}).get('mode') == 'keyVaultHeader':
             targets['namedValues'].add(apim + '/namedValues/' + name + '-backend-secret')
         operation_backends |= any('backendOverride' in operation for operation in api.get('operations', []))
-    if plan["parameters"].get("auditRelay", {}).get("value"):
-        targets["backends"].add(apim + "/backends/core-audit-relay")
-        targets["namedValues"].update({apim + "/namedValues/core-audit-relay-audience",
-                                      apim + "/namedValues/core-audit-relay-url"})
     expected = {'policyFragments': manifest.policies, 'backends': manifest.backends, 'namedValues': manifest.named_values}
     for kind in targets:
         expected_aliases = {}
@@ -1044,8 +1040,6 @@ def read_fresh_publication(plan, transport):
         _read(transport, allowed_backend, snapshot)
     product_names = {api["productId"] for api in definitions} | {ENTRA_OPEN_PRODUCT_ID, "released-apis"}
     named_names = {api["name"] + suffix for api in definitions for suffix in ("-backend-audience", "-backend-secret")}
-    if plan["parameters"].get("auditRelay", {}).get("value"):
-        named_names.update({"core-audit-relay-audience", "core-audit-relay-url"})
     for kind, names in (("products", product_names),
                         ("namedValues", named_names), ("loggers", {"azuremonitor"}), ("diagnostics", {"azuremonitor"})):
         names = {name.casefold() for name in names}

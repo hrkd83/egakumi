@@ -20,22 +20,18 @@ REGISTRY_API = '2023-07-01'
 ROLE_API = '2022-04-01'
 ACR_PUSH = '8311e382-0749-4cb8-b61a-304f252e45ec'
 MARKER = 'CORE_CREDENTIAL_IMAGE_RESULT='
-AUDIT_MARKER = 'CORE_AUDIT_IMAGE_RESULT='
 
 
-def source_bundle(root=REPOSITORY, *, audit=False):
+def source_bundle(root=REPOSITORY):
     """実行に必要な公開資材だけを梱包。params/secrets/ローカル状態は含めない。"""
-    source = Path(root) / 'apps' / ('audit-relay' if audit else 'credential-broker')
-    package = 'audit_relay' if audit else 'credential_broker'
-    folders = (package,) if audit else (package, 'sql')
+    source = Path(root) / 'apps' / 'credential-broker'
+    folders = ('credential_broker', 'sql')
     if source.is_symlink() or any((source / name).is_symlink() for name in folders):
         raise ValueError('Image source directories must not be symbolic links')
     files = [source / name for name in ('Dockerfile', 'requirements.txt')]
-    files += sorted((source / package).glob('*.py'))
-    if not audit:
-        files += sorted((source / 'sql').glob('*.sql'))
-    required = '__main__.py' if audit else 'app.py'
-    if not any(path.name == required for path in files) or (not audit and not any(path.suffix == '.sql' for path in files)):
+    files += sorted((source / 'credential_broker').glob('*.py'))
+    files += sorted((source / 'sql').glob('*.sql'))
+    if not any(path.name == 'app.py' for path in files) or not any(path.suffix == '.sql' for path in files):
         raise ValueError('Application image build sources are missing')
     raw = io.BytesIO()
     with tarfile.open(fileobj=raw, mode='w') as archive:
@@ -52,38 +48,35 @@ def source_bundle(root=REPOSITORY, *, audit=False):
     return data, hashlib.sha256(data).hexdigest()
 
 
-def build_targets(config, state, *, audit=False):
-    if audit:
-        return image_build.build_targets(config, state, output='auditEvidence', command='build-audit-relay')
+def build_targets(config, state):
     return image_build.build_targets(config, state, output='credentialBroker', command='build-credential-broker')
 
 
-def render_build_script(config, targets, data, source_hash, build_tag, root=REPOSITORY, *, audit=False):
+def render_build_script(config, targets, data, source_hash, build_tag, root=REPOSITORY):
     if (not re.fullmatch(r'[a-z0-9]+\.azurecr\.io', targets['registryServer'])
             or not re.fullmatch(r'[0-9a-fA-F-]{36}', config['azureTenantId'])
             or not re.fullmatch(r'[0-9a-f]{64}', source_hash)
             or not re.fullmatch(r'build-[0-9a-f]{32}', build_tag)):
         raise ValueError('Invalid credential image build inputs')
     script = (Path(root) / 'apps/credential-broker/deploy/build-image.sh').read_text(encoding='utf-8').replace('\r\n', '\n')
-    startup_check = ('import os; import audit_relay.relay; import audit_relay.worker; assert os.getuid() == 10001' if audit else
-                     'import os; from pathlib import Path; import credential_broker.cli; import credential_broker.app; assert os.getuid() == 10001; assert "CREATE TABLE broker.Pools" in Path("/app/sql/001_initial.sql").read_text()')
+    startup_check = ('import os; from pathlib import Path; import credential_broker.cli; import credential_broker.app; '
+                     'assert os.getuid() == 10001; assert "CREATE TABLE broker.Pools" in Path("/app/sql/001_initial.sql").read_text()')
     for key, value in {'__REGISTRY__': targets['registryServer'], '__TENANT__': config['azureTenantId'],
                        '__SOURCE_BASE64__': base64.b64encode(data).decode(), '__SOURCE_SHA256__': source_hash,
                        '__BUILD_TAG__': build_tag, '__STARTUP_CHECK__': startup_check,
-                       '__SOURCE_SUBDIRECTORIES__': repr(('audit_relay',) if audit else ('credential_broker', 'sql')),
-                       '__IMAGE_REPOSITORY__': 'audit-relay' if audit else 'credential-broker',
-                       '__RESULT_MARKER__': AUDIT_MARKER if audit else MARKER}.items():
+                       '__SOURCE_SUBDIRECTORIES__': repr(('credential_broker', 'sql')),
+                       '__IMAGE_REPOSITORY__': 'credential-broker', '__RESULT_MARKER__': MARKER}.items():
         script = script.replace(key, value)
     return script
 
 
-def reusable_image(config, state, source_hash, path, *, transport=None, audit=False):
+def reusable_image(config, state, source_hash, path, *, transport=None):
     """実行時に現在のACR世代まで確認できた成功イメージだけを再利用する。"""
     receipt = read_build_receipt(path)
     # 既定の計画はネットワーク0。旧形式の世代なしreceiptも成功へ読み替えない。
     if transport is None or not receipt or not isinstance(receipt.get('registryGeneration'), dict):
         return None
-    targets = build_targets(config, state, audit=True) if audit else build_targets(config, state)
+    targets = build_targets(config, state)
     generation = image_build.current_registry_generation(transport, targets)
     return image_build.reusable_digest(receipt, source_hash, targets['commandId'], registry_generation=generation)
 
@@ -122,17 +115,7 @@ def parse_build_result(view, source_hash):
 
 def build_image(config, state, transport, *, data, source_hash, record, sleep=time.sleep,
                 monotonic=time.monotonic, progress=print, timeout=2700, prior_receipt=None,
-                pipeline=None, registry_api=REGISTRY_API, audit=False):
-    if audit and pipeline is None:
-        pipeline = (
-            lambda config, state: build_targets(config, state, audit=True),
-            lambda config, targets, data, source_hash, tag: render_build_script(
-                config, targets, data, source_hash, tag, audit=True),
-            lambda view, source_hash: image_build.parse_build_result(
-                view, source_hash, marker=AUDIT_MARKER, label='Audit'),
-            lambda registry: None,
-            '本文監査',
-        )
+                pipeline=None, registry_api=REGISTRY_API):
     pipeline = pipeline or (build_targets, render_build_script, parse_build_result,
                             lambda registry: None, '認証窓口')
     select_targets, render_script, parse_result, validate_registry, component = pipeline
@@ -245,6 +228,5 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
         record(receipt)
         if cleanup_errors:
             detail = (str(failure) + '; ') if failure is not None else ''
-            receipt_name = 'audit-relay-build.json' if audit else 'credential-broker-build.json'
-            raise ValueError(detail + 'Image build cleanup did not finish; inspect .local/<environment>/state/' + receipt_name) from None
+            raise ValueError(detail + 'Image build cleanup did not finish; inspect .local/<environment>/state/credential-broker-build.json') from None
     return receipt['imageDigest']

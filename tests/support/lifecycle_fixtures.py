@@ -12,7 +12,6 @@ from deployment import lifecycle
 from deployment.helpers import cleanup
 from deployment.helpers import prepare_secrets as secret_preparation
 from deployment.helpers import private_permissions
-from deployment.helpers.audit_evidence import evidence_container_id, evidence_policy_id
 from deployment.helpers.configuration import normalize_configuration
 from deployment.helpers.paths import local_paths
 from tests.support.configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
@@ -197,7 +196,7 @@ class LifecycleFixture:
         env.start()
         self.addCleanup(env.stop)
 
-    def preprovision_transport(self, *, body_policy=None, firewall_snapshots=()):
+    def preprovision_transport(self, *, firewall_snapshots=()):
         """初回の所有資源探索をARMの実際の読取先ごとに再現する。"""
         config = self.config
         stem = config["resourceStem"]
@@ -217,15 +216,6 @@ class LifecycleFixture:
 
         nsg_suffixes = ["agw", "apim", "pep", "vm", "portal", "certificate", "broker"]
         route_suffixes = ["agw", "apim", "vm", "portal", "certificate", "broker"]
-        evidence = config.get("auditEvidence", {})
-        if evidence.get("enabled") is True:
-            nsg_suffixes.append("audit")
-            route_suffixes.append("audit")
-            requests.append((evidence_policy_id(config) + "?api-version=2023-05-01", body_policy or missing))
-            if evidence["payloadImmutabilityMode"] == "Locked":
-                account = evidence_container_id(config).removesuffix("/blobServices/default/containers/payload")
-                requests.append((account + "/managementPolicies/default?api-version=2023-05-01", missing))
-
         requests.extend((f"{network}/networkSecurityGroups/nsg-{stem}-{suffix}?api-version=2025-01-01", missing)
                         for suffix in nsg_suffixes)
         requests.extend((f"{network}/routeTables/rt-{stem}-{suffix}?api-version=2025-01-01", missing)

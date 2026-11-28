@@ -42,7 +42,6 @@
         <set-body>@("")</set-body>
       </when>
     </choose>
-    __HTTP_EVIDENCE_REQUEST_XML__
     <!-- === -->
   </inbound>
   <backend><base /></backend>
@@ -61,7 +60,6 @@
       </when>
     </choose>
     <set-variable name="documentPublicResponse" value="@((string)JObject.Parse((string)context.Variables[&quot;documentPollEvaluation&quot;])[&quot;result&quot;])" />
-    __HTTP_EVIDENCE_RESPONSE_XML__
     <return-response>
       <set-status code="@((int)JObject.Parse((string)context.Variables[&quot;documentPollEvaluation&quot;])[&quot;status&quot;])" reason="Document analysis status" />
       <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>

@@ -263,18 +263,30 @@ class ApiPublicationSizeTests(unittest.TestCase):
         # 公式4MB境界に対して、全outputs・binding・metadata込みで280万B未満に保ちます。
         self.assertEqual(sum(resource["type"] == "Microsoft.ApiManagement/service/apis" for resource in expanded["resources"]), len(self.parameters["apiDefinitions"]) + sum("mcp" in api for api in self.parameters["apiDefinitions"]))
 
-    def test_strict_audit_and_entra_with_credential_login_fit_expanded_budget(self):
+    def test_entra_with_credential_login_keeps_direct_foundry_route_and_fits_expanded_budget(self):
         parameters = copy.deepcopy(self.parameters)
-        parameters.update(entraAuthentication={"enabled": True}, credentialLogin=self.credential_login,
-                          auditRelay={"url": "https://relay.example.invalid", "audience": "api://example-relay"})
+        parameters.update(entraAuthentication={"enabled": True}, credentialLogin=self.credential_login)
+        definition = next(api for api in parameters["apiDefinitions"] if api["name"] == "openai-inference-v1")
+        definition["backendUrl"] = "https://foundry.example.invalid/openai/v1"
         result = self.assert_split_budgets(parameters)
+        deployed = result["publication"]["expanded"]["resources"]
         source = result["source"]["expanded"]["outputs"]["entraPublicationSource"]["value"]
-        for kind, name in (("backends", "core-audit-relay"), ("namedValues", "core-audit-relay-audience")):
-            with self.subTest(kind=kind):
-                deployed, = [resource["properties"] for resource in result["publication"]["expanded"]["resources"]
-                             if resource["type"].endswith("/" + kind) and resource["name"].endswith("/" + name)]
-                expected, = [entry["properties"] for entry in source[kind] if entry["suffix"] == f"/{kind}/{name}"]
-                self.assertEqual(deployed, expected)
+        backend_id = "openai-inference-v1-backend"
+        backend, = [entry["properties"] for entry in source["backends"] if entry["suffix"] == f"/backends/{backend_id}"]
+        deployed_backend, = [resource["properties"] for resource in deployed
+                             if resource["type"] == "Microsoft.ApiManagement/service/backends"
+                             and resource["name"].endswith(f"/{backend_id}")]
+        self.assertEqual(deployed_backend, backend)
+        self.assertEqual(backend["url"], definition["backendUrl"])
+        self.assertEqual(backend["tls"], {"validateCertificateChain": True, "validateCertificateName": True})
+        policy_suffix = "/apis/openai-inference-v1/policies/policy"
+        policy, = [entry["value"] for entry in source["policies"] if entry["suffix"] == policy_suffix]
+        xml = ET.fromstring(policy)
+        self.assertIsNotNone(xml.find("inbound/set-backend-service[@backend-id='openai-inference-v1-backend']"))
+        self.assertEqual(xml.find("inbound/authentication-managed-identity").get("resource"), definition["backendAudience"])
+        for name in ("Authorization", "Ocp-Apim-Subscription-Key", "api-key", "x-api-key", "Cookie"):
+            self.assertIsNotNone(xml.find(f"inbound/set-header[@name='{name}'][@exists-action='delete']"))
+        self.assertEqual(xml.find("backend/forward-request").get("buffer-response"), "false")
 
     def test_compiled_browser_exception_keeps_lowercase_csharp_boolean_with_azure_string_behavior(self):
         class AzureBooleanExpression(SizeExpression):

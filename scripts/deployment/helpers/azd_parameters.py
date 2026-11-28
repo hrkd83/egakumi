@@ -25,6 +25,7 @@ ARM_PARAMETER_DEFAULTS = {
     "manageAuditImmutabilityPolicies": True,
     "retainedAuditImmutabilityPolicyIds": [],
     "preserveAuditCollection": False,
+    "preserveAgentContentExport": False,
     "existingNetworkSecurityGroupNames": [],
     "existingRouteTableRoutes": {},
     "existingApimHostnameConfigurations": {},

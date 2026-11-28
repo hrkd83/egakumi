@@ -932,7 +932,7 @@ class DocumentAnalysisPublicationTests(unittest.TestCase):
                  'operation': next(operation for operation in self.api['operations'] if operation['name'] == operation_name),
                  'constraint': copy.deepcopy(self.api['authorization']['operationConstraints'][operation_name])}
         return PolicyExpression(self.policy['properties']['value'], self.template['variables'],
-            cache={'operationEntries': [entry]}, functions=self.template['functions']).evaluate({'entraAuthentication': {}, 'auditRelay': {}})
+            cache={'operationEntries': [entry]}, functions=self.template['functions']).evaluate({'entraAuthentication': {}})
 
     def test_generated_submit_policy_retains_query_copy_version_override_and_index_default(self):
         """生成XMLの配線を検証する。APIM標準コピーの実転送はAzureで別途確認する。"""

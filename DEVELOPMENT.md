@@ -107,10 +107,9 @@ Python 3.11以上と [端末の準備条件](docs/setup/01-prerequisites.md) を
 ```sh
 # リポジトリのルートで実行します。
 python3 -m venv .venv
-.venv/bin/python -m pip install -r scripts/clients/integration-requirements.txt -r apps/credential-broker/requirements.txt -r apps/audit-relay/requirements.txt
+.venv/bin/python -m pip install -r scripts/clients/integration-requirements.txt -r apps/credential-broker/requirements.txt
 .venv/bin/python -B -m unittest discover -s tests -t . -v
 PYTHONPATH=apps/credential-broker .venv/bin/python -B -m unittest discover -s apps/credential-broker/tests -v
-PYTHONPATH=apps/audit-relay .venv/bin/python -B -m unittest discover -s apps/audit-relay/tests -v
 ```
 
 Windowsでは仮想環境の `Scripts/python.exe` を使い、環境変数は利用するシェルの書式で指定します。用途別のテスト配置と個別実行例は[基盤テスト一覧](tests/README.md)を参照します。
@@ -253,6 +252,6 @@ DecisionのCLIは既定で計画表示だけです。標準Gatewayの実行に�
 
 ## 固定依存と配布物
 
-CoreのPython依存は[共通requirements](scripts/clients/integration-requirements.txt)、[Brokerのrequirements](apps/credential-broker/requirements.txt)、[本文監査のrequirements](apps/audit-relay/requirements.txt)で管理します。PortalのNode依存は[package.json](apps/portal/package.json)と[package-lock.json](apps/portal/package-lock.json)で管理します。変更内容に応じたローカル検査と、該当する仕様書の実環境試験で確認します。
+CoreのPython依存は[共通requirements](scripts/clients/integration-requirements.txt)、[Brokerのrequirements](apps/credential-broker/requirements.txt)で管理します。PortalのNode依存は[package.json](apps/portal/package.json)と[package-lock.json](apps/portal/package-lock.json)で管理します。変更内容に応じたローカル検査と、該当する仕様書の実環境試験で確認します。
 
 公開ソースには架空値と配布可能な素材だけを含めます。秘密・実環境の導入先設定・証明書・実行証跡は環境別のGit管理外領域`.local/<environment>/`で管理し、wheel／image／ZIP等の配布物にも混入させません。実情報の保存を認めるのはルートの`.local/`とazd専用の`.azure/`だけであり、ignore対象一般を保存・公開の許可と解釈しません。不要な生成物は個別に回収し、別用途のデータを一括削除しません。

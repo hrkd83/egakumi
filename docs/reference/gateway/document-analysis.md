@@ -47,4 +47,4 @@ PortalはBearerで文書原本を送る試用画面です。Read／Layoutから�
 
 Gateway個別配備が標準APIとWAFを登録します。文書受付のGateway `/tools/documents/v1/analyze` とPortal `/api/tools/documents` は、それぞれのパス専用のWAFをPreventionで使います。先頭2,000 KiBの本文を検査し、原本文書を通すためのMIMEとraw本文、URL入力に必要な指定項目だけに管理ルールの除外を適用します。URI・query・header・cookieのtraversalはカスタム規則で検査します。 [WAFの受入](../../testing/waf-compatibility.md)
 
-本文監査では、APIMで取得できる業務テキストと、取得できる原本の照合情報を保存します。原本ファイルの実体と受付チケットは保存対象から外します。業務要求の照会や拒否はGateway要求IDで照合します。 [本文監査の対象](../audit/request-body-audit.md) · [Documentの受入](../../testing/integration-tests.md)
+業務要求の照会や拒否はGateway要求IDで照合します。監査はAPIMのメタデータと提供元の診断を使用します。 [監査の対象](../audit/request-body-audit.md) · [Documentの受入](../../testing/integration-tests.md)

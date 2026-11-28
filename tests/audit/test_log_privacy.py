@@ -3,6 +3,7 @@ import copy
 import unittest
 
 from deployment.helpers import log_privacy as privacy
+from tests.audit.test_apim_audit_retention import AuditExpression
 from tests.support.bicep_helpers import compile_bicep
 
 
@@ -63,9 +64,12 @@ class LogPrivacyTemplateTests(unittest.TestCase):
         template = compile_bicep("infra/modules/monitoring/monitoring.bicep")
         text = __import__("json").dumps(template)
         self.assertIn("WorkspaceTransforms", text)
-        self.assertIn("Microsoft-Table-AGWAccessLogs", text)
-        self.assertIn(privacy.PRIVACY["transformKql"], text)
-        self.assertIn("AGWAccessLogs", text)
+        definition = AuditExpression("[variables('privacy')]", template["variables"]).evaluate({})
+        self.assertEqual(definition["transforms"], privacy.PRIVACY["transforms"])
+        self.assertIn("Microsoft-Table-{0}", text)
+        self.assertIn("DetailedData = ''", privacy.PRIVACY["transforms"]["AGWFirewallLogs"])
+        self.assertIn("QueryText = ''", privacy.PRIVACY["transforms"]["LAQueryLogs"])
+        self.assertNotIn("StorageBlobLogs", privacy.EXPORT_TABLES)
         self.assertIn("existingWorkspaceDataCollectionRuleResourceId", text)
         gateway = compile_bicep("infra/modules/ingress/application-gateway.bicep")
         resources = gateway["resources"]
@@ -79,7 +83,7 @@ class LogPrivacyTemplateTests(unittest.TestCase):
         config = build_bicep_configuration(normalize_configuration(fixture()))
         config["gateway"]["skuName"] = "WAF_v2"
         canonical = canonical_settings(config, "core")
-        self.assertIn("storageAccountId", canonical["agw-logs"]["properties"])
+        self.assertNotIn("storageAccountId", canonical["agw-logs"]["properties"])
         self.assertEqual(canonical["agw-logs"]["properties"]["logs"], [{"category": "ApplicationGatewayFirewallLog", "enabled": True}])
         self.assertNotIn("storageAccountId", canonical["agw-access"]["properties"])
         self.assertEqual(canonical["agw-access"]["properties"]["logs"], [{"category": "ApplicationGatewayAccessLog", "enabled": True}])
