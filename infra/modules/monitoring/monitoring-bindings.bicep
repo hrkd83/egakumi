@@ -20,7 +20,6 @@ param appGatewayId string
 param apimId string
 @description('監視対象 Azure Firewall のリソース ID。')
 param firewallId string
-param auditEvidenceEventHubsId string = ''
 @description('管理操作の変更を検出するネットワーク資源 ID の一覧。')
 param networkResourceIds array
 @description('今回所有する５個の RG の ID。対象を限定して変更・削除操作を監視します。')
@@ -154,26 +153,7 @@ var metrics = [
     dimensions: []
   }
 ]
-var auditEventHubMetrics = empty(auditEvidenceEventHubsId) ? [] : map([
-  { key: 'audit-event-hubs-throttled', metric: 'ThrottledRequests' }
-  { key: 'audit-event-hubs-server-errors', metric: 'ServerErrors' }
-], definition => {
-  key: definition.key
-  scope: auditEvidenceEventHubsId
-  resourceType: 'Microsoft.EventHub/namespaces'
-  region: location
-  namespace: 'Microsoft.EventHub/namespaces'
-  metricName: definition.metric
-  aggregation: 'Total'
-  operator: 'GreaterThan'
-  threshold: 0
-  window: 'PT5M'
-  frequency: 'PT1M'
-  severity: 2
-  dimensions: []
-})
-
-var metricDefinitions = concat(metrics, auditEventHubMetrics, apimSkuName == 'Premium' ? [{
+var metricDefinitions = concat(metrics, apimSkuName == 'Premium' ? [{
   key: 'apim-capacity-high'
   scope: apimId
   resourceType: 'Microsoft.ApiManagement/service'
@@ -223,16 +203,8 @@ resource metricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for defini
 
 // 以下は KQL の監視クエリです。件数・利用量・状態を検索し、API の入力本文や生成本文を検索材料にはしません。
 var auditWriteQuery = '${loadTextContent('./audit-write-failures.kql')}\nAuditWriteFailures(StorageBlobLogs, now(), dynamic(["${storage.collectJapan.name}", "${storage.collectFoundry.name}"]))'
-var ingestionQuery = 'union isfuzzy=true AppRequests, AppDependencies, AppExceptions, AppTraces, AppEvents, AppMetrics, AppPageViews, AppBrowserTimings, AppAvailabilityResults\n| where TimeGenerated > ago(24h)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| where _IsBillable == "true"\n| summarize IngestedGB = sum(_BilledSize) / 1000000000.0'
+var ingestionQuery = 'union isfuzzy=true AppRequests, AppDependencies, AppExceptions, AppTraces, AppEvents, AppMetrics, AppPageViews, AppBrowserTimings, AppAvailabilityResults, AppGenAIContent\n| where TimeGenerated > ago(24h)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| where _IsBillable == "true"\n| summarize IngestedGB = sum(_BilledSize) / 1000000000.0'
 var failureRateQuery = 'AppRequests\n| where TimeGenerated > ago(15m)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| summarize Requests=count(), Failures=countif(Success == false)\n| where Requests >= 100\n| extend FailureRate=100.0 * Failures / Requests'
-var auditRuntimeQuery = '''union isfuzzy=true ContainerAppConsoleLogs, datatable(TimeGenerated:datetime, Log:string, EnvironmentName:string)[]
-| where TimeGenerated > ago(15m)
-| where EnvironmentName =~ "__AUDIT_ENVIRONMENT__"
-| extend AuditEvent = extract(@"\b(audit_[a-z_]+)\b", 1, Log), RecordAgeSeconds = extract(@"recordAgeSeconds=(\d+)", 1, Log, typeof(long))
-| where AuditEvent in ("audit_input_unavailable", "audit_output_unavailable", "audit_publish_unavailable", "audit_sse_capture_failed", "audit_provider_capture_failed", "audit_worker_archive_retry", "audit_worker_receive_retry", "audit_worker_start_retry", "audit_invalid_envelope")
-    or (AuditEvent == "audit_worker_progress" and RecordAgeSeconds > 900)
-| project TimeGenerated
-'''
 var certificateMonitoringEnabled = !empty(certificateMonitoring)
 // During a first deployment, the log table may not have materialized. An empty
 // typed input keeps the startup and missing-worker queries evaluable.
@@ -273,18 +245,8 @@ var queryDefinitions = concat(baseQueryDefinitions, certificateMonitoringEnabled
     severity: 2
   }
 ] : [])
-var allQueryDefinitions = concat(queryDefinitions, empty(auditEvidenceEventHubsId) ? [] : [{
-  key: 'audit-evidence-runtime-failure'
-  query: replace(auditRuntimeQuery, '__AUDIT_ENVIRONMENT__', 'cae-${resourceStem}-audit')
-  range: 'PT15M'
-  aggregation: 'Count'
-  measure: ''
-  threshold: 0
-  severity: 2
-}])
-
 // ログの条件に合う事象を定期評価。実行 ID を使ってクエリを認証します。
-resource logAlerts 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for definition in allQueryDefinitions: {
+resource logAlerts 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for definition in queryDefinitions: {
   name: 'la-${resourceStem}-${definition.key}'
   location: location
   kind: 'LogAlert'
@@ -316,7 +278,7 @@ resource logAlerts 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for de
 }]
 
 // ログアラートの実行 ID に、検索先だけの参照権限を付けます。
-resource queryReaderGrants 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for (definition, i) in allQueryDefinitions: {
+resource queryReaderGrants 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for (definition, i) in queryDefinitions: {
   scope: workspace
   name: guid(workspace.id, logAlerts[i].id, 'Log Analytics Reader')
   properties: {

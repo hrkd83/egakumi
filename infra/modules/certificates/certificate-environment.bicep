@@ -18,7 +18,7 @@ resource certificateEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' =
 resource logs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'certificate-jobs'
   scope: certificateEnvironment
-  properties: diagnosticSettingProperties.portal
+  properties: diagnosticSettingProperties['certificate-logs']
 }
 
 output id string = certificateEnvironment.id

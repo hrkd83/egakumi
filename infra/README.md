@@ -12,7 +12,6 @@
 | [certificates](modules/certificates/) | 証明書用ID、Vault、実行環境、ネットワーク、[初回発行と更新のJob](modules/certificates/certificate-jobs.bicep) |
 | [management](modules/management/) | 管理VM、保守時のロール、OS監査、シリアル接続と保守クライアントの準備 |
 | [monitoring](modules/monitoring/) | ログ送信、監査BlobとそのPrivate Endpoint、アラート |
-| [audit-evidence](modules/audit-evidence/) | API本文監査の専用実行環境、Event Hubs、証跡とチェックポイントの保存先 |
 | [guest](guest/) | 管理VMで実行するスクリプトと証明書Jobイメージに入れるワーカー |
 
 空のAzure環境に [正式手順](../docs/setup/08-provision-core.md) で構築します。この資材での構築を再開するときは、NSGカタログが対象とするサブネットの作成済みルールを読み取り、現行の定義と照合します。規則名・通信条件が一致しない場合は、Coreのネットワーク配備に進む前に停止します。

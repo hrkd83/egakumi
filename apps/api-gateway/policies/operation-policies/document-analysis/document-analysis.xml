@@ -20,7 +20,6 @@
     <set-query-parameter name="stringIndexType" exists-action="skip"><value>unicodeCodePoint</value></set-query-parameter>
     <!-- 新規解析では既存の結果取得用チケットを使わず、削除して続行します。受付後に新しいチケットを発行します。 -->
     <set-header name="X-Core-Document-Ticket" exists-action="delete" />
-    __HTTP_EVIDENCE_REQUEST_XML__
     <!-- === -->
   </inbound>
   <backend><base /></backend>
@@ -55,7 +54,6 @@
       var code = status == 413 ? &quot;DocumentInputTooLarge&quot; : status == 429 ? &quot;DocumentAnalysisThrottled&quot; : status == 422 ? &quot;DocumentRejected&quot; : &quot;DocumentAnalysisUnavailable&quot;;
       return new JObject(new JProperty(&quot;error&quot;, new JObject(new JProperty(&quot;code&quot;, code))), new JProperty(&quot;requestId&quot;, context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None);
     }" />
-    __HTTP_EVIDENCE_RESPONSE_XML__
     <return-response>
       <set-status code="@((int)context.Variables[&quot;documentStatus&quot;])" reason="@((int)context.Variables[&quot;documentStatus&quot;] == 500 ? &quot;Document analysis unavailable&quot; : &quot;Document analysis acceptance&quot;)" />
       <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>

@@ -73,7 +73,6 @@ module monitoringBindings '../monitoring/monitoring-bindings.bicep' = {
     storage: ingressMonitoringPlan.storage
     apimId: ingressMonitoringPlan.apimId
     firewallId: ingressMonitoringPlan.firewallId
-    auditEvidenceEventHubsId: ingressMonitoringPlan.?auditEvidenceEventHubsId ?? ''
     networkResourceIds: ingressMonitoringPlan.networkResourceIds
     resourceGroupIds: ingressMonitoringPlan.resourceGroupIds
     enableLogAlerts: ingressMonitoringPlan.enableLogAlerts

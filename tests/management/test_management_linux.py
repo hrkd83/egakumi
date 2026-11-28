@@ -4,6 +4,7 @@ Bicepのコンパイル結果から、パスワード無効化・Entra SSH拡張
 """
 from tests.support.bicep_helpers import compile_bicep
 from tests.support.arm_helpers import ArmExpression
+from tests.audit.test_apim_audit_retention import AuditExpression
 
 import json
 import os
@@ -533,7 +534,8 @@ class LinuxManagementTemplateTests(unittest.TestCase):
         flow, = [flow for flow in rule["properties"]["dataFlows"] if "Microsoft-Syslog" in flow["streams"]]
         self.assertIn("redacted", flow["transformKql"])
         self.assertNotIn("Process(*)", json.dumps(sources))
-        self.assertIn("Syslog", template["variables"]["exportTables"])
+        archive = AuditExpression("[variables('archive')]", template["variables"]).evaluate({})
+        self.assertIn("Syslog", archive["exportTables"])
 
     def test_dcr_waits_for_its_workspace_tables_on_a_fresh_deployment(self):
         """初回は空のWorkspaceなので、収集規則より前に出力テーブルを作る。"""

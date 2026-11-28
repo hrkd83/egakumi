@@ -304,8 +304,7 @@ class PortableFileReferenceTests(unittest.TestCase):
             filename = destination / "config.json"
             filename.write_text(json.dumps(saved))
             reloaded = configuration.load_configuration_source(filename)
-            self.assertEqual(reloaded, {**configuration._resolve_file_references(original, source),
-                                       "auditEvidence": {"enabled": True}})
+            self.assertEqual(reloaded, configuration._resolve_file_references(original, source))
 
     def test_saved_references_follow_a_repository_copied_to_another_location(self):
         import shutil
@@ -503,7 +502,7 @@ class ConfigurationTests(unittest.TestCase):
                          {"certificatePublicProbeEnabled": True},
                          {"clientAddressPrefixes": ["0.0.0.0/0"],
                           "certificatePublicProbeEnabled": False}):
-            raw = fixture(audit_evidence=True)
+            raw = fixture()
             raw["network"].update(settings)
             raw["management"]["sshPublicKeyFile"] = "fixture-management-key.pub"
             with self.subTest(settings=settings), tempfile.TemporaryDirectory() as temporary:

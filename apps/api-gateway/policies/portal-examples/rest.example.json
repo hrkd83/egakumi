@@ -5,7 +5,6 @@
   "backendService": "external",
   "backendAuthentication": {"mode": "none"},
   "responseTransport": "rest",
-  "bodyAudit": true,
   "operations": [
     {
       "operationId": "status",

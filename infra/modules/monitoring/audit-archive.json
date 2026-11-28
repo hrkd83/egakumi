@@ -1,0 +1,34 @@
+{
+  "exportTables": ["AppRequests", "AppDependencies", "AppExceptions", "AppTraces", "AppEvents", "Syslog"],
+  "agentContentTable": "AppGenAIContent",
+  "directContainers": {
+    "collectJapan": [
+      "insights-activity-logs",
+      "insights-logs-audit",
+      "insights-logs-vmprotectionalerts",
+      "insights-logs-applicationgatewayaccesslog",
+      "insights-logs-applicationgatewayfirewalllog",
+      "insights-logs-azfwnetworkrule",
+      "insights-logs-azfwapplicationrule",
+      "insights-logs-azfwidpssignature",
+      "insights-logs-azfwthreatintel",
+      "insights-logs-gatewaylogs",
+      "insights-logs-gatewayllmlogs",
+      "insights-logs-websocketconnectionlogs",
+      "insights-logs-auditevent",
+      "insights-logs-containerregistryloginevents",
+      "insights-logs-containerregistryrepositoryevents",
+      "insights-logs-networksecuritygroupevent",
+      "insights-logs-networksecuritygrouprulecounter",
+      "insights-logs-storageread",
+      "insights-logs-storagewrite",
+      "insights-logs-storagedelete",
+      "insights-logs-sqlsecurityauditevents"
+    ],
+    "collectFoundry": [
+      "insights-logs-audit",
+      "insights-logs-requestresponse",
+      "insights-logs-azureopenairequestusage"
+    ]
+  }
+}

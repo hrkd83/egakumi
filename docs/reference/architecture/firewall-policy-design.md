@@ -4,7 +4,7 @@
 
 本書は、初期構築のAzure Firewallを実際に通過する通信と、構築資材の許可規則を対応付ける。NSGで許可するVNet内通信のすべてがFirewallを通る設計ではない。送信元、宛先、プロトコル、ポートだけでなく、[通信要件](network-communication-requirements.md)の経路と併せて読む。
 
-基本構成に加え、証明書Jobと本文監査の専用Rule Collection Group（RCG）を使う。構築サブネットCIDR、割当IP、公開Host、リージョンと、検証した業務接続設定を資材の規則へ差し込む。
+基本構成に加え、証明書Jobの専用Rule Collection Group（RCG）を使う。構築サブネットCIDR、割当IP、公開Host、リージョンと、検証した業務接続設定を資材の規則へ差し込む。
 
 ## 設計前提と評価順序
 
@@ -29,7 +29,6 @@ NSGの `allow-internet-egress` がTCP80／443を許可していても、Firewall
 | `rcg-credential-broker` | 360 | `credential-broker-azure`（200） | 3 | [credential-broker-network.bicep](../../../infra/modules/network/credential-broker-network.bicep) |
 | `rcg-portal-gateway` | 370 | `portal-gateway`（100） | 1 | [gateway-egress.bicep](../../../apps/portal/deploy/gateway-egress.bicep) |
 | `rcg-certificate` | 370 | `certificate-controls`（100）、`certificate-runtime`（200） | 3 | [certificate-network.bicep](../../../infra/modules/certificates/certificate-network.bicep) |
-| `rcg-audit-evidence` | 375 | `audit-platform-tags`（100）、`audit-platform-hosts`（200） | 2 | [audit-evidence-network.bicep](../../../infra/modules/audit-evidence/audit-evidence-network.bicep) |
 | `rcg-egress` | 400 | `allow-apim-egress`（200）、`allow-vm-egress`（210） | 11 | [network.bicep](../../../infra/modules/network/network.bicep) |
 
 同じFirewall Policyへは、各工程が所有するRCGだけを配備する。`rcg-portal-gateway`と`rcg-certificate`はともに370で、対象とする送信元サブネットが異なる。受入では両グループの設定を読み戻し、実際の接続を確認する。
@@ -178,7 +177,7 @@ TLS検査によるURLの記録は、取り込み前の変換を通るLog Analyti
 | 判断ID | 判断・採用理由 | 影響範囲 |
 | --- | --- | --- |
 | `FW-D01` | Firewallを通過する通信だけを登録する。将来の経路変更用やNSG通信の記録目的だけではFW許可を作らない | Broker内部VIPとSQL／Key Vault PEへのVNet内の直接通信は、NSGとサービス認可で制御 |
-| `FW-D02` | 配備する機能ごとに資材で規則を管理する | Brokerは接続プロファイルの件数にかかわらず配備。本文監査の規則もCoreで配備 |
+| `FW-D02` | 配備する機能ごとに資材で規則を管理する | Brokerは接続プロファイルの件数にかかわらず配備。証明書Jobの規則もCoreで配備 |
 | `FW-D04` | AppGWからAPIM／ACAへTLS検査付きHTTPS443 | Firewallは検査後に再暗号化し、対向NSGはFirewallの送信元を許可する |
 | `FW-D05` | APIM NTPはAPIMサブネット・UDP123・宛先`*`を維持し、管理VMはホストPHCを使う | APIMはDNS回答差を回避するNSG328と組み合わせる。管理VMのPHC／VMBusは仮想ホストからの非IP連携 |
 | `FW-D06` | 同じHTTPSでもEntra／ARM／Monitor／build等の用途を規則名で分離する | 同じタグやNetwork RuleとApplication Ruleの重複を明記し、特定の後段規則hitは保証しない |

@@ -175,7 +175,13 @@ module gatewayOboKey 'portal-auth-key-operations.bicep' = if (prepareGatewayObo)
 resource vaultLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-audit'
   scope: tlsVault
-  properties: diagnosticSettingProperties['vault-logs']
+  properties: diagnosticSettingProperties['certificate-vault-logs']
+}
+
+resource stateBlobAudit 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'core-audit'
+  scope: blobService
+  properties: diagnosticSettingProperties['certificate-blob-logs']
 }
 
 output vaultId string = tlsVault.id

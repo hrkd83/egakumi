@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[3]
 CATALOG_DIRECTORY = ROOT / 'infra/modules/network/nsg'
 NSG_TYPE = 'Microsoft.Network/networkSecurityGroups'
 GROUPS = ('agw', 'apim', 'pep', 'management', 'portal', 'broker')
-SUFFIXES = {'agw': 'agw', 'apim': 'apim', 'pep': 'pep', 'management': 'vm', 'portal': 'portal', 'broker': 'broker', 'audit': 'audit'}
+SUFFIXES = {'agw': 'agw', 'apim': 'apim', 'pep': 'pep', 'management': 'vm', 'portal': 'portal', 'broker': 'broker'}
 _PAIRS = (('sourcePortRange', 'sourcePortRanges'), ('destinationPortRange', 'destinationPortRanges'),
           ('sourceAddressPrefix', 'sourceAddressPrefixes'), ('destinationAddressPrefix', 'destinationAddressPrefixes'))
 
@@ -37,15 +37,11 @@ def _catalog(name):
 
 
 def _active_groups(config):
-    groups = GROUPS if 'broker' in config['network']['subnetPrefixes'] else GROUPS[:-1]
-    return (*groups, 'audit') if config.get('auditEvidence', {}).get('enabled') is True else groups
+    return GROUPS if 'broker' in config['network']['subnetPrefixes'] else GROUPS[:-1]
 
 
-def _fixed_catalog(audit, *, certificate=False):
+def _fixed_catalog(*, certificate=False):
     groups = _catalog('core-rules.json')['groups']
-    if audit:
-        for key, group in _catalog('audit-evidence-rules.json')['groups'].items():
-            groups.setdefault(key, {'rules': {}})['rules'].update(group['rules'])
     if certificate:
         for key, rules in _catalog('certificate-rules.json')['groups'].items():
             if key not in groups or set(groups[key]['rules']) & set(rules):
@@ -249,16 +245,16 @@ def _verify_certificate_egress_path(config, transport, subnet):
         raise FixedNsgError('The ACA route table does not prove that public traffic uses the owned Firewall') from None
 
 
-def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=False, permit_pending_audit_endpoints=False,
+def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=False, permit_pending_bindings=False,
                             _required_bindings=None):
     """Read and verify resource identities, subnet links, PE targets and all NIC IPs."""
-    if type(permit_unassociated_portal) is not bool or type(permit_pending_audit_endpoints) is not bool:
-        raise FixedNsgError('The internal Portal subnet association phase is invalid')
+    if type(permit_unassociated_portal) is not bool or type(permit_pending_bindings) is not bool:
+        raise FixedNsgError('The internal NSG binding phase is invalid')
     nsg_groups = _active_groups(config)
-    allowed_bindings = {('ips', key) for key in ('firewallPublic', 'appGatewayPublic', 'apim', 'portal', 'broker', 'audit', 'management')}
+    allowed_bindings = {('ips', key) for key in ('firewallPublic', 'appGatewayPublic', 'apim', 'portal', 'broker', 'management')}
     allowed_bindings.update(('ipSets', key) for key in
                             ('foundry', 'keyVault', 'registry', 'sql', 'auditStorageJapan', 'auditStorageFoundry',
-                             'certificateVault', 'certificateBlob', 'evidenceEventHubs', 'evidenceBlob', 'evidenceCheckpoint'))
+                             'certificateVault', 'certificateBlob'))
     if (_required_bindings is not None and (not isinstance(_required_bindings, frozenset)
                                            or not _required_bindings <= allowed_bindings)):
         raise FixedNsgError('The internal partial-build binding inventory is invalid')
@@ -285,7 +281,7 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
     parents = _parents(config, transport)
     found = {str(subnet.get('name', '')).casefold() for subnet in raw_subnets if isinstance(subnet, dict)}
     subnet_groups = tuple(key for key in nsg_groups
-        if not (permit_pending_audit_endpoints and key in ('broker', 'audit')
+        if not (permit_pending_bindings and key == 'broker'
                 and SUBNET_NAMES[key].casefold() not in found
                 and not _inventory(parents[key])))
     if len(certificate_subnets) > 1 or len(raw_subnets) != len(subnet_groups) + 1 + len(certificate_subnets):
@@ -319,7 +315,7 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
         if address_prefixes != [prefixes[key]]: raise FixedNsgError('The owned subnet CIDR differs')
         if key == 'pep' and p.get('privateEndpointNetworkPolicies') != 'NetworkSecurityGroupEnabled':
             raise FixedNsgError('The initial Private Endpoint subnet NSG enforcement policy differs')
-        if key in ('broker', 'audit') and _ref(p.get('routeTable')) != (nw + 'routeTables/rt-' + stem + '-' + key).casefold():
+        if key == 'broker' and _ref(p.get('routeTable')) != (nw + 'routeTables/rt-' + stem + '-broker').casefold():
             raise FixedNsgError('The dedicated ' + key.title() + ' subnet route table differs')
         associated = _ref(p.get('networkSecurityGroup'))
         if key == 'firewall':
@@ -355,19 +351,17 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
         if len(set(checked)) != len(checked): raise FixedNsgError('The owned APIM address inventory is ambiguous')
         ips['apim'] = checked[0]
     environments = [(key, '' if key == 'portal' else '-' + key)
-                    for key in ('portal', 'broker', 'audit') if key in subnet_groups]
+                    for key in ('portal', 'broker') if key in subnet_groups]
     for key, suffix in environments:
         if not required('ips', key): continue
         environment = _read(config, transport, service_prefix + 'Microsoft.App/managedEnvironments/cae-' + stem + suffix,
-                            'Microsoft.App/managedEnvironments', api='2025-07-01' if key == 'audit' else API,
-                            required=not (key == 'audit' and _required_bindings is None and permit_pending_audit_endpoints))
-        if environment is None: continue
+                            'Microsoft.App/managedEnvironments')
         configuration = environment['properties'].get('vnetConfiguration')
         if (not isinstance(configuration, dict) or configuration.get('internal') is not True
                 or str(configuration.get('infrastructureSubnetId', '')).casefold() != subnet_ids[key].casefold()):
             raise FixedNsgError('The owned ACA environment subnet differs')
-        if key in ('broker', 'audit') and environment['properties'].get('publicNetworkAccess') != 'Disabled':
-            raise FixedNsgError('The ' + key.title() + ' ACA environment does not have public access disabled')
+        if key == 'broker' and environment['properties'].get('publicNetworkAccess') != 'Disabled':
+            raise FixedNsgError('The Broker ACA environment does not have public access disabled')
         ips[key] = _address(environment['properties'].get('staticIp'), prefixes[key])
     if required('ips', 'management'):
         vm_id = groups['maint'] + '/providers/Microsoft.Compute/virtualMachines/vm-' + stem + '-mgmt'
@@ -400,39 +394,19 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
             'certificateBlob': ('certificate-blob', service_prefix + 'Microsoft.Storage/storageAccounts/st'
                                 + stem.replace('-', '') + 'cert', ['blob'], 'Microsoft.Storage/storageAccounts', '2025-01-01'),
         })
-    if 'audit' in nsg_groups:
-        monitor_prefix = groups['monitor'] + '/providers/'
-        storage_prefix = monitor_prefix + 'Microsoft.Storage/storageAccounts/st' + stem.replace('-', '')
-        targets.update({
-            'evidenceEventHubs': ('audit-eventhubs', monitor_prefix + 'Microsoft.EventHub/namespaces/ehns-' + stem + '-audit', ['namespace'], 'Microsoft.EventHub/namespaces', '2024-01-01'),
-            'evidenceBlob': ('audit-evidence', storage_prefix + 'evid', ['blob'], 'Microsoft.Storage/storageAccounts', '2023-05-01'),
-            'evidenceCheckpoint': ('audit-checkpoint', storage_prefix + 'ckpt', ['blob'], 'Microsoft.Storage/storageAccounts', '2023-05-01'),
-        })
     sets = {}; seen_ips = set()
     for key, (suffix, target_id, group_ids, kind, api) in targets.items():
         if not required('ipSets', key): continue
         pe_id = nw + 'privateEndpoints/pe-' + stem + '-' + suffix
         pe = _read(config, transport, pe_id, 'Microsoft.Network/privateEndpoints',
-                   required=not (_required_bindings is None and permit_pending_audit_endpoints
-                                 and key.startswith(('auditStorage', 'certificate', 'evidence'))))
+                   required=not (_required_bindings is None and permit_pending_bindings
+                                 and key.startswith(('auditStorage', 'certificate'))))
         if pe is None:
             # Core preparation precedes creation of the two audit endpoints.
             # No missing binding is supplied to a rule or completion check.
             continue
-        service = _read(config, transport, target_id, kind, api=api, state=False,
-                        location=config.get('foundryLocation') if key in ('foundry', 'auditStorageFoundry') else None)
-        if key.startswith('evidence'):
-            properties = service['properties']
-            if properties.get('publicNetworkAccess') != 'Disabled':
-                raise FixedNsgError('An audit evidence target allows public access')
-            if key == 'evidenceEventHubs':
-                if properties.get('disableLocalAuth') is not True:
-                    raise FixedNsgError('The audit Event Hubs namespace allows local authentication')
-            else:
-                acls = properties.get('networkAcls')
-                if (properties.get('allowSharedKeyAccess') is not False or properties.get('allowBlobPublicAccess') is not False
-                        or not isinstance(acls, dict) or acls.get('defaultAction') != 'Deny' or acls.get('bypass') != 'None'):
-                    raise FixedNsgError('An audit evidence storage account has weaker access than required')
+        _read(config, transport, target_id, kind, api=api, state=False,
+              location=config.get('foundryLocation') if key in ('foundry', 'auditStorageFoundry') else None)
         p = pe['properties']; connections = p.get('privateLinkServiceConnections')
         if (p.get('manualPrivateLinkServiceConnections', []) not in ([], None)
                 or _ref(p.get('subnet')) != subnet_ids['pep'].casefold()
@@ -489,7 +463,7 @@ def _definition(rule, bindings):
 
 def verify_fixed_nsg_inventory(parents, bindings, *, require_complete=False):
     """Accept only exact current rule tuples; completion also requires every rule."""
-    fixed = _fixed_catalog('audit' in parents, certificate='certificate' in bindings['subnets'])
+    fixed = _fixed_catalog(certificate='certificate' in bindings['subnets'])
     for group, parent in parents.items():
         current = _inventory(parent)
         expected = fixed[group]['rules']
@@ -513,7 +487,7 @@ def verify_fixed_nsg_before_deployment(config, transport):
     """Use only resources already required by present rules when resuming Core."""
     parents = _parents(config, transport)
     _, _, prefixes = _scope(config)
-    fixed = _fixed_catalog('audit' in parents, certificate='certificate' in prefixes)
+    fixed = _fixed_catalog(certificate='certificate' in prefixes)
     required_bindings = set()
     for group, parent in parents.items():
         for name in _inventory(parent):
@@ -531,7 +505,7 @@ def verify_fixed_nsg_before_deployment(config, transport):
         verify_fixed_nsg_inventory(parents, {'subnets': prefixes, 'ips': {}, 'ipSets': {}})
         return
 
-    options = {'permit_unassociated_portal': True, 'permit_pending_audit_endpoints': True,
+    options = {'permit_unassociated_portal': True, 'permit_pending_bindings': True,
                '_required_bindings': frozenset(required_bindings)}
     bindings = read_fixed_nsg_bindings(config, transport, **options)
     verify_fixed_nsg_inventory(parents, bindings)

@@ -96,13 +96,15 @@ if __package__ in (None, ""):
 
 from .helpers.paths import REPOSITORY, configuration_path, local_paths, private_parent
 from .helpers.azd_parameters import ARM_PARAMETERS_ENV, arm_parameters_reference, complete_arm_parameters
-from .helpers.audit_evidence import evidence_container_id, evidence_policy_id
 from .helpers.configuration import ConfigurationError, build_bicep_configuration, entra_tenant_id, load_configuration, load_firewall_tls_inspection, load_secret_inputs
 from .helpers.diagnostics import DiagnosticPreservationError, canonical_settings, prepare_settings
 from .helpers.prepare_secrets import SecretPreparationError, prepare_secrets
 from .helpers.dns_selection import DnsSelectionError, select_dns_provider
 from .helpers.public_dns import configure_public_dns
-from .helpers.log_privacy import LogPrivacyError, existing_workspace_link as read_workspace_privacy_link, ensure_workspace_link, resource_ids as log_privacy_resource_ids
+from .helpers.log_privacy import (
+    ARCHIVE, EXPORT_TABLES, LogPrivacyError, ensure_workspace_link,
+    existing_workspace_link as read_workspace_privacy_link, resource_ids as log_privacy_resource_ids,
+)
 from .helpers.ssh_keys import ensure_management_ssh_key
 from .helpers.apim_preflight import verify_apim_name, ApimPreflightError
 from .helpers.apim_naming import apim_instance_id
@@ -404,6 +406,7 @@ def arm_access_token(subscription: str, tenant: str) -> dict:
 
 def parameters(config: dict, phase: str, *, secrets: dict | None = None,
                manage_policies: bool = True, preserve_collection: bool = False,
+               preserve_agent_content_export: bool = False,
                retained_policy_ids: list[str] | None = None,
                existing_nsg_names: list[str] | None = None,
                existing_route_table_routes: dict | None = None,
@@ -433,7 +436,8 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
     values = {"configuration": configuration, "phase": phase,
               "manageAuditImmutabilityPolicies": manage_policies,
               "retainedAuditImmutabilityPolicyIds": list(retained_policy_ids or []),
-              "preserveAuditCollection": preserve_collection, "diagnosticSettingProperties": diagnostics, **secure_inputs,
+              "preserveAuditCollection": preserve_collection, "preserveAgentContentExport": preserve_agent_content_export,
+              "diagnosticSettingProperties": diagnostics, **secure_inputs,
               "existingNetworkSecurityGroupNames": list(existing_nsg_names or []),
               "existingRouteTableRoutes": copy.deepcopy(existing_route_table_routes or {}),
               "existingApimHostnameConfigurations": copy.deepcopy(existing_apim_hostname_configurations or {}),
@@ -906,9 +910,8 @@ def register_providers(config: dict) -> None:
     企業の別サブスクでも前提を取りこぼさないよう、手作業だけに依存しない。
     待機期限はこの操作の上限であり、環境の自動撤去期限ではない。
     """
-    required = (*PROVIDERS, 'Microsoft.EventHub') if config.get('auditEvidence', {}).get('enabled') else PROVIDERS
     pending = []
-    for namespace in required:
+    for namespace in PROVIDERS:
         response = _registration_run(["az", "provider", "show", "--namespace", namespace,
                         "--subscription", config["subscriptionId"], "-o", "json"],
                         namespace=namespace, stage="provider-show")
@@ -939,7 +942,8 @@ def prepare_diagnostic_settings(config: dict, transport: ArmTransport, phase: st
         raise DeploymentError(str(error)) from None
 
 
-def _monitoring_export_reapply_ready(config: dict, template: dict, deployment: dict, transport, phase_deadline: float) -> dict | None:
+def _monitoring_export_reapply_ready(config: dict, template: dict, deployment: dict, transport,
+                                    phase_deadline: float, *, preserve_agent_content_export: bool = False) -> dict | None:
     """既知のExport単独失敗と、現在の所有・設定一致を確認した場合だけ再適用を認める。"""
     try:
         same = lambda a, b: isinstance(a, str) and isinstance(b, str) and a.casefold() == b.casefold()
@@ -958,24 +962,16 @@ def _monitoring_export_reapply_ready(config: dict, template: dict, deployment: d
             return None
         nested = [item.get('properties', {}).get('template') for item in template.get('resources', [])
                   if item.get('type', '').casefold() == 'microsoft.resources/deployments'
-                  and isinstance(item.get('properties', {}).get('template', {}).get('variables', {}).get('exportTables'), list)]
+                  and 'exportTables' in item.get('properties', {}).get('template', {}).get('variables', {})]
         if len(nested) != 1:
             return None
         exports = [item for item in nested[0].get('resources', [])
                    if item.get('type', '').casefold() == 'microsoft.operationalinsights/workspaces/dataexports']
-        if len(exports) != 1 or exports[0].get('properties', {}).get('tableNames') != "[variables('exportTables')]":
+        export_expression = ("[if(parameters('preserveAgentContentExport'), concat(variables('exportTables'), "
+                             "createArray(variables('archive').agentContentTable)), variables('exportTables'))]")
+        if len(exports) != 1 or exports[0].get('properties', {}).get('tableNames') != export_expression:
             return None
-        variables = nested[0]['variables']; privacy = variables.get('privacy', {})
-        if isinstance(privacy, str):
-            reference = re.fullmatch(r"\[variables\('(\$fxv#[0-9]+)'\)\]", privacy)
-            privacy = variables.get(reference[1]) if reference else None
-        if not isinstance(privacy, dict):
-            return None
-        tables = [privacy.get('table') if name == "[variables('privacy').table]" else name
-                  for name in variables['exportTables']]
-        if (not 1 <= len(tables) <= 100 or any(not isinstance(name, str) or re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,99}', name) is None for name in tables)
-                or len(tables) != len(set(tables))):
-            return None
+        tables = (*EXPORT_TABLES, ARCHIVE['agentContentTable']) if preserve_agent_content_export else EXPORT_TABLES
         response = transport.request('GET', child + '/operations?api-version=2022-09-01')
         if response.get('statusCode') != 200 or not isinstance(response.get('body'), dict):
             return None
@@ -1070,6 +1066,7 @@ def _record_monitoring_reapply(config: dict, proof: dict) -> tuple[Path, dict]:
 
 
 def deploy_monitoring(config: dict, *, preserve_collection: bool,
+                      preserve_agent_content_export: bool = False,
                       retained_policy_ids: list[str] | None = None,
                       diagnostic_setting_properties: dict | None = None) -> dict:
     """監視の先行配備を実行し、Azureが成功を返してから出力を渡す。"""
@@ -1083,6 +1080,7 @@ def deploy_monitoring(config: dict, *, preserve_collection: bool,
         config, "monitoring",
         retained_policy_ids=retained_policy_ids,
         preserve_collection=preserve_collection,
+        preserve_agent_content_export=preserve_agent_content_export,
         existing_workspace_privacy_dcr_id=read_workspace_privacy_link(config, transport),
         diagnostic_setting_properties=diagnostic_setting_properties,
     )
@@ -1104,7 +1102,8 @@ def deploy_monitoring(config: dict, *, preserve_collection: bool,
                 protected_json(reapply[0], {**reapply[1], 'status': 'reapply-succeeded'})
             return {key: item["value"] for key, item in deployment["properties"]["outputs"].items()}
         if status == "Failed" and reapply is None and time.monotonic() < deadline:
-            proof = _monitoring_export_reapply_ready(config, template, deployment, transport, deadline)
+            proof = _monitoring_export_reapply_ready(config, template, deployment, transport, deadline,
+                                                       preserve_agent_content_export=preserve_agent_content_export)
             if proof is not None and time.monotonic() < deadline:
                 reapply = _record_monitoring_reapply(config, proof)
                 if time.monotonic() >= deadline:
@@ -1199,11 +1198,8 @@ def _save_deployment_state(config: dict, outputs: dict) -> dict:
     return state
 
 
-def _validate_parameter_registrations(config: dict, source: Path, command: str) -> None:
-    """配備前に入力と、監査中継が使用できる認証テナントを確認します。"""
-    if (config.get("auditEvidence", {}).get("enabled") is True
-            and config["entraTenantId"] != config["azureTenantId"]):
-        raise DeploymentError("Audit evidence requires entraTenantId to match azureTenantId before Core deployment")
+def _validate_parameter_registrations(config: dict, source: Path) -> None:
+    """配備前に入力ファイルの配置先と選択環境を確認する。"""
     workspace = local_paths(config, ROOT)
     workspace.checked(source)
     workspace.check_selection(config)
@@ -1234,9 +1230,6 @@ def prepare_immutability(storage: dict, transport: ArmTransport) -> list[str]:
             continue
         if properties.get("state") not in ("Locked", "Unlocked"):
             raise DeploymentError("Audit policy state could not be confirmed")
-        _verify_audit_policy_id(storage, path, policy)
-        if storage.get("allowProtectedAppendWrites") is False and storage["immutabilityMode"] == "Disabled":
-            raise DeploymentError("Existing body evidence has a WORM policy; configuration cannot disable it")
         if properties["state"] == "Locked":
             if not _audit_policy_matches(storage, properties):
                 raise DeploymentError("Locked audit policy retention/append configuration does not match the requested settings")
@@ -1244,19 +1237,10 @@ def prepare_immutability(storage: dict, transport: ArmTransport) -> list[str]:
     return retained
 
 
-def _verify_audit_policy_id(storage: dict, path: str, policy: dict) -> None:
-    if storage.get("allowProtectedAppendWrites") is False and str(policy.get("id", "")).casefold() != path.casefold():
-        raise DeploymentError("Body evidence policy readback does not match the configured container")
-
-
 def _audit_policy_matches(storage: dict, properties: dict) -> bool:
     period = properties.get("immutabilityPeriodSinceCreationInDays")
-    if type(period) is not int or period < storage["retentionInDays"]:
-        return False
-    if storage.get("allowProtectedAppendWrites", True):
-        return properties.get("allowProtectedAppendWrites") is True
-    return (properties.get("allowProtectedAppendWrites", False) is False
-            and properties.get("allowProtectedAppendWritesAll", False) is False)
+    return (type(period) is int and period >= storage["retentionInDays"]
+            and properties.get("allowProtectedAppendWrites") is True)
 
 
 def lock_and_verify_policies(storage: dict, transport: ArmTransport) -> None:
@@ -1269,7 +1253,6 @@ def lock_and_verify_policies(storage: dict, transport: ArmTransport) -> None:
     for path in storage["immutabilityPolicyIds"]:
         response = transport.request("GET", path + "?api-version=2023-05-01")
         policy = require_success(response, "Read audit immutability policy")
-        _verify_audit_policy_id(storage, path, policy)
         props = policy.get("properties", {})
         if props.get("state") not in ("Locked", "Unlocked") or not _audit_policy_matches(storage, props):
             raise DeploymentError("Audit policy retention/append configuration does not match the requested settings")
@@ -1279,57 +1262,9 @@ def lock_and_verify_policies(storage: dict, transport: ArmTransport) -> None:
                 raise DeploymentError("Audit policy ETag is missing; lock was not attempted")
             require_success(transport.request("POST", path + "/lock?api-version=2023-05-01", headers={"If-Match": etag}), "Lock audit policy")
             policy = require_success(transport.request("GET", path + "?api-version=2023-05-01"), "Read back locked audit policy")
-            _verify_audit_policy_id(storage, path, policy)
             props = policy.get("properties", {})
             if props.get("state") != "Locked" or not _audit_policy_matches(storage, props):
                 raise DeploymentError("Audit policy lock could not be confirmed")
-
-
-def _body_audit_storage(config: dict) -> dict:
-    settings = config.get("auditEvidence", {})
-    return {"immutabilityMode": settings.get("payloadImmutabilityMode", "Disabled") if settings.get("enabled") else "Disabled",
-            "retentionInDays": settings.get("payloadRetentionDays", 30),
-            "immutabilityPolicyIds": [evidence_policy_id(config)], "allowProtectedAppendWrites": False}
-
-
-def prepare_body_audit_immutability(config: dict, transport: ArmTransport, *, previously_deployed: bool = False) -> list[str]:
-    """本文Blobの既存ロックを再利用し、30日削除とWORMの同時設定を検出します。"""
-    if not config.get("auditEvidence", {}).get("enabled") and not previously_deployed:
-        return []
-    storage = _body_audit_storage(config)
-    retained = prepare_immutability(storage, transport)
-    if storage["immutabilityMode"] != "Locked":
-        return retained
-    account_id = evidence_container_id(config).removesuffix("/blobServices/default/containers/payload")
-    path = account_id + "/managementPolicies/default"
-    response = transport.request("GET", path + "?api-version=2023-05-01")
-    existing = require_success(response, "Read body evidence lifecycle policy", allowed=(200, 404))
-    if response["statusCode"] == 200:
-        props = existing.get("properties", {}).get("policy", {})
-        rules = props.get("rules")
-        if str(existing.get("id", "")).casefold() != path.casefold() or not isinstance(rules, list):
-            raise DeploymentError("Body evidence lifecycle policy could not be confirmed")
-        for rule in rules:
-            if rule.get("enabled", True) and any("delete" in action for action in rule.get("definition", {}).get("actions", {}).values()):
-                raise DeploymentError("Review the existing body evidence delete rule before enabling WORM")
-    return retained
-
-
-def lock_body_audit_policy(config: dict, outputs: dict, transport: ArmTransport) -> None:
-    """成功したCoreが用意した本文コンテナーだけにWORMを確定します。"""
-    if not config.get("auditEvidence", {}).get("enabled") or config["auditEvidence"].get("payloadImmutabilityMode") != "Locked":
-        return
-    storage = _body_audit_storage(config)
-    evidence = outputs.get("auditEvidence") or {}
-    container_id = evidence_container_id(config)
-    path = storage["immutabilityPolicyIds"][0]
-    recorded = evidence.get("payloadImmutability") or {}
-    if (str(evidence.get("evidenceContainerId", "")).casefold() != container_id.casefold()
-            or str(recorded.get("policyId", "")).casefold() != path.casefold()
-            or recorded.get("mode") != storage["immutabilityMode"]
-            or recorded.get("retentionInDays") != storage["retentionInDays"]):
-        raise DeploymentError("Core output does not match the configured body evidence container and retention")
-    lock_and_verify_policies(storage, transport)
 
 
 def configure_app_insights_cap(config: dict, outputs: dict) -> None:
@@ -1451,6 +1386,11 @@ def _preprovision(config: dict) -> None:
     # 有料リソースを作ってから停止することを避ける。
     _assert_current_apim_instance(config)
     _read_application_infrastructure_checkpoint(config)
+    state_path = local_paths(config, ROOT).state / "latest.json"
+    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    same_environment = all(state.get(key) == config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem"))
+    if same_environment and state.get("outputs", {}).get("auditEvidence"):
+        raise DeploymentError("Use a new environment for the standard audit deployment. Preserve the previous deployment and its retained evidence.")
     local_preflight(config)
     # 第2段階: ログイン先・固定名・残り利用枠を読取で確認する。
     # 誤ったテナントや不足した利用枠へ構築を開始しない。
@@ -1490,23 +1430,35 @@ def _preprovision(config: dict) -> None:
     preserve_collection = previous_outputs.get("monitoring", {}).get("value", {}).get("auditCollectionEnabled", False)
     # 前段の監視配備だけでは直近の収集状態を表せない場合がある。前回コアの成功出力も
     # 調べ、再upによって有効なログ収集を弱めない。
-    previous_body = False
-    if (local_paths(config, ROOT).state / "latest.json").exists():
-        state = json.loads((local_paths(config, ROOT).state / "latest.json").read_text())
-        if all(state.get(key) == config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem")):
-            preserve_collection = preserve_collection or state.get("monitoring", {}).get("auditCollectionEnabled", False)
-            previous_body = bool(state.get("outputs", {}).get("auditEvidence"))
-    body_retained = prepare_body_audit_immutability(config, transport, previously_deployed=previous_body)
+    if same_environment:
+        preserve_collection = preserve_collection or state.get("monitoring", {}).get("auditCollectionEnabled", False)
+    preserve_agent_content_export = False
     if previous_outputs.get("monitoring", {}).get("value", {}).get("workspaceId"):
+        export_resources = log_privacy_resource_ids(config)
         workspace_id = previous_outputs["monitoring"]["value"]["workspaceId"]
-        actual_diag = transport.request("GET", workspace_id + f"/providers/Microsoft.Insights/diagnosticSettings/diag-{config['resourceStem']}-law?api-version=2021-05-01-preview")
-        diag = require_success(actual_diag, "Read current workspace audit collection", allowed=(200, 404))
-        preserve_collection = preserve_collection or bool(diag.get("properties", {}).get("storageAccountId"))
+        if not isinstance(workspace_id, str) or workspace_id.casefold() != export_resources["workspace"].casefold():
+            raise DeploymentError("Previous monitoring workspace does not match the configured workspace")
+        export_id = export_resources["export"]
+        actual_export = transport.request("GET", export_id + "?api-version=2023-09-01")
+        export = require_success(actual_export, "Read current workspace audit export", allowed=(200, 404))
+        if actual_export["statusCode"] == 200:
+            props = export.get("properties", {})
+            destination = props.get("destination")
+            target = destination.get("resourceId") if isinstance(destination, dict) else None
+            tables = props.get("tableNames")
+            if (str(export.get("id", "")).casefold() != export_id.casefold()
+                    or not isinstance(target, str) or target.casefold() != export_resources["storage"].casefold()
+                    or not isinstance(tables, list) or not all(isinstance(table, str) for table in tables)
+                    or type(props.get("enable")) is not bool):
+                raise DeploymentError("Current workspace audit export or destination could not be verified")
+            preserve_collection = preserve_collection or props["enable"]
+            preserve_agent_content_export = props["enable"] and "appgenaicontent" in {table.casefold() for table in tables}
     # 第4段階: コアの操作ログを受け取れるよう、監視・監査の保存先を先に作る。
     # 実際のResource IDを直ちに記録し、途中失敗でも撤去時に同じ対象を辿れるようにする。
     monitoring_diagnostics = prepare_diagnostic_settings(config, transport, "monitoring", preserve_collection)
     outputs = deploy_monitoring(
         config, retained_policy_ids=retained_policy_ids, preserve_collection=preserve_collection,
+        preserve_agent_content_export=preserve_agent_content_export,
         diagnostic_setting_properties=monitoring_diagnostics,
     )
     _save_deployment_state(config, outputs)
@@ -1544,13 +1496,9 @@ def _preprovision(config: dict) -> None:
 
     _confirm_management_serial_target(config, transport, serial_password)
     _record_management_serial_creation(config, serial_password)
-    body_worm = _body_audit_storage(config)["immutabilityMode"] == "Locked"
-    monitoring_worm = config["monitoring"]["auditImmutabilityMode"] == "Locked"
-    # 本文ポリシーはCore配備で作成する。監視段階ですでにロックしたポリシーはPUTから外す。
-    core_retained = [*body_retained, *(outputs["auditStorage"]["immutabilityPolicyIds"] if monitoring_worm and body_worm else [])]
     write_arm_parameters(config, parameters(config, "core", secrets=secrets,
-        manage_policies=body_worm or not monitoring_worm,
-        retained_policy_ids=core_retained,
+        manage_policies=config["monitoring"]["auditImmutabilityMode"] != "Locked",
+        preserve_agent_content_export=preserve_agent_content_export,
         existing_nsg_names=existing_nsg_names,
         existing_route_table_routes=existing_routes,
         existing_apim_hostname_configurations=existing_apim_hostnames,
@@ -1747,8 +1695,6 @@ def postprovision(config: dict) -> None:
         if response["properties"].get("provisioningState") != "Succeeded" or not outputs.get("certificateBootstrap"):
             raise DeploymentError("The Core foundation deployment did not succeed or has no certificate bootstrap output")
         transport = ArmTransport(config)
-        if _body_audit_storage(config)["immutabilityMode"] == "Locked":
-            lock_body_audit_policy(config, outputs, transport)
         initial_password = _read_initial_serial_deployment_input(config)
         parameters_path = workspace.checked(workspace.parameters)
         require_serial_storage_permissions(parameters_path)
@@ -1775,7 +1721,7 @@ def main(argv=None) -> int:
         source = selected if selected.is_absolute() else ROOT / selected
         validate_parameters = None
         if args.command in ("validate", "preprovision"):
-            validate_parameters = lambda config: _validate_parameter_registrations(config, source, args.command)
+            validate_parameters = lambda config: _validate_parameter_registrations(config, source)
         config = load_configuration(source, validate_parameters=validate_parameters)
         workspace = local_paths(config, ROOT)
         workspace.checked(source)

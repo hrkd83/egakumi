@@ -1,8 +1,4 @@
-"""AppGWのqueryとFirewallの検査URLをLAW取り込み前に除去する。
-
-Core以外の診断設定・Workspace・DCRは変更しない。Storage直送は取り込み変換を
-経由しないため、アクセスログだけを変換後exportへ切り替え、WAF直送は保持する。
-"""
+"""URL・WAFの一致データ・本文・KQLを取り込み前に除去する。"""
 from __future__ import annotations
 
 import copy
@@ -11,6 +7,10 @@ import time
 from .paths import REPOSITORY
 
 PRIVACY = json.loads((REPOSITORY / "infra/modules/monitoring/log-privacy.json").read_text(encoding="utf-8"))
+ARCHIVE = json.loads((REPOSITORY / "infra/modules/monitoring/audit-archive.json").read_text(encoding="utf-8"))
+EXPORT_TABLES = (*ARCHIVE["exportTables"], *PRIVACY["transforms"])
+ARCHIVE_CONTAINERS = {collector: frozenset(names) for collector, names in ARCHIVE["directContainers"].items()}
+ARCHIVE_CONTAINERS["collectJapan"] |= frozenset(f"am-{table.lower()}" for table in (*EXPORT_TABLES, ARCHIVE["agentContentTable"]))
 WORKSPACE_API = "2023-09-01"
 DCR_API = "2023-03-11"
 
@@ -58,11 +58,10 @@ def desired_dcr(config: dict) -> dict:
     """Bicepと同じJSON正本から、Workspace専用変換の定義を作る。"""
     ids = resource_ids(config)
     tags = {**config.get("tags", {}), "product": config["productName"], "environment": config["environmentName"], "azd-env-name": config["environmentName"]}
-    transforms = [(PRIVACY["stream"], PRIVACY["transformKql"])]
-    transforms.extend(("Microsoft-Table-" + table, PRIVACY["firewallUrlTransformKql"]) for table in PRIVACY["firewallUrlTables"])
     return {"location": config["location"], "kind": "WorkspaceTransforms", "tags": tags, "properties": {
         "dataSources": {}, "destinations": {"logAnalytics": [{"name": "law-core", "workspaceResourceId": ids["workspace"]}]},
-        "dataFlows": [{"streams": [stream], "destinations": ["law-core"], "transformKql": query} for stream, query in transforms]}}
+        "dataFlows": [{"streams": ["Microsoft-Table-" + table], "destinations": ["law-core"], "transformKql": query}
+                      for table, query in PRIVACY["transforms"].items()]}}
 
 
 def _contains(actual, expected) -> bool:
@@ -90,12 +89,16 @@ def _change(identifier, version, current, desired, label, method="PUT"):
 
 
 def _validate_existing_dcr(current: dict | None, desired: dict) -> None:
-    """現行資材の変換と一致することを確認する。"""
+    """現行資材の変換を増設し、別の流れ・定義は置き換えない。"""
     if current is None:
         return
-    properties = desired["properties"]
-    if (current.get("kind") != "WorkspaceTransforms"
-            or not _contains(current.get("properties"), properties)):
+    properties = current.get("properties", {})
+    previous_flows = properties.get("dataFlows") if isinstance(properties, dict) else None
+    expected = desired["properties"]
+    if (current.get("kind") != "WorkspaceTransforms" or not isinstance(previous_flows, list)
+            or not _contains(properties, {key: value for key, value in expected.items() if key != "dataFlows"})
+            or not all(sum(_contains(flow, target) for flow in previous_flows) <= 1 for target in expected["dataFlows"])
+            or not all(any(_contains(flow, target) for target in expected["dataFlows"]) for flow in previous_flows)):
         raise LogPrivacyError("Existing Core transformation has different flows; preserve it and review the merge")
 
 

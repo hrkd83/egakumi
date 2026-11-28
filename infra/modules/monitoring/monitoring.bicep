@@ -45,13 +45,17 @@ param retainedAuditImmutabilityPolicyIds array = []
 param enableAuditCollection bool = false
 @description('既存Workspaceの取り込み変換DCR参照。再配備で有効な関連付けを消さない内部入力です。')
 param existingWorkspaceDataCollectionRuleResourceId string = ''
+@description('設定済みのエージェント本文テーブルのエクスポートを再配備で保持します。標準構築でエージェントは作りません。')
+param preserveAgentContentExport bool = false
 
 // 長期保存へ転送するテーブルを明示。Linux の認証は Syslog、アプリ監視は App* の各テーブルです。
 var privacy = loadJsonContent('log-privacy.json')
-var exportTables = ['AppRequests', 'AppDependencies', 'AppExceptions', 'AppTraces', 'AppEvents', 'Syslog', privacy.table]
-var analyticsTables = concat(exportTables, privacy.firewallUrlTables, [
+var archive = loadJsonContent('audit-archive.json')
+var transformations = items(privacy.transforms)
+var exportTables = concat(archive.exportTables, map(transformations, entry => entry.key))
+var analyticsTables = concat(exportTables, [
   'AppMetrics', 'AppPageViews', 'AppBrowserTimings', 'AppAvailabilityResults'
-  'Perf', 'Heartbeat', 'AzureActivity', 'AzureMetrics', 'LAQueryLogs', 'StorageBlobLogs'
+  'Perf', 'Heartbeat', 'AzureActivity', 'AzureMetrics', 'StorageBlobLogs'
 ])
 // Storage は小文字と数字だけを許可するためハイフンだけを取り除きます。
 // 名前を途中で切らず、24 文字を超える組合せは配備前の設定検査で拒否します。
@@ -61,24 +65,11 @@ var auditAccounts = [
   { key: 'collectJapan', name: 'st${compactName}jp', location: location }
   { key: 'collectFoundry', name: 'st${compactName}us', location: foundryLocation }
 ]
-var japanContainers = concat([
-  'insights-activity-logs'
-  'insights-logs-audit'
-  'insights-logs-vmprotectionalerts'
-  'insights-logs-applicationgatewayaccesslog'
-  'insights-logs-applicationgatewayfirewalllog'
-  'insights-logs-azfwnetworkrule'
-  'insights-logs-azfwapplicationrule'
-  'insights-logs-azfwidpssignature'
-  'insights-logs-azfwthreatintel'
-  'insights-logs-gatewaylogs'
-  'insights-logs-gatewayllmlogs'
-  'insights-logs-websocketconnectionlogs'
-  'insights-logs-auditevent'
-], map(exportTables, tableName => 'am-${toLower(tableName)}'))
+var japanContainers = concat(archive.directContainers.collectJapan,
+  map(concat(exportTables, [archive.agentContentTable]), tableName => 'am-${toLower(tableName)}'))
 var containerDefinitions = concat(
   map(japanContainers, containerName => { accountIndex: 0, name: containerName }),
-  [{ accountIndex: 1, name: 'insights-logs-audit' }]
+  map(archive.directContainers.collectFoundry, containerName => { accountIndex: 1, name: containerName })
 )
 
 // 調査時にログを検索する Workspace。監査 Storage の長期保護とは別の保持設定です。
@@ -97,7 +88,7 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   }
 }
 
-// AppGWのqueryとFirewallのTLS検査で得るURL全体を、LAWへ保存する前に除去します。
+// 監査ログのURL、WAF一致値、本文、クエリ本文をLAWへ保存する前に除去します。
 // 関連付けはmonitoring段階の配備後に限定PATCHし、次のcore段階へ実IDを引き継ぎます。
 resource workspacePrivacy 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
   name: 'dcr-${resourceStem}-workspace'
@@ -107,14 +98,11 @@ resource workspacePrivacy 'Microsoft.Insights/dataCollectionRules@2023-03-11' = 
   properties: {
     dataSources: {}
     destinations: { logAnalytics: [{ name: 'law-core', workspaceResourceId: workspace.id }] }
-    dataFlows: concat(
-      [{ streams: [privacy.stream], destinations: ['law-core'], transformKql: privacy.transformKql }],
-      map(privacy.firewallUrlTables, table => {
-        streams: ['Microsoft-Table-${table}']
-        destinations: ['law-core']
-        transformKql: privacy.firewallUrlTransformKql
-      })
-    )
+    dataFlows: map(transformations, entry => {
+      streams: ['Microsoft-Table-${entry.key}']
+      destinations: ['law-core']
+      transformKql: entry.value
+    })
   }
   dependsOn: [tables]
 }
@@ -275,8 +263,8 @@ resource storageLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' 
   dependsOn: [workspace]
 }]
 
-// Workspace の管理・監査操作を監査 Storage に保存します。
-resource workspaceAudit 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+// 検索監査はワークスペースに取り込み、KQLを除去した後だけ長期保存します。
+resource workspaceAudit 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (enableAuditCollection) {
   name: 'diag-${resourceStem}-law'
   scope: workspace
   properties: diagnosticSettingProperties['law']
@@ -289,7 +277,7 @@ resource auditExport 'Microsoft.OperationalInsights/workspaces/dataExports@2023-
   name: 'export-${resourceStem}-audit'
   properties: {
     destination: { resourceId: accounts[0].id }
-    tableNames: exportTables
+    tableNames: preserveAgentContentExport ? concat(exportTables, [archive.agentContentTable]) : exportTables
     enable: true
   }
   dependsOn: [containers, immutabilityPolicies, tables]

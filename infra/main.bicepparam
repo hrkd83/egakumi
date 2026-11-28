@@ -18,6 +18,7 @@ param ingressSecretRegistration = input.parameters.?ingressSecretRegistration.?v
 param manageAuditImmutabilityPolicies = input.parameters.?manageAuditImmutabilityPolicies.?value ?? true
 param retainedAuditImmutabilityPolicyIds = input.parameters.?retainedAuditImmutabilityPolicyIds.?value ?? []
 param preserveAuditCollection = input.parameters.?preserveAuditCollection.?value ?? false
+param preserveAgentContentExport = input.parameters.?preserveAgentContentExport.?value ?? false
 param existingNetworkSecurityGroupNames = input.parameters.?existingNetworkSecurityGroupNames.?value ?? []
 param existingRouteTableRoutes = input.parameters.?existingRouteTableRoutes.?value ?? {}
 param existingApimHostnameConfigurations = input.parameters.?existingApimHostnameConfigurations.?value ?? {}

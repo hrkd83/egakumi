@@ -33,6 +33,12 @@ resource urlLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   dependsOn: [logs]
 }
 
+resource dnsLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: firewall
+  name: 'diag-${resourceStem}-fw-dns-logs'
+  properties: diagnosticSettingProperties['fw-dns-logs']
+}
+
 // 数値メトリクスを通信ログと分け、監査 Storage への不要な二重保存を避けます。
 resource metrics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   scope: firewall

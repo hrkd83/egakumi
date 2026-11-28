@@ -99,6 +99,20 @@
   "literal_exceptions": [
     {
       "rule": "nonpublic-ip",
+      "value": "10.40.3.64",
+      "reason": "Independently synthesized Broker subnet address in the public ACA allocation examples and test fixture; exact value and paths only.",
+      "paths": [
+        "docs/reference/configuration/parameters.md",
+        "infra/config/configuration.schema.json",
+        "infra/modules/network/network.bicep",
+        "params/params.schema.json",
+        "params/production.example.json",
+        "params/test.example.json",
+        "tests/network/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
       "value": "10.40.3.160",
       "reason": "Independently synthesized address in the public VNet allocation example; exact path/value only.",
       "paths": [

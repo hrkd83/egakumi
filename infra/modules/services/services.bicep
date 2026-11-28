@@ -216,21 +216,31 @@ resource vaultMetrics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview'
   scope: vault
   properties: diagnosticSettingProperties['vault-metrics']
 }
-// Foundry の管理・監査ログを Foundry 側リージョンの Storage に送ります。
+// Foundryの管理・推論メタデータをLAWとFoundry側リージョンの監査Storageへ送ります。
 resource foundryAudit 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-audit'
   scope: foundry
   properties: diagnosticSettingProperties['foundry-logs']
 }
-// モデルの利用量ログ。入力本文や生成本文を業務ログとして保存する設定ではありません。
+// モデルの利用量をLAWとFoundry側リージョンの監査Storageへ送ります。
 resource foundryUsage 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-usage'
   scope: foundry
   properties: diagnosticSettingProperties['foundry-usage']
 }
-// APIM の要求処理・必要に応じ WebSocket 接続の診断記録を保存します。
-resource apimLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+resource foundryProjectAudit 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-audit'
+  scope: project
+  properties: diagnosticSettingProperties['foundry-project-logs']
+}
+// WebSocket接続は直接保管します。HTTP／LLMの診断はLAWで変換してから保管します。
+resource apimWebSocketLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (contains(diagnosticSettingProperties, 'apim-websocket')) {
+  name: 'core-audit'
+  scope: apim
+  properties: diagnosticSettingProperties['apim-websocket']
+}
+resource apimLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'core-gateway-logs'
   scope: apim
   properties: diagnosticSettingProperties['apim-logs']
 }

@@ -54,6 +54,6 @@ HTTP行はAll operationsに、WebSocket行はonHandshakeに共通テンプレー
 
 テキスト、埋め込み、画像、音声、リランク、意思決定、一般RESTには、同じREST・SSEひな型で認証・回数枠・固定接続先・監査を適用できます。本文形式と上限、HTTP操作と提供元のURIは公開する契約に合わせます。音声のSSML、状態を持つRealtimeの本人確認、Documentの非同期取得の所有者、PIIの入出力加工は保護目的がある個別処理です。追加するAPIで同じ保護を必要とする場合に適用範囲を決めます。
 
-共通ひな型は要求IDと認証主体、操作・結果などのメタデータを記録します。本文監査は、初期APIの操作に応じたAPIMからの提出と、OpenAI／Claude等の逐次配信に対応する中継の位置で設定します。 [本文監査の対象と保存](../../../../docs/reference/audit/request-body-audit.md)
+共通ひな型は要求IDと認証主体、操作・結果などのメタデータを記録します。Chat Completions・Responses・Claude MessagesはFoundryへ直接転送します。APIMの要求IDから提供元の記録を照合できます。 [標準診断と監査ログの保管](../../../../docs/reference/audit/audit-log-design.md)
 
 WebSocketとMCPは、接続・セッション・終了・公開ツールの契約を先に決めます。MCPで既存RESTを公開する場合は公開対象のOperationと引数を絞り、元の認可を実際に受け入れます。外部MCPは固定接続先、SSEまたはStreamable HTTP、セッション所有者を扱うプロトコル用設定を使います。[通常HTTPのひな型](rest.xml)はこれらのプロトコル固有の処理を含みません。

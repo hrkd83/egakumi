@@ -1,6 +1,6 @@
 # Gatewayの統合配備
 
-共通基盤の上へ、APIMのAPI定義と認証窓口を一つの配備単位として配置します。本文監査の中継アプリと保存ワーカーもこの工程で配備します。
+共通基盤の上へ、APIMのAPI定義と認証窓口を一つの配備単位として配置します。APIMの標準診断へ要求のメタデータを記録します。
 
 ```text
 apps/
@@ -11,13 +11,10 @@ apps/
 │   ├── api-publication.bicep   API・バックエンド・製品
 │   ├── waf-*.json              GatewayとPortalの入口に適用するWAF契約
 │   └── deploy/                 統合配備とAPIM・CM設定
-├── credential-broker/
-│   ├── credential_broker/      内部FastAPIアプリ
-│   ├── sql/                    本人とCM接続の対応台帳
-│   └── deploy/                 DB・実行用ID・アプリの配備とイメージ構築
-└── audit-relay/
-    ├── audit_relay/            本文監査の中継・保存処理
-    └── deploy/                 本文監査用の中継アプリと保存ワーカーの配備
+└── credential-broker/
+    ├── credential_broker/      内部FastAPIアプリ
+    ├── sql/                    本人とCM接続の対応台帳
+    └── deploy/                 DB・実行用ID・アプリの配備とイメージ構築
 ```
 
 ## 配備する
@@ -29,7 +26,7 @@ python3 scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
 python3 scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
-1行目は保存済みCore stateからのローカル計画、2行目はAzureへの配備です。`--deployment-name`を指定するCIでは、計画時にもCore配備結果をAzureから読み取ります。認証窓口のイメージ作成・登録後、監査用アプリを配備します。その後、credentials DB・CM・実行用ID、SQL初期化、Broker・照合ジョブ、API・ポリシー・製品、対象パスへのWAF調整の順に進みます。SQL初期化や起動が失敗した場合はAPI登録へ進みません。
+1行目は保存済みCore stateからのローカル計画、2行目はAzureへの配備です。`--deployment-name`を指定するCIでは、計画時にもCore配備結果をAzureから読み取ります。認証窓口のイメージ作成・登録後、credentials DB・CM・実行用ID、SQL初期化、Broker・照合ジョブ、API・ポリシー・製品、対象パスへのWAF調整の順に進みます。SQL初期化や起動が失敗した場合はAPI登録へ進みません。
 
 既存のDB・CM接続・購読は同じIDで更新します。paramsやconfigを書き換えず、秘密値をイメージへ入れません。[apis/](../apis/)にある標準API正本を常用で解決します。公開params/configの`apiDefinitions`・`publishApis`によるAPI選択・切替は廃止し、旧項目は空配列やfalseでも拒否します。定義は`<API名>.json`の1 API 1ファイルで管理し、モデルの配備設定とCMプロバイダーの設定を含めません。標準Graphのアプリ登録・秘密参照はparamsの`credentialProviders.graphDelegated`、表示名・scope・poolはconfigの同slotで管理します。追加providerは定義／登録を`additional[]`の論理名で照合します。今回の配置整理だけで既存アプリID・secret・選択CM由来の本人確認fallbackを切り替えません。
 

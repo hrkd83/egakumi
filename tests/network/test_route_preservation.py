@@ -61,15 +61,6 @@ class RoutePreservationTests(unittest.TestCase):
         self.assertIn("parameters('existingRouteTableRoutes')", self.route_table["properties"]["routes"])
         self.assertEqual(self.route_table["tags"], "[parameters('tags')]")
 
-    def test_optional_audit_subnet_gets_only_its_own_firewall_default_route(self):
-        resolver = NetworkArmExpression("[createObject()]", self.network)
-        parameters = {"auditEvidenceEnabled": True}
-        tables = resolver.resolve(self.network["variables"]["activeRouteTableDefinitions"], parameters)
-        routes = resolver.resolve(self.network["variables"]["activeInitialRoutes"], parameters)
-        audit = [route for route in routes if tables[route["tableIndex"]]["key"] == "audit"]
-        self.assertEqual(len(audit), 1)
-        self.assertEqual((audit[0]["prefix"], audit[0]["nextHopType"]), ("0.0.0.0/0", "VirtualAppliance"))
-
     def test_initial_partial_and_all_route_snapshots_survive_either_bgp_setting(self):
         dynamic = {"name": "apim-through-firewall", "properties": {
             "addressPrefix": "10.40.2.68/32", "nextHopType": "VirtualAppliance",

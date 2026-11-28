@@ -33,7 +33,8 @@ param portalPublicHostName string
 param existingNetworkSecurityGroupNames array = []
 @description('azd の読取結果から渡す実ルート表名と既存経路の対応。初回は空、再 up は後続段階で作った経路も保持します。')
 param existingRouteTableRoutes object = {}
-param auditEvidenceEnabled bool = false
+@description('正式CLIで定義したNSG診断設定。Log Analyticsと監査Storageを指定します。')
+param diagnosticSettingProperties object
 
 // Design authority: infrastructure/{virtual-network,network-security-group,
 // route-table,private-dns-zone,azure-firewall,firewall-policy}.
@@ -47,9 +48,9 @@ var subnetPrefixes = config.?subnetPrefixes ?? {
   pep: '10.40.1.0/24'
   firewall: '10.40.2.0/26'
   apim: '10.40.2.64/26'
-  management: '10.40.3.192/26'
-  portal: '10.40.2.128/26'
-  broker: '10.40.3.0/25'
+  management: '10.40.2.128/26'
+  portal: '10.40.3.0/26'
+  broker: '10.40.3.64/26'
 }
 // The separated certificate subnet is supplied by the validated Core input.
 var certificateEnabled = contains(subnetPrefixes, 'certificate')
@@ -149,7 +150,7 @@ var nsgDefinitions = [
     ]
   }
 ]
-var activeNsgDefinitions = concat(nsgDefinitions, auditEvidenceEnabled ? [{ key: 'audit', suffix: 'audit', rules: [] }] : [], certificateEnabled ? [{ key: 'certificate', suffix: 'certificate', rules: [] }] : [])
+var activeNsgDefinitions = concat(nsgDefinitions, certificateEnabled ? [{ key: 'certificate', suffix: 'certificate', rules: [] }] : [])
 
 // 同じNSGを「作成」と「既存参照」の両方へ宣言しないよう、先に名前を分けます。
 // 各ループの宣言名を重複させず、初回・再up・途中再開を同じ仕組みで扱います。
@@ -171,6 +172,21 @@ resource createdNsgs 'Microsoft.Network/networkSecurityGroups@2025-01-01' = [for
 // 専用Tags APIのscopeに使う、既存分だけの参照。NSG本体は再PUTしません。
 resource nsgs 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = [for nsgName in existingNsgResourceNames: {
   name: nsgName
+}]
+
+// 初回と再配備の両方で、所有するNSGのリソースログを同じ宛先へ送ります。
+var nsgDiagnosticKeys = toObject(activeNsgDefinitions,
+  group => 'nsg-${resourcePrefix}-${group.suffix}',
+  group => 'nsg-${group.suffix}')
+resource createdNsgDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = [for (nsgName, i) in newNsgResourceNames: {
+  scope: createdNsgs[i]
+  name: 'core-audit'
+  properties: diagnosticSettingProperties[nsgDiagnosticKeys[nsgName]]
+}]
+resource existingNsgDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = [for (nsgName, i) in existingNsgResourceNames: {
+  scope: nsgs[i]
+  name: 'core-audit'
+  properties: diagnosticSettingProperties[nsgDiagnosticKeys[nsgName]]
 }]
 
 // 既存 NSG の tags 変更も反映します。専用 Tags API は規則の配列を送らず、
@@ -203,14 +219,13 @@ var routeTableDefinitions = [
   { key: 'management', suffix: 'vm' }
   { key: 'broker', suffix: 'broker' }
 ]
-var activeRouteTableDefinitions = concat(routeTableDefinitions, auditEvidenceEnabled ? [{ key: 'audit', suffix: 'audit' }] : [])
 
 // 親ルート表の PUT は routes を省略しても既存経路を消すため、azd が読み取った
 // 書込可能な既存経路を明示して保持します。初回だけ空の配列になります。
 // AppGW → APIM の実 VIP /32 等は後続の子リソースで追加・更新します。
 // 本体の更新は省略せず、タグや BGP 伝搬設定の変更も同時に反映します。
 // true=伝搬という利用者設定を ARM の disable... へここだけで反転します。
-resource routeTables 'Microsoft.Network/routeTables@2025-01-01' = [for table in activeRouteTableDefinitions: {
+resource routeTables 'Microsoft.Network/routeTables@2025-01-01' = [for table in routeTableDefinitions: {
   name: 'rt-${resourcePrefix}-${table.suffix}'
   location: location
   tags: tags
@@ -218,7 +233,7 @@ resource routeTables 'Microsoft.Network/routeTables@2025-01-01' = [for table in 
     // User settings are affirmative: true propagates, false suppresses.
     // Azure's native property is negative, so invert only at this boundary.
     // An independent VNet has no gateway routes; propagation defaults to true.
-    disableBgpRoutePropagation: contains(['broker', 'audit'], table.key) ? true : !(config.?bgpRoutePropagation[table.key] ?? true)
+    disableBgpRoutePropagation: table.key == 'broker' ? true : !(config.?bgpRoutePropagation[table.key] ?? true)
     routes: existingRouteTableRoutes[?'rt-${resourcePrefix}-${table.suffix}'] ?? []
   }
 }]
@@ -256,7 +271,7 @@ resource certificateRoute 'Microsoft.Network/routeTables/routes@2025-01-01' = if
   properties: { addressPrefix: '0.0.0.0/0', nextHopType: 'VirtualAppliance', nextHopIpAddress: firewall.properties.ipConfigurations[0].properties.privateIPAddress }
 }
 
-// Portal、Broker、証明書Job、監査実行環境ごとに委任サブネットを用意します。
+// Portal、Broker、証明書Jobの各ACA環境に委任サブネットを用意します。
 resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
   name: 'vnet-${resourcePrefix}'
   location: location
@@ -331,16 +346,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
           defaultOutboundAccess: false
         }
       }
-    ], auditEvidenceEnabled ? [{
-      name: subnetNames.audit
-      properties: {
-        addressPrefix: subnetPrefixes.audit
-        networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-${resourcePrefix}-audit') }
-        routeTable: { id: routeTables[4].id }
-        delegations: [{ name: 'containerapps', properties: { serviceName: 'Microsoft.App/environments' } }]
-        defaultOutboundAccess: false
-      }
-    }] : [], certificateEnabled ? [{
+    ], certificateEnabled ? [{
       name: subnetNames.certificate
       properties: {
         addressPrefix: subnetPrefixes.certificate
@@ -724,11 +730,10 @@ var initialRoutes = [
   { tableIndex: 2, name: 'default-egress', prefix: '0.0.0.0/0', nextHopType: 'VirtualAppliance' }
   { tableIndex: 3, name: 'default-egress', prefix: '0.0.0.0/0', nextHopType: 'VirtualAppliance' }
 ]
-var activeInitialRoutes = concat(initialRoutes, auditEvidenceEnabled ? [{ tableIndex: 4, name: 'default-egress', prefix: '0.0.0.0/0', nextHopType: 'VirtualAppliance' }] : [])
 
 // APIM と VM の外向き通信を Firewall へ送り、APIM の管理通信には必要な直接経路を残します。
 @batchSize(1)
-resource routes 'Microsoft.Network/routeTables/routes@2025-01-01' = [for route in activeInitialRoutes: {
+resource routes 'Microsoft.Network/routeTables/routes@2025-01-01' = [for route in initialRoutes: {
   parent: routeTables[route.tableIndex]
   name: route.name
   properties: union({
@@ -748,10 +753,10 @@ output subnetIds object = union({
   management: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.management)
   portal: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.portal)
   broker: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.broker)
-}, auditEvidenceEnabled ? { audit: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.audit) } : {}, certificateEnabled ? { certificate: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.certificate) } : {})
+}, certificateEnabled ? { certificate: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, subnetNames.certificate) } : {})
 output subnetPrefixes object = subnetPrefixes
-output nsgNames object = union({ agw: nsgResourceNames[0], apim: nsgResourceNames[1], pep: nsgResourceNames[2], management: nsgResourceNames[3], portal: nsgResourceNames[4], broker: nsgResourceNames[5] }, auditEvidenceEnabled ? { audit: nsgResourceNames[6] } : {}, certificateEnabled ? { certificate: 'nsg-${resourcePrefix}-certificate' } : {})
-output routeTableNames object = union({ agw: routeTables[0].name, apim: routeTables[1].name, management: routeTables[2].name, broker: routeTables[3].name }, auditEvidenceEnabled ? { audit: routeTables[4].name } : {}, certificateEnabled ? { certificate: certificateRouteTable!.name } : {})
+output nsgNames object = union({ agw: nsgResourceNames[0], apim: nsgResourceNames[1], pep: nsgResourceNames[2], management: nsgResourceNames[3], portal: nsgResourceNames[4], broker: nsgResourceNames[5] }, certificateEnabled ? { certificate: nsgResourceNames[6] } : {})
+output routeTableNames object = union({ agw: routeTables[0].name, apim: routeTables[1].name, management: routeTables[2].name, broker: routeTables[3].name }, certificateEnabled ? { certificate: certificateRouteTable!.name } : {})
 output privateDnsZoneIds object = {
   foundryCognitive: privateDnsZones[0].id
   foundryOpenAi: privateDnsZones[1].id
@@ -760,7 +765,7 @@ output privateDnsZoneIds object = {
 }
 output firewallId string = firewall.id
 output firewallPolicyName string = firewallPolicy.name
-output monitoredResourceIds array = concat([vnet.id, firewall.id, firewallPolicy.id], map(activeNsgDefinitions, definition => resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-${resourcePrefix}-${definition.suffix}')), map(activeRouteTableDefinitions, definition => resourceId('Microsoft.Network/routeTables', 'rt-${resourcePrefix}-${definition.suffix}')))
+output monitoredResourceIds array = concat([vnet.id, firewall.id, firewallPolicy.id, portalRouteTable.id], map(nsgResourceNames, nsgName => resourceId('Microsoft.Network/networkSecurityGroups', nsgName)), map(routeTableDefinitions, definition => resourceId('Microsoft.Network/routeTables', 'rt-${resourcePrefix}-${definition.suffix}')), certificateEnabled ? [certificateRouteTable!.id] : [])
 output firewallPrivateIp string = firewall.properties.ipConfigurations[0].properties.privateIPAddress
 output firewallPublicIpAddress string = firewallPublicIp.properties.ipAddress
 output appGatewayPublicIpId string = appGatewayPublicIp.id

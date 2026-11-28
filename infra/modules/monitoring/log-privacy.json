@@ -1,7 +1,12 @@
 {
-  "table": "AGWAccessLogs",
-  "stream": "Microsoft-Table-AGWAccessLogs",
-  "transformKql": "source | extend RequestQuery = '', OriginalRequestUriWithArgs = tostring(split(OriginalRequestUriWithArgs, '?')[0]), RequestUri = tostring(split(RequestUri, '?')[0])",
   "firewallUrlTables": ["AZFWApplicationRule", "AZFWThreatIntel"],
-  "firewallUrlTransformKql": "source | extend TargetUrl = ''"
+  "transforms": {
+    "AGWAccessLogs": "source | extend RequestQuery = '', OriginalRequestUriWithArgs = tostring(split(OriginalRequestUriWithArgs, '?')[0]), RequestUri = tostring(split(RequestUri, '?')[0])",
+    "AGWFirewallLogs": "source | extend RequestUri = tostring(split(RequestUri, '?')[0]), DetailedData = '', DetailedMessage = ''",
+    "AZFWApplicationRule": "source | extend TargetUrl = ''",
+    "AZFWThreatIntel": "source | extend TargetUrl = ''",
+    "ApiManagementGatewayLogs": "source | extend _AppGatewayId = case(gettype(RequestHeaders['x-appgw-trace-id']) == 'array' and array_length(RequestHeaders['x-appgw-trace-id']) == 1, tostring(RequestHeaders['x-appgw-trace-id'][0]), tostring(RequestHeaders['x-appgw-trace-id'])) | extend Url = tostring(split(Url, '?')[0]), BackendUrl = tostring(split(BackendUrl, '?')[0]), RequestHeaders = pack('x-appgw-trace-id', iif(_AppGatewayId matches regex '^[0-9a-fA-F]{32}$|^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$', _AppGatewayId, '')), BackendRequestHeaders = dynamic({}), BackendResponseHeaders = dynamic({}), ResponseHeaders = dynamic({}), RequestBody = '', ResponseBody = '', BackendRequestBody = '', BackendResponseBody = '', Errors = dynamic([]), LastErrorMessage = '' | project-away _AppGatewayId",
+    "ApiManagementGatewayLlmLog": "source | extend RequestMessages = dynamic([]), ResponseMessages = dynamic([])",
+    "LAQueryLogs": "source | extend QueryText = ''"
+  }
 }

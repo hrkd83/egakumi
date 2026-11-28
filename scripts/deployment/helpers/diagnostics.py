@@ -16,6 +16,9 @@ FIREWALL_URL_CATEGORIES = FIREWALL_TRANSFORMED_URL_CATEGORIES | {
 WRITABLE = {"workspaceId", "storageAccountId", "eventHubAuthorizationRuleId", "eventHubName",
             "serviceBusRuleId", "marketplacePartnerId", "logAnalyticsDestinationType", "logs", "metrics"}
 SINKS = {"workspaceId", "storageAccountId", "eventHubAuthorizationRuleId", "serviceBusRuleId", "marketplacePartnerId"}
+APIM_HTTP_LOGS = ("GatewayLogs", "GatewayLlmLogs")
+NSG_LOGS = ("NetworkSecurityGroupEvent", "NetworkSecurityGroupRuleCounter")
+BLOB_LOGS = ("StorageRead", "StorageWrite", "StorageDelete")
 
 
 class DiagnosticPreservationError(ValueError):
@@ -114,26 +117,30 @@ def _firewall_url_categories(properties):
             if entry["enabled"] and name in FIREWALL_URL_CATEGORIES}
 
 
-def _verify_other_firewall_log_routes(transport, item, managed_url_log_id):
-    """他の診断設定で変換前URLを転送していれば、勝手に変更せず配備前に止める。"""
+def _verify_other_log_routes(transport, item, managed_ids, sensitive_categories, code):
+    """管理外の転送が正規の取り込み変換を迂回する場合、変更せず配備を停止する。"""
     prefix = item["parentId"] + "/providers/Microsoft.Insights/diagnosticSettings/"
     response = transport.request("GET", prefix.rstrip("/") + "?api-version=" + API)
-    _need(isinstance(response, dict) and response.get("statusCode") == 200, "firewall-log-inventory")
+    _need(isinstance(response, dict) and response.get("statusCode") == 200, "diagnostic-log-inventory")
     body = response.get("body")
     _need(isinstance(body, dict)
-          and isinstance(body.get("value"), list) and not body.get("nextLink"), "firewall-log-inventory")
-    owned = {item["id"].casefold(), managed_url_log_id.casefold()}
+          and isinstance(body.get("value"), list) and not body.get("nextLink"), "diagnostic-log-inventory")
     seen = set()
     for setting in body["value"]:
         _need(isinstance(setting, dict) and isinstance(setting.get("id"), str)
               and isinstance(setting.get("name"), str) and setting["name"]
               and "/" not in setting["name"] and _same(setting.get("type"), "Microsoft.Insights/diagnosticSettings")
-              and _same(setting["id"], prefix + setting["name"]), "firewall-log-identity")
+              and _same(setting["id"], prefix + setting["name"]), "diagnostic-log-identity")
         identifier = setting["id"].casefold()
-        _need(identifier not in seen, "firewall-log-duplicate")
+        _need(identifier not in seen, "diagnostic-log-duplicate")
         seen.add(identifier)
-        if identifier not in owned:
-            _need(not _firewall_url_categories(normalized_properties(setting.get("properties"))), "external-firewall-url-route")
+        if identifier not in managed_ids:
+            props = normalized_properties(setting.get("properties"))
+            _need(not (_enabled_logs(props) & sensitive_categories), code)
+
+
+def _enabled_logs(properties):
+    return {name for (_, name), entry in _entries(properties.get("logs"), "logs").items() if entry["enabled"]}
 
 
 def merge_properties(existing, desired):
@@ -170,7 +177,6 @@ def canonical_settings(config, phase, preserve_collection=False):
     workspace = resource("monitor", "Microsoft.OperationalInsights/workspaces", "law-" + stem)
     japan = resource("monitor", "Microsoft.Storage/storageAccounts", "st" + stem.replace("-", "") + "jp")
     foundry_storage = resource("monitor", "Microsoft.Storage/storageAccounts", "st" + stem.replace("-", "") + "us")
-    collection = phase == "core" or preserve_collection
     settings = {}
 
     def add(key, parent, provider, version, name, *, logs=None, metrics=None, storage=None, dedicated=False, owner=None, owner_type=None, owner_version=None, region=location):
@@ -191,10 +197,10 @@ def canonical_settings(config, phase, preserve_collection=False):
 
     for collector, account, region in (("collectJapan", japan, location), ("collectFoundry", foundry_storage, config["foundryLocation"])):
         add("blob-" + collector, account + "/blobServices/default", "Microsoft.Storage/storageAccounts/blobServices", "2023-05-01",
-            f"diag-{stem}-{collector}-blob", logs=["StorageRead", "StorageWrite", "StorageDelete"], dedicated=True,
+            f"diag-{stem}-{collector}-blob", logs=BLOB_LOGS, dedicated=True,
             owner=account, owner_type="Microsoft.Storage/storageAccounts", region=region)
     add("law", workspace, "Microsoft.OperationalInsights/workspaces", "2023-09-01", f"diag-{stem}-law",
-        logs=["Audit"], storage=japan if collection else None, dedicated=True)
+        logs=["Audit"], dedicated=True)
     if phase == "monitoring":
         return settings
     firewall = resource("nw", "Microsoft.Network/azureFirewalls", "afw-" + stem)
@@ -208,33 +214,63 @@ def canonical_settings(config, phase, preserve_collection=False):
     )
     add("fw-url-logs", firewall, "Microsoft.Network/azureFirewalls", "2025-01-01", f"diag-{stem}-fw-url-logs",
         logs=PRIVACY["firewallUrlTables"], dedicated=True)
+    add("fw-dns-logs", firewall, "Microsoft.Network/azureFirewalls", "2025-01-01", f"diag-{stem}-fw-dns-logs",
+        logs=["AZFWDnsQuery", "AZFWFqdnResolveFailure"], dedicated=True)
     add("fw-metrics", firewall, "Microsoft.Network/azureFirewalls", "2025-01-01", f"diag-{stem}-fw-metrics", metrics=["AllMetrics"])
-    for key, provider, name, version, region in (
-        ("vault", "Microsoft.KeyVault/vaults", "kv-" + stem, "2023-07-01", location),
-        ("foundry", "Microsoft.CognitiveServices/accounts", "aif-" + stem, "2025-06-01", config["foundryLocation"]),
-        ("apim", "Microsoft.ApiManagement/service", apim_name(config), "2024-05-01", location)):
-        parent = resource("svc", provider, name)
-        categories = ["AuditEvent"] if key == "vault" else ["Audit"] if key == "foundry" else ["GatewayLogs", "GatewayLlmLogs"]
-        if key == "apim" and any(api.get("apiType", "http") == "websocket" for api in config.get("infrastructureApiDefinitions", config["apiDefinitions"])):
-            categories.append("WebSocketConnectionLogs")
-        add(key + "-logs", parent, provider, version, "core-audit", logs=categories, storage=foundry_storage if key == "foundry" else japan, dedicated=key == "apim", region=region)
-        add(key + "-usage" if key == "foundry" else key + "-metrics", parent, provider, version,
-            "core-usage" if key == "foundry" else "core-metrics", logs=["AzureOpenAIRequestUsage"] if key == "foundry" else None,
-            metrics=None if key == "foundry" else ["AllMetrics"], region=region)
+    for suffix in ("agw", "apim", "pep", "vm", "portal", "broker", "certificate"):
+        nsg = resource("nw", "Microsoft.Network/networkSecurityGroups", f"nsg-{stem}-{suffix}")
+        add(f"nsg-{suffix}", nsg, "Microsoft.Network/networkSecurityGroups", "2025-01-01", "core-audit",
+            logs=NSG_LOGS, storage=japan)
+    for key, prefix in (("vault", "kv"), ("certificate-vault", "kvtls")):
+        vault = resource("svc", "Microsoft.KeyVault/vaults", f"{prefix}-{stem}")
+        add(f"{key}-logs", vault, "Microsoft.KeyVault/vaults", "2023-07-01", "core-audit",
+            logs=["AuditEvent"], storage=japan)
+        if key == "vault":
+            add("vault-metrics", vault, "Microsoft.KeyVault/vaults", "2023-07-01", "core-metrics", metrics=["AllMetrics"])
+    certificate_storage = resource("svc", "Microsoft.Storage/storageAccounts", "st" + stem.replace("-", "") + "cert")
+    add("certificate-blob-logs", certificate_storage + "/blobServices/default", "Microsoft.Storage/storageAccounts/blobServices",
+        "2025-01-01", "core-audit", logs=BLOB_LOGS, storage=japan, dedicated=True, owner=certificate_storage,
+        owner_type="Microsoft.Storage/storageAccounts")
+    registry = resource("svc", "Microsoft.ContainerRegistry/registries", "acr" + stem.replace("-", ""))
+    add("acr-logs", registry, "Microsoft.ContainerRegistry/registries", "2025-11-01", "core-audit",
+        logs=["ContainerRegistryLoginEvents", "ContainerRegistryRepositoryEvents"], storage=japan, dedicated=True)
+    sql = resource("svc", "Microsoft.Sql/servers", "sql-" + stem)
+    add("sql-logs", sql + "/databases/master", "Microsoft.Sql/servers/databases", "2023-08-01", "core-audit",
+        logs=["SQLSecurityAuditEvents"], storage=japan, owner=sql, owner_type="Microsoft.Sql/servers")
+    foundry_region = config["foundryLocation"]
+    foundry = resource("svc", "Microsoft.CognitiveServices/accounts", "aif-" + stem)
+    for key, name, logs in (("foundry-logs", "core-audit", ["Audit", "RequestResponse"]),
+                            ("foundry-usage", "core-usage", ["AzureOpenAIRequestUsage"])):
+        add(key, foundry, "Microsoft.CognitiveServices/accounts", "2025-06-01", name, logs=logs,
+            storage=foundry_storage, region=foundry_region)
+    add("foundry-project-logs", foundry + "/projects/proj-" + stem, "Microsoft.CognitiveServices/accounts/projects",
+        "2025-06-01", "core-audit", logs=["Audit"], storage=foundry_storage, owner=foundry,
+        owner_type="Microsoft.CognitiveServices/accounts", region=foundry_region)
+    apim = resource("svc", "Microsoft.ApiManagement/service", apim_name(config))
+    add("apim-logs", apim, "Microsoft.ApiManagement/service", "2024-05-01", "core-gateway-logs",
+        logs=APIM_HTTP_LOGS, dedicated=True)
+    if any(api.get("apiType", "http") == "websocket" for api in config.get("infrastructureApiDefinitions", config["apiDefinitions"])):
+        add("apim-websocket", apim, "Microsoft.ApiManagement/service", "2024-05-01", "core-audit",
+            logs=["WebSocketConnectionLogs"], storage=japan, dedicated=True)
+        settings["apim-websocket"]["properties"]["logs"].extend({"category": category, "enabled": False} for category in APIM_HTTP_LOGS)
+    add("apim-metrics", apim, "Microsoft.ApiManagement/service", "2024-05-01", "core-metrics", metrics=["AllMetrics"])
     gateway = resource("nw", "Microsoft.Network/applicationGateways", "agw-" + stem)
     waf = config["gateway"]["skuName"] == "WAF_v2"
     add("agw-logs", gateway, "Microsoft.Network/applicationGateways", "2025-01-01", f"diag-{stem}-agw",
-        logs=["ApplicationGatewayFirewallLog" if waf else "ApplicationGatewayAccessLog"], storage=japan if waf else None, dedicated=True)
+        logs=["ApplicationGatewayFirewallLog" if waf else "ApplicationGatewayAccessLog"], dedicated=True)
     if waf:
         add("agw-access", gateway, "Microsoft.Network/applicationGateways", "2025-01-01", f"diag-{stem}-agw-access", logs=["ApplicationGatewayAccessLog"], dedicated=True)
     add("agw-metrics", gateway, "Microsoft.Network/applicationGateways", "2025-01-01", f"diag-{stem}-agw-metrics", metrics=["AllMetrics"])
     add("portal", resource("svc", "Microsoft.App/managedEnvironments", "cae-" + stem), "Microsoft.App/managedEnvironments", "2025-01-01", "portal-logs", logs=["ContainerAppConsoleLogs", "ContainerAppSystemLogs"])
     add("broker", resource("svc", "Microsoft.App/managedEnvironments", "cae-" + stem + "-broker"),
         "Microsoft.App/managedEnvironments", "2025-07-01", "broker-logs", logs=["ContainerAppConsoleLogs", "ContainerAppSystemLogs"])
-    if config.get("auditEvidence", {}).get("enabled") is True:
-        add("auditEvidence", resource("svc", "Microsoft.App/managedEnvironments", "cae-" + stem + "-audit"),
-            "Microsoft.App/managedEnvironments", "2025-07-01", "audit-evidence-runtime",
-            logs=["ContainerAppConsoleLogs", "ContainerAppSystemLogs"])
+    add("certificate-logs", resource("svc", "Microsoft.App/managedEnvironments", "cae-" + stem + "-certificate"),
+        "Microsoft.App/managedEnvironments", "2025-01-01", "certificate-jobs", logs=["ContainerAppConsoleLogs", "ContainerAppSystemLogs"])
+    management = config.get("management", {})
+    if "AutomaticByPlatform" in (management.get("patchAssessmentMode"), management.get("patchMode")):
+        vm = resource("maint", "Microsoft.Compute/virtualMachines", f"vm-{stem}-mgmt")
+        add("management-patch-logs", vm, "Microsoft.Compute/virtualMachines", "2024-11-01", "core-patch-logs",
+            logs=["SoftwareUpdateProfile", "SoftwareUpdates"])
     add("activity", base, "Microsoft.Resources/subscriptions", "2022-12-01", f"diag-{stem}-activity", logs=["Administrative", "ServiceHealth", "ResourceHealth", "Alert", "Autoscale", "Security", "Recommendation", "Policy"], storage=japan)
     return settings
 
@@ -245,6 +281,18 @@ def prepare_settings(config, transport, phase, preserve_collection=False):
     requested = canonical_settings(config, phase, preserve_collection)
     expected_tags = {"product": config["productName"], "environment": config["environmentName"], "azd-env-name": config["environmentName"]}
     owners, observed = {}, {}
+    archive = all_settings["blob-collectJapan"]["ownerId"]
+    archives = {all_settings[key]["ownerId"].casefold() for key in ("blob-collectJapan", "blob-collectFoundry")}
+    private_logs = {
+        "agw-logs": {"applicationgatewayaccesslog", "applicationgatewayfirewalllog"},
+        "agw-access": {"applicationgatewayaccesslog", "applicationgatewayfirewalllog"},
+        "apim-logs": {category.casefold() for category in APIM_HTTP_LOGS},
+        "law": {"audit"},
+    }
+    sensitive_sources = {
+        "fw-logs": (FIREWALL_URL_CATEGORIES, "external-firewall-url-route"),
+        **{key: (private_logs[key] | {"alllogs"}, "external-untransformed-log-route") for key in ("agw-logs", "apim-logs", "law")},
+    }
 
     def owner(identifier, provider, version, region):
         if identifier.casefold() in owners:
@@ -278,8 +326,10 @@ def prepare_settings(config, transport, phase, preserve_collection=False):
         if not exists:
             observed[key] = None
             continue
-        if key == "fw-logs":
-            _verify_other_firewall_log_routes(transport, item, all_settings["fw-url-logs"]["id"])
+        if key in sensitive_sources:
+            categories, code = sensitive_sources[key]
+            managed_ids = {setting["id"].casefold() for setting in all_settings.values() if _same(setting["parentId"], item["parentId"])}
+            _verify_other_log_routes(transport, item, managed_ids, categories, code)
         response = transport.request("GET", item["id"] + "?api-version=" + API)
         _need(isinstance(response, dict) and response.get("statusCode") in (200, 404), "setting-unreadable")
         if response["statusCode"] == 404:
@@ -304,16 +354,25 @@ def prepare_settings(config, transport, phase, preserve_collection=False):
             prefix = f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['monitor']}/providers/Microsoft.OperationalInsights/workspaces/"
             _need(isinstance(primary, str) and primary.casefold().startswith(prefix.casefold())
                   and owner(primary, "Microsoft.OperationalInsights/workspaces", "2023-09-01", config["location"]), "subscription-setting-owner")
+        # 既知の診断設定から既存監査Storageへ直送した分類だけ、変換後exportに切り替える。
+        # 取り込み経路を共有する別の分類・送信先を意図せず外さない。
+        if key in ("agw-logs", "law") and _same(props.get("storageAccountId"), archive):
+            _need(_enabled_logs(props) <= private_logs[key]
+                  and not any(entry["enabled"] for entry in _entries(props.get("metrics"), "metrics").values()),
+                  "raw-archive-has-other-logs")
+            props.pop("storageAccountId")
         observed[key] = props
         merged = merge_properties(props, item["properties"])
-        if key.startswith("agw-"):
-            enabled = _entries(merged.get("logs"), "logs")
-            access = any(entry["enabled"] and selector in (("category", "applicationgatewayaccesslog"), ("categoryGroup", "alllogs")) for selector, entry in enabled.items())
-            _need(not access or not any(merged.get(sink) for sink in SINKS - {"workspaceId"}), "raw-access-route")
-        if key in ("fw-logs", "fw-url-logs"):
+        if key in private_logs or key in ("agw-metrics", "apim-metrics", "apim-websocket"):
+            categories = private_logs.get(key, private_logs["agw-logs"] if key.startswith("agw-") else private_logs["apim-logs"])
+            active = _enabled_logs(merged) & (categories | {"alllogs"})
+            _need(not active or not any(merged.get(sink) for sink in SINKS - {"workspaceId"}), "raw-log-route")
+        if key in ("fw-logs", "fw-url-logs", "fw-dns-logs", "fw-metrics"):
             url_categories = _firewall_url_categories(merged)
             _need(not url_categories or (
                 key == "fw-url-logs" and url_categories <= FIREWALL_TRANSFORMED_URL_CATEGORIES
                 and not any(merged.get(sink) for sink in SINKS - {"workspaceId"})
             ), "raw-firewall-url-route")
+        if key in ("blob-collectJapan", "blob-collectFoundry"):
+            _need(merged.get("storageAccountId", "").casefold() not in archives, "recursive-archive-route")
     return {key: merge_properties(observed[key], item["properties"]) for key, item in requested.items()}

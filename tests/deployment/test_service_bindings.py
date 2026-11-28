@@ -166,7 +166,6 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
         dedicated_modules = {
             "certificate-environment": "certificate",
             "broker-platform": "broker",
-            "audit-evidence-environment": "audit",
         }
         dedicated_hosts = []
         for module_name, environment_name in dedicated_modules.items():
@@ -262,11 +261,12 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
     def test_public_tls_vault_delivers_audit_events_to_the_existing_sinks(self):
         template = self.templates['certificate_storage']
         config = normalize_configuration(fixture())
-        destinations = diagnostics.canonical_settings(config, 'core')['vault-logs']['properties']
-        setting, = [item for item in template['resources'] if item['type'] == 'Microsoft.Insights/diagnosticSettings']
+        destinations = diagnostics.canonical_settings(config, 'core')['certificate-vault-logs']['properties']
+        setting, = [item for item in template['resources'] if item['type'] == 'Microsoft.Insights/diagnosticSettings'
+                    and "Microsoft.KeyVault/vaults" in item['scope']]
         self.assertEqual(setting['scope'], "[resourceId('Microsoft.KeyVault/vaults', format('kvtls-{0}', parameters('stem')))]")
         self.assertEqual(setting['name'], 'core-audit')
-        self.assertEqual(setting['properties'], "[parameters('diagnosticSettingProperties')['vault-logs']]")
+        self.assertEqual(setting['properties'], "[parameters('diagnosticSettingProperties')['certificate-vault-logs']]")
         self.assertEqual(destinations['logs'], [{'category': 'AuditEvent', 'enabled': True}])
         self.assertIn('/workspaces/', destinations['workspaceId'])
         self.assertIn('/storageAccounts/', destinations['storageAccountId'])

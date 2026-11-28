@@ -2,8 +2,7 @@
 
 [共通確認](common.md) · [基盤設定](platform-settings.md) · [NSG設計・通信対応](../reference/architecture/network-security-design.md) · [非NSG通信](../reference/architecture/platform-communications.md)
 
-基本構成はAppGW、APIM、Private Endpoint、管理VM、Portal用ACA、Broker用ACAでそれぞれNSGを使う。証明書用ACAの通信は専用の資材で管理し、本文監査用ACAにも専用のNSGを作成する。AzureFirewallSubnetにはNSGを関連付けない。
-通信の用途を1ルールずつ名前と設計IDで記録する。本文監査の規則は専用の正本から作成する。
+AppGW、APIM、Private Endpoint、管理VM、Portal用ACA、Broker用ACA、証明書用ACAでそれぞれNSGを使う。AzureFirewallSubnetにはNSGを関連付けない。通信の用途を名前と設計IDで記録する。
 
 - 120から: クライアント要求から発生する通信。
 - 220から: この基盤の設計で追加した内部接続・保守通信。
@@ -19,7 +18,7 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 
 基本構成の正本は[infra/modules/network/nsg/core-rules.json](../../infra/modules/network/nsg/core-rules.json)のversion 5で、
 名称・方向・優先度・Allow/Deny・両ポート・プロトコル・アドレス参照・設計IDを定義する。
-以下の表は固定集合の用途を示す。本文監査の追加規則は[本文監査NSGの正本](../../infra/modules/network/nsg/audit-evidence-rules.json)で定義する。送信元ポートは全件Any。
+以下の表は固定集合の用途を示す。送信元ポートは全件Any。
 
 サブネットCIDRは構築入力から、単IPは構築した資源の割当IPから、PEは構築したPE NICの全IPから
 動的に設定する。単IP・PE IPは/32とし、同じサブネットの他資源へ無条件に広げない。
@@ -30,11 +29,11 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 
 | Bicep | 定義区間 |
 | --- | --- |
-| [network.bicep](../../infra/modules/network/network.bicep) | 基本構成と本文監査用NSG、サブネット関連付け、静的基盤ルール |
+| [network.bicep](../../infra/modules/network/network.bicep) | NSG、サブネット関連付け、静的基盤ルール、NSG診断 |
 | [network-bindings.bicep](../../infra/modules/network/network-bindings.bicep) | AppGW／APIM／管理VM割当IP・Foundry／Key Vault全PE IP・終端拒否 |
 | [portal-network.bicep](../../infra/modules/network/portal-network.bicep)と[bindings](../../infra/modules/network/portal-network-bindings.bicep) | ACA VIP・ACR全PE IP |
 | [credential-broker-network.bicep](../../infra/modules/network/credential-broker-network.bicep) | 共有SQL全PE IP・APIMからPortal／Brokerそれぞれの内部VIPへの許可 |
-| [audit-evidence-network.bicep](../../infra/modules/audit-evidence/audit-evidence-network.bicep)と[ingress](../../infra/modules/audit-evidence/audit-evidence-ingress.bicep) | 本文監査ACAとPEの許可、APIMから中継の内部VIPへの許可 |
+| [certificate-network.bicep](../../infra/modules/certificates/certificate-network.bicep) | 証明書用ACAとTLS用Key Vault、証明書の状態保存BlobのPE間の許可 |
 
 ## AppGW（agw）
 
@@ -232,16 +231,9 @@ Brokerの業務入口をAPIMのサブネットに限定する。専用環境の�
 | 324 | `allow-afd-first-party-egress` | BrokerサブネットCIDR | `AzureFrontDoor.FirstParty`タグ | TCP／443 | `N-BROKER-AFD-FIRST-PARTY-EGRESS` |
 | 4096 | `deny-any-egress` | Any | Any | Any／Any | `N-BROKER-DENY-ANY-EGRESS` |
 
-## 本文監査の規則
+## NSGの診断
 
-| NSG | 追加件数 | 許可する通信と拒否 |
-| --- | --- | --- |
-| 本文監査ACA | 16 | APIMからのHTTPS、ロードバランサー、同一サブネット内のACA基盤通信を受ける。既定出口はFirewall経由とし、必要な管理通信とFoundry・ACR・Event Hubs・本文Blob・チェックポイントBlobの実PEへ接続する。受信・送信の末尾はDeny。 |
-| APIM | 1 | 中継ACAの内部VIP `/32` へTCP 443を許可する。 |
-| Private Endpoint | 6 | 本文監査ACAと上記5種類のPEの組を許可し、管理VMからは本文BlobのPEを追加で許可する。 |
-| 管理VM | 1 | 本文BlobのPEへTCP 443を許可する。閲覧には別途、対象コンテナーへの権限を付与する。 |
-
-本文監査ACAは専用の内部環境を使う。中継アプリの入口はAPIMサブネットと認証済みAPIMのIDに限定し、保存ワーカーには入口を作成しない。具体的な規則と構築後の確認は[本文監査NSGの正本](../../infra/modules/network/nsg/audit-evidence-rules.json)と[本文監査設計](../reference/audit/request-body-audit.md)を参照する。
+各NSGの `NetworkSecurityGroupEvent` と `NetworkSecurityGroupRuleCounter` をLog Analyticsと監査Storageへ送る。モデルAPIはAPIMからFoundry Private Endpointへ接続し、管理VMから監査Storageを調査するときも対象のPrivate EndpointとBlobの閲覧権限を使う。 [監査ログの設計](../reference/audit/audit-log-design.md)
 
 ## 既定規則と末尾拒否の扱い
 
@@ -250,8 +242,8 @@ NSGはstatefulなので、受信で許可した接続の応答のための逆方
 [既定規則と接続状態](https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview)
 
 AppGWとAPIMのAzureLoadBalancer受信は、送信元タグ以外をAnyに統一して明示する。
-本文監査用を含む全NSGの受信末尾にDenyを置く。
-APIM／管理VM／Portal・Broker・本文監査の各ACAの送信末尾にもDenyを置く。AppGWとPEの送信末尾には置かない。
+全NSGの受信末尾にDenyを置く。
+APIM、管理VM、Portal・Broker・証明書の各ACAの送信末尾にもDenyを置く。AppGWとPEの送信末尾には置かない。
 
 標準AppGW v2はInternet向け送信包括許可を必要とするため、既定Outbound許可を維持する。
 AppGWの3件の明示送信Allowは通信設計の記録でもあり、これらだけで送信範囲を限定したとは解釈しない。

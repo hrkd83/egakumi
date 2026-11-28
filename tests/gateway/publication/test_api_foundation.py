@@ -97,15 +97,17 @@ class ApiFoundationBicepTests(unittest.TestCase):
         return self.value(self.gateway[name], config)
 
     def apim_logs(self, config):
-        # The CLI now generates the canonical properties; Bicep passes that
-        # object to the same APIM diagnostic instead of a WebSocket-only flag.
         self.assertEqual(self.services['properties']['parameters']['diagnosticSettingProperties']['value'],
                          "[parameters('diagnosticSettingProperties')]")
-        diagnostic = next(item for item in self.services['properties']['template']['resources']
-                          if item.get('type') == 'Microsoft.Insights/diagnosticSettings'
-                          and item.get('name') == 'core-audit' and "names').apim" in item.get('scope', ''))
-        self.assertEqual(diagnostic['properties'], "[parameters('diagnosticSettingProperties')['apim-logs']]")
-        return canonical_settings(config, 'core')['apim-logs']['properties']['logs']
+        native_diagnostics = {item['name']: item for item in self.services['properties']['template']['resources']
+                              if item.get('type') == 'Microsoft.Insights/diagnosticSettings'
+                              and "names').apim" in item.get('scope', '')}
+        self.assertEqual(native_diagnostics['core-gateway-logs']['properties'], "[parameters('diagnosticSettingProperties')['apim-logs']]")
+        self.assertEqual(native_diagnostics['core-audit']['properties'], "[parameters('diagnosticSettingProperties')['apim-websocket']]")
+        settings = canonical_settings(config, 'core')
+        self.assertNotIn('storageAccountId', settings['apim-logs']['properties'])
+        connection = settings.get('apim-websocket', {}).get('properties', {})
+        return settings['apim-logs']['properties']['logs'] + connection.get('logs', [])
 
     def test_standard_paths_and_websocket_logs_exist_while_public_array_stays_empty(self):
         config = configuration.build_bicep_configuration(foundation_configuration())

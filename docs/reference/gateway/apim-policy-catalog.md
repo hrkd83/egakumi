@@ -20,7 +20,7 @@ API登録処理は、APIの配備成功を確認してから共通ポリシー�
 
 全体ポリシーは要求ID、信頼済み入口の識別情報、認証済み主体、API・操作・ルート、応答結果を関連付ける。購読IDやBearerの主体を、未検証の入力ヘッダーで上書きできないようにする。 [監査の識別情報](../audit/audit-identification.md)
 
-APIM診断の入出力本文設定は0バイトとする。業務本文は対象APIのAPIM提出または専用中継から、同じEvent Hubsと保存ワーカーを経由して保存する。認可で止まった要求、およびRealtime・Liveの接続制御はメタデータで追跡する。MCPからのREST実行は、接続ログとREST側の本文証跡を照合する。 [APIごとの本文採取位置](../audit/request-body-audit.md#初回構築)
+APIM診断の入出力本文設定は0バイトとする。APIのルーティング、認可で止まった要求、Realtime・Liveの接続制御をメタデータで追跡する。MCPからのREST実行は接続ログとREST側の要求を照合する。 [監査で取得する項目](../audit/request-body-audit.md#初回構築)
 
 ## 生成元出力と資源配備の分離
 
@@ -196,7 +196,7 @@ RESTの `bodyModel`、`textEmbeddings`、`rerank` は、適用済みの操作設
 
 AppGWでは新しいパスに実際に効くWAFとAPIMへのHTTPS経路を確認します。標準ではGateway側の既定経路と共通WAFを使います。パス別WAFを追加する際は、既定ポリシーに代わってそのパスで有効になる設定と、信頼済み入口ヘッダーの書換えを照合します。本文形式に固有の例外が必要な場合は、実際に遮断した正常要求からパス、項目、管理ルールを特定します。 [WAFの関連付けと優先順位](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/policy-overview)
 
-追加したAPIでは、本文の採取方式と対象範囲を決め、要求IDで証跡を復元する。SSEは先に中継経路を確認し、逐次配信と本文採取の両方を受け入れる。 [本文監査の追加と受入](../audit/request-body-audit.md) · [APIMのSSEと診断](https://learn.microsoft.com/en-us/azure/api-management/how-to-server-sent-events)
+追加したAPIでは、要求IDによるメタデータの照合と、SSEの逐次配信を受け入れる。エージェントの本文はFoundry側で着信を確認する。 [監査の受入](../audit/request-body-audit.md) · [APIMのSSEと診断](https://learn.microsoft.com/en-us/azure/api-management/how-to-server-sent-events)
 
 API、Product、固定バックエンド、診断、WAF関連付けを変更台帳に記録し、Core再配備前の差分確認に使います。具体的なGUI操作は[Claudeの手動追加手順](../../operations/claude-messages.md#構築後にclaudeをguiで追加する)にまとめています。
 

@@ -44,16 +44,6 @@ class TenantConfigurationTests(unittest.TestCase):
         self.assertEqual(parameters['entraTenantId'], ENTRA)
         self.assertNotIn('tenantId', parameters)
 
-    def test_initial_deployment_rejects_separate_tenants_with_body_audit(self):
-        config = self.normalize(authentication_in(fixture()))
-        config['auditEvidence']['enabled'] = True
-        for command in ('validate', 'preprovision'):
-            with (self.subTest(command=command),
-                  mock.patch.object(lifecycle, 'local_paths', side_effect=AssertionError('Workspace must not be accessed')),
-                  self.assertRaisesRegex(lifecycle.DeploymentError, 'entraTenantId to match azureTenantId')):
-                lifecycle._validate_parameter_registrations(config, CORE / 'params' / 'test.example.json', command)
-
-
     def test_personal_oauth_provider_explicitly_uses_authentication_tenant(self):
         raw = authentication_in(connection_fixture())
         raw['credentialProviders'][0]['oauthTenantId'] = ENTRA
@@ -135,7 +125,7 @@ class TenantConfigurationTests(unittest.TestCase):
                 self.assertNotIn('entraTenantId', schema['required'])
                 self.assertNotIn('tenantId', schema['properties'])
                 jsonschema.Draft202012Validator.check_schema(schema)
-                sample = public_fixture()[0] if name == 'params' else fixture(audit_evidence=True)
+                sample = public_fixture()[0] if name == 'params' else fixture()
                 for tenant in (None, ENTRA):
                     value = copy.deepcopy(sample)
                     if tenant is not None:

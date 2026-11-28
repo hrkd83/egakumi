@@ -21,7 +21,7 @@ Azureの設定確認では実行結果と資源の設定を読み戻す。通信
 | --- | --- |
 | 固定規則とアドレス | [NSGの優先度とtuple](../../tests/network/test_nsg_rule_priorities.py) · [IPの所有境界](../../tests/network/test_parameter_ip_ownership.py) · [配備前後の読戻し](../../tests/network/test_fixed_nsg_validation.py) |
 | HTTPSと実効経路 | [HTTPS入口](../../tests/network/test_gateway_https_infrastructure.py) · [入口の検証](../../tests/network/test_trusted_ingress.py) · [Firewall経路](../../tests/network/test_network_preservation.py) · [PortalのHTTPSプローブ](../../tests/portal/test_portal_gateway.py) |
-| 監査と証明書 | [監査Blobのネットワーク](../../tests/audit/test_audit_storage_network.py) · [Firewall診断](../../tests/audit/test_firewall_diagnostics.py) · [本文監査のネットワーク](../../tests/audit/test_audit_evidence_infra.py) · [証明書Job](../../tests/certificates/test_certificate_jobs.py) |
+| 監査と証明書 | [監査Blobのネットワーク](../../tests/audit/test_audit_storage_network.py) · [Firewall診断](../../tests/audit/test_firewall_diagnostics.py) · [証明書Job](../../tests/certificates/test_certificate_jobs.py) |
 | Broker初回配備 | [イメージ・配備・再試行](../../tests/deployment/test_credential_broker_initial_deployment.py) |
 | 管理VMからの保守 | [保守RBAC](../../tests/management/test_management_maintenance_rbac.py) · [SQLの付与と回収](../../tests/management/test_sql_management_grants_infra.py) · [ホストPHC同期](../../tests/management/test_management_linux.py) · [Serial初期準備](../../tests/deployment/test_serial_initialization.py) |
 
@@ -45,19 +45,18 @@ Azureの設定確認では実行結果と資源の設定を読み戻す。通信
 
 ## 実環境の受入確認
 
-本文監査を含む標準のテスト・本番構成を確認する。配備した機能の設定と通信を、以下の観点で確認する。
+標準のテスト・本番構成を確認する。配備した機能の設定と通信を、以下の観点で確認する。
 
 | 確認 | 通信・設定との対応 | 合格条件と限界 |
 | --- | --- | --- |
-| NSG全件読戻し | 基本構成と証明書用ACAの規則、本文監査用ACAの規則 | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが正本に一致する。各ACAの専用サブネット・NSG関連付け、両方向の終端Deny、Azure既定規則、PEのNSGポリシー、管理VM／APIMの時刻通信を確認する。 |
-| FW全件読戻し | 初期構成、証明書Job、本文監査のRCGとcollection | 優先度、action、種別、送信元・宛先、プロトコル・ポート、TLS検査対象が資材と一致する。APIMのUDP123許可とPremiumのIDPSモードも照合する。 |
+| NSG全件読戻し | 基本構成と証明書用ACAの規則 | 名前・方向・priority・protocol・両port・全address集合・Allow/Denyが正本に一致する。各ACAの専用サブネット・NSG関連付け、両方向の終端Deny、Azure既定規則、PEのNSGポリシー、管理VM／APIMの時刻通信を確認する。 |
+| FW全件読戻し | 初期構成、証明書JobのRCGとcollection | 優先度、action、種別、送信元・宛先、プロトコル・ポート、TLS検査対象が資材と一致する。APIMのUDP123許可とPremiumのIDPSモードも照合する。 |
 | 公開入口 | CLIENT、APPGW-APIM、APPGW-ACA | 公開TLS、HTTPリダイレクト、APIM正常API、Portalのhealthと画面、L7入口保護を確認。両バックエンドのHTTPSプローブとFirewallのTLS検査・非対象経路の拒否も確認。healthだけを全APIの認可確認にしない |
 | PortalとGateway | ACA-APIM、ACA-SQL | Portalの試用は公開Gatewayを経由する。Portal用実行IDのAPIM管理API呼出しが拒否されることも確認 |
 | Broker分離 | APIM-BROKER、ACA-KV、ACA-SQL、ACA-ACR、ACA-ARM、ACA-ENTRA | APIMからBrokerへの許可、Portal用ACA・AppGW・管理VMからの拒否、Brokerの起動・SQL・CM・OBO・監査、PortalとBrokerが別々のACA環境を使うことを確認する。 |
-| 本文監査の分離 | APIMから専用中継、専用ACAからEvent Hubs・本文Blob・チェックポイントBlob | 中継へのAPIM以外からの接続と未許可IDを拒否し、保存ワーカーに入口がないことを確認する。Private DNSと実効NSG、各実行IDの権限、JSON／SSEの受領確認、Event Hubs障害時の応答、Blobへの保存を合成データで確認する。 [本文監査の受入条件](../reference/audit/request-body-audit.md) |
-| PE接続 | APIM/ACA/管理VMとFoundry/KV/SQL/ACR/監査Blob、本文監査用の3 PE | DNS回答とPE全IP、往復制御、サービスTLSと認可を照合する。Event Hubs・本文Blob・チェックポイントBlobの三つを個別に確認する。 |
+| PE接続 | APIM/ACA/管理VMとFoundry/KV/SQL/ACR/監査Blob | DNS回答とPE全IP、往復制御、サービスTLSと認可を照合する。 |
 | Vault分離と証明書 | APPGW-KV、APIM-KV、ACA-KV、MGMT-KV | 2つのPrivate EndpointとDNS回答、Vaultのネットワーク設定、対象オブジェクトの実効RBACを照合。公開証明書の初回発行・自動更新・実配信、APIMのNamed Value解決、必要のない接続とsecret読取の拒否を確認 |
-| ACAの現構成依存 | イメージ取得、App/Job起動、標準DNS、管理ID、監視、リビジョン切替、再起動、スケール | 構築ACRと公開MCRの用途を区別する。Portal、Broker、本文監査それぞれのPE接続と起動・更新・復旧を確認する。 |
+| ACAの現構成依存 | イメージ取得、App/Job起動、標準DNS、管理ID、監視、リビジョン切替、再起動、スケール | 構築ACRと公開MCRの用途を区別する。Portal、Broker、証明書JobそれぞれのPE接続と起動・更新・復旧を確認する。 |
 | 監査Blob・保存ログ | MGMT-AUDIT-JAPAN/FOUNDRY、MGMT-MONITOR | 担当者本人の作業権限で構築コンテナーとWorkspaceを読み、付与前・回収後は拒否される。監査Blobへの書込み・削除権限は付けない |
 | ACA App/環境のログ・App exec | MGMT-ARM、MGMT-ACA-DEV | 対象App/revision/replica/containerとtoken scopeを確認し、ログ本文/有限execの結果を取得。環境tokenをログ専用の保証として扱わない |
 | ACA Jobログ | ACA-SQL等のJob処理とMGMT-ACA-DEV | 対象Jobのtoken認可、保存ログ、実行が存続する場合のライブログを区別。schema Jobは配備更新工程の正常実行に合わせて確認 |

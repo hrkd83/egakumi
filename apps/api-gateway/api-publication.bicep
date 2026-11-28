@@ -16,8 +16,6 @@ param entraAuthentication object = {}
 param graphOboEnabled bool = false
 @description('基盤と各APIで照合済みの購読キーヘッダー名。診断の秘密マスクにも使います。')
 param subscriptionKeyHeader string = 'api-key'
-@description('監査を有効にした場合に照合済みの内部リレーHTTPS URLとAPIMの認証先を指定します。')
-param auditRelay object = {}
 @description('この明示的な API 登録処理の指定です。APIM 全体の公開・停止スイッチではありません。')
 param publishApis bool = false
 @description('実行前検査で基盤の準備済み Key Vault 参照を照合する URI。登録処理は共通 Named Value を更新しません。')
@@ -596,61 +594,12 @@ var mcpRateCleanupSnippetSlots = [
 var mcpRateCleanupXml = replace(replace(renderPolicyTemplate(mcpRateCleanupPolicyTemplate, mcpRateCleanupSource, mcpRateCleanupSnippetSlots), '<fragment>', ''), '</fragment>', '')
 // Backend authentication is declared independently of public caller auth.
 // Key material remains in Key Vault-backed named values.
-var auditRelaySelections = [for api in apiDefinitions: api.apiType == 'http' && api.name == 'openai-inference-v1' && !empty(auditRelay)]
-var auditRelayEnabled = contains(auditRelaySelections, true)
-var auditRelayPolicy = loadTextContent('policies/snippets/audit/audit-relay.xml')
-var auditRelayBackendProperties = {
-  title: 'Model audit relay'
-  protocol: 'http'
-  url: auditRelay.?url ?? ''
-  tls: { validateCertificateChain: true, validateCertificateName: true }
-}
-var auditRelayAudienceProperties = {
-  displayName: 'core-audit-relay-audience'
-  secret: false
-  value: auditRelay.?audience ?? ''
-}
-var httpEvidenceOperations = {
-  'openai-embeddings-v1': { embeddings: 'POST /embeddings' }
-  'cohere-inference-v1': { 'cohere-embeddings': 'POST /embed', rerank: 'POST /rerank' }
-  'microsoft-decision-v1': { systemone: 'POST /systemone' }
-  'graph-profile-v1': { graph_profile_self: 'GET /me' }
-  'pii-v1': { pii_redact_text: 'POST /redact' }
-  'azure-speech-v1': { tts: 'POST /synthesize', stt: 'POST /recognize' }
-  'openai-audio-v1': { 'audio-transcriptions': 'POST /deployments/{deployment}/transcriptions' }
-  'openai-images-v1': { 'image-generate': 'POST /generations', 'image-edit': 'POST /deployments/{deployment}/edits' }
-  'blackforest-images-v1': { 'flux2-generate': 'POST /flux-2/generations', 'flux2-edit': 'POST /flux-2/edits' }
-  'document-analysis-v1': { analyze_document: 'POST /analyze', get_document_operation: 'GET /operations/{operationId}' }
-}
-// 有限の応答を返す標準操作だけを、元の宛先を保ったまま本文監査に追加します。
-var httpEvidenceApiOperations = [for api in apiDefinitions: api.apiType == 'http'
-  ? map(filter(api.operations, operation => ((httpEvidenceOperations[?api.name] ?? {})[?operation.name] ?? '') == '${operation.?method ?? ''} ${operation.?urlTemplate ?? ''}' && !contains(operation, 'staticResponse')), operation => operation.name)
-  : []]
-var httpEvidenceEnabled = !empty(auditRelay) && !empty(flatten(httpEvidenceApiOperations))
-var httpEvidenceUrlProperties = {
-  displayName: 'core-audit-relay-url'
-  secret: false
-  value: auditRelay.?url ?? ''
-}
-var httpEvidenceTemplate = loadTextContent('policies/fragments/audit/core-http-body-evidence/core-http-body-evidence.xml')
-var httpEvidenceSource = loadTextContent('policies/fragments/audit/core-http-body-evidence/core-http-body-evidence.cs')
-var httpEvidenceSlots = [
-  { marker: '__EVIDENCE_REQUEST_BODY__', section: 'request-body', body: false, trimmed: true, indent: '        ' }
-  { marker: '__EVIDENCE_PAYLOAD__', section: 'payload', body: false, trimmed: true, indent: '        ' }
-  { marker: '__EVIDENCE_ACK__', section: 'ack', body: false, trimmed: true, indent: '            ' }
-]
-var httpEvidenceInclude = '<include-fragment fragment-id="core-http-body-evidence" />'
-var httpEvidenceSnapshotPolicy = '<set-variable name="gatewayEvidenceDirection" value="snapshot" />${httpEvidenceInclude}'
-var httpEvidenceRequestPolicy = '<set-variable name="gatewayEvidenceDirection" value="request" />${httpEvidenceInclude}'
-var httpEvidenceResponsePolicy = '<set-variable name="gatewayEvidenceDirection" value="response" />${httpEvidenceInclude}'
-// Documentの合成応答はreturn-responseで下流ヘッダーを破棄するため、その直前に公開結果を採取します。
-func documentEvidencePolicy(template string, statusExpression string, enabled bool) string => replace(replace(template,
-  '__HTTP_EVIDENCE_REQUEST_XML__', enabled ? httpEvidenceRequestPolicy : ''),
-  '__HTTP_EVIDENCE_RESPONSE_XML__', enabled ? '<set-variable name="gatewayEvidencePreparedStatus" value="${statusExpression}" /><set-variable name="gatewayEvidencePreparedResponse" value="@{ var body = JObject.Parse((string)context.Variables[&quot;documentPublicResponse&quot;]); body.Remove(&quot;ticket&quot;); return body.ToString(Newtonsoft.Json.Formatting.None); }" />${httpEvidenceResponsePolicy}' : '')
-var httpEvidenceFragmentXml = renderPolicyTemplate(httpEvidenceTemplate, httpEvidenceSource, httpEvidenceSlots)
-var backendAuthenticationXml = [for (api, index) in apiDefinitions: auditRelaySelections[index] ? auditRelayPolicy : empty(operationBackendSelection(api))
-  ? backendAuthenticationPolicy(api, '${api.name}-backend-secret') : operationBackendSelection(api)]
-var backendHeadersXml = [for (api, index) in apiDefinitions: !auditRelaySelections[index] && empty(operationBackendSelection(api)) ? backendHeaderPolicy(api) : '']
+// 生成APIは公開入口のCookieと別名のキーをFoundryへ転送しません。
+var inferenceCredentialCleanup = '<set-header name="Cookie" exists-action="delete" /><set-header name="x-api-key" exists-action="delete" /><set-query-parameter name="x-api-key" exists-action="delete" />'
+var backendAuthenticationXml = [for api in apiDefinitions: empty(operationBackendSelection(api))
+  ? '${api.name == 'openai-inference-v1' ? inferenceCredentialCleanup : ''}${backendAuthenticationPolicy(api, '${api.name}-backend-secret')}'
+  : operationBackendSelection(api)]
+var backendHeadersXml = [for api in apiDefinitions: empty(operationBackendSelection(api)) ? backendHeaderPolicy(api) : '']
 // API ごとの認可契約を Base64 JSON として埋め込みます。Base64 は暗号化ではなく、安全な構文境界のためです。秘密は含めません。
 // XML全文を加工する途中の結果は配列変数へ保存せず、関数で最終結果までつなぎます。
 // ARMは各変数の展開後のサイズも数えるため、API数分のXMLを段階ごとに保存すると、
@@ -678,12 +627,12 @@ func selectGraphOboPolicy(api object, policy string, enabled bool) string => ena
   '__GRAPH_OBO_ASSERTION_XML__', graphOboSection('assertion')) : replace(policy, '    __GRAPH_OBO_ASSERTION_XML__\n', '')
 func selectHttpCredentialPolicy(api object, policy string, graphOboEnabled bool) string => api.apiType != 'http' || contains(api, 'credentialConnection') || (graphOboEnabled && graphOboApi(api)) ? policy
   : replaceCredentialBranch(replaceCredentialBranch(policy, '<!-- core-http-credential-inbound-start -->', '<!-- core-http-credential-inbound-end -->', '__BACKEND_AUTHENTICATION_XML__'), '<!-- core-http-credential-outbound-start -->', '<!-- core-http-credential-outbound-end -->', '')
-func baseApiPolicy(api object, policyTemplate string, backendAuthentication string, backendHeaders string, credentialCallerError string, graphOboEnabled bool, auditRelaySelected bool) string => replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectGraphOboPolicy(api, selectHttpCredentialPolicy(api, policyTemplate, graphOboEnabled), graphOboEnabled),
+func baseApiPolicy(api object, policyTemplate string, backendAuthentication string, backendHeaders string, credentialCallerError string, graphOboEnabled bool) string => replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectGraphOboPolicy(api, selectHttpCredentialPolicy(api, policyTemplate, graphOboEnabled), graphOboEnabled),
   '__AUTHORIZATION_BASE64__', base64(string(api.authorization))),
   '__WEBSOCKET_SETTINGS_BASE64__', api.apiType == 'websocket' ? base64(string(api.websocket)) : ''),
   '__KEY_HEADER__', api.subscriptionKeyHeader),
   '__BACKEND_ID__', '${api.name}-backend'),
-  '__DEFAULT_BACKEND_XML__', !auditRelaySelected && empty(operationBackendSelection(api)) ? '<set-backend-service backend-id="${api.name}-backend" />' : ''),
+  '__DEFAULT_BACKEND_XML__', empty(operationBackendSelection(api)) ? '<set-backend-service backend-id="${api.name}-backend" />' : ''),
   '__BACKEND_AUDIENCE__', '{{${api.name}-backend-audience}}'),
   '__CREDENTIAL_CONNECTION_BASE64__', contains(api, 'credentialConnection') ? base64(string(api.credentialConnection)) : ''),
   '__BACKEND_AUTHENTICATION_XML__', backendAuthentication),
@@ -723,8 +672,6 @@ var policySettings = [for (api, index) in apiDefinitions: {
   graphOboEnabled: graphOboEnabled
   authentication: backendAuthenticationXml[index]
   headers: backendHeadersXml[index]
-  auditRelaySelected: auditRelaySelections[index]
-  httpEvidenceSnapshot: httpEvidenceEnabled ? join(map(httpEvidenceApiOperations[index], operation => '<choose><when condition="@(context.Operation.Id == &quot;${xmlText(operation)}&quot;)">${httpEvidenceSnapshotPolicy}</when></choose>'), '') : ''
   cleanup: protocolRateCleanupXml[index]
   queries: protocolQueriesXml[index]
   websocketQuery: api.apiType == 'websocket' && (contains(api.websocket, 'queryParameters') || contains(api.websocket, 'allowedModels')) ? base64(string(api.websocket.?queryParameters ?? {})) : ''
@@ -736,8 +683,8 @@ var policySettings = [for (api, index) in apiDefinitions: {
   credentialOutbound: api.apiType == 'mcp' && contains(api, 'credentialConnection') ? '<include-fragment fragment-id="core-credential-connection-outbound" />' : ''
 }]
 func apiPolicyValue(api object, template string, errorXml string, values object) string =>
-  replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(
-    replace(replace(replace(baseApiPolicy(api, template, values.authentication, values.headers, values.credentialCallerError, values.graphOboEnabled, values.auditRelaySelected),
+  replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(
+    replace(replace(replace(baseApiPolicy(api, template, values.authentication, values.headers, values.credentialCallerError, values.graphOboEnabled),
       '__RATE_LIMIT_ERROR_XML__', errorXml), '__RATE_LIMIT_CLEANUP_XML__', values.cleanup),
       '__API_SETTINGS_BASE64__', base64(apiSettings(api, '', false))),
     '__PROTOCOL_QUERY_XML__', values.queries), '__WEBSOCKET_QUERY_BASE64__', values.websocketQuery),
@@ -746,8 +693,7 @@ func apiPolicyValue(api object, template string, errorXml string, values object)
     '__CREDENTIAL_CONNECTION_OUTBOUND_XML__', values.credentialOutbound),
     '__PROTOCOL_QUERY_OBSERVATION_XML__', api.apiType == 'mcp' ? protocolQueryObservationInboundXml : ''),
     '__PROTOCOL_QUERY_OUTBOUND_XML__', api.apiType == 'mcp' ? '<set-variable name="gatewayQueryPhase" value="backend-response" /><include-fragment fragment-id="core-query-telemetry" />' : ''),
-    '__PROTOCOL_QUERY_ERROR_XML__', api.apiType == 'mcp' ? '<set-variable name="gatewayQueryPhase" value="policy-error" /><include-fragment fragment-id="core-query-telemetry" />' : ''),
-    '__HTTP_EVIDENCE_SNAPSHOT_XML__', values.httpEvidenceSnapshot)
+    '__PROTOCOL_QUERY_ERROR_XML__', api.apiType == 'mcp' ? '<set-variable name="gatewayQueryPhase" value="policy-error" /><include-fragment fragment-id="core-query-telemetry" />' : '')
 // プロトコルごとの API と操作を分類し、同じ定義から Product・認可・公開操作の対応を作ります。
 // HTTPの抽出結果を別の配列変数にも保存せず、操作と接続先の集約時に同じ条件で抽出します。
 // API定義の重複を配備テンプレートから減らし、公開する操作・接続先は変えません。
@@ -756,7 +702,6 @@ var operationEntries = flatten(map(filter(apiDefinitions, api => api.apiType == 
   backendUrl: contains(operation, 'backendOverride') ? operation.backendOverride.backendUrl : api.backendUrl
   operation: operation
   constraint: api.authorization.operationConstraints[operation.name]
-  httpEvidence: contains(httpEvidenceApiOperations[indexOf(apiDefinitions, api)], operation.name)
 })))
 var operationBackendEntries = flatten(map(filter(apiDefinitions, api => api.apiType == 'http'), api => map(filter(api.operations, operation => contains(operation, 'backendOverride')), operation => { apiName: api.name, operationName: operation.name, backend: operation.backendOverride })))
 // 各APIが指定したキー用Productを重複なく作り、リリース済みAPIを集約するProductを加えます。
@@ -1024,27 +969,6 @@ resource operationBackends 'Microsoft.ApiManagement/service/backends@2024-05-01'
     tls: { validateCertificateChain: true, validateCertificateName: true }
   }
 }]
-resource auditRelayBackend 'Microsoft.ApiManagement/service/backends@2024-05-01' = if (auditRelayEnabled) {
-  parent: apim
-  name: 'core-audit-relay'
-  properties: auditRelayBackendProperties
-}
-resource auditRelayAudience 'Microsoft.ApiManagement/service/namedValues@2024-05-01' = if (auditRelayEnabled || httpEvidenceEnabled) {
-  parent: apim
-  name: 'core-audit-relay-audience'
-  properties: auditRelayAudienceProperties
-}
-resource httpEvidenceUrl 'Microsoft.ApiManagement/service/namedValues@2024-05-01' = if (httpEvidenceEnabled) {
-  parent: apim
-  name: 'core-audit-relay-url'
-  properties: httpEvidenceUrlProperties
-}
-resource httpEvidenceFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = if (httpEvidenceEnabled) {
-  parent: apim
-  name: 'core-http-body-evidence'
-  properties: { format: 'rawxml', value: httpEvidenceFragmentXml }
-  dependsOn: [auditRelayAudience, httpEvidenceUrl]
-}
 // HTTP / WebSocket / MCP の API 本体。認証方式と公開パスを定義から反映します。
 resource apis 'Microsoft.ApiManagement/service/apis@2025-09-01-preview' = [for (api, index) in apiDefinitions: {
   parent: apim
@@ -1157,7 +1081,7 @@ resource apiPolicies 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' 
   parent: apis[index]
   name: 'policy'
   properties: { format: 'rawxml', value: apiPolicyValue(api, configuredApiTemplate(api.apiType), rateLimitErrorXml, policySettings[index]) }
-  dependsOn: [apiSettingsFragment, apiRequestPreparationFragment, apiInputValidationFragment, apiOperationSettingsFragment, apiAuthenticationResultFragment, apiTargetValidationFragment, chatStoreDisabledFragment, auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, entraUserProfileFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryObservationFragment, queryTelemetryFragment, modelLimitsFragment, speechSsmlGuardFragment, documentInputValidationFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment, auditRelayBackend, auditRelayAudience, httpEvidenceFragment]
+  dependsOn: [apiSettingsFragment, apiRequestPreparationFragment, apiInputValidationFragment, apiOperationSettingsFragment, apiAuthenticationResultFragment, apiTargetValidationFragment, chatStoreDisabledFragment, auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, entraUserProfileFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryObservationFragment, queryTelemetryFragment, modelLimitsFragment, speechSsmlGuardFragment, documentInputValidationFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment]
 }]
 // WebSocket API では API スコープの policy を作れないため、システムが自動生成する
 // onHandshake 操作へ同じ接続開始時の認証・認可を設定します。操作本体は作成・変更しません。
@@ -1232,11 +1156,10 @@ resource operations 'Microsoft.ApiManagement/service/apis/operations@2024-05-01'
 // 操作固有の制約を追加。モデル・PII・Realtime 等の用途別検証を切り替えます。
 // APIと握手の設定後に１件ずつ書き、別ループの重いポリシー適用とも重ねません。
 // DocumentのAPI版は公開スキーマから補完済みの操作設定を使い、開始・取得・照合へ同じ値を渡します。
-func operationPolicyValue(entry object, policyTemplate string, evidenceEnabled bool) string => entry.constraint.kind == 'pii'
-      ? replace(replace(replace(policyTemplate, '__PII_SETTINGS_BASE64__', base64(string(entry.constraint))), '__HTTP_EVIDENCE_REQUEST_XML__', evidenceEnabled && entry.httpEvidence ? httpEvidenceRequestPolicy : ''), '__HTTP_EVIDENCE_RESPONSE_XML__', evidenceEnabled && entry.httpEvidence ? httpEvidenceResponsePolicy : '')
-      : contains(['documentAnalysis', 'documentAnalysisStatus'], entry.constraint.kind) ? documentEvidencePolicy(
-          replace(replace(policyTemplate, '__DOCUMENT_BASE_URL__', xmlText(entry.backendUrl)), '__DOCUMENT_API_VERSION__', xmlText(entry.constraint.apiVersion)),
-          entry.constraint.kind == 'documentAnalysis' ? '@((int)context.Variables[&quot;documentStatus&quot;])' : '@((int)JObject.Parse((string)context.Variables[&quot;documentPollEvaluation&quot;])[&quot;status&quot;])', evidenceEnabled && entry.httpEvidence)
+func operationPolicyValue(entry object, policyTemplate string) string => entry.constraint.kind == 'pii'
+      ? replace(policyTemplate, '__PII_SETTINGS_BASE64__', base64(string(entry.constraint)))
+      : contains(['documentAnalysis', 'documentAnalysisStatus'], entry.constraint.kind)
+        ? replace(replace(policyTemplate, '__DOCUMENT_BASE_URL__', xmlText(entry.backendUrl)), '__DOCUMENT_API_VERSION__', xmlText(entry.constraint.apiVersion))
       // 短期 token の取得先は、登録済み Foundry backend から固定生成します。
       // 利用者の入力 URL や公開 params に取得先を追加しません。
       : entry.constraint.kind == 'realtimeCreate' ? replace(policyTemplate, '__REALTIME_CLIENT_SECRETS_URL__', xmlText('${entry.backendUrl}/realtime/client_secrets'))
@@ -1251,10 +1174,7 @@ func operationPolicyValue(entry object, policyTemplate string, evidenceEnabled b
           contains(entry.operation, 'backendUrlTemplate') ? entry.constraint.kind == 'pathModel'
             ? '<!-- モデルを含むパス値を一要素として符号化し、登録済みの上流URIへ書き換えます。固定queryは保持します。 --><rewrite-uri template="${xmlText(pathModelBackendUriExpression(entry.operation.backendUrlTemplate))}" copy-unmatched-params="false" />'
             : '<!-- 登録済みの上流URIへ書き換えます。転送queryは定義した値に揃えます。 --><rewrite-uri template="${xmlText(entry.operation.backendUrlTemplate)}" copy-unmatched-params="false" />' : ''
-          evidenceEnabled && entry.httpEvidence ? httpEvidenceRequestPolicy : ''
-          '</inbound><backend><base /></backend><outbound><base />'
-          evidenceEnabled && entry.httpEvidence ? httpEvidenceResponsePolicy : ''
-          '</outbound><on-error><base /></on-error></policies>'], '')
+          '</inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'], '')
 // Pass the selected template directly; retaining another object of all full XML
 // templates would count the same bytes again in ARM's expanded variables.
 func selectOperationTemplate(kind string, pii string, document string, documentStatus string, realtimeCreate string, realtimeHangup string, liveCreate string) string => kind == 'pii' ? pii : kind == 'documentAnalysis' ? document : kind == 'documentAnalysisStatus' ? documentStatus : kind == 'realtimeCreate' ? realtimeCreate : kind == 'realtimeHangup' ? realtimeHangup : kind == 'liveCreate' ? liveCreate : ''
@@ -1265,7 +1185,7 @@ resource operationPolicies 'Microsoft.ApiManagement/service/apis/operations/poli
   name: 'policy'
   properties: {
     format: 'rawxml'
-    value: operationPolicyValue(entry, selectOperationTemplate(entry.constraint.kind, configuredOperationTemplate(piiPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisStatusPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), realtimePolicyValue(realtimeCreatePolicyTemplate, '__REALTIME_CREATE_TICKET_CSHARP__', realtimeCreateTicketSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '            '), realtimePolicyValue(realtimeHangupPolicyTemplate, '__REALTIME_HANGUP_OWNER_CSHARP__', realtimeHangupOwnerSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '      '), liveCreatePolicyTemplate), httpEvidenceEnabled)
+    value: operationPolicyValue(entry, selectOperationTemplate(entry.constraint.kind, configuredOperationTemplate(piiPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisStatusPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), realtimePolicyValue(realtimeCreatePolicyTemplate, '__REALTIME_CREATE_TICKET_CSHARP__', realtimeCreateTicketSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '            '), realtimePolicyValue(realtimeHangupPolicyTemplate, '__REALTIME_HANGUP_OWNER_CSHARP__', realtimeHangupOwnerSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '      '), liveCreatePolicyTemplate))
   }
   dependsOn: [apiPolicies, websocketPolicies, entraAuthenticationErrorFragment]
 }]
@@ -1411,9 +1331,8 @@ output entraPublicationSource object = {
   )
   policies: concat(
     map(apiDefinitions, api => { suffix: api.apiType == 'websocket' ? '/apis/${api.name}/operations/onHandshake/policies/policy' : '/apis/${api.name}/policies/policy', value: apiPolicyValue(api, configuredApiTemplate(api.apiType), rateLimitErrorXml, policySettings[indexOf(apiDefinitions, api)]) }),
-    map(operationEntries, entry => { suffix: '/apis/${entry.apiName}/operations/${entry.operation.name}/policies/policy', value: operationPolicyValue(entry, selectOperationTemplate(entry.constraint.kind, configuredOperationTemplate(piiPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisStatusPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), realtimePolicyValue(realtimeCreatePolicyTemplate, '__REALTIME_CREATE_TICKET_CSHARP__', realtimeCreateTicketSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '            '), realtimePolicyValue(realtimeHangupPolicyTemplate, '__REALTIME_HANGUP_OWNER_CSHARP__', realtimeHangupOwnerSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '      '), liveCreatePolicyTemplate), httpEvidenceEnabled) }),
+    map(operationEntries, entry => { suffix: '/apis/${entry.apiName}/operations/${entry.operation.name}/policies/policy', value: operationPolicyValue(entry, selectOperationTemplate(entry.constraint.kind, configuredOperationTemplate(piiPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisStatusPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), realtimePolicyValue(realtimeCreatePolicyTemplate, '__REALTIME_CREATE_TICKET_CSHARP__', realtimeCreateTicketSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '            '), realtimePolicyValue(realtimeHangupPolicyTemplate, '__REALTIME_HANGUP_OWNER_CSHARP__', realtimeHangupOwnerSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '      '), liveCreatePolicyTemplate)) }),
     map(mcpApis, api => { suffix: '/apis/${api.mcp.name}/policies/policy', value: mcpApiPolicyValue(api, generatedMcpPolicyTemplate, rateLimitErrorXml) }),
-    httpEvidenceEnabled ? [{ suffix: '/policyFragments/core-http-body-evidence', value: httpEvidenceFragmentXml }] : [],
     credentialLoginEnabled ? concat(
       [{ suffix: '/apis/credential-manager-login/policies/policy', value: credentialLoginApiPolicyXml }],
       map(filter(credentialLoginOperations, item => item.apiId == 'credential-manager-login'), item => {
@@ -1455,15 +1374,12 @@ output entraPublicationSource object = {
   )
   backends: concat(
     map(apiDefinitions, api => { suffix: '/backends/${api.name}-backend', properties: { title: api.displayName, protocol: 'http', url: api.apiType == 'websocket' ? replace(api.backendUrl, 'wss://', 'https://') : api.backendUrl, tls: { validateCertificateChain: true, validateCertificateName: true } } }),
-    map(operationBackendEntries, entry => { suffix: '/backends/${operationBackendId(entry.apiName, entry.operationName)}', properties: { title: '${entry.apiName} / ${entry.operationName}', protocol: 'http', url: entry.backend.backendUrl, tls: { validateCertificateChain: true, validateCertificateName: true } } }),
-    auditRelayEnabled ? [{ suffix: '/backends/core-audit-relay', properties: auditRelayBackendProperties }] : []
+    map(operationBackendEntries, entry => { suffix: '/backends/${operationBackendId(entry.apiName, entry.operationName)}', properties: { title: '${entry.apiName} / ${entry.operationName}', protocol: 'http', url: entry.backend.backendUrl, tls: { validateCertificateChain: true, validateCertificateName: true } } })
   )
   namedValues: concat(
     map(apiDefinitions, api => { suffix: '/namedValues/${api.name}-backend-audience', properties: { displayName: '${api.name}-backend-audience', secret: false, value: api.backendAudience } }),
     map(filter(apiDefinitions, api => api.backendAuthentication.mode == 'keyVaultHeader'), api => { suffix: '/namedValues/${api.name}-backend-secret', properties: { displayName: '${api.name}-backend-secret', secret: true, keyVault: { secretIdentifier: api.backendAuthentication.secretIdentifier } } }),
-    map(filter(operationBackendEntries, entry => entry.backend.backendAuthentication.mode == 'keyVaultHeader'), entry => { suffix: '/namedValues/${operationBackendId(entry.apiName, entry.operationName)}-secret', properties: { displayName: '${operationBackendId(entry.apiName, entry.operationName)}-secret', secret: true, keyVault: { secretIdentifier: entry.backend.backendAuthentication.secretIdentifier } } }),
-    auditRelayEnabled || httpEvidenceEnabled ? [{ suffix: '/namedValues/core-audit-relay-audience', properties: auditRelayAudienceProperties }] : [],
-    httpEvidenceEnabled ? [{ suffix: '/namedValues/core-audit-relay-url', properties: httpEvidenceUrlProperties }] : []
+    map(filter(operationBackendEntries, entry => entry.backend.backendAuthentication.mode == 'keyVaultHeader'), entry => { suffix: '/namedValues/${operationBackendId(entry.apiName, entry.operationName)}-secret', properties: { displayName: '${operationBackendId(entry.apiName, entry.operationName)}-secret', secret: true, keyVault: { secretIdentifier: entry.backend.backendAuthentication.secretIdentifier } } })
   )
   apiChildren: concat(
     map(operationEntries, entry => { suffix: '/apis/${entry.apiName}/operations/${entry.operation.name}', properties: operationProperties(entry) }),

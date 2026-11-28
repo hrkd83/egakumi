@@ -63,7 +63,7 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 
 ### AzureとEntraのテナント指定
 
-`azureTenantId`はAzure構築・RBAC先、`entraTenantId`は社員API認証、標準Graph OAuth、任意の接続窓口アプリの認証先です。監査中継を呼ぶAPIMのマネージドIDが、利用者向けのAPI登録をトークンの対象として使うため、2つのテナントを揃えます。`entraTenantId` を省略すると `azureTenantId` を使います。標準Graphの`oauthTenantId`と接続窓口identityの`tenantId`は公開入力から導出し、独立した上書き欄を設けません。 [監査中継の認証](../reference/audit/request-body-audit.md#初回構築)
+`azureTenantId`はAzure構築・RBAC先、`entraTenantId`は社員API認証、標準Graph OAuth、任意の接続窓口アプリの認証先です。`entraTenantId` を省略すると `azureTenantId` を使います。標準Graphの`oauthTenantId`と接続窓口identityの`tenantId`は公開入力から導出し、独立した上書き欄を設けません。
 
 追加providerが別の認証テナントを使う場合は、`params.credentialProviders.additional[].oauthTenantId`を設定できます。管理VMに接続する担当者へは、保守時に [本人のAzure RBAC](../operations/management-vm-access.md) を付与して回収します。認証先の変更と、Azure配置先の変更は別の操作です。
 

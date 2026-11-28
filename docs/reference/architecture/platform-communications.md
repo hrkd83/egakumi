@@ -12,7 +12,7 @@ NSGは状態を保持するため、許可された接続への応答だけを�
 
 | 設計ID | 通信要件との対応 | 送信元 → 宛先 | プロトコル／ポート | NSGでの扱い |
 | --- | --- | --- | --- | --- |
-| `B-ACA-18` | App・Jobの管理ID取得 | Portal、Broker、本文監査、証明書Job等のクライアント → ACAが提供する`IDENTITY_ENDPOINT` | 内部RESTのHTTP GET。接続先・ポートは提供URLから取得 | 固定IP／ポートのAllowを作らず、名前・優先度も割り当てない |
+| `B-ACA-18` | App・Jobの管理ID取得 | Portal、Broker、証明書Job等のクライアント → ACAが提供する`IDENTITY_ENDPOINT` | 内部RESTのHTTP GET。接続先・ポートは提供URLから取得 | 固定IP／ポートのAllowを作らず、名前・優先度も割り当てない |
 | `B-ACA-19` | `CA-P10`、`PE-P02`のACA発問い合わせ | ACAのresolver → Azure提供DNS | UDP／TCP 53、[Azure提供DNSの共通アドレス](https://learn.microsoft.com/en-us/azure/virtual-network/what-is-ip-address-168-63-129-16) | 通常DNS Allowと`AzurePlatformDNS`専用Denyを初期集合へ追加しない |
 | `B-ACA-20` | `CA-P15` | ACAのmanaged基盤 → 管理サービス | 個別の完全な宛先・ポート・顧客NSG評価区間は未確定 | 追跡記録を維持し、推測した専用Allow・作成フラグを追加しない |
 

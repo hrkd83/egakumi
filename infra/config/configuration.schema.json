@@ -65,60 +65,6 @@
         "type": "string"
       }
     },
-    "auditEvidence": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "const": true,
-          "default": true
-        },
-        "eventHubsSku": {
-          "enum": [
-            "Standard",
-            "Premium"
-          ],
-          "default": "Standard"
-        },
-        "payloadImmutabilityMode": {
-          "enum": [
-            "Disabled",
-            "Locked"
-          ],
-          "default": "Disabled"
-        },
-        "payloadRetentionDays": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 146000
-        }
-      },
-      "if": {
-        "required": [
-          "payloadImmutabilityMode"
-        ],
-        "properties": {
-          "payloadImmutabilityMode": {
-            "const": "Locked"
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "payloadRetentionDays": {
-            "default": 2557
-          }
-        }
-      },
-      "else": {
-        "properties": {
-          "payloadRetentionDays": {
-            "maximum": 365,
-            "default": 30
-          }
-        }
-      }
-    },
     "network": {
       "type": "object",
       "properties": {
@@ -150,10 +96,9 @@
             "apim",
             "management",
             "portal",
-            "broker",
-            "audit"
+            "broker"
           ],
-          "description": "Portal、Credential Broker、証明書Job、本文監査用の委任サブネットを、VNetのaddressSpaces内へ重複なく割り当てます。",
+          "description": "Portal、Credential Broker、証明書Job用の委任サブネットを、VNetのaddressSpaces内へ重複なく割り当てます。",
           "properties": {
             "agw": {
               "type": "string",
@@ -187,14 +132,21 @@
               "type": "string",
               "description": "管理VM用。基本/26。",
               "examples": [
-                "10.40.3.192/26"
+                "10.40.2.128/26"
               ]
             },
             "portal": {
               "type": "string",
               "description": "Core管理ポータルのACA専用サブネット。基本/26、最小/27。Microsoft.App/environmentsへ委任します。",
               "examples": [
-                "10.40.2.128/26"
+                "10.40.3.0/26"
+              ]
+            },
+            "broker": {
+              "type": "string",
+              "description": "Credential BrokerのACA環境専用サブネット。基本/26、最小/27。Microsoft.App/environmentsへ委任します。",
+              "examples": [
+                "10.40.3.64/26"
               ]
             },
             "certificate": {
@@ -202,20 +154,6 @@
               "description": "証明書専用ACAの委任サブネット。アドレス範囲は/27以上。",
               "examples": [
                 "10.40.3.128/27"
-              ]
-            },
-            "audit": {
-              "type": "string",
-              "description": "本文監査専用のACAサブネット。最小/27。Microsoft.App/environmentsへ委任します。",
-              "examples": [
-                "10.40.2.192/26"
-              ]
-            },
-            "broker": {
-              "type": "string",
-              "description": "Credential BrokerのACA環境専用サブネット。最小/27。Microsoft.App/environmentsへ委任します。",
-              "examples": [
-                "10.40.3.0/25"
               ]
             }
           }

@@ -2,7 +2,7 @@
 
 [通信要件](network-communication-requirements.md) · [Firewall設計](firewall-policy-design.md) · [実証方法と検証結果の管理](../../testing/network-security-validation.md) · [NSG運用一覧](../../operations/network-security-groups.md) · [NSGにしない基盤通信](platform-communications.md)
 
-本書は初期構築に採用したNSGの通信対応と判断を記録する。定義の正本は[infra/modules/network/nsg/core-rules.json](../../../infra/modules/network/nsg/core-rules.json)のcatalog v5である。本文監査の規則は別の正本から作成し、証明書用ACAの規則は専用資材で定める。`AzureFirewallSubnet`にはNSGを関連付けない。
+本書は初期構築に採用したNSGの通信対応と判断を記録する。定義の正本は[infra/modules/network/nsg/core-rules.json](../../../infra/modules/network/nsg/core-rules.json)のcatalog v5である。証明書用ACAの規則は専用資材で定める。`AzureFirewallSubnet`にはNSGを関連付けない。
 
 `FLOW-...`は通信要件の識別子、`POLICY-...`は拒否・既定規則の設計判断の識別子、規則の設計IDは資材の`designRecordId`である。同じ接続の送信・受信に同じFLOW IDを付ける。拒否規則や既定規則は通信の件数として加算しない。
 

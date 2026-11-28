@@ -40,6 +40,7 @@ if __package__ in (None, ""):
     __package__ = "deployment.helpers"
 
 from .catalog_descriptions import with_catalog_descriptions
+from .log_privacy import ARCHIVE_CONTAINERS
 from .apim_naming import apim_instance_id
 from .apim_input_contract import validate_input_contract
 from .apim_document_contract import DOCUMENT_API_VERSION
@@ -65,7 +66,7 @@ TOP_KEYS = {
     "schemaVersion", "productName", "environmentName", "subscriptionId",
     "azureTenantId", "entraTenantId", "location", "foundryLocation", "apiCenterLocation", "tags", "network",
     "services", "gateway", "management", "monitoring", "certificate", "firewallTlsInspection", "authorization",
-    "apiDefinitions", "publishApis", "credentialProviders", "portal", "credentialBroker", "portalAuthentication", "codex", "auditEvidence",
+    "apiDefinitions", "publishApis", "credentialProviders", "portal", "credentialBroker", "portalAuthentication", "codex",
 }
 NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 API_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
@@ -137,7 +138,6 @@ PARAMETER_OWNED_PATHS = (
 # 旧入力は空値でも受け付けず、値の意味を変える自動移行をしません。
 FIXED_INITIAL_PATHS = (
     ("authorization",), ("apiDefinitions",), ("publishApis",),
-    ("auditEvidence", "enabled"),
     ("management", "loginAssignments"),
     *(("network", "firewall", key) for key in ("snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings")),
     ("gateway", "existingWafPolicyId"),
@@ -379,7 +379,7 @@ def _principals(value: Any, path: str) -> list[dict]:
     return result
 
 
-def _network(raw: Any, *, audit_evidence_enabled: bool = False) -> dict:
+def _network(raw: Any) -> dict:
     """VNet・サブネット・NSG・ルート・FW設定を検査し、省略可能な標準値を補う。
 
     アドレス範囲の包含と重なり、ゾーン、DNS、Premiumの検査設定など、
@@ -390,12 +390,10 @@ def _network(raw: Any, *, audit_evidence_enabled: bool = False) -> dict:
         "appGatewayZones", "dnsTtl",
     })
     spaces = _cidrs(n.get("addressSpaces"), "network.addressSpaces", minimum=1)
-    subnet_kinds = (*SUBNET_KINDS, "certificate", "audit")
+    subnet_kinds = (*SUBNET_KINDS, "certificate")
     prefixes = _object(n.get("subnetPrefixes"), "network.subnetPrefixes", set(subnet_kinds))
     if not set(SUBNET_KINDS[:-1]) <= prefixes.keys():
         _fail("network.subnetPrefixes", "must define agw, firewall, apim, pep, management and portal")
-    if audit_evidence_enabled and "audit" not in prefixes:
-        _fail("network.subnetPrefixes.audit", "must specify a dedicated /27 or larger for audit evidence")
     # まずVNet内の住所の区切りを検査する。各サブネットが個別に正しいCIDRでも、
     # 互いに重なっていたりVNet外だったりすれば、後続リソースを配置できない。
     networks = [ipaddress.ip_network(item) for item in spaces]
@@ -405,7 +403,7 @@ def _network(raw: Any, *, audit_evidence_enabled: bool = False) -> dict:
     for key in (kind for kind in subnet_kinds if kind in prefixes):
         item = _cidrs([prefixes[key]], "network.subnetPrefixes." + key, minimum=1)[0]
         subnet = ipaddress.ip_network(item)
-        maximum_prefix = {"agw": 24, "pep": 24, "portal": 27, "broker": 27, "certificate": 27, "audit": 27}.get(key, 26)
+        maximum_prefix = {"agw": 24, "pep": 24, "portal": 27, "broker": 27, "certificate": 27}.get(key, 26)
         if subnet.prefixlen > maximum_prefix or not any(subnet.subnet_of(parent) for parent in networks):
             _fail("network.subnetPrefixes." + key, "must fit the address space and meet the designed subnet size")
         subnet_networks.append(subnet)
@@ -1089,19 +1087,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     if any(not isinstance(key, str) or not isinstance(value, str) for key, value in tags.items()):
         _fail("tags", "keys and values must be strings")
     c["tags"] = {**tags, "product": c["productName"], "environment": c["environmentName"]}
-    audit_evidence = _object(c.setdefault("auditEvidence", {}), "auditEvidence", {
-        "enabled", "eventHubsSku", "payloadImmutabilityMode", "payloadRetentionDays",
-    })
-    enabled = _bool(audit_evidence.setdefault("enabled", False), "auditEvidence.enabled")
-    if enabled and c["entraTenantId"] != c["azureTenantId"]:
-        _fail("entraTenantId", "audit evidence requires entraTenantId to match azureTenantId")
-    _choice(audit_evidence.setdefault("eventHubsSku", "Standard"), "auditEvidence.eventHubsSku", ("Standard", "Premium"))
-    immutability = _choice(audit_evidence.setdefault("payloadImmutabilityMode", "Disabled"),
-                           "auditEvidence.payloadImmutabilityMode", ("Disabled", "Locked"))
-    retention_default, retention_maximum = (2557, 146000) if immutability == "Locked" else (30, 365)
-    _integer(audit_evidence.setdefault("payloadRetentionDays", retention_default),
-             "auditEvidence.payloadRetentionDays", 1, retention_maximum)
-    c["network"] = _network(c.get("network"), audit_evidence_enabled=enabled)
+    c["network"] = _network(c.get("network"))
     s = _object(c.get("services"), "services", {"publisherName", "publisherEmail", "apimInstanceId", "apimSkuName", "apimCapacity", "apiCenterSkuName", "vaultSkuName", "vaultRetentionDays", "vaultPurgeProtection", "modelDeployments", "projectDisplayName", "projectDescription", "enableApiCenterIntegration", "catalogEnvironmentKind", "catalogLifecycleStage", "grantApimSecretAccess", "speechEnabled", "grantApimFoundryModelsAccess"})
     try:
         apim_instance_id(c)
@@ -1262,14 +1248,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _object(reader, "monitoring.auditReaders", {"principalId", "principalType", "collector", "containerName"})
         _principals([{key: reader.get(key) for key in ("principalId", "principalType")}], "monitoring.auditReaders")
         collector = _choice(reader.get("collector"), "monitoring.auditReaders.collector", ("collectJapan", "collectFoundry"))
-        allowed_containers = {"insights-logs-audit"} if collector == "collectFoundry" else {
-            "insights-activity-logs", "insights-logs-audit", "insights-logs-vmprotectionalerts", "insights-logs-applicationgatewayaccesslog",
-            "insights-logs-applicationgatewayfirewalllog", "insights-logs-azfwnetworkrule", "insights-logs-azfwapplicationrule",
-            "insights-logs-azfwidpssignature", "insights-logs-azfwthreatintel", "insights-logs-gatewaylogs",
-            "insights-logs-gatewayllmlogs", "insights-logs-websocketconnectionlogs", "insights-logs-auditevent",
-            "am-apprequests", "am-appdependencies", "am-appexceptions", "am-apptraces", "am-appevents", "am-syslog", "am-agwaccesslogs",
-        }
-        if reader.get("containerName") not in allowed_containers:
+        if reader.get("containerName") not in ARCHIVE_CONTAINERS[collector]:
             _fail("monitoring.auditReaders.containerName", "must identify an owned audit container in the selected regional collector")
         key = (reader["principalId"], collector, reader["containerName"])
         if key in seen_readers:
@@ -1709,11 +1688,7 @@ def load_configuration_source(path: Path | str) -> dict:
 
 def _compose_configuration_source(source: Path, raw: dict) -> dict:
     if "configFile" not in raw:
-        combined = _resolve_file_references(raw, source.parent)
-        audit_evidence = _object(combined.setdefault("auditEvidence", {}), "auditEvidence")
-        if audit_evidence.setdefault("enabled", True) is not True:
-            _fail("auditEvidence.enabled", "must be true for body audit deployment")
-        return combined
+        return _resolve_file_references(raw, source.parent)
     _reject_fixed_initial_inputs(raw, "params")
     _object(raw, "parameters", PARAMETER_KEYS)
     for key in ("$schema", "$comment"):

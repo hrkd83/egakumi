@@ -180,7 +180,7 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
                     {"name": "direct-default", "properties": {"addressPrefix": "0.0.0.0/0", "nextHopType": "Internet"}}]},
         }}
 
-        if suffix in ("certificate", "broker", "audit"):
+        if suffix in ("certificate", "broker"):
             result["body"]["properties"]["disableBgpRoutePropagation"] = True
             result["body"]["properties"]["routes"] = [{"name": "default-egress", "properties": {
                 "addressPrefix": "0.0.0.0/0", "nextHopType": "VirtualAppliance",

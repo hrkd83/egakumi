@@ -15,7 +15,6 @@ from unittest import mock
 
 from deployment import lifecycle
 from deployment.helpers import cleanup
-from deployment.helpers.audit_evidence import evidence_policy_id
 from deployment.helpers import prepare_secrets as secret_preparation
 from deployment.helpers.configuration import normalize_configuration
 from tests.support.configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
@@ -304,7 +303,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "configure_app_insights_cap"):
             lifecycle.preprovision(self.config)
         deploy.assert_called_once_with(self.config,
-                                       retained_policy_ids=[], preserve_collection=False,
+                                       retained_policy_ids=[], preserve_collection=False, preserve_agent_content_export=False,
                                        diagnostic_setting_properties=mock.ANY)
         state = json.loads(state_path.read_text(encoding="utf-8"))
         self.assertEqual(state["resourceGroupNames"], self.config["resourceGroupNames"])
@@ -336,11 +335,40 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'configure_app_insights_cap'), contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
         deploy.assert_called_once_with(self.config,
-                                       retained_policy_ids=[], preserve_collection=False,
+                                       retained_policy_ids=[], preserve_collection=False, preserve_agent_content_export=False,
                                        diagnostic_setting_properties=mock.ANY)
         params = json.loads(self.paths.parameters.read_text(encoding="utf-8"))['parameters']
         self.assertEqual(params['phase']['value'], 'core')
         self.assertFalse(transport.mutations())
+
+    def test_reapply_preserves_the_existing_foundry_content_export(self):
+        ids = lifecycle.log_privacy_resource_ids(self.config)
+        transport = self.preprovision_transport()
+        previous_path = (f"/subscriptions/{self.config['subscriptionId']}/providers/Microsoft.Resources/"
+                         f"deployments/{self.config['resourceStem']}-monitoring?api-version=2022-09-01")
+        index = transport.expected_get_paths.index(previous_path)
+        transport.responses[index] = {"statusCode": 200, "headers": {}, "body": {"properties": {"outputs": {
+            "monitoring": {"value": {"workspaceId": ids["workspace"]}},
+        }}}}
+        paths = list(transport.expected_get_paths)
+        paths.insert(index + 1, ids["export"] + "?api-version=2023-09-01")
+        transport.expected_get_paths = paths
+        transport.responses.insert(index + 1, {"statusCode": 200, "headers": {}, "body": {
+            "id": ids["export"], "properties": {"enable": True, "destination": {"resourceId": ids["storage"]},
+                "tableNames": [*lifecycle.EXPORT_TABLES, lifecycle.ARCHIVE["agentContentTable"]]},
+        }})
+        with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
+             mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
+             mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
+             mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
+             mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()) as deploy, \
+             mock.patch.object(lifecycle, "configure_app_insights_cap"), contextlib.redirect_stdout(io.StringIO()):
+            lifecycle.preprovision(self.config)
+        self.assertTrue(deploy.call_args.kwargs["preserve_collection"])
+        self.assertTrue(deploy.call_args.kwargs["preserve_agent_content_export"])
+        entries = json.loads(self.paths.parameters.read_text())["parameters"]
+        self.assertTrue(entries["preserveAgentContentExport"]["value"])
+        self.assertFalse(transport.responses)
 
     def test_existing_locked_audit_ids_reach_monitoring_without_disabling_new_protection(self):
         self.config['monitoring']['auditImmutabilityMode'] = 'Locked'
@@ -363,7 +391,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'configure_app_insights_cap'), contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
         deploy.assert_called_once_with(self.config,
-                                       retained_policy_ids=[policy], preserve_collection=False,
+                                       retained_policy_ids=[policy], preserve_collection=False, preserve_agent_content_export=False,
                                        diagnostic_setting_properties=mock.ANY)
         # 監視で保護を揃えた後のnative coreは、LockedへのPUTをしない。
         params = json.loads(self.paths.parameters.read_text(encoding="utf-8"))['parameters']
@@ -388,37 +416,6 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                 lifecycle.preprovision(self.config)
         deploy.assert_not_called()
         self.assertFalse(transport.mutations())
-
-    def test_core_handoff_can_manage_body_worm_while_preserving_locked_diagnostic_policies(self):
-        self.config['monitoring']['auditImmutabilityMode'] = 'Locked'
-        self.config['auditEvidence'] = {'enabled': True, 'payloadImmutabilityMode': 'Locked',
-                                        'payloadRetentionDays': 2557, 'eventHubsSku': 'Premium'}
-        absent = {'statusCode': 404, 'headers': {}, 'body': None}
-        body_id = evidence_policy_id(self.config)
-        existing_body = response_policy('Locked', append=False)
-        existing_body['body']['id'] = body_id
-        diagnostic_id = (f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/{self.config['resourceGroupNames']['monitor']}"
-                         '/providers/Microsoft.Storage/storageAccounts/sttestegakumijp/blobServices/default/containers/'
-                         'insights-logs-gatewaylogs/immutabilityPolicies/default')
-        outputs = self.outputs()
-        outputs['auditStorage'] = {'immutabilityMode': 'Locked', 'retentionInDays': 2557,
-                                   'immutabilityPolicyIds': [diagnostic_id]}
-        for policy_response, retained in ((absent, [diagnostic_id]), (existing_body, [body_id, diagnostic_id])):
-            transport = self.preprovision_transport(body_policy=policy_response)
-            with self.subTest(retained=retained), mock.patch.object(lifecycle, 'local_preflight'), \
-                    mock.patch.object(lifecycle, 'azure_preflight'), mock.patch.object(lifecycle, 'register_providers'), \
-                    mock.patch.object(lifecycle, 'ArmTransport', return_value=transport), \
-                    mock.patch.object(lifecycle, 'capacity_preflight'), mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
-                    mock.patch.object(lifecycle, 'deploy_monitoring', return_value=outputs), \
-                    mock.patch.object(lifecycle, 'lock_and_verify_policies'), \
-                    mock.patch.object(lifecycle, 'configure_app_insights_cap'), contextlib.redirect_stdout(io.StringIO()):
-                lifecycle.preprovision(self.config)
-                params = json.loads(self.paths.parameters.read_text(encoding='utf-8'))['parameters']
-                self.assertTrue(params['manageAuditImmutabilityPolicies']['value'])
-                self.assertEqual(params['retainedAuditImmutabilityPolicyIds']['value'], retained)
-                self.assertFalse(transport.mutations())
-                self.assertEqual(transport.responses, [])
-
 
     def test_failed_capacity_prevents_billable_preparation_after_free_provider_registration(self):
         transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": {"error": {"code": "NotFound"}}}] * 4)

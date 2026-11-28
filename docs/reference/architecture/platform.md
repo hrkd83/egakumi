@@ -7,13 +7,13 @@
 | Core | VNet・NSG・経路、App Gateway、Firewall、APIM、Foundry、SQLサーバー、ACA環境、非公開ACR、初期公開TLSとEntra登録用証明書 |
 | Gateway | 公開API・ポリシー・Product・WAF、Credential Manager、Credential Broker・定期照合Jobと資格情報DB |
 | Portal | Entraサインイン、本人のBearerによるAPI試用、専用セッションDBとアプリ |
-| 管理・監査 | 管理VMの保守経路、監視と監査Storage、本文監査の収集・保存 |
+| 管理・監査 | 管理VMの保守経路、Log Analytics、Application Insightsと監査Storage |
 
 ## APIと認証の参照先
 
 - 社員は `Gateway.Invoke` を持つ本人Bearerを使います。例外発行の購読キーはAPIMで管理します。GraphはBearerでOBO、購読キーでCredential Managerの本人接続を利用します。 [Entraアプリの役割](../identity/entra-apps.md) · [Gatewayの認可](../identity/gateway-authentication.md)
 - 公開URL・操作・モデルは[API契約](../gateway/api-contracts.md)と[Foundryモデル](../gateway/foundry-model-catalog.md)を参照してください。会話・ファイル音声・双方向音声の接続方式は[リアルタイム音声](../gateway/realtime-audio.md)で確認します。
-- 診断ログ、利用量集計、監査本文は、採用した保存経路で相関します。 [監査に使う識別情報](../audit/audit-identification.md) · [本文監査](../audit/request-body-audit.md) · [ログのクエリ保護](../../testing/log-privacy.md)
+- 診断ログ、利用量集計と、取得できるFoundryのトレースを相関します。 [監査に使う識別情報](../audit/audit-identification.md) · [本文監査](../audit/request-body-audit.md) · [ログのクエリ保護](../../testing/log-privacy.md)
 
 ## 構築後の保守
 

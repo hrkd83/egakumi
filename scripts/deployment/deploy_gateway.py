@@ -54,7 +54,6 @@ from gateway_ingress import (
 APP_API = '2025-01-01'
 ARM_API = '2022-09-01'
 MODULE = REPOSITORY / 'apps/api-gateway/deploy/main.bicep'
-AUDIT_MODULE = REPOSITORY / 'apps/audit-relay/deploy/application.bicep'
 
 
 def group_scope(config):
@@ -178,9 +177,9 @@ def run_json(arguments):
     return json.loads(result.stdout) if result.stdout.strip() else {}
 
 
-def deploy_resources(config, values, template, transport, *, component='gateway', timeout=1800, sleep=time.sleep, monotonic=time.monotonic, progress=print):
+def deploy_resources(config, values, template, transport, *, timeout=1800, sleep=time.sleep, monotonic=time.monotonic, progress=print):
     """差分をIncrementalで反映し、成功した配備の公開出力を返す。"""
-    target = group_scope(config) + '/providers/Microsoft.Resources/deployments/' + config['resourceStem'] + '-' + component
+    target = group_scope(config) + '/providers/Microsoft.Resources/deployments/' + config['resourceStem'] + '-gateway'
     path = target + '?api-version=' + ARM_API
     checked(transport, 'PUT', path, {'properties': {'mode': 'Incremental', 'template': template,
         'parameters': {key: {'value': value} for key, value in values.items()}}}, label='Deploy application resources')
@@ -191,62 +190,12 @@ def deploy_resources(config, values, template, transport, *, component='gateway'
         if properties.get('provisioningState') == 'Succeeded':
             return {key: value['value'] for key, value in properties.get('outputs', {}).items()}
         if properties.get('provisioningState') in ('Failed', 'Canceled'):
-            raise ValueError(f'{component} resource deployment failed; inspect the selected deployment.')
+            raise ValueError('Gateway resource deployment failed; inspect the selected deployment.')
         if monotonic() >= notice:
-            progress(f'{component}: Azureリソースへの反映を待っています。', flush=True)
+            progress('Gateway: Azureリソースへの反映を待っています。', flush=True)
             notice = monotonic() + 45
         sleep(10)
-    raise ValueError(f'{component} deployment is still pending; inspect the selected deployment.')
-
-
-def audit_foundation(config, state):
-    """選択環境の監査基盤と既存のv2 Gateway audienceを照合します。"""
-    if config.get('auditEvidence', {}).get('enabled') is not True:
-        return None
-    foundation = state['outputs'].get('auditEvidence')
-    stem = config['resourceStem']
-    expected_environment = group_scope(config) + '/providers/Microsoft.App/managedEnvironments/cae-' + stem + '-audit'
-    if (not isinstance(foundation, dict)
-            or str(foundation.get('environmentId', '')).casefold() != expected_environment.casefold()
-            or foundation.get('registryName') != 'acr' + stem.replace('-', '')):
-        raise ValueError('Provision Core audit evidence infrastructure before deploying Gateway')
-    audience = config.get('gateway', {}).get('authentication', {}).get('entra', {}).get('audience')
-    azure_tenant = config['azureTenantId']
-    if (not re.fullmatch(r'[0-9a-fA-F-]{36}', str(audience or ''))
-            or (config.get('entraTenantId') or azure_tenant).casefold() != azure_tenant.casefold()):
-        raise ValueError('Audit Relay requires the existing v2 Gateway API registration in the deployment tenant')
-    return foundation
-
-
-def deploy_audit_pipeline(config, state, foundation, apim_principal, template, transport, workspace):
-    """共有イメージを非公開ACRで解決し、本文の経路を開く前に両アプリを配備します。"""
-    api_publication.verify_audit_payload_retention(config, state, transport)
-    receipt = workspace.checked(workspace.state / 'audit-relay-build.json')
-    data, source_hash = source_bundle(audit=True)
-    digest = reusable_image(config, state, source_hash, receipt, transport=transport, audit=True)
-    if digest is None:
-        digest = build_image(config, state, transport, data=data, source_hash=source_hash,
-                             record=lambda value: protected_json(receipt, value),
-                             prior_receipt=read_build_receipt(receipt), audit=True)
-    registry = foundation['registryName'] + '.azurecr.io'
-    relay_environment = {
-        'AUDIT_TENANT_ID': config['azureTenantId'],
-        'AUDIT_APIM_PRINCIPAL_ID': apim_principal,
-        'AUDIT_TOKEN_AUDIENCE': config['gateway']['authentication']['entra']['audience'],
-    }
-    values = {'foundation': foundation, 'registryServer': registry,
-              'image': registry + '/audit-relay@' + digest,
-              'relayEnvironment': [{'name': name, 'value': value} for name, value in relay_environment.items()]}
-    print('本文監査: 中継と保存ワーカーを配備します。', flush=True)
-    deploy_resources(config, values, template, transport, component='audit-evidence')
-    for attempt in range(24):
-        try:
-            api_publication.verify_audit_relay(config, state, transport)
-            break
-        except api_publication.AuditRelayNotReady:
-            if attempt == 23:
-                raise
-            time.sleep(5)
+    raise ValueError('Gateway deployment is still pending; inspect the selected deployment.')
 
 
 def deploy_release(config, state, values, templates, transport, *, deploy=deploy_resources,
@@ -376,7 +325,6 @@ def run_gateway(args, source, workspace):
     if args.execute and config.get('publishApis') is not True:
         raise ValueError('Set publishApis=true to deploy the Gateway APIs')
     foundation = foundation_inputs(config, state)
-    evidence = audit_foundation(config, state)
     if args.image_digest is not None and not re.fullmatch(r'sha256:[0-9a-f]{64}', args.image_digest):
         raise ValueError('Use an immutable sha256 image digest')
     publication_plan = api_publication.prepare_plan(config, state)
@@ -399,7 +347,7 @@ def run_gateway(args, source, workspace):
             stage_record=stage['publication'], checkpoint=lambda value: protected_json(publication_record, value))
         waf = configure_gateway_waf(config, transport)
         result = {**deployment, **waf, 'status': 'deployed', 'publicationResumed': True,
-                  'apiPublication': publication, 'auditEvidenceEnabled': evidence is not None, 'runtimeVerified': False}
+                  'apiPublication': publication, 'runtimeVerified': False}
         protected_json(workspace.state / 'gateway-deployment.json', result)
         return report_deployment(result)
     login_enabled = credential_login_enabled(config)
@@ -416,13 +364,11 @@ def run_gateway(args, source, workspace):
     summary = {'status': 'planned', 'azureWrites': 0, 'azdUpRequired': False,
         'apiSelection': 'specified' if source.get('apiDefinitions') else 'standard',
         'apiCount': len(config['apiDefinitions']), 'credentialBrokerEnabled': True,
-        'auditEvidenceEnabled': evidence is not None,
         'application': resource_names(config)['application'],
         'database': resource_names(config)['database'],
         'imageBuild': not digest,
         'imageReuseVerificationPending': not args.execute and not args.image_digest,
-        'steps': (['build-and-deploy-audit-workloads'] if evidence is not None else [])
-                 + ['build-or-reuse-image', 'prepare-database-and-credential-manager', 'initialize-sql',
+        'steps': ['build-or-reuse-image', 'prepare-database-and-credential-manager', 'initialize-sql',
                   'update-broker-and-apim-settings', 'publish-apis-products', 'reconcile-released-api-membership', 'remove-default-apim-samples']
                  + (['configure-gateway-identity-callback-waf'] if login_enabled else [])
                  + (['configure-gateway-speech-waf'] if speech_content_type_paths(config) else [])
@@ -436,8 +382,6 @@ def run_gateway(args, source, workspace):
     # コンパイルと秘密入力の読取に失敗した場合、Azureの変更はまだ始めません。
     templates = {'gateway': run_json(['az', 'bicep', 'build', '--file', str(MODULE), '--stdout']),
                  'apis': run_json(['az', 'bicep', 'build', '--file', str(api_publication.MODULE), '--stdout'])}
-    if evidence is not None:
-        templates['audit'] = run_json(['az', 'bicep', 'build', '--file', str(AUDIT_MODULE), '--stdout'])
     values['credentialProviderSecrets'] = load_credential_provider_secrets(config)
     if config.get('gateway', {}).get('authentication', {}).get('credentialLogin', {}).get('identity'):
         values['credentialIdentitySecret'] = load_credential_identity_secret(config)
@@ -448,12 +392,9 @@ def run_gateway(args, source, workspace):
     if not digest:
         values['imageDigest'] = build_image(config, image_state, transport, data=data, source_hash=source_hash,
             record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))
-    if evidence is not None:
-        deploy_audit_pipeline(config, state, evidence, foundation['apimPrincipalId'], templates['audit'], transport, workspace)
     result = deploy_release(config, state, values, templates, transport,
                             publication_checkpoint=lambda value: protected_json(publication_record, value),
                             record_stage=lambda value: protected_json(stage_path, value))
-    result['auditEvidenceEnabled'] = evidence is not None
     protected_json(workspace.state / 'gateway-deployment.json', result)
     return report_deployment(result)
 

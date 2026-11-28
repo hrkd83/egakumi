@@ -39,6 +39,11 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
                          ["AZFWApplicationRule", "AZFWThreatIntel"])
         self.assertEqual(url_logs["logAnalyticsDestinationType"], "Dedicated")
         self.assertNotIn("storageAccountId", url_logs)
+        dns_logs = definitions["fw-dns-logs"]["properties"]
+        self.assertEqual([entry["category"] for entry in dns_logs["logs"]],
+                         ["AZFWDnsQuery", "AZFWFqdnResolveFailure"])
+        self.assertEqual(dns_logs["workspaceId"], definition["workspaceId"])
+        self.assertNotIn("storageAccountId", dns_logs)
         config["network"]["firewall"]["sku"] = "Standard"
         standard = diagnostics.canonical_settings(config, "core")["fw-logs"]["properties"]
         self.assertEqual([entry["category"] for entry in standard["logs"] if entry["enabled"]], ["AZFWNetworkRule"])
@@ -51,6 +56,9 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         self.assertEqual(url_resource["properties"], "[parameters('diagnosticSettingProperties')['fw-url-logs']]")
         self.assertEqual(url_resource["scope"], logs["scope"])
         self.assertTrue(url_resource["dependsOn"])
+        dns_resource, = [item for item in template["resources"] if "-fw-dns-logs" in item["name"]]
+        self.assertEqual(dns_resource["properties"], "[parameters('diagnosticSettingProperties')['fw-dns-logs']]")
+        self.assertEqual(dns_resource["scope"], logs["scope"])
         self.assertNotIn("FlowTrace", json.dumps(definition))
         self.assertNotIn("FatFlow", json.dumps(definition))
 
@@ -155,12 +163,21 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         resources = template["resources"]
         configuration = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "infra/config"))
         prefix = configuration["resourceStem"]
-        expected = {f"nsg-{prefix}-{suffix}" for suffix in ("agw", "apim", "pep", "vm", "portal", "broker", "certificate")}
+        suffixes = ("agw", "apim", "pep", "vm", "portal", "broker", "certificate")
+        expected = {f"nsg-{prefix}-{suffix}" for suffix in suffixes}
+        canonical = diagnostics.canonical_settings(configuration, "core")
+        settings = {f"nsg-{suffix}": canonical[f"nsg-{suffix}"]["properties"] for suffix in suffixes}
+        for setting in settings.values():
+            self.assertEqual([entry["category"] for entry in setting["logs"]],
+                             ["NetworkSecurityGroupEvent", "NetworkSecurityGroupRuleCounter"])
+            self.assertIn("workspaceId", setting)
+            self.assertIn("storageAccountId", setting)
 
         for existing in (set(), expected, {f"nsg-{prefix}-agw", f"nsg-{prefix}-vm"}):
             with self.subTest(existing=sorted(existing)):
                 parameters = {"resourcePrefix": prefix, "config": configuration["network"],
-                              "existingNetworkSecurityGroupNames": sorted(existing), "auditEvidenceEnabled": False}
+                              "existingNetworkSecurityGroupNames": sorted(existing),
+                              "diagnosticSettingProperties": settings}
                 resolver = NetworkArmExpression("[createObject()]", template)
 
                 def expand(resource, property_name="name"):
@@ -181,6 +198,16 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
                 self.assertEqual(resources["nsgTagUpdates"]["properties"]["tags"], "[parameters('tags')]")
                 # 子規則の更新は全NSGに共通の名前から行い、新規／既存の片方へ限定しない。
                 self.assertIn("variables('nsgResourceNames')", resources["staticSecurityRules"]["name"])
+                placements = []
+                for symbol in ("createdNsgDiagnostics", "existingNsgDiagnostics"):
+                    diagnostic = resources[symbol]
+                    self.assertEqual(diagnostic["name"], "core-audit")
+                    placements.extend(zip(expand(diagnostic, "scope"), expand(diagnostic, "properties"), strict=True))
+                self.assertEqual(len(placements), len(expected))
+                self.assertEqual(dict(placements), {
+                    f"/mock/Microsoft.Network/networkSecurityGroups/nsg-{prefix}-{suffix}": settings[f"nsg-{suffix}"]
+                    for suffix in suffixes
+                })
 
 
 if __name__ == "__main__":

@@ -176,15 +176,14 @@ class GatewayDeploymentTests(unittest.TestCase):
                 for boundary in ("source_bundle","run_json","transport","build_image","deploy_release","publication_plan"):
                     observed[boundary].assert_not_called()
 
-    def test_missing_audit_foundation_stops_before_build_publication_or_azure_requests(self):
+    def test_gateway_publication_uses_core_outputs_and_broker_without_additional_workloads(self):
         config, state = fixture()
         config["publishApis"] = True
-        config["auditEvidence"] = {"enabled": True}
         with self.isolated_cli(config, state) as (arguments, observed):
-            with self.assertRaisesRegex(ValueError, "Provision Core audit evidence infrastructure"):
-                gateway.main(arguments)
-            for boundary in ("source_bundle", "run_json", "transport", "build_image", "deploy_release", "publication_plan"):
-                observed[boundary].assert_not_called()
+            self.assertEqual(gateway.main(arguments), 0)
+            self.assertEqual(observed["run_json"].call_count, 2)
+            self.assertEqual(set(observed["deploy_release"].call_args.args[3]), {"gateway", "apis"})
+            observed["publication_plan"].assert_called_once_with(config, state)
 
     def test_cli_refuses_public_or_other_environment_paths_before_building(self):
         """引数で別環境を指定しても、計画・build・Azure要求へ進めない。"""
@@ -420,7 +419,7 @@ class GatewayDeploymentTests(unittest.TestCase):
             saved_path, saved = observed['protected_json'].call_args.args
             self.assertEqual(saved_path.name, 'gateway-deployment.json')
             self.assertEqual(saved, {**workload, **waf, 'status': 'deployed', 'publicationResumed': True,
-                'apiPublication': publication, 'auditEvidenceEnabled': False, 'runtimeVerified': False})
+                'apiPublication': publication, 'runtimeVerified': False})
             observed['deploy_release'].assert_not_called()
             observed['build_image'].assert_not_called()
             self.assertNotIn('entraPublicationSource', sys.stdout.getvalue())

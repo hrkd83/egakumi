@@ -105,6 +105,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         # 読む元を公開ソースの種類へ限定する。*.local.jsonやprivate領域を探索しない。
         patterns = ("scripts/**/*.py", "infra/config/*.json",
                     "params/*.example.json", "params/params.schema.json", "infra/modules/monitoring/log-privacy.json",
+                    "infra/modules/monitoring/audit-archive.json",
                     "infra/modules/network/nsg/core-rules.json", "infra/modules/network/subnet-names.json",
                     "apps/api-gateway/waf-input-contracts.json", "apps/api-gateway/waf-data-exclusions.json",
                     "apps/api-gateway/apis/*.json", "apps/api-gateway/schemas/*.json", "apps/api-gateway/model-capabilities.json",
@@ -197,7 +198,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         self.assertTrue(public["entraRolloutEnabled"])
         self.assertNotIn("codex", public)
         self.assertEqual(set(public["resourceGroupNames"]), {"id", "nw", "monitor", "svc", "maint"})
-        self.assertTrue(public["auditEvidence"]["enabled"])
+        self.assertEqual(public["monitoring"]["retentionInDays"], 90)
         for field in ("addressSpaces", "subnetPrefixes"):
             self.assertEqual(public["network"][field], parameters["network"][field])
         self.assertNotIn("configFile", public)

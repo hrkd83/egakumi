@@ -7,6 +7,7 @@ from unittest import mock
 from tests.support.configuration_fixtures import fixture
 from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration
 from deployment.helpers import diagnostics
+from deployment.helpers.log_privacy import ARCHIVE_CONTAINERS
 from deployment import lifecycle
 
 def configuration():
@@ -19,7 +20,7 @@ class Directory:
     def __init__(self, config, existing=True):
         self.calls, self.values = [], {}
         desired = diagnostics.canonical_settings(config, "core", True)
-        self.firewall_logs = desired["fw-logs"]["id"].rsplit("/", 1)[0].casefold()
+        self.log_collections = {item["id"].rsplit("/", 1)[0].casefold() for item in desired.values()}
         for key, item in desired.items():
             if existing and key != "activity":
                 self.values[item["ownerId"].casefold()] = {"id": item["ownerId"], "type": item["ownerType"], "location": item["location"], "tags": {
@@ -34,7 +35,7 @@ class Directory:
         self.calls.append((method, path, copy.deepcopy(body)))
         assert method == "GET", "No cloud mutation is permitted in diagnostic controls"
         identifier = path.split("?", 1)[0].casefold()
-        if identifier == self.firewall_logs:
+        if identifier in self.log_collections:
             items = [value for target, value in self.values.items() if target.startswith(identifier + "/")]
             return {"statusCode": self.status.get(identifier, 200), "body": {"value": copy.deepcopy(items)}}
         status = self.status.get(identifier, 200 if identifier in self.values else 404)
@@ -91,6 +92,50 @@ class DiagnosticPreservationTests(unittest.TestCase):
                 with self.assertRaisesRegex(diagnostics.DiagnosticPreservationError, "raw-firewall-url-route"):
                     diagnostics.prepare_settings(self.config, transport, "monitoring")
                 self.assertTrue(all(call[0] == "GET" for call in transport.calls))
+
+    def test_private_categories_move_off_managed_raw_archive(self):
+        self.config["gateway"]["skuName"] = "WAF_v2"
+        settings = diagnostics.canonical_settings(self.config, "core")
+        archive = settings["blob-collectJapan"]["ownerId"]
+        transport = Directory(self.config)
+        for key in ("agw-logs", "law"):
+            props = transport.values[settings[key]["id"].casefold()]["properties"]
+            props["storageAccountId"] = archive
+        previous_apim = transport.values[settings["apim-websocket"]["id"].casefold()]["properties"]
+        for entry in previous_apim["logs"]:
+            entry["enabled"] = True
+        result = diagnostics.prepare_settings(self.config, transport, "core")
+        for key in ("agw-logs", "law", "apim-logs"):
+            self.assertNotIn("storageAccountId", result[key])
+        self.assertEqual({entry["category"] for entry in result["apim-websocket"]["logs"] if entry["enabled"]}, {"WebSocketConnectionLogs"})
+
+    def test_audit_receivers_do_not_route_logs_back_to_their_own_accounts(self):
+        settings = diagnostics.canonical_settings(self.config, "core")
+        for key in ("blob-collectJapan", "blob-collectFoundry"):
+            with self.subTest(key=key):
+                transport = Directory(self.config)
+                item = settings[key]
+                transport.values[item["id"].casefold()]["properties"]["storageAccountId"] = item["ownerId"]
+                with self.assertRaisesRegex(diagnostics.DiagnosticPreservationError, "recursive-archive-route"):
+                    diagnostics.prepare_settings(self.config, transport, "core")
+
+    def test_native_audit_blobs_are_in_the_owned_regional_retention_catalog(self):
+        settings = diagnostics.canonical_settings(self.config, "core")
+        self.assertTrue({"acr-logs", "sql-logs", "nsg-certificate", "certificate-blob-logs", "foundry-project-logs"} <= settings.keys())
+        self.assertTrue(settings["sql-logs"]["parentId"].endswith("/databases/master"))
+        collectors = {settings[f"blob-{name}"]["ownerId"]: name for name in ARCHIVE_CONTAINERS}
+        for key, setting in settings.items():
+            destination = setting["properties"].get("storageAccountId")
+            if destination and key != "activity":
+                enabled = {entry["category"].lower() for entry in setting["properties"]["logs"] if entry["enabled"]}
+                self.assertLessEqual({f"insights-logs-{name}" for name in enabled}, ARCHIVE_CONTAINERS[collectors[destination]])
+
+    def test_vm_platform_patch_logs_follow_the_configured_patch_mode(self):
+        self.assertNotIn("management-patch-logs", diagnostics.canonical_settings(self.config, "core"))
+        self.config["management"]["patchAssessmentMode"] = "AutomaticByPlatform"
+        patch_logs = diagnostics.canonical_settings(self.config, "core")["management-patch-logs"]["properties"]
+        self.assertEqual({entry["category"] for entry in patch_logs["logs"]}, {"SoftwareUpdateProfile", "SoftwareUpdates"})
+        self.assertNotIn("storageAccountId", patch_logs)
 
     def test_metrics_only_additional_storage_survives_same_name_properties(self):
         setting = diagnostics.canonical_settings(self.config, "core")["agw-metrics"]
