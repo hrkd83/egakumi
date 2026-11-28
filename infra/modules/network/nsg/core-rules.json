@@ -718,8 +718,8 @@
             "443"
           ]
         },
-        "allow-mgmt-vm-audit-storage-foundry-https-ingress": {
-          "designRecordId": "N-PEP-IN-MGMT-AUDIT-STORAGE-FOUNDRY-HTTPS",
+        "allow-mgmt-vm-audit-foundry-blob-https-ingress": {
+          "designRecordId": "N-PEP-IN-MGMT-AUDIT-FOUNDRY-BLOB-HTTPS",
           "direction": "Inbound",
           "priority": 230,
           "access": "Allow",
@@ -729,14 +729,14 @@
             "ip:management"
           ],
           "destination": [
-            "ips:auditStorageFoundry"
+            "ips:auditFoundryBlob"
           ],
           "destinationPorts": [
             "443"
           ]
         },
-        "allow-mgmt-vm-audit-storage-platform-https-ingress": {
-          "designRecordId": "N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS",
+        "allow-mgmt-vm-audit-platform-blob-https-ingress": {
+          "designRecordId": "N-PEP-IN-MGMT-AUDIT-PLATFORM-BLOB-HTTPS",
           "direction": "Inbound",
           "priority": 229,
           "access": "Allow",
@@ -746,7 +746,7 @@
             "ip:management"
           ],
           "destination": [
-            "ips:auditStorageJapan"
+            "ips:auditPlatformBlob"
           ],
           "destinationPorts": [
             "443"
@@ -893,8 +893,8 @@
             "443"
           ]
         },
-        "allow-audit-storage-foundry-https-egress": {
-          "designRecordId": "N-MGMT-OUT-AUDIT-STORAGE-FOUNDRY-HTTPS",
+        "allow-audit-foundry-blob-https-egress": {
+          "designRecordId": "N-MGMT-OUT-AUDIT-FOUNDRY-BLOB-HTTPS",
           "direction": "Outbound",
           "priority": 228,
           "access": "Allow",
@@ -904,14 +904,14 @@
             "ip:management"
           ],
           "destination": [
-            "ips:auditStorageFoundry"
+            "ips:auditFoundryBlob"
           ],
           "destinationPorts": [
             "443"
           ]
         },
-        "allow-audit-storage-platform-https-egress": {
-          "designRecordId": "N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS",
+        "allow-audit-platform-blob-https-egress": {
+          "designRecordId": "N-MGMT-OUT-AUDIT-PLATFORM-BLOB-HTTPS",
           "direction": "Outbound",
           "priority": 227,
           "access": "Allow",
@@ -921,7 +921,7 @@
             "ip:management"
           ],
           "destination": [
-            "ips:auditStorageJapan"
+            "ips:auditPlatformBlob"
           ],
           "destinationPorts": [
             "443"

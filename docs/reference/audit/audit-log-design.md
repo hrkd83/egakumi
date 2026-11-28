@@ -8,6 +8,16 @@ App Gateway・Azure Firewall・APIM・Foundryの標準診断を有効にする�
 
 標準構築で使うのは、Azure Monitorの診断設定、既存のApplication InsightsとLog Analytics、Data Export、監査Blob。APIMは標準のAzure Monitorロガーと既存の認証主体・判定のトレースを使う。モデルAPIはAPIMからFoundryへ直接ルーティングする。本文の保存が必須なAPIは、標準機能で要件を満たせることを公開条件とする。
 
+監査Storageは `location` と `foundryLocation` が同じ場合も2つ構築する。アカウント名は `st` ＋ ハイフンを除いた `環境名-製品名` ＋ 用途の接尾辞で決まる。下表は `test-egakumi` の例。
+
+| 用途 | Storageアカウント | 配置先 | Blob Private Endpoint |
+| --- | --- | --- | --- |
+| 基盤の監査 | `sttestegakumiplat` | `location` | `pe-test-egakumi-audit-platform-blob` |
+| Foundry診断の監査 | `sttestegakumifndry` | `foundryLocation` | `pe-test-egakumi-audit-foundry-blob` |
+| 証明書ジョブの状態 | `sttestegakumicert` | `location` | `pe-test-egakumi-certificate-blob` |
+
+証明書ジョブの状態Storageは、排他リースと実行結果を保持する。Blobサービスへの操作ログは基盤の監査Storageへ送る。 [Blob Private EndpointへのNSGルール](../../operations/network-security-groups.md)
+
 | 記録元 | 収集する分類と監査項目 | 本番の長期保管 |
 | --- | --- | --- |
 | App Gateway | `ApplicationGatewayAccessLog` と `ApplicationGatewayFirewallLog`。接続元、HTTPメソッドとパス、応答状態、接続先と時間、WAFのルールと判定 | `AGWAccessLogs` と `AGWFirewallLogs` をData Export。ワークスペースの取り込み変換でURLクエリとWAFの生の一致値を除去してから保存する |

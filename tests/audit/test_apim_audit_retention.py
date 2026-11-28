@@ -59,12 +59,13 @@ class ApimAuditRetentionTests(unittest.TestCase):
                           if resource['type'].endswith('/immutabilityPolicies'))
         cls.export = next(resource for resource in cls.template['resources'] if resource['type'].endswith('/dataExports'))
 
-    def parameters(self, environment='production', **overrides):
+    def parameters(self, profile='production', **overrides):
         result = {key: copy.deepcopy(value['defaultValue'])
                   for key, value in self.template['parameters'].items() if 'defaultValue' in value}
+        environment = 'prod' if profile == 'production' else profile
         result.update(productName='fixture', environmentName=environment, resourceStem=environment + '-fixture',
                       location='japaneast', foundryLocation='eastus2')
-        options = json.loads((CORE / f'infra/config/{environment}.json').read_text())['monitoring']
+        options = json.loads((CORE / f'infra/config/{profile}.json').read_text())['monitoring']
         result.update({key: options[key] for key in ('auditImmutabilityMode', 'auditRetentionDays', 'auditStorageSku')})
         result.update(overrides)
         return result
@@ -85,13 +86,13 @@ class ApimAuditRetentionTests(unittest.TestCase):
         return [item['name'] for index, item in enumerate(self.definitions(parameters))
                 if self.evaluate(self.policy['condition'], parameters, index)]
 
-    def test_production_protects_all_three_apim_categories_in_the_japan_collector(self):
+    def test_production_protects_all_three_apim_categories_in_the_platform_collector(self):
         params = self.parameters()
         definitions = self.definitions(params)
-        japan = {item['name'] for item in definitions if item['accountIndex'] == 0}
-        self.assertEqual(japan, ARCHIVE_CONTAINERS['collectJapan'])
+        platform = {item['name'] for item in definitions if item['accountIndex'] == 0}
+        self.assertEqual(platform, ARCHIVE_CONTAINERS['collectPlatform'])
         self.assertEqual({item['name'] for item in definitions if item['accountIndex'] == 1}, ARCHIVE_CONTAINERS['collectFoundry'])
-        self.assertTrue(APIM_CONTAINERS <= japan)
+        self.assertTrue(APIM_CONTAINERS <= platform)
         self.assertTrue(APIM_CONTAINERS <= set(self.selected(params)))
         self.assertEqual(self.evaluate(self.policy['properties']['immutabilityPeriodSinceCreationInDays'], params), 2557)
         self.assertTrue(self.policy['properties']['allowProtectedAppendWrites'])

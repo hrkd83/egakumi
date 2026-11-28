@@ -62,13 +62,13 @@ var analyticsTables = concat(exportTables, [
 var compactName = replace(resourceStem, '-', '')
 // 収集先と保全用の役割を分け、必要なリージョンに配置します。保存の冗長化・削除保護は本番運用の要件で指定します。
 var auditAccounts = [
-  { key: 'collectJapan', name: 'st${compactName}jp', location: location }
-  { key: 'collectFoundry', name: 'st${compactName}us', location: foundryLocation }
+  { key: 'collectPlatform', name: 'st${compactName}${archive.collectors.collectPlatform.storageSuffix}', location: location }
+  { key: 'collectFoundry', name: 'st${compactName}${archive.collectors.collectFoundry.storageSuffix}', location: foundryLocation }
 ]
-var japanContainers = concat(archive.directContainers.collectJapan,
+var platformContainers = concat(archive.directContainers.collectPlatform,
   map(concat(exportTables, [archive.agentContentTable]), tableName => 'am-${toLower(tableName)}'))
 var containerDefinitions = concat(
-  map(japanContainers, containerName => { accountIndex: 0, name: containerName }),
+  map(platformContainers, containerName => { accountIndex: 0, name: containerName }),
   map(archive.directContainers.collectFoundry, containerName => { accountIndex: 1, name: containerName })
 )
 
@@ -301,7 +301,7 @@ var containerIds = [for (definition, i) in containerDefinitions: containers[i].i
 var policyIds = [for (definition, i) in containerDefinitions: '${containers[i].id}/immutabilityPolicies/default']
 
 output storage object = {
-  collectJapan: {
+  collectPlatform: {
     id: accounts[0].id
     name: accounts[0].name
     blobServiceId: blobServices[0].id

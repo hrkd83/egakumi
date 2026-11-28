@@ -26,7 +26,7 @@ from operations.common import OperationContext, OperationError, poll_delay
 
 
 APIS = {"recipients": "2023-01-01", "metric": "2018-03-01", "log": "2023-12-01"}
-METRIC_RULES = {"law-export-failed", "audit-blob-availability", "audit-eus2-blob-availability",
+METRIC_RULES = {"law-export-failed", "audit-platform-blob-availability", "audit-foundry-blob-availability",
                 "agw-unhealthy-backend", "firewall-unhealthy", "apim-capacity-high"}
 LOG_RULES = {"audit-write-failed", "appi-ingestion-high", "api-failure-rate"}
 # ActionGroupはPUTだけが通知先を更新する。ログ・数値アラートはcriteriaだけPATCHする。
@@ -104,8 +104,8 @@ def _scope(context, layer: str) -> str:
 def _expected_scope(context, rule: str) -> str:
     """IaCで定義した各監視規則の対象を現在のstateと命名から固定する。"""
     stem = context.config["resourceStem"]
-    if rule in ("audit-blob-availability", "audit-eus2-blob-availability"):
-        key = "collectJapan" if rule == "audit-blob-availability" else "collectFoundry"
+    if rule in ("audit-platform-blob-availability", "audit-foundry-blob-availability"):
+        key = "collectPlatform" if rule == "audit-platform-blob-availability" else "collectFoundry"
         return context.state["storage"][key]["id"] + "/blobServices/default"
     if rule == "agw-unhealthy-backend":
         return _scope(context, "nw") + "/providers/Microsoft.Network/applicationGateways/agw-" + stem

@@ -93,7 +93,7 @@ function Invoke-Json([string]$Uri,[string]$Method='GET',$Body=$null) {
 }
 
 try {
-    $current=New-Leaf -2 88
+    $currentLeaf=New-Leaf -2 88
     $script:Replacement=New-Leaf -1 89
     $older=New-Leaf -3 87
     $wrongSan=New-Leaf -1 89 'other.invalid'
@@ -112,21 +112,21 @@ try {
         finally {$script:FixtureAuthority=$trustedAuthority;$otherAuthority.Dispose()}
     } finally {$otherKey.Dispose()}
 
-    Set-Current $current
+    Set-Current $currentLeaf
     Check (Test-ReusableCertificate $script:Current 30) 'Registered certificate and its PFX did not match'
     $script:CurrentSecret.value=[Convert]::ToBase64String((Export-FixturePfx $script:Replacement ''))
     Expect-Failure {Test-ReusableCertificate $script:Current 30} 'Existing certificate and secret do not match'
-    Set-Current $current
+    Set-Current $currentLeaf
     $script:CurrentSecret.attributes.enabled=$false
     Expect-Failure {Test-ReusableCertificate $script:Current 30} 'The existing certificate secret was disabled by an operator'
     Set-Current $nearExpiry
     Check (-not (Test-ReusableCertificate $script:Current 30)) 'Expiring certificate was reused'
 
-    $reference=@{thumbprint=$current.Thumbprint;notBeforeUtc=$current.NotBefore.ToUniversalTime();notAfterUtc=$current.NotAfter.ToUniversalTime()}
+    $reference=@{thumbprint=$currentLeaf.Thumbprint;notBeforeUtc=$currentLeaf.NotBefore.ToUniversalTime();notAfterUtc=$currentLeaf.NotAfter.ToUniversalTime()}
     $candidate=[pscustomobject]@{PfxFullChain=$script:CachePath}
     Set-Cache $script:Replacement
     Check (Test-CachedAcmeCertificate $candidate $script:Password 7 $reference) 'Valid replacement PFX was rejected'
-    foreach ($leaf in @($current,$older,$wrongSan,$nearExpiry)) {
+    foreach ($leaf in @($currentLeaf,$older,$wrongSan,$nearExpiry)) {
         Set-Cache $leaf
         Check (-not (Test-CachedAcmeCertificate $candidate $script:Password 7 $reference)) 'Unsuitable PFX was accepted for rotation'
     }
@@ -136,7 +136,7 @@ try {
     Expect-Failure {Test-CachedAcmeCertificate $candidate $script:Password 7 $reference} 'Certificate trust chain verification failed'
 
     $script:ReplacementPfx=Export-FixturePfx $script:Replacement $script:Password
-    Set-Current $current
+    Set-Current $currentLeaf
     $script:ImportMode='unconfirmed'
     Expect-Failure {Import-Pfx $script:ReplacementPfx $script:Password} 'Certificate import was not confirmed'
     Check ($script:PostCalls -eq 1) 'Unconfirmed import was repeated'

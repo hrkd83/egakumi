@@ -36,14 +36,14 @@ class AuditStorageNetworkTests(unittest.TestCase):
         return {'resourcePrefix': 'fixture-resources', 'location': 'japaneast', 'tags': {},
                 'pepSubnetId': '/synthetic/network/subnets/private-endpoints',
                 'auditStorage': {
-                    'collectJapan': {'id': '/synthetic/monitoring/storageAccounts/auditlocal', 'name': 'auditlocal'},
+                    'collectPlatform': {'id': '/synthetic/monitoring/storageAccounts/auditlocal', 'name': 'auditlocal'},
                     'collectFoundry': {'id': '/synthetic/monitoring/storageAccounts/auditremote', 'name': 'auditremote'}}}
 
     def test_endpoint_outputs_preserve_all_nics_and_deduplicate_only_repeated_ips(self):
         parameters = self.parameters()
         parameters['references'] = {}
         expected = {}
-        for key, suffix, ips in (('collectJapan', 'audit-japan-blob', ['10.70.1.12', '10.70.1.13', '10.70.1.14']),
+        for key, suffix, ips in (('collectPlatform', 'audit-platform-blob', ['10.70.1.12', '10.70.1.13', '10.70.1.14']),
                                  ('collectFoundry', 'audit-foundry-blob', ['10.70.1.15', '10.70.1.16', '10.70.1.17'])):
             name = 'pe-' + parameters['resourcePrefix'] + '-' + suffix
             endpoint_id = '/mock/Microsoft.Network/privateEndpoints/' + name
@@ -65,7 +65,7 @@ class AuditStorageNetworkTests(unittest.TestCase):
     def test_zone_group_owns_a_records_and_reads_actual_storage_output_names(self):
         parameters = self.parameters()
         parameters['privateEndpoints'] = {
-            'collectJapan': {'id': '/synthetic/privateEndpoints/chosen-japan-endpoint'},
+            'collectPlatform': {'id': '/synthetic/privateEndpoints/chosen-platform-endpoint'},
             'collectFoundry': {'id': '/synthetic/privateEndpoints/chosen-foundry-endpoint'}}
         parameters['references'] = {
             '/mock/Microsoft.Network/privateDnsZones/A/privatelink.blob.core.windows.net/auditlocal':
@@ -75,7 +75,7 @@ class AuditStorageNetworkTests(unittest.TestCase):
         parameters['privateDnsZoneId'] = '/synthetic/privateDnsZones/privatelink.blob.core.windows.net'
         actual = AuditExpression('[true()]', self.records).resolve(
             self.records['outputs']['recordPrivateIps']['value'], parameters)
-        expected = {'collectJapan': ['10.70.1.12', '10.70.1.13'],
+        expected = {'collectPlatform': ['10.70.1.12', '10.70.1.13'],
                     'collectFoundry': ['10.70.1.15', '10.70.1.16']}
         self.assertEqual(actual, expected)
         reader = next(resource for resource in self.dns['resources']
@@ -88,7 +88,7 @@ class AuditStorageNetworkTests(unittest.TestCase):
         zone_groups = [resource for resource in self.dns['resources']
                        if resource['type'] == 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups']
         self.assertEqual([expression.resolve(resource['name'], parameters) for resource in zone_groups],
-                         ['chosen-japan-endpoint/default', 'chosen-foundry-endpoint/default'])
+                         ['chosen-platform-endpoint/default', 'chosen-foundry-endpoint/default'])
         self.assertEqual([resource['type'] for resource in self.dns['resources']],
                          ['Microsoft.Network/privateDnsZones',
                           'Microsoft.Network/privateEndpoints/privateDnsZoneGroups',
@@ -98,13 +98,13 @@ class AuditStorageNetworkTests(unittest.TestCase):
     def test_a_record_reads_wait_for_both_zone_groups_and_never_write_managed_records(self):
         parameters = self.parameters()
         parameters['privateEndpoints'] = {
-            'collectJapan': {'id': '/synthetic/privateEndpoints/chosen-japan-endpoint'},
+            'collectPlatform': {'id': '/synthetic/privateEndpoints/chosen-platform-endpoint'},
             'collectFoundry': {'id': '/synthetic/privateEndpoints/chosen-foundry-endpoint'}}
         expression = AuditExpression('[true()]', self.dns)
         reader = next(resource for resource in self.dns['resources']
                       if resource['type'] == 'Microsoft.Resources/deployments')
         dependencies = expression.resolve(reader['dependsOn'], parameters)
-        for name in ('chosen-japan-endpoint/default', 'chosen-foundry-endpoint/default'):
+        for name in ('chosen-platform-endpoint/default', 'chosen-foundry-endpoint/default'):
             self.assertIn('/mock/Microsoft.Network/privateEndpoints/privateDnsZoneGroups/' + name, dependencies)
         self.assertEqual(reader['properties']['expressionEvaluationOptions']['scope'], 'inner')
         self.assertEqual(reader['properties']['template']['resources'], [])

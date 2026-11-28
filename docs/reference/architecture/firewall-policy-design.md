@@ -196,7 +196,7 @@ TLS検査によるURLの記録は、取り込み前の変換を通るLog Analyti
 | [`FLOW-ACA-ACR`](network-communication-requirements.md#flow-aca-acr) | ACA → 構築ACR PE、HTTPS443 | PEの直接到達。MCR外部取得とは異なる経路 |
 | [`FLOW-APIM-FOUNDRY`](network-communication-requirements.md#flow-apim-foundry)、[`FLOW-APIM-KV`](network-communication-requirements.md#flow-apim-kv)、[`FLOW-APPGW-KV`](network-communication-requirements.md#flow-appgw-kv) | APIM／AppGW → 構築Foundry／Vault PE | PEの直接到達。サービス・タグの基盤許可と自PE接続を区別 |
 | [`FLOW-MGMT-KV`](network-communication-requirements.md#flow-mgmt-kv)、[`FLOW-MGMT-FOUNDRY`](network-communication-requirements.md#flow-mgmt-foundry)、[`FLOW-MGMT-ACR`](network-communication-requirements.md#flow-mgmt-acr)、[`FLOW-MGMT-SQL`](network-communication-requirements.md#flow-mgmt-sql) | 管理VM → 各構築PE | VNet内保守。送受信NSGと用途別MI／RBAC・DB権限で制御 |
-| [`FLOW-MGMT-AUDIT-JAPAN`](network-communication-requirements.md#flow-mgmt-audit-japan)、[`FLOW-MGMT-AUDIT-FOUNDRY`](network-communication-requirements.md#flow-mgmt-audit-foundry) | 管理VM → 構築監査Blob PE | 監査閲覧の直接到達。外部Storageタグ依存とは別 |
+| [`FLOW-MGMT-AUDIT-PLATFORM`](network-communication-requirements.md#flow-mgmt-audit-platform)、[`FLOW-MGMT-AUDIT-FOUNDRY`](network-communication-requirements.md#flow-mgmt-audit-foundry) | 管理VM → 構築監査Blob PE | 監査閲覧の直接到達。外部Storageタグ依存とは別 |
 | [`FLOW-MGMT-APIM`](network-communication-requirements.md#flow-mgmt-apim)、[`FLOW-MGMT-ACA-HTTPS`](network-communication-requirements.md#flow-mgmt-aca-https) | 管理VM → APIM／ACA内部endpoint | VNet内保守の直接経路。外部Dev gateway接続とは別 |
 
 将来ハブ＆スポークへ手動変更するときは、実経路がFirewall通過へ変わる通信を特定してから、企業のDNS・UDR・SNAT・NSG・FWを一緒に見直す。本書の直接通信表を、将来用の未使用FW許可として初期投入しない。構築後に資材を再実行しない契約の手動変更は、初期資材の再適用で維持されるとは保証しない。

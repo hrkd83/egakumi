@@ -72,9 +72,9 @@ class ManagementClientBicepTests(unittest.TestCase):
                       'workspaceCustomerId': '44444444-4444-4444-8444-444444444444'}
         storage = {key: {'id': monitor + 'Microsoft.Storage/storageAccounts/sttestfixture' + suffix,
                          'name': 'sttestfixture' + suffix}
-                   for key, suffix in (('collectJapan', 'jp'), ('collectFoundry', 'us'))}
+                   for key, suffix in (('collectPlatform', 'plat'), ('collectFoundry', 'fndry'))}
         storage['containerIds'] = [storage[key]['id'] + '/blobServices/default/containers/insights-logs-audit'
-                                   for key in ('collectJapan', 'collectFoundry')]
+                                   for key in ('collectPlatform', 'collectFoundry')]
         references = {'test-fixture-management': {'outputs': {'managementVm': {'value': management}}},
                       'test-fixture-portal': {'outputs': {'platform': {'value': platform}}},
                       'test-fixture-broker-platform': {'outputs': {'platform': {'value': broker}}},
@@ -89,7 +89,7 @@ class ManagementClientBicepTests(unittest.TestCase):
             'environments': [platform['environmentId'], broker['environmentId']],
             'workspace': {'id': monitoring['workspaceId'], 'customerId': monitoring['workspaceCustomerId']},
             'auditStorage': [{'id': storage[key]['id'], 'containers': ['insights-logs-audit']}
-                             for key in ('collectJapan', 'collectFoundry')]}
+                             for key in ('collectPlatform', 'collectFoundry')]}
         state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
         state['outputs'] = {'managementVm': management, 'monitoring': monitoring, 'auditStorage': storage,
                             'managementClientInventory': expected, 'brokerPlatform': broker}

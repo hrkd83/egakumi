@@ -8,8 +8,8 @@
 | --- | --- | --- |
 | `schemaVersion` | `1` | 入力形式の版 |
 | `configFile` | `../../infra/config/test.json`または`../../infra/config/production.json` | 準備コマンドがprofileに合わせて設定する共通config参照 |
-| `productName` | 公開例`egakumi` | 資源名の製品接頭辞 |
-| `environmentName` | 公開例`test`／`production` | 環境名。SKU選択と独立 |
+| `productName` | 最大12文字。公開例 `egakumi` | 資源名に使う製品名 |
+| `environmentName` | 最大4文字。公開例 `test`／`prod` | 資源名に使う環境名。SKU選択と独立 |
 | `subscriptionId` | 非ゼロGUID | Azure構築先 |
 | `azureTenantId` | 非ゼロGUID | Azure構築・RBAC先 |
 | `entraTenantId` | 非ゼロGUID、省略可 | OAuth・社員認証先。省略時Azure側tenant |

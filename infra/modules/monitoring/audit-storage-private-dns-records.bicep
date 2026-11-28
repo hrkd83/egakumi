@@ -9,9 +9,9 @@ resource zone 'Microsoft.Network/privateDnsZones@2024-06-01' existing = {
   name: last(split(privateDnsZoneId, '/'))
 }
 
-resource japanRecord 'Microsoft.Network/privateDnsZones/A@2024-06-01' existing = {
+resource platformRecord 'Microsoft.Network/privateDnsZones/A@2024-06-01' existing = {
   parent: zone
-  name: auditStorage.collectJapan.name
+  name: auditStorage.collectPlatform.name
 }
 
 resource foundryRecord 'Microsoft.Network/privateDnsZones/A@2024-06-01' existing = {
@@ -20,6 +20,6 @@ resource foundryRecord 'Microsoft.Network/privateDnsZones/A@2024-06-01' existing
 }
 
 output recordPrivateIps object = {
-  collectJapan: map(japanRecord.properties.aRecords, record => record.ipv4Address)
+  collectPlatform: map(platformRecord.properties.aRecords, record => record.ipv4Address)
   collectFoundry: map(foundryRecord.properties.aRecords, record => record.ipv4Address)
 }

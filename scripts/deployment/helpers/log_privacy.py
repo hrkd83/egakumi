@@ -8,9 +8,10 @@ from .paths import REPOSITORY
 
 PRIVACY = json.loads((REPOSITORY / "infra/modules/monitoring/log-privacy.json").read_text(encoding="utf-8"))
 ARCHIVE = json.loads((REPOSITORY / "infra/modules/monitoring/audit-archive.json").read_text(encoding="utf-8"))
+ARCHIVE_COLLECTORS = ARCHIVE["collectors"]
 EXPORT_TABLES = (*ARCHIVE["exportTables"], *PRIVACY["transforms"])
 ARCHIVE_CONTAINERS = {collector: frozenset(names) for collector, names in ARCHIVE["directContainers"].items()}
-ARCHIVE_CONTAINERS["collectJapan"] |= frozenset(f"am-{table.lower()}" for table in (*EXPORT_TABLES, ARCHIVE["agentContentTable"]))
+ARCHIVE_CONTAINERS["collectPlatform"] |= frozenset(f"am-{table.lower()}" for table in (*EXPORT_TABLES, ARCHIVE["agentContentTable"]))
 WORKSPACE_API = "2023-09-01"
 DCR_API = "2023-03-11"
 
@@ -19,13 +20,18 @@ class LogPrivacyError(ValueError):
     """内部応答を転載せず、privacy設定を確認できなかった理由を通知する。"""
 
 
+def audit_storage_account_name(stem: str, collector: str) -> str:
+    """Bicepと同じ命名定義から、監査Storage名を導出する。"""
+    return "st" + stem.replace("-", "") + ARCHIVE_COLLECTORS[collector]["storageSuffix"]
+
+
 def resource_ids(config: dict) -> dict:
     """確認済みの構築入力から、同じ環境の固定IDだけを導出する。"""
     subscription, stem = config["subscriptionId"], config["resourceStem"]
     groups = config["resourceGroupNames"]
     monitoring = f"/subscriptions/{subscription}/resourceGroups/{groups['monitor']}/providers/"
     workspace = monitoring + f"Microsoft.OperationalInsights/workspaces/law-{stem}"
-    storage = monitoring + "Microsoft.Storage/storageAccounts/st" + stem.replace("-", "") + "jp"
+    storage = monitoring + "Microsoft.Storage/storageAccounts/" + audit_storage_account_name(stem, "collectPlatform")
     return {"workspace": workspace, "dcr": monitoring + f"Microsoft.Insights/dataCollectionRules/dcr-{stem}-workspace",
             "storage": storage, "export": workspace + f"/dataExports/export-{stem}-audit"}
 

@@ -27,6 +27,7 @@ from .configuration import API_NAME, load_configuration
 from .ingress import apim_name_matches
 from .apim_naming import apim_instance_id, apim_name
 from .credential_pools import resource_names
+from .log_privacy import ARCHIVE_COLLECTORS, audit_storage_account_name
 from .portal_resources import resource_names as portal_resource_names
 from .subnet_names import subnet_resource_id
 
@@ -149,14 +150,14 @@ def _validate_state(configuration: dict, state: Mapping[str, Any]) -> dict:
     if not isinstance(storage, Mapping):
         _error("invalid-state", "監査Storageの配備出力が不正です。")
     accounts: list[str] = []
-    for key in ("collectJapan", "collectFoundry"):
-        account = storage.get(key)
+    expected_prefix = _rg_id(configuration, "monitor") + "/providers/Microsoft.Storage/storageAccounts/"
+    for collector in ARCHIVE_COLLECTORS:
+        account = storage.get(collector)
         if account:
             account_id = account.get("id") if isinstance(account, Mapping) else None
-            parts = _parts(account_id)
-            expected = _rg_id(configuration, "monitor") + "/providers/Microsoft.Storage/storageAccounts/"
-            if len(parts) != 8 or not account_id.lower().startswith(expected.lower()) or not re.fullmatch(r"[a-z0-9]{3,24}", parts[-1]):
-                _error("invalid-state", "監査Storageの配置先が対象のmonitor RGと一致しません。")
+            expected = expected_prefix + audit_storage_account_name(configuration["resourceStem"], collector)
+            if not _same(account_id, expected):
+                _error("invalid-state", "監査Storageの用途とリソースIDが今回の配備先と一致しません。")
             accounts.append(account_id)
     policy_ids = storage.get("immutabilityPolicyIds") or []
     if not isinstance(policy_ids, list) or any(not isinstance(item, str) for item in policy_ids) or len(set(policy_ids)) != len(policy_ids):
@@ -1641,7 +1642,7 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
     if diagnostic is not None:
         properties = diagnostic.get("properties", {})
         monitoring = state.get("monitoring") or {}
-        own_storage_id = current["storage"].get("collectJapan", {}).get("id")
+        own_storage_id = current["storage"].get("collectPlatform", {}).get("id")
         if not _same(diagnostic.get("id"), diagnostic_id) or not _same(properties.get("workspaceId"), monitoring.get("workspaceId")):
             _error("diagnostic-owner-mismatch", "同名のActivity診断設定が現在のLAWを参照していないため削除しません。", diagnostic_id)
         if properties.get("storageAccountId") and not _same(properties["storageAccountId"], own_storage_id):

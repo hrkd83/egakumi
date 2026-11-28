@@ -10,6 +10,7 @@ from uuid import UUID
 
 from .aca_egress import validate_aca_route_snapshot
 from .apim_naming import apim_name
+from .log_privacy import ARCHIVE_COLLECTORS, audit_storage_account_name
 from .subnet_names import SUBNET_NAMES, subnet_resource_id
 
 
@@ -253,7 +254,7 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
     nsg_groups = _active_groups(config)
     allowed_bindings = {('ips', key) for key in ('firewallPublic', 'appGatewayPublic', 'apim', 'portal', 'broker', 'management')}
     allowed_bindings.update(('ipSets', key) for key in
-                            ('foundry', 'keyVault', 'registry', 'sql', 'auditStorageJapan', 'auditStorageFoundry',
+                            ('foundry', 'keyVault', 'registry', 'sql', 'auditPlatformBlob', 'auditFoundryBlob',
                              'certificateVault', 'certificateBlob'))
     if (_required_bindings is not None and (not isinstance(_required_bindings, frozenset)
                                            or not _required_bindings <= allowed_bindings)):
@@ -384,9 +385,13 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
         'keyVault': ('kv', service_prefix+'Microsoft.KeyVault/vaults/kv-'+stem, ['vault'], 'Microsoft.KeyVault/vaults', '2024-11-01'),
         'registry': ('acr', service_prefix+'Microsoft.ContainerRegistry/registries/acr'+stem.replace('-', ''), ['registry'], 'Microsoft.ContainerRegistry/registries', '2023-07-01'),
         'sql': ('sql', service_prefix+'Microsoft.Sql/servers/sql-'+stem, ['sqlServer'], 'Microsoft.Sql/servers', '2023-08-01'),
-        'auditStorageJapan': ('audit-japan-blob', groups['monitor']+'/providers/Microsoft.Storage/storageAccounts/st'+stem.replace('-', '')+'jp', ['blob'], 'Microsoft.Storage/storageAccounts', '2023-05-01'),
-        'auditStorageFoundry': ('audit-foundry-blob', groups['monitor']+'/providers/Microsoft.Storage/storageAccounts/st'+stem.replace('-', '')+'us', ['blob'], 'Microsoft.Storage/storageAccounts', '2023-05-01'),
     }
+    audit_collectors = {'auditPlatformBlob': 'collectPlatform', 'auditFoundryBlob': 'collectFoundry'}
+    storage_prefix = groups['monitor'] + '/providers/Microsoft.Storage/storageAccounts/'
+    for key, collector in audit_collectors.items():
+        targets[key] = (ARCHIVE_COLLECTORS[collector]['endpointSuffix'],
+                        storage_prefix + audit_storage_account_name(stem, collector),
+                        ['blob'], 'Microsoft.Storage/storageAccounts', '2023-05-01')
     if 'certificate' in prefixes:
         targets.update({
             'certificateVault': ('tls-vault', service_prefix + 'Microsoft.KeyVault/vaults/kvtls-' + stem,
@@ -400,13 +405,13 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_portal=Fal
         pe_id = nw + 'privateEndpoints/pe-' + stem + '-' + suffix
         pe = _read(config, transport, pe_id, 'Microsoft.Network/privateEndpoints',
                    required=not (_required_bindings is None and permit_pending_bindings
-                                 and key.startswith(('auditStorage', 'certificate'))))
+                                 and (key in audit_collectors or key.startswith('certificate'))))
         if pe is None:
             # Infrastructure preparation precedes creation of the two audit endpoints.
             # No missing binding is supplied to a rule or completion check.
             continue
         _read(config, transport, target_id, kind, api=api, state=False,
-              location=config.get('foundryLocation') if key in ('foundry', 'auditStorageFoundry') else None)
+              location=config.get('foundryLocation') if key in ('foundry', 'auditFoundryBlob') else None)
         p = pe['properties']; connections = p.get('privateLinkServiceConnections')
         if (p.get('manualPrivateLinkServiceConnections', []) not in ([], None)
                 or _ref(p.get('subnet')) != subnet_ids['pep'].casefold()

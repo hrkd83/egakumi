@@ -57,7 +57,7 @@ Azureの設定確認では実行結果と資源の設定を読み戻す。通信
 | PE接続 | APIM/ACA/管理VMとFoundry/KV/SQL/ACR/監査Blob | DNS回答とPE全IP、往復制御、サービスTLSと認可を照合する。 |
 | Vault分離と証明書 | APPGW-KV、APIM-KV、ACA-KV、MGMT-KV | 2つのPrivate EndpointとDNS回答、Vaultのネットワーク設定、対象オブジェクトの実効RBACを照合。公開証明書の初回発行・自動更新・実配信、APIMのNamed Value解決、必要のない接続とsecret読取の拒否を確認 |
 | ACAの現構成依存 | イメージ取得、App/Job起動、標準DNS、管理ID、監視、リビジョン切替、再起動、スケール | 構築ACRと公開MCRの用途を区別する。Portal、Broker、証明書JobそれぞれのPE接続と起動・更新・復旧を確認する。 |
-| 監査Blob・保存ログ | MGMT-AUDIT-JAPAN/FOUNDRY、MGMT-MONITOR | 担当者本人の作業権限で構築コンテナーとWorkspaceを読み、付与前・回収後は拒否される。監査Blobへの書込み・削除権限は付けない |
+| 監査Blob・保存ログ | MGMT-AUDIT-PLATFORM/FOUNDRY、MGMT-MONITOR | 担当者本人の作業権限で構築コンテナーとWorkspaceを読み、付与前・回収後は拒否される。監査Blobへの書込み・削除権限は付けない |
 | ACA App/環境のログ・App exec | MGMT-ARM、MGMT-ACA-DEV | 対象App/revision/replica/containerとtoken scopeを確認し、ログ本文/有限execの結果を取得。環境tokenをログ専用の保証として扱わない |
 | ACA Jobログ | ACA-SQL等のJob処理とMGMT-ACA-DEV | 対象Jobのtoken認可、保存ログ、実行が存続する場合のライブログを区別。schema Jobは配備更新工程の正常実行に合わせて確認 |
 | SQL直接保守 | MGMT-SQL | 対象DBだけで一時付与した本人のユーザーと最小権限で接続し、ODBC 18のTLSと証明書検証を確認する。別DBと回収後の新規接続は拒否される |

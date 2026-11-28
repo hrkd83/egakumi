@@ -13,7 +13,7 @@ resource zone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
 }
 
 resource japanZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2025-01-01' = {
-  name: '${last(split(privateEndpoints.collectJapan.id, '/'))}/default'
+  name: '${last(split(privateEndpoints.collectPlatform.id, '/'))}/default'
   properties: {
     privateDnsZoneConfigs: [{ name: 'blob', properties: { privateDnsZoneId: zone.id } }]
   }
@@ -31,7 +31,7 @@ resource foundryZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGrou
 // existing A参照自体はZone Groupへの依存を作らないため、読取専用の
 // 子配備を両Groupの完了後に開始します。自動管理AへのPUTは行いません。
 module records 'audit-storage-private-dns-records.bicep' = {
-  name: '${last(split(privateEndpoints.collectJapan.id, '/'))}-dns-records'
+  name: '${last(split(privateEndpoints.collectPlatform.id, '/'))}-dns-records'
   params: {
     privateDnsZoneId: zone.id
     auditStorage: auditStorage

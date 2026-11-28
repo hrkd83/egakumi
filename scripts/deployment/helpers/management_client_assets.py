@@ -9,6 +9,7 @@ import time
 
 from operations.management_client import validate_inventory
 from .credential_broker_lifecycle import broker_environment_id
+from .log_privacy import ARCHIVE_COLLECTORS, audit_storage_account_name
 from .paths import REPOSITORY, local_paths
 from .portal_resources import resource_names as portal_resource_names
 from .private_permissions import check_private_permissions
@@ -120,8 +121,8 @@ def management_client_inventory(config, state):
             or not isinstance(storage.get('containerIds'), list)):
         raise ValueError('Management client identity and monitoring targets require matching infrastructure deployment outputs')
     expected_accounts = {}
-    for collector, suffix in (('collectJapan', 'jp'), ('collectFoundry', 'us')):
-        account_id = monitor + 'Microsoft.Storage/storageAccounts/st' + config['resourceStem'].replace('-', '') + suffix
+    for collector in ARCHIVE_COLLECTORS:
+        account_id = monitor + 'Microsoft.Storage/storageAccounts/' + audit_storage_account_name(config['resourceStem'], collector)
         actual = storage.get(collector, {})
         if not isinstance(actual, dict) or str(actual.get('id', '')).casefold() != account_id.casefold():
             raise ValueError('The audit Storage output differs from its exact constructed resource')

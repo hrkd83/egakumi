@@ -15,12 +15,17 @@ REPOSITORY = Path(__file__).resolve().parents[3]
 AZD_PROJECT_NAME = "egakumi"
 STANDARD_CONFIG_DIRECTORY = Path("infra/config")
 STANDARD_CONFIG_PROFILES = ("test", "production")
+ENVIRONMENT_NAME_MAX_LENGTH = 4
+PRODUCT_NAME_MAX_LENGTH = 12
+RESOURCE_NAME_COMPONENT = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 
 
 def checked_environment(value: str) -> str:
     """環境名を単一の安全なディレクトリー名として検査する。"""
-    if not isinstance(value, str) or len(value) > 12 or not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", value):
-        raise ValueError("Select a valid environment name (lowercase letters, digits and internal hyphens; at most 12 characters)")
+    if (not isinstance(value, str) or len(value) > ENVIRONMENT_NAME_MAX_LENGTH
+            or not RESOURCE_NAME_COMPONENT.fullmatch(value)):
+        raise ValueError("Select a valid environment name (lowercase letters, digits and internal hyphens, "
+                         f"maximum {ENVIRONMENT_NAME_MAX_LENGTH} characters)")
     return value
 
 

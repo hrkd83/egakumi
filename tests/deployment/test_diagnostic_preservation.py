@@ -96,7 +96,7 @@ class DiagnosticPreservationTests(unittest.TestCase):
     def test_private_categories_move_off_managed_raw_archive(self):
         self.config["gateway"]["skuName"] = "WAF_v2"
         settings = diagnostics.canonical_settings(self.config, "core")
-        archive = settings["blob-collectJapan"]["ownerId"]
+        archive = settings["blob-collectPlatform"]["ownerId"]
         transport = Directory(self.config)
         for key in ("agw-logs", "law"):
             props = transport.values[settings[key]["id"].casefold()]["properties"]
@@ -111,7 +111,7 @@ class DiagnosticPreservationTests(unittest.TestCase):
 
     def test_audit_receivers_do_not_route_logs_back_to_their_own_accounts(self):
         settings = diagnostics.canonical_settings(self.config, "core")
-        for key in ("blob-collectJapan", "blob-collectFoundry"):
+        for key in ("blob-collectPlatform", "blob-collectFoundry"):
             with self.subTest(key=key):
                 transport = Directory(self.config)
                 item = settings[key]
@@ -141,7 +141,7 @@ class DiagnosticPreservationTests(unittest.TestCase):
         setting = diagnostics.canonical_settings(self.config, "core")["agw-metrics"]
         transport = Directory(self.config)
         old = transport.values[setting["id"].casefold()]["properties"]
-        old["storageAccountId"] = diagnostics.canonical_settings(self.config, "core")["blob-collectJapan"]["ownerId"]
+        old["storageAccountId"] = diagnostics.canonical_settings(self.config, "core")["blob-collectPlatform"]["ownerId"]
         result = diagnostics.prepare_settings(self.config, transport, "core")
         self.assertEqual(result["agw-metrics"], old)
         self.assertTrue(all(call[0] == "GET" for call in transport.calls))
@@ -232,7 +232,7 @@ class DiagnosticPreservationTests(unittest.TestCase):
     def test_default_mode_echo_preserves_existing_additional_metrics_sink(self):
         desired = {"workspaceId": self.workspace, "metrics": [{"category": "AllMetrics", "enabled": True}]}
         before = {**copy.deepcopy(desired), "logAnalyticsDestinationType": "AzureDiagnostics",
-                  "storageAccountId": diagnostics.canonical_settings(self.config, "core")["blob-collectJapan"]["ownerId"]}
+                  "storageAccountId": diagnostics.canonical_settings(self.config, "core")["blob-collectPlatform"]["ownerId"]}
         expected = {key: value for key, value in before.items() if key != "logAnalyticsDestinationType"}
         self.assertEqual(diagnostics.merge_properties(before, desired), expected)
 

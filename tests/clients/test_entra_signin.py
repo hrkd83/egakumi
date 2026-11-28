@@ -412,10 +412,10 @@ class SigninLocalStorageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             with patch.object(signin, 'CORE', root), patch.dict(os.environ, isolated_environment({'AZURE_ENV_NAME': 'beta'}), clear=True):
-                explicit = signin.parse_arguments(self.arguments() + ['--environment', 'alpha'])
+                explicit = signin.parse_arguments(self.arguments() + ['--environment', 'alfa'])
                 selected = signin.parse_arguments(self.arguments())
-            self.assertEqual(explicit.token_file, root / '.local/alpha/secrets/gateway-access-token.txt')
-            self.assertEqual(explicit.login_url_file, root / '.local/alpha/state/gateway-login-url.txt')
+            self.assertEqual(explicit.token_file, root / '.local/alfa/secrets/gateway-access-token.txt')
+            self.assertEqual(explicit.login_url_file, root / '.local/alfa/state/gateway-login-url.txt')
             self.assertEqual(selected.token_file, root / '.local/beta/secrets/gateway-access-token.txt')
             self.assertFalse((root / '.local').exists())
 
@@ -423,11 +423,11 @@ class SigninLocalStorageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve();selection = root / '.azure/config.json'
             signin.private_parent(selection, root)
-            selection.write_text(json.dumps({'defaultEnvironment': 'saved'}))
+            selection.write_text(json.dumps({'defaultEnvironment': 'keep'}))
             with patch.object(signin, 'CORE', root), \
                     patch.dict(os.environ, isolated_environment({'WORKFORCE_CONFIG': 'must-not-be-read.json'}), clear=True):
                 arguments = signin.parse_arguments(self.arguments())
-            self.assertEqual(arguments.token_file, root / '.local/saved/secrets/gateway-access-token.txt')
+            self.assertEqual(arguments.token_file, root / '.local/keep/secrets/gateway-access-token.txt')
             self.assertFalse((root / '.local').exists())
 
     def test_explicit_existing_external_protected_token_and_cache_are_allowed(self):
@@ -490,7 +490,7 @@ class SigninRuntimeRootTests(unittest.TestCase):
     def test_saved_selection_and_relative_files_follow_runtime_without_parameters(self):
         with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as storage:
             source, runtime = Path(directory).resolve(), Path(storage).resolve()
-            for checkout, selected in ((source, "source"), (runtime, "saved")):
+            for checkout, selected in ((source, "src"), (runtime, "keep")):
                 signin.protected_text(checkout / ".azure/config.json",
                                       json.dumps({"defaultEnvironment": selected}))
             arguments = self.arguments(runtime)
@@ -498,11 +498,11 @@ class SigninRuntimeRootTests(unittest.TestCase):
             with patch.object(signin, "CORE", source), \
                     patch.dict(os.environ, isolated_environment({"WORKFORCE_CONFIG": "must-not-be-read.json"}), clear=True):
                 parsed = signin.parse_arguments(arguments + [
-                    "--token-file", ".local/saved/secrets/token",
-                    "--cache-file", ".local/saved/secrets/cache"])
-            self.assertEqual(parsed.token_file, runtime / ".local/saved/secrets/token")
-            self.assertEqual(parsed.cache_file, runtime / ".local/saved/secrets/cache")
-            self.assertEqual(parsed.login_url_file, runtime / ".local/saved/state/gateway-login-url.txt")
+                    "--token-file", ".local/keep/secrets/token",
+                    "--cache-file", ".local/keep/secrets/cache"])
+            self.assertEqual(parsed.token_file, runtime / ".local/keep/secrets/token")
+            self.assertEqual(parsed.cache_file, runtime / ".local/keep/secrets/cache")
+            self.assertEqual(parsed.login_url_file, runtime / ".local/keep/state/gateway-login-url.txt")
             self.assertFalse((source / ".local").exists())
             self.assertFalse((runtime / ".local").exists())
 

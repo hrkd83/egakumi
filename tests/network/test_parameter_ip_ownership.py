@@ -372,7 +372,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
             "gatewayPublicHostName": config["gateway"]["publicHostName"],
             "portalPublicHostName": config["portal"]["publicHostName"],
             "foundryPrivateIps": ["10.70.1.4"], "keyVaultPrivateIps": ["10.70.1.5"],
-            "auditStorageJapanPrivateIps": ["10.70.1.12"], "auditStorageFoundryPrivateIps": ["10.70.1.14"],
+            "auditPlatformBlobPrivateIps": ["10.70.1.12"], "auditFoundryBlobPrivateIps": ["10.70.1.14"],
             "managementPrivateIp": str(management.network_address + 4), "firewallPublicIpAddress": "192.0.2.10",
             "apimPrivateIp": "10.70.2.68", "appGatewayPublicIpAddress": "198.51.100.10",
             "existingNetworkSecurityGroupNames": [],

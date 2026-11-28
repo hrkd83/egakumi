@@ -235,7 +235,7 @@ class CleanupFixture:
         self.monitor_rg = f"/subscriptions/{sub}/resourceGroups/{groups['monitor']}"
         self.svc_rg = f"/subscriptions/{sub}/resourceGroups/{groups['svc']}"
         accounts = [self.monitor_rg + "/providers/Microsoft.Storage/storageAccounts/" + name
-                    for name in ("sttestegakumijp", "sttestegakumius")]
+                    for name in ("sttestegakumiplat", "sttestegakumifndry")]
         self.policy_ids = [account + "/blobServices/default/containers/insights-logs-audit/immutabilityPolicies/default" for account in accounts]
         self.diag_id = f"/subscriptions/{sub}/providers/Microsoft.Insights/diagnosticSettings/diag-test-egakumi-activity"
         self.workspace_id = self.monitor_rg + "/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi"
@@ -243,7 +243,7 @@ class CleanupFixture:
             "subscriptionId": sub, "azureTenantId": self.configuration["azureTenantId"], "resourceStem": "test-egakumi",
             "apimInstanceId": "abc123",
             "resourceGroupNames": groups,
-            "storage": {"collectJapan": {"id": accounts[0]}, "collectFoundry": {"id": accounts[1]}, "immutabilityPolicyIds": self.policy_ids},
+            "storage": {"collectPlatform": {"id": accounts[0]}, "collectFoundry": {"id": accounts[1]}, "immutabilityPolicyIds": self.policy_ids},
             "monitoring": {"workspaceId": self.workspace_id},
             "serviceResourceIds": {
                 "keyVault": self.svc_rg + "/providers/Microsoft.KeyVault/vaults/kv-test-egakumi",

@@ -114,8 +114,9 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 226 | `allow-aca-sql-1433-ingress` | Portal・BrokerサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-PE-07` |
 | 227 | `allow-aca-acr-https-ingress` | Portal・BrokerサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-PE-08` |
 | 228 | `allow-mgmt-vm-acr-https-ingress` | 管理VM private IP /32 | ACR PE全IP /32 | TCP／443 | `B-PE-09` |
-| 229 | `allow-mgmt-vm-audit-storage-platform-https-ingress` | 管理VM private IP /32 | 基盤監査Storage（`collectJapan`）のBlob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS` |
-| 230 | `allow-mgmt-vm-audit-storage-foundry-https-ingress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-FOUNDRY-HTTPS` |
+| 229 | `allow-mgmt-vm-audit-platform-blob-https-ingress` | 管理VM private IP /32 | 基盤監査Storage（`collectPlatform`）のBlob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-PLATFORM-BLOB-HTTPS` |
+| 230 | `allow-mgmt-vm-audit-foundry-blob-https-ingress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-FOUNDRY-BLOB-HTTPS` |
+| 233 | `allow-mgmt-vm-certificate-blob-https-ingress` | 管理VM private IP /32 | 証明書ジョブの状態Storage Blob PE全IP /32 | TCP／443 | [証明書ジョブのNSG定義](../../infra/modules/network/nsg/certificate-rules.json) |
 | 4096 | `deny-any-ingress` | Any | Any | Any／Any | `B-PE-14` |
 
 ### Outbound
@@ -140,8 +141,9 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 223 | `allow-foundry-https-egress` | 管理VM private IP /32 | Foundry PE全IP /32 | TCP／443 | `B-MGMT-21` |
 | 224 | `allow-sql-1433-egress` | 管理VM private IP /32 | 共有SQL PE全IP /32 | TCP／1433 | `N-MGMT-OUT-SQL` |
 | 226 | `allow-aca-https-egress` | 管理VM private IP /32 | ACA共有VIP /32 | TCP／443 | `N-MGMT-OUT-ACA-HTTPS` |
-| 227 | `allow-audit-storage-platform-https-egress` | 管理VM private IP /32 | 基盤監査Storage（`collectJapan`）のBlob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS` |
-| 228 | `allow-audit-storage-foundry-https-egress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-FOUNDRY-HTTPS` |
+| 227 | `allow-audit-platform-blob-https-egress` | 管理VM private IP /32 | 基盤監査Storage（`collectPlatform`）のBlob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-PLATFORM-BLOB-HTTPS` |
+| 228 | `allow-audit-foundry-blob-https-egress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-FOUNDRY-BLOB-HTTPS` |
+| 229 | `allow-certificate-blob-https-egress` | 管理VM private IP /32 | 証明書ジョブの状態Storage Blob PE全IP /32 | TCP／443 | [証明書ジョブのNSG定義](../../infra/modules/network/nsg/certificate-rules.json) |
 | 320 | `allow-azure-resource-manager-egress` | 管理VMサブネットCIDR | `AzureResourceManager`タグ | TCP／443 | `B-MGMT-06` |
 | 321 | `allow-entra-egress` | 管理VMサブネットCIDR | `AzureActiveDirectory`タグ | TCP／443 | `B-MGMT-07` |
 | 322 | `allow-monitor-egress` | 管理VMサブネットCIDR | `AzureMonitor`タグ | TCP／443 | `B-MGMT-08` |

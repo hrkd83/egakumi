@@ -37,11 +37,11 @@ param foundryPrivateIps array
 @description('共用Key Vault PEの全IP。APIM、ACA、管理VMの接続を許可します。')
 param keyVaultPrivateIps array
 @minLength(1)
-@description('collectJapanの監査Blob PEに割り当てられた全NIC実IP。')
-param auditStorageJapanPrivateIps array
+@description('collectPlatformの監査Blob PEに割り当てられた全NIC実IP。')
+param auditPlatformBlobPrivateIps array
 @minLength(1)
 @description('collectFoundryの監査Blob PEに割り当てられた全NIC実IP。')
-param auditStorageFoundryPrivateIps array
+param auditFoundryBlobPrivateIps array
 @minLength(1)
 @description('管理 VM の確定済みプライベート IP。運用操作と内部接続の通信元・宛先に使います。')
 param managementPrivateIp string
@@ -79,15 +79,15 @@ var rulesByNsg = [
     allowRule('allow-aca-key-vault-https-ingress', nsgPriorities.groups.pep.rules['allow-aca-key-vault-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.portal, subnetPrefixes.broker], coreVaultAddresses, ['443'])
     allowRule('allow-mgmt-vm-key-vault-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-key-vault-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], coreVaultAddresses, ['443'])
     allowRule('allow-mgmt-vm-foundry-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-foundry-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(foundryPrivateIps, ip => '${ip}/32'), ['443'])
-    allowRule('allow-mgmt-vm-audit-storage-platform-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-audit-storage-platform-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditStorageJapanPrivateIps, ip => '${ip}/32'), ['443'])
-    allowRule('allow-mgmt-vm-audit-storage-foundry-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-audit-storage-foundry-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditStorageFoundryPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-mgmt-vm-audit-platform-blob-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-audit-platform-blob-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditPlatformBlobPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-mgmt-vm-audit-foundry-blob-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-audit-foundry-blob-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditFoundryBlobPrivateIps, ip => '${ip}/32'), ['443'])
   ]
   [
     allowRule('allow-key-vault-https-egress', nsgPriorities.groups.management.rules['allow-key-vault-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], coreVaultAddresses, ['443'])
     allowRule('allow-apim-https-egress', nsgPriorities.groups.management.rules['allow-apim-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], [subnetPrefixes.apim], ['443'])
     allowRule('allow-foundry-https-egress', nsgPriorities.groups.management.rules['allow-foundry-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(foundryPrivateIps, ip => '${ip}/32'), ['443'])
-    allowRule('allow-audit-storage-platform-https-egress', nsgPriorities.groups.management.rules['allow-audit-storage-platform-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditStorageJapanPrivateIps, ip => '${ip}/32'), ['443'])
-    allowRule('allow-audit-storage-foundry-https-egress', nsgPriorities.groups.management.rules['allow-audit-storage-foundry-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditStorageFoundryPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-audit-platform-blob-https-egress', nsgPriorities.groups.management.rules['allow-audit-platform-blob-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditPlatformBlobPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-audit-foundry-blob-https-egress', nsgPriorities.groups.management.rules['allow-audit-foundry-blob-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(auditFoundryBlobPrivateIps, ip => '${ip}/32'), ['443'])
   ]
   [
     allowRule('allow-mgmt-vm-https-ingress', nsgPriorities.groups.portal.rules['allow-mgmt-vm-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], [subnetPrefixes.portal], ['443', '31443'])

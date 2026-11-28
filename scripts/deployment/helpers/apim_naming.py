@@ -6,9 +6,10 @@ import secrets
 import string
 from collections.abc import Iterable
 
+from .paths import ENVIRONMENT_NAME_MAX_LENGTH, PRODUCT_NAME_MAX_LENGTH, RESOURCE_NAME_COMPONENT
+
 
 INSTANCE_ID = re.compile(r"[a-z0-9]{6}\Z")
-RESOURCE_STEM = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 
 
 def apim_instance_id(config: dict) -> str:
@@ -27,10 +28,14 @@ def apim_name(config: dict) -> str:
     if stem is None:
         environment = config.get("environmentName")
         product = config.get("productName")
-        if not isinstance(environment, str) or not isinstance(product, str):
+        if (not isinstance(environment, str) or len(environment) > ENVIRONMENT_NAME_MAX_LENGTH
+                or not RESOURCE_NAME_COMPONENT.fullmatch(environment)
+                or not isinstance(product, str) or len(product) > PRODUCT_NAME_MAX_LENGTH
+                or not RESOURCE_NAME_COMPONENT.fullmatch(product)):
             raise ValueError("APIM naming requires valid environmentName and productName")
         stem = f"{environment}-{product}"
-    if not isinstance(stem, str) or len(stem) > 17 or not RESOURCE_STEM.fullmatch(stem):
+    if (not isinstance(stem, str) or len(stem) > ENVIRONMENT_NAME_MAX_LENGTH + 1 + PRODUCT_NAME_MAX_LENGTH
+            or not RESOURCE_NAME_COMPONENT.fullmatch(stem)):
         raise ValueError("APIM naming requires a valid resource stem of at most 17 characters")
     return f"apim-{stem}-{identifier}"
 

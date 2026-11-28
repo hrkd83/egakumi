@@ -30,9 +30,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
-from deployment.helpers.paths import LocalPaths, private_output
-
-NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
+from deployment.helpers.paths import (
+    ENVIRONMENT_NAME_MAX_LENGTH, PRODUCT_NAME_MAX_LENGTH, RESOURCE_NAME_COMPONENT, LocalPaths, private_output,
+)
 
 
 def load_registration_configuration(path: Path | str, repository: Path | None = None) -> dict:
@@ -69,12 +69,11 @@ def registration_inputs(config: dict) -> dict:
         raise ValueError("Registration preparation requires a configuration object")
     product_name = config.get("productName")
     environment_name = config.get("environmentName")
-    for label, value, limit in (("productName", product_name, 24), ("environmentName", environment_name, 12)):
-        if not isinstance(value, str) or len(value) > limit or not NAME.fullmatch(value):
+    for label, value, limit in (("productName", product_name, PRODUCT_NAME_MAX_LENGTH),
+                                ("environmentName", environment_name, ENVIRONMENT_NAME_MAX_LENGTH)):
+        if not isinstance(value, str) or len(value) > limit or not RESOURCE_NAME_COMPONENT.fullmatch(value):
             raise ValueError(f"{label} must use lowercase letters, digits and single internal hyphens (maximum {limit} characters)")
     stem = f"{environment_name}-{product_name}"
-    if len(stem) > 17:
-        raise ValueError("environmentName-productName must fit within 17 characters for the credentials Container App; shorten either name")
     identifier = apim_instance_id(config)
     # 同じ保存済み入力から求めることを命名ヘルパーとも照合する。
     apim_name({"resourceStem": stem, "services": {"apimInstanceId": identifier}})

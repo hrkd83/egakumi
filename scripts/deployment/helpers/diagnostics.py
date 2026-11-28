@@ -5,7 +5,7 @@ import copy
 import re
 
 from .apim_naming import apim_name
-from .log_privacy import PRIVACY
+from .log_privacy import PRIVACY, audit_storage_account_name
 
 
 API = "2021-05-01-preview"
@@ -175,8 +175,8 @@ def canonical_settings(config, phase, preserve_collection=False):
     base = f"/subscriptions/{subscription}"
     resource = lambda group, provider, name: f"{base}/resourceGroups/{groups[group]}/providers/{provider}/{name}"
     workspace = resource("monitor", "Microsoft.OperationalInsights/workspaces", "law-" + stem)
-    japan = resource("monitor", "Microsoft.Storage/storageAccounts", "st" + stem.replace("-", "") + "jp")
-    foundry_storage = resource("monitor", "Microsoft.Storage/storageAccounts", "st" + stem.replace("-", "") + "us")
+    platform_storage = resource("monitor", "Microsoft.Storage/storageAccounts", audit_storage_account_name(stem, "collectPlatform"))
+    foundry_storage = resource("monitor", "Microsoft.Storage/storageAccounts", audit_storage_account_name(stem, "collectFoundry"))
     settings = {}
 
     def add(key, parent, provider, version, name, *, logs=None, metrics=None, storage=None, dedicated=False, owner=None, owner_type=None, owner_version=None, region=location):
@@ -195,7 +195,7 @@ def canonical_settings(config, phase, preserve_collection=False):
                          "ownerApi": owner_version or version, "location": region,
                          "properties": props}
 
-    for collector, account, region in (("collectJapan", japan, location), ("collectFoundry", foundry_storage, config["foundryLocation"])):
+    for collector, account, region in (("collectPlatform", platform_storage, location), ("collectFoundry", foundry_storage, config["foundryLocation"])):
         add("blob-" + collector, account + "/blobServices/default", "Microsoft.Storage/storageAccounts/blobServices", "2023-05-01",
             f"diag-{stem}-{collector}-blob", logs=BLOB_LOGS, dedicated=True,
             owner=account, owner_type="Microsoft.Storage/storageAccounts", region=region)
@@ -207,7 +207,7 @@ def canonical_settings(config, phase, preserve_collection=False):
     firewall_logs = ["AZFWNetworkRule"]
     if config["network"].get("firewall", {}).get("sku", "Premium") == "Premium":
         firewall_logs.append("AZFWIdpsSignature")
-    add("fw-logs", firewall, "Microsoft.Network/azureFirewalls", "2025-01-01", f"diag-{stem}-fw", logs=firewall_logs, storage=japan, dedicated=True)
+    add("fw-logs", firewall, "Microsoft.Network/azureFirewalls", "2025-01-01", f"diag-{stem}-fw", logs=firewall_logs, storage=platform_storage, dedicated=True)
     # 既存の所有済み設定をマージする場合も、この2分類の直接転送を停止します。
     settings["fw-logs"]["properties"]["logs"].extend(
         {"category": category, "enabled": False} for category in PRIVACY["firewallUrlTables"]
@@ -220,23 +220,23 @@ def canonical_settings(config, phase, preserve_collection=False):
     for suffix in ("agw", "apim", "pep", "vm", "portal", "broker", "certificate"):
         nsg = resource("nw", "Microsoft.Network/networkSecurityGroups", f"nsg-{stem}-{suffix}")
         add(f"nsg-{suffix}", nsg, "Microsoft.Network/networkSecurityGroups", "2025-01-01", "core-audit",
-            logs=NSG_LOGS, storage=japan)
+            logs=NSG_LOGS, storage=platform_storage)
     for key, prefix in (("vault", "kv"), ("certificate-vault", "kvtls")):
         vault = resource("svc", "Microsoft.KeyVault/vaults", f"{prefix}-{stem}")
         add(f"{key}-logs", vault, "Microsoft.KeyVault/vaults", "2023-07-01", "core-audit",
-            logs=["AuditEvent"], storage=japan)
+            logs=["AuditEvent"], storage=platform_storage)
         if key == "vault":
             add("vault-metrics", vault, "Microsoft.KeyVault/vaults", "2023-07-01", "core-metrics", metrics=["AllMetrics"])
     certificate_storage = resource("svc", "Microsoft.Storage/storageAccounts", "st" + stem.replace("-", "") + "cert")
     add("certificate-blob-logs", certificate_storage + "/blobServices/default", "Microsoft.Storage/storageAccounts/blobServices",
-        "2025-01-01", "core-audit", logs=BLOB_LOGS, storage=japan, dedicated=True, owner=certificate_storage,
+        "2025-01-01", "core-audit", logs=BLOB_LOGS, storage=platform_storage, dedicated=True, owner=certificate_storage,
         owner_type="Microsoft.Storage/storageAccounts")
     registry = resource("svc", "Microsoft.ContainerRegistry/registries", "acr" + stem.replace("-", ""))
     add("acr-logs", registry, "Microsoft.ContainerRegistry/registries", "2025-11-01", "core-audit",
-        logs=["ContainerRegistryLoginEvents", "ContainerRegistryRepositoryEvents"], storage=japan, dedicated=True)
+        logs=["ContainerRegistryLoginEvents", "ContainerRegistryRepositoryEvents"], storage=platform_storage, dedicated=True)
     sql = resource("svc", "Microsoft.Sql/servers", "sql-" + stem)
     add("sql-logs", sql + "/databases/master", "Microsoft.Sql/servers/databases", "2023-08-01", "core-audit",
-        logs=["SQLSecurityAuditEvents"], storage=japan, owner=sql, owner_type="Microsoft.Sql/servers")
+        logs=["SQLSecurityAuditEvents"], storage=platform_storage, owner=sql, owner_type="Microsoft.Sql/servers")
     foundry_region = config["foundryLocation"]
     foundry = resource("svc", "Microsoft.CognitiveServices/accounts", "aif-" + stem)
     for key, name, logs in (("foundry-logs", "core-audit", ["Audit", "RequestResponse"]),
@@ -251,7 +251,7 @@ def canonical_settings(config, phase, preserve_collection=False):
         logs=APIM_HTTP_LOGS, dedicated=True)
     if any(api.get("apiType", "http") == "websocket" for api in config.get("infrastructureApiDefinitions", config["apiDefinitions"])):
         add("apim-websocket", apim, "Microsoft.ApiManagement/service", "2024-05-01", "core-audit",
-            logs=["WebSocketConnectionLogs"], storage=japan, dedicated=True)
+            logs=["WebSocketConnectionLogs"], storage=platform_storage, dedicated=True)
         settings["apim-websocket"]["properties"]["logs"].extend({"category": category, "enabled": False} for category in APIM_HTTP_LOGS)
     add("apim-metrics", apim, "Microsoft.ApiManagement/service", "2024-05-01", "core-metrics", metrics=["AllMetrics"])
     gateway = resource("nw", "Microsoft.Network/applicationGateways", "agw-" + stem)
@@ -271,7 +271,7 @@ def canonical_settings(config, phase, preserve_collection=False):
         vm = resource("maint", "Microsoft.Compute/virtualMachines", f"vm-{stem}-mgmt")
         add("management-patch-logs", vm, "Microsoft.Compute/virtualMachines", "2024-11-01", "core-patch-logs",
             logs=["SoftwareUpdateProfile", "SoftwareUpdates"])
-    add("activity", base, "Microsoft.Resources/subscriptions", "2022-12-01", f"diag-{stem}-activity", logs=["Administrative", "ServiceHealth", "ResourceHealth", "Alert", "Autoscale", "Security", "Recommendation", "Policy"], storage=japan)
+    add("activity", base, "Microsoft.Resources/subscriptions", "2022-12-01", f"diag-{stem}-activity", logs=["Administrative", "ServiceHealth", "ResourceHealth", "Alert", "Autoscale", "Security", "Recommendation", "Policy"], storage=platform_storage)
     return settings
 
 
@@ -281,8 +281,8 @@ def prepare_settings(config, transport, phase, preserve_collection=False):
     requested = canonical_settings(config, phase, preserve_collection)
     expected_tags = {"product": config["productName"], "environment": config["environmentName"], "azd-env-name": config["environmentName"]}
     owners, observed = {}, {}
-    archive = all_settings["blob-collectJapan"]["ownerId"]
-    archives = {all_settings[key]["ownerId"].casefold() for key in ("blob-collectJapan", "blob-collectFoundry")}
+    archive = all_settings["blob-collectPlatform"]["ownerId"]
+    archives = {all_settings[key]["ownerId"].casefold() for key in ("blob-collectPlatform", "blob-collectFoundry")}
     private_logs = {
         "agw-logs": {"applicationgatewayaccesslog", "applicationgatewayfirewalllog"},
         "agw-access": {"applicationgatewayaccesslog", "applicationgatewayfirewalllog"},
@@ -373,6 +373,6 @@ def prepare_settings(config, transport, phase, preserve_collection=False):
                 key == "fw-url-logs" and url_categories <= FIREWALL_TRANSFORMED_URL_CATEGORIES
                 and not any(merged.get(sink) for sink in SINKS - {"workspaceId"})
             ), "raw-firewall-url-route")
-        if key in ("blob-collectJapan", "blob-collectFoundry"):
+        if key in ("blob-collectPlatform", "blob-collectFoundry"):
             _need(merged.get("storageAccountId", "").casefold() not in archives, "recursive-archive-route")
     return {key: merge_properties(observed[key], item["properties"]) for key, item in requested.items()}

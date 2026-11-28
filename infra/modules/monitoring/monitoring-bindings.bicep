@@ -93,10 +93,10 @@ var metrics = [
     dimensions: [{ name: 'LogAnalyticsDataExportRuleName', operator: 'Include', values: [monitoring.auditExportName] }]
   }
   {
-    key: 'audit-blob-availability'
-    scope: storage.collectJapan.blobServiceId
+    key: 'audit-platform-blob-availability'
+    scope: storage.collectPlatform.blobServiceId
     resourceType: 'Microsoft.Storage/storageAccounts/blobServices'
-    region: storage.collectJapan.location
+    region: storage.collectPlatform.location
     namespace: 'Microsoft.Storage/storageAccounts/blobServices'
     metricName: 'Availability'
     aggregation: 'Average'
@@ -108,7 +108,7 @@ var metrics = [
     dimensions: []
   }
   {
-    key: 'audit-eus2-blob-availability'
+    key: 'audit-foundry-blob-availability'
     scope: storage.collectFoundry.blobServiceId
     resourceType: 'Microsoft.Storage/storageAccounts/blobServices'
     region: storage.collectFoundry.location
@@ -202,7 +202,7 @@ resource metricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for defini
 }]
 
 // 以下は KQL の監視クエリです。件数・利用量・状態を検索し、API の入力本文や生成本文を検索材料にはしません。
-var auditWriteQuery = '${loadTextContent('./audit-write-failures.kql')}\nAuditWriteFailures(StorageBlobLogs, now(), dynamic(["${storage.collectJapan.name}", "${storage.collectFoundry.name}"]))'
+var auditWriteQuery = '${loadTextContent('./audit-write-failures.kql')}\nAuditWriteFailures(StorageBlobLogs, now(), dynamic(["${storage.collectPlatform.name}", "${storage.collectFoundry.name}"]))'
 var ingestionQuery = 'union isfuzzy=true AppRequests, AppDependencies, AppExceptions, AppTraces, AppEvents, AppMetrics, AppPageViews, AppBrowserTimings, AppAvailabilityResults, AppGenAIContent\n| where TimeGenerated > ago(24h)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| where _IsBillable == "true"\n| summarize IngestedGB = sum(_BilledSize) / 1000000000.0'
 var failureRateQuery = 'AppRequests\n| where TimeGenerated > ago(15m)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| summarize Requests=count(), Failures=countif(Success == false)\n| where Requests >= 100\n| extend FailureRate=100.0 * Failures / Requests'
 var certificateMonitoringEnabled = !empty(certificateMonitoring)
@@ -322,7 +322,7 @@ var networkOperations = [
 var activityDefinitions = concat([
   {
     key: 'audit-storage-changed'
-    scopes: [storage.collectJapan.id, storage.collectFoundry.id]
+    scopes: [storage.collectPlatform.id, storage.collectFoundry.id]
     conditions: terminalAdministrative
   }
 ], pipelineActivityDefinitions, [

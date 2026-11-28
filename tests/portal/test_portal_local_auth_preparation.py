@@ -18,7 +18,7 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.root = Path(self.temporary.name).resolve() / "repository"
         self.root.mkdir()
         self.configuration = {
-            "environmentName": "example",
+            "environmentName": "demo",
             "azureTenantId": "<AZURE_TENANT_ID>",
             "portal": {"authentication": {
                 "clientId": "<PORTAL_ENTRA_CLIENT_ID>",
@@ -48,15 +48,15 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertFalse((self.root / "apps").exists())
         self.assertFalse((self.root / "secrets").exists())
         self.assertFalse((self.root / ".local").exists())
-        self.assertEqual(self.root / ".local/example/portal/runtime.env",
+        self.assertEqual(self.root / ".local/demo/portal/runtime.env",
                          Path(result["runtimeEnvironmentFile"]))
-        self.assertEqual(self.root / ".local/example/secrets/portal-local-sql-admin.env",
+        self.assertEqual(self.root / ".local/demo/secrets/portal-local-sql-admin.env",
                          Path(result["sqlAdminEnvironmentFile"]))
 
     def test_plan_only_needs_the_environment_and_never_reads_values(self):
         with patch.object(preparation, "deployment_authentication", side_effect=AssertionError("certificate state read")), \
                 patch.object(preparation, "read_environment", side_effect=AssertionError("settings read")):
-            result = preparation.prepare({"environmentName": "example"}, self.root,
+            result = preparation.prepare({"environmentName": "demo"}, self.root,
                                          execute=False, accept_sql_eula=False)
         self.assertEqual("plan", result["mode"])
         self.assertFalse((self.root / ".local").exists())
@@ -131,7 +131,7 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertEqual(previous, path.read_bytes())
 
     def test_incomplete_pair_is_not_repaired_or_overwritten(self):
-        target = self.root / ".local/example/portal/runtime.env"
+        target = self.root / ".local/demo/portal/runtime.env"
         target.parent.mkdir(parents=True)
         target.write_text("USER_SETTING=keep\n", encoding="utf-8")
         with self.assertRaisesRegex(preparation.PreparationError, "Only one"):
@@ -183,7 +183,7 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertIn("\\$VALUE", path.read_text())
 
     def test_partial_creation_failure_cleans_only_new_files(self):
-        first = self.root / ".local/example/portal/first.env"
+        first = self.root / ".local/demo/portal/first.env"
         second = first.with_name("second.env")
         with patch.object(preparation, "protect_new_file", side_effect=[None, OSError("no permission")]):
             with self.assertRaises(OSError):

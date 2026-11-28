@@ -36,7 +36,7 @@ class CertificateJobTests(TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.workspace = LocalPaths(Path(temporary.name).resolve(), 'fixture')
+        self.workspace = LocalPaths(Path(temporary.name).resolve(), 'test')
         self.workspace.ensure()
         self.config = {'subscriptionId': synthetic_id(7), 'azureTenantId': synthetic_id(8),
                        'location': 'testregion', 'resourceStem': 'fixture',

@@ -1,8 +1,18 @@
 {
   "exportTables": ["AppRequests", "AppDependencies", "AppExceptions", "AppTraces", "AppEvents", "Syslog"],
   "agentContentTable": "AppGenAIContent",
+  "collectors": {
+    "collectPlatform": {
+      "storageSuffix": "plat",
+      "endpointSuffix": "audit-platform-blob"
+    },
+    "collectFoundry": {
+      "storageSuffix": "fndry",
+      "endpointSuffix": "audit-foundry-blob"
+    }
+  },
   "directContainers": {
-    "collectJapan": [
+    "collectPlatform": [
       "insights-activity-logs",
       "insights-logs-audit",
       "insights-logs-vmprotectionalerts",
