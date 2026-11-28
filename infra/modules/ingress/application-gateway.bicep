@@ -71,7 +71,7 @@ param autoscaleMinCapacity int = 2
 @maxValue(125)
 @description('AppGW 自動拡張の最大インスタンス数。想定負荷に合わせて上限を決めます。')
 param autoscaleMaxCapacity int = 5
-@description('配置する可用性ゾーンの番号。空配列はゾーンを固定せず、3 ゾーン指定は冗長配置に使います。')
+@description('配置する可用性ゾーンの番号。空配列の場合はARMに指定を渡さず、Azureの自動配置を使います。')
 param zones array = []
 @allowed(['Prevention', 'Detection'])
 @description('WAF の動作。Detection は検知記録、Prevention は該当要求の拒否を行います。')
@@ -397,7 +397,7 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
   location: location
   tags: tags
   dependsOn: [dataWafPolicies]
-  zones: zones
+  zones: empty(zones) ? null : zones
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${certificateIdentityId}': {} }

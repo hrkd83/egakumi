@@ -602,6 +602,7 @@ module certificateNetwork 'modules/certificates/certificate-network.bicep' = if 
     keyVaultPrivateIps: endpoints!.outputs.keyVaultPrivateIps
     registryPrivateIps: portalNetwork!.outputs.registryPrivateIps
     tlsVaultId: certificateStorage!.outputs.vaultId
+    oboVaultId: certificateStorage!.outputs.oboVaultId
     storageAccountId: certificateStorage!.outputs.storageAccountId
     vaultPrivateDnsZoneId: network!.outputs.privateDnsZoneIds.keyVault
     blobPrivateDnsZoneId: auditPrivateDns!.outputs.privateDnsZoneId
@@ -787,7 +788,7 @@ output certificateBootstrap object = deployCore ? {
       minimumValidDays: certConfig.minimumValidDays
     }
     portalConfig: { vaultName: serviceNames.keyVault, certificateName: portalConfig.certificate.certificateName, validityMonths: portalConfig.certificate.validityMonths }
-    gatewayOboConfig: entraRolloutEnabled ? { vaultName: serviceNames.keyVault, certificateName: 'gateway-obo', validityMonths: 12 } : {}
+    gatewayOboConfig: entraRolloutEnabled ? { vaultName: certificateStorage!.outputs.oboVaultName, certificateName: 'gateway-obo', validityMonths: 12 } : {}
   }
 } : {}
 
@@ -805,6 +806,7 @@ module subscriptionMonitoring 'modules/monitoring/monitoring-subscription.bicep'
 
 // 以降は後続スクリプト用の参照情報です。秘密値や PFX は出力せず、名前・ID・URI と公開メタデータだけを返します。
 output CORE_DEPLOYMENT_NAME string = deployment().name
+output capacityProfile string = configuration.?capacityProfile ?? ''
 output resourceGroups object = toObject(groupKinds, kind => kind, kind => 'rg-${stem}-${kind}')
 output certificateIdentity object = { id: identity.outputs.id, principalId: identity.outputs.principalId, clientId: identity.outputs.clientId }
 output names object = {
@@ -859,12 +861,14 @@ output cleanup object = {
   serviceResourceGroup: svcGroup.name
   foundryLocation: configuration.foundryLocation
   location: location
-  serviceResourceIds: {
+  serviceResourceIds: union({
     keyVault: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.KeyVault/vaults', serviceNames.keyVault)
     certificateVault: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.KeyVault/vaults', 'kvtls-${stem}')
     foundry: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.CognitiveServices/accounts', serviceNames.foundry)
     apim: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.ApiManagement/service', serviceNames.apim)
-  }
+  }, entraRolloutEnabled ? {
+    oboVault: resourceId(subscription().subscriptionId, svcGroup.name, 'Microsoft.KeyVault/vaults', 'kvobo-${stem}')
+  } : {})
 }
 
 output portal object = deployCore ? union(portal!.outputs.platform, {

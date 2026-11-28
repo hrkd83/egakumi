@@ -1,0 +1,16 @@
+{
+  "$schema": "./capacity.schema.json",
+  "$comment": "公開TLS用・業務用・OBO署名用Vaultの共通SKUと削除保護。",
+  "common": {
+    "services": {
+      "vaultSkuName": "standard",
+      "vaultRetentionDays": 90,
+      "vaultPurgeProtection": true
+    }
+  },
+  "profiles": {
+    "prod": {},
+    "stg": {},
+    "dev": {}
+  }
+}

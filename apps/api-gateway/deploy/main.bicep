@@ -52,6 +52,7 @@ module access '../../credential-broker/deploy/broker-access.bicep' = {
     brokerKey: brokerKey
     credentialIdentitySecret: credentialIdentitySecret
     identityConfigured: identityConfigured
+    oboVaultName: empty(graphObo) ? '' : split(split(graphObo.keyUrl, '/')[2], '.')[0]
     oboKeyName: empty(graphObo) ? '' : split(graphObo.keyUrl, '/')[4]
   }
 }
@@ -117,6 +118,8 @@ module broker '../../credential-broker/deploy/broker.bicep' = {
     loginCallsPerMinute: session.loginCallsPerMinute
     minReplicas: configuration.credentialBroker.minReplicas
     maxReplicas: configuration.credentialBroker.maxReplicas
+    cpu: string(configuration.credentialBroker.?cpu ?? json('0.5'))
+    memory: configuration.credentialBroker.?memory ?? '1Gi'
     deployApplication: deployApplication
   }
   dependsOn: [brokerAccess]

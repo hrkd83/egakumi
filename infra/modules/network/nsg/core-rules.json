@@ -29,7 +29,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "literal:0.0.0.0/0"
+            "client-prefixes:agw"
           ],
           "destination": [
             "subnet:agw"
@@ -46,7 +46,7 @@
           "protocol": "Tcp",
           "sourcePort": "*",
           "source": [
-            "literal:0.0.0.0/0"
+            "client-prefixes:agw"
           ],
           "destination": [
             "subnet:agw"

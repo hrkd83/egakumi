@@ -615,18 +615,22 @@ class CommonAuthenticationCompiledSourceTests(unittest.TestCase):
 
     def test_real_bicep_assignments_manifest_and_python_sources_are_identical(self):
         from tests.gateway.publication.test_api_publication_size import SizeExpression, expand
-        for enabled in (False, True):
+        for enabled, role in ((False, ""), (True, ""), (True, fragments.STAGING_ACCESS_ROLE)):
             parameters = {"apiDefinitions": [], "names": {"apim": "apim-test-fixture"},
                           "publishApis": True, "entraAuthentication": {"enabled": enabled}}
+            if role:
+                parameters["entraAuthentication"]["requiredAppRole"] = role
             expanded = expand(self.template, parameters)
             reader = SizeExpression("[true()]", self.template["variables"], {}, self.template.get("functions", []))
             source = reader.resolve(self.template["outputs"]["entraPublicationSource"]["value"], expanded["parameters"])
             published = {entry["suffix"]: entry["value"] for entry in source["policies"]}
             actual = {resource["name"].rsplit("/", 1)[-1]: resource["properties"]["value"]
                       for resource in expanded["resources"] if resource["type"].endswith("/policyFragments")}
-            expected = fragments.render_common_authentication_fragments(entra_enabled=enabled)
+            expected = fragments.render_common_authentication_fragments(entra_enabled=enabled, required_app_role=role)
+            common = expected[fragments.COMMON_AUTHENTICATION_FRAGMENT_ID]
+            self.assertEqual(ET.fromstring(common).findtext(".//claim[@name='roles']/value"), role or None)
             for identifier, value in expected.items():
-                with self.subTest(entra=enabled, fragment=identifier):
+                with self.subTest(entra=enabled, app_role=role, fragment=identifier):
                     self.assertIn(identifier, actual)
                     self.assertEqual(actual[identifier].replace("\r\n", "\n"), value)
                     self.assertEqual(published["/policyFragments/" + identifier].replace("\r\n", "\n"), value)

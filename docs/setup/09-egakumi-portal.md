@@ -90,6 +90,12 @@ Portalログインで要求する`openid profile email`はOIDCのscopeです。A
 
 同じ作業の最後に、2件のWeb戻り先、公開証明書と期限、OIDCの委任アクセス許可、APIの`Gateway.Invoke`、管理者同意、受入利用者の割当を保存後の画面で再確認します。構築担当へはDirectory tenant ID・新PortalのApplication client IDと、この確認が完了した結果を引き継ぎます。登録だけをPortalログインやPortalのAPI試用の成功に数えません。
 
+### stgの管理者アクセス
+
+`stg` 専用のアプリ登録で「アプリ ロール」から、表示名を任意、許可するメンバーの種類を「ユーザー/グループ」、値を `Gateway.Staging.Access` として有効なロールを作成します。「エンタープライズ アプリケーション」から同じアプリを開き、「ユーザーとグループ」で管理者・承認済み検証ユーザーにこのロールを割り当てます。「プロパティ」の「割り当てが必要ですか」も有効にします。グループ割当を利用できない場合はユーザーを個別に割り当てます。
+
+Portalはサインイン時にPortal宛てのIDトークンでこのロールを確認します。同じ管理者がGateway試用を行えるよう、[APIアプリ側の割当](02-entra-api.md#stgの管理者アクセス)も確認します。
+
 ## 登録情報をparamsに追加する
 
 環境別paramsの`portal.authentication`へ次の2項目を設定します。実値は`.local/<environment>/params.local.json`だけで管理します。

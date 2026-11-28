@@ -219,6 +219,23 @@ class CertificateJobTests(TestCase):
             transport.request.assert_not_called()
             save.assert_not_called()
 
+    def test_obo_job_targets_the_dedicated_vault(self):
+        self.config['gateway']['authentication'] = {
+            'entra': {'audience': synthetic_id(30)},
+            'credentialLogin': {'identity': {'clientId': synthetic_id(31)}, 'providerNames': ['graph-delegated']},
+        }
+        plan = self.outputs['certificateBootstrap']['jobPlan']
+        plan['gatewayOboConfig'] = {'vaultName': 'kvobo-fixture', 'certificateName': 'gateway-obo', 'validityMonths': 12}
+        self.target = jobs._targets(self.config, self.outputs)
+        template = jobs._template(self.job_definition('portal'), self.target, 'portal', 'initial',
+                                  {'purpose': 'gateway-obo'}, 'a' * 32, self.image)
+        environment = {item['name']: item['value'] for item in template['containers'][0]['env']}
+        self.assertEqual(json.loads(environment['CERTIFICATE_CONFIG_JSON']), plan['gatewayOboConfig'])
+        self.assertEqual(environment['CERTIFICATE_PORTAL_STATE_OBJECT'], 'gateway-obo')
+        plan['gatewayOboConfig']['vaultName'] = 'kv-fixture'
+        with self.assertRaisesRegex(ValueError, 'certificate job outputs differ'):
+            jobs._targets(self.config, self.outputs)
+
     def test_private_receipt_chunks_are_bound_and_temp_role_and_commands_removed(self):
         for mode, container in (('tls', 'certificate-jobs'), ('portal', 'portal-certificate-state')):
             with self.subTest(mode=mode):

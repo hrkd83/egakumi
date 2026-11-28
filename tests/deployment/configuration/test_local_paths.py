@@ -125,41 +125,40 @@ class LocalPreparationTests(unittest.TestCase):
     def test_prepare_rebases_references_and_preserves_subsequent_user_edits(self):
         before = {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
         with mock.patch.object(prepare_local_environment, "generate_apim_instance_id", return_value="m8q3r2") as generate:
-            result = prepare_local_environment.prepare("alfa", "test", self.root)
+            result = prepare_local_environment.prepare("alfa", "dev", self.root)
         generate.assert_called_once_with()
         self.assertEqual(result["status"], "created")
         paths = LocalPaths(self.root, "alfa")
         raw = json.loads(paths.params.read_text())
-        self.assertEqual(raw["configFile"], "../../infra/config/test.json")
+        self.assertEqual(raw["configFile"], "../../infra/config/dev.json")
         self.assertEqual((paths.params.parent / raw["$schema"]).resolve(),
                          self.root / "params/params.schema.json")
         self.assertEqual(raw["environmentName"], "alfa")
         self.assertEqual(raw["services"]["apimInstanceId"], "m8q3r2")
+        public = json.loads((self.root / "params/dev.example.json").read_text(encoding="utf-8"))
+        self.assertEqual(raw["capacity"], public["capacity"])
         self.assertNotIn("sshPublicKeyFile", raw["management"])
         normalized = load_configuration_source(paths.params)
         self.assertEqual(normalized["management"]["sshPublicKeyFile"], str(paths.secrets / "management-ssh.pub"))
         self.assertEqual(stat.S_IMODE(paths.params.stat().st_mode), 0o600)
         raw["productName"] = "synth-prod"
-        standard_reference = raw["configFile"]
+        raw["capacity"]["applicationGateway"]["maxInstances"] = 3
         paths.params.write_text(json.dumps(raw))
         expected = load_configuration_source(paths.params)
-        for reference in (standard_reference, "../../config/test.json"):
-            with self.subTest(reference=reference), mock.patch.object(
-                    prepare_local_environment, "generate_apim_instance_id") as generate:
-                raw["configFile"] = reference
-                paths.params.write_text(json.dumps(raw))
-                content = paths.params.read_bytes()
-                self.assertEqual(load_configuration_source(paths.params), expected)
-                repeated = prepare_local_environment.prepare("alfa", "test", self.root)
-                self.assertEqual(repeated["status"], "existing-input-preserved")
-                generate.assert_not_called()
-                self.assertEqual(paths.params.read_bytes(), content)
+        self.assertEqual(expected["gateway"]["autoscaleMaxCapacity"], 3)
+        with mock.patch.object(prepare_local_environment, "generate_apim_instance_id") as generate:
+            content = paths.params.read_bytes()
+            repeated = prepare_local_environment.prepare("alfa", "dev", self.root)
+            self.assertEqual(repeated["status"], "existing-input-preserved")
+            generate.assert_not_called()
+            self.assertEqual(paths.params.read_bytes(), content)
+            self.assertEqual(load_configuration_source(paths.params), expected)
         for relative, value in before.items():
             self.assertEqual((self.root / relative).read_bytes(), value)
         self.assertEqual(list(paths.secrets.iterdir()), [])
 
     def test_existing_missing_or_invalid_apim_identifier_is_never_repaired_implicitly(self):
-        prepare_local_environment.prepare("alfa", "test", self.root)
+        prepare_local_environment.prepare("alfa", "dev", self.root)
         paths = LocalPaths(self.root, "alfa")
         original = json.loads(paths.params.read_text())
         for identifier in (None, "", "ABC123", "short", "toolong"):
@@ -172,23 +171,31 @@ class LocalPreparationTests(unittest.TestCase):
             before = paths.params.read_bytes()
             with self.subTest(identifier=identifier), mock.patch.object(prepare_local_environment, "generate_apim_instance_id") as generate:
                 with self.assertRaises(ValueError):
-                    prepare_local_environment.prepare("alfa", "test", self.root)
+                    prepare_local_environment.prepare("alfa", "dev", self.root)
             generate.assert_not_called()
             self.assertEqual(paths.params.read_bytes(), before)
 
+    def test_repeated_preparation_cannot_switch_capacity_profile(self):
+        prepare_local_environment.prepare("alfa", "prod", self.root)
+        paths = LocalPaths(self.root, "alfa")
+        before = paths.params.read_bytes()
+        with self.assertRaisesRegex(ValueError, "different environment/profile"):
+            prepare_local_environment.prepare("alfa", "stg", self.root)
+        self.assertEqual(paths.params.read_bytes(), before)
+
     def test_new_environments_generate_their_own_identifier(self):
         with mock.patch.object(prepare_local_environment, "generate_apim_instance_id", side_effect=["m8q3r2", "v4n7p1"]):
-            prepare_local_environment.prepare("alfa", "test", self.root)
-            prepare_local_environment.prepare("beta", "test", self.root)
+            prepare_local_environment.prepare("alfa", "dev", self.root)
+            prepare_local_environment.prepare("beta", "dev", self.root)
         self.assertEqual(json.loads(LocalPaths(self.root, "alfa").params.read_text())["services"]["apimInstanceId"], "m8q3r2")
         self.assertEqual(json.loads(LocalPaths(self.root, "beta").params.read_text())["services"]["apimInstanceId"], "v4n7p1")
 
     def test_existing_environment_profile_is_never_overwritten(self):
-        prepare_local_environment.prepare("alfa", "production", self.root)
+        prepare_local_environment.prepare("alfa", "prod", self.root)
         paths = LocalPaths(self.root, "alfa")
         before = paths.params.read_bytes()
         with self.assertRaises(ValueError):
-            prepare_local_environment.prepare("alfa", "test", self.root)
+            prepare_local_environment.prepare("alfa", "dev", self.root)
         self.assertEqual(paths.params.read_bytes(), before)
 
     def test_parameter_bridge_check_cleans_generated_input_on_success_and_failure(self):

@@ -8,6 +8,7 @@ import unittest
 
 from deployment.helpers import cleanup
 from deployment.helpers.configuration import load_configuration
+from deployment.helpers.portal_auth_certificate import gateway_obo_vault_name
 
 
 from tests.support.cleanup_fixtures import (
@@ -160,6 +161,26 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         self.assertTrue(all(call["id"] in expected_reads for call in transport.calls if call["method"] == "GET"))
         self.assertEqual(set(result), {"phase", "status", "resourceGroups", "applicationInfrastructure",
                                        "softDeletedServices"})
+
+    def test_obo_vault_teardown_preserves_protection_and_rejects_another_vault(self):
+        vault_root = self.svc_rg + "/providers/Microsoft.KeyVault/vaults/"
+        service_ids = self.state["serviceResourceIds"]
+        service_ids["oboVault"] = vault_root + "another-vault"
+        self.state["serviceLocations"]["oboVault"] = self.configuration["location"]
+        transport = FakeTransport()
+        self.assert_code("invalid-state", lambda: self.post(transport))
+        self.assertEqual(transport.calls, [])
+
+        service_ids["oboVault"] = vault_root + gateway_obo_vault_name(self.configuration["resourceStem"])
+        current = cleanup._validate_state(self.configuration, self.state)
+        tombstone = cleanup._tombstone(self.configuration, current, "oboVault")
+        transport = FakeTransport({tombstone: {"id": tombstone, "properties": {
+            "vaultId": service_ids["oboVault"], "purgeProtectionEnabled": True,
+        }}})
+        result = self.post(transport)
+        vault, = [item for item in result["softDeletedServices"] if item["kind"] == "oboVault"]
+        self.assertEqual(vault["status"], "retained-protection")
+        self.assertFalse(transport.mutations())
         self.assertTrue(all("/roleDefinitions/" not in call["id"] for call in transport.calls))
         self.assertTrue(all("graph.microsoft" not in call["id"] for call in transport.calls))
 

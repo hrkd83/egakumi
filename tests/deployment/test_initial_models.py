@@ -3,36 +3,39 @@ import copy
 import json
 import unittest
 
-from tests.support.configuration_fixtures import CORE, configuration, fixture
+from tests.support.configuration_fixtures import CORE, configuration, fixture, profile_options
 
 
-PUBLIC_FILES = ("infra/config/test.json", "infra/config/production.json")
+PROFILES = ("prod", "stg", "dev")
 
 
 class InitialModelTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.models = {
-            name: json.loads((CORE / name).read_text(encoding="utf-8"))["services"]["modelDeployments"]
-            for name in PUBLIC_FILES
+            name: profile_options(name)["services"]["modelDeployments"]
+            for name in PROFILES
         }
 
     def test_environments_share_unique_deployments(self):
-        expected = self.models[PUBLIC_FILES[0]]
+        expected = self.models["prod"]
         self.assertTrue(expected)
         for name, models in self.models.items():
             with self.subTest(file=name):
                 self.assertEqual(models, expected)
                 self.assertEqual(len({model["name"].casefold() for model in models}), len(models))
 
-    def test_models_have_explicit_versions_quotas_and_positive_capacity(self):
-        for model in self.models[PUBLIC_FILES[0]]:
+    def test_models_have_explicit_versions_and_quotas_with_common_initial_capacity(self):
+        catalog = json.loads((CORE / "infra/config/capacity/foundry.json").read_text(encoding="utf-8"))
+        deployments = catalog["common"]["services"]["modelDeployments"]
+        self.assertTrue(all("capacity" not in model for model in deployments))
+        for model in self.models["prod"]:
             with self.subTest(model=model["name"]):
                 self.assertEqual(model["versionUpgradeOption"], "NoAutoUpgrade")
                 self.assertTrue(model["modelVersion"].strip())
                 self.assertTrue(model["quotaUsageName"].strip())
                 self.assertIs(type(model["capacity"]), int)
-                self.assertGreater(model["capacity"], 0)
+                self.assertEqual(model["capacity"], 1)
 
     def test_text_api_models_match_capabilities_and_are_deployed(self):
         definition = json.loads((CORE / "apps/api-gateway/apis/openai-inference-v1.json").read_text(encoding="utf-8"))

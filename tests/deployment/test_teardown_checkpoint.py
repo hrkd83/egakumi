@@ -172,6 +172,23 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(saved, lifecycle.state_from_outputs(self.config, self.outputs()))
         self.assertNotIn('applicationInfrastructure', saved)
 
+    def test_existing_deployment_cannot_resume_or_teardown_with_another_capacity_profile(self):
+        prod = {**self.config, 'capacityProfile': 'prod'}
+        stg = {**self.config, 'capacityProfile': 'stg'}
+        outputs = {**self.outputs(), 'capacityProfile': 'prod'}
+        with self.assertRaisesRegex(lifecycle.DeploymentError, 'capacity profile'):
+            lifecycle.state_from_outputs(stg, outputs)
+        state = lifecycle.state_from_outputs(prod, outputs)
+        path = self.paths.state / 'latest.json'
+        lifecycle.protected_json(path, state)
+        before = path.read_bytes()
+        with self.assertRaises(lifecycle.DeploymentError):
+            lifecycle._read_core_checkpoint(stg)
+        with self.assertRaises(cleanup.CleanupError):
+            cleanup._validate_state(stg, state)
+        self.assertEqual(lifecycle._read_core_checkpoint(prod), state)
+        self.assertEqual(path.read_bytes(), before)
+
     def test_state_conversion_remains_pure_and_save_failure_preserves_previous_checkpoint(self):
         previous = {**self.state, 'applicationInfrastructure': self.inventory}
         lifecycle.protected_json((self.paths.state / "latest.json"), previous)

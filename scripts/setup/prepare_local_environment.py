@@ -30,7 +30,7 @@ def prepare(environment: str, profile: str, repository: Path = REPOSITORY, *, ne
     """既存入力を上書きせず、公開configへの参照と環境別の秘密参照を揃える。"""
     paths = LocalPaths(repository, environment)
     if profile not in STANDARD_CONFIG_PROFILES:
-        raise ValueError("Select the test or production public profile")
+        raise ValueError("Select the prod, stg, or dev public profile")
     config_reference = f"../../{STANDARD_CONFIG_DIRECTORY.as_posix()}/{profile}.json"
     if paths.params.exists() or paths.params.is_symlink():
         paths.checked(paths.params)
@@ -41,7 +41,7 @@ def prepare(environment: str, profile: str, repository: Path = REPOSITORY, *, ne
         except (OSError, ValueError):
             raise ValueError("Existing local parameters could not be verified; no file was replaced") from None
         if (not isinstance(current, dict) or current.get("environmentName") != environment
-                or current.get("configFile") not in (config_reference, f"../../config/{profile}.json")):
+                or current.get("configFile") != config_reference):
             raise ValueError("Existing local parameters select a different environment/profile; no file was replaced")
         apim_instance_id(current)
         if new_apim_instance:
@@ -73,7 +73,7 @@ def prepare(environment: str, profile: str, repository: Path = REPOSITORY, *, ne
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--environment", required=True)
-    parser.add_argument("--profile", choices=STANDARD_CONFIG_PROFILES, default="test")
+    parser.add_argument("--profile", choices=STANDARD_CONFIG_PROFILES, required=True)
     parser.add_argument("--new-apim-instance", action="store_true",
                         help="Prepare another APIM identifier after verified postdown; preserve the previous state as history")
     args = parser.parse_args(argv)

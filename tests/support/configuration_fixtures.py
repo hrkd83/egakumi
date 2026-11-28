@@ -7,6 +7,7 @@ from tests import REPOSITORY
 
 CORE = REPOSITORY
 from deployment.helpers import configuration
+from deployment.helpers.capacity_profiles import compose_capacity_options
 
 
 def bind_credential_fixture_id(parameters):
@@ -17,11 +18,18 @@ def bind_credential_fixture_id(parameters):
         credential["clientId"] = str(UUID(int=10, version=4))
 
 
-def public_fixture(profile="test"):
-    """新しい公開paramsとconfigへ独立した登録情報を入れ、相対参照を保つ。"""
+def profile_options(profile="dev", repository=CORE):
+    """サービス別の正本を本番の合成処理で読んだ標準設定を返す。"""
+    source = repository / "infra/config" / f"{profile}.json"
+    params = repository / "params" / f"{profile}.example.json"
+    requested_capacity = json.loads(params.read_text(encoding="utf-8"))["capacity"]
+    return compose_capacity_options(source, json.loads(source.read_text(encoding="utf-8")),
+                                    requested_capacity=requested_capacity)
+
+
+def public_parameters(profile="dev"):
+    """公開paramsの構造を保ち、置き換え必須の欄だけへ合成値を入れる。"""
     parameters = json.loads((CORE / "params" / f"{profile}.example.json").read_text(encoding="utf-8"))
-    options = json.loads((CORE / "infra/config" / f"{profile}.json").read_text(encoding="utf-8"))
-    parameters["configFile"] = "options.json"
     parameters["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
     parameters["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
     parameters["entraTenantId"] = parameters["azureTenantId"]
@@ -33,12 +41,33 @@ def public_fixture(profile="test"):
     parameters["certificate"]["azureDnsManagedIdentityResourceId"] = (
         "/subscriptions/" + parameters["subscriptionId"] +
         "/resourceGroups/rg-dns-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-fixture")
-    return parameters, options
+    return parameters
+
+
+def public_fixture(profile="dev"):
+    """合成済みのconfigを使う試験向けに、対応する企業入力を組み立てる。"""
+    parameters = public_parameters(profile)
+    parameters["configFile"] = "options.json"
+    parameters.pop("capacity")
+    return parameters, profile_options(profile)
 
 
 def fixture():
     """設定試験で使う最小の独立した設定を作る。呼出元が変更しても公開サンプルは書き換えない。"""
-    value = configuration.load_configuration_source(CORE / "params/test.example.json")
+    value = configuration.load_configuration_source(CORE / "params/dev.example.json")
+    # 汎用テストではプロファイルとは別の、固定された合成アドレスと名前を使います。
+    reference = json.loads((CORE / "params/prod.example.json").read_text(encoding="utf-8"))
+    value.pop("capacityProfile")
+    value["environmentName"] = "test"
+    value["network"].update(reference["network"])
+    for key in ("snatPrivateRanges", "idpsPrivateRanges"):
+        value["network"]["firewall"].pop(key, None)
+    value["gateway"]["publicHostName"] = reference["gateway"]["publicHostName"]
+    value["portal"]["publicHostName"] = reference["portal"]["publicHostName"]
+    # 同じ合成入力で撤去・purgeの分岐も独立して試験できるよう、保護設定を明示します。
+    value["monitoring"].update(auditStorageSku="Standard_LRS", auditImmutabilityMode="Disabled",
+                               auditRetentionDays=2557)
+    value["services"].update(vaultRetentionDays=7, vaultPurgeProtection=False)
     # The published sample deliberately requires the adopter's target IDs.
     value["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
     value["azureTenantId"] = "99999999-9999-4999-8999-999999999999"

@@ -17,6 +17,7 @@ from deployment.helpers.paths import local_paths
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers import credential_broker_lifecycle
 from deployment.helpers.gateway_obo_certificate import deployment_settings as gateway_obo_settings
+from deployment.helpers.portal_auth_certificate import application_vault_origin, gateway_obo_vault_origin
 from deployment.lifecycle import protected_json
 from tests.deployment.test_credential_broker_initial_deployment import fixture as broker_fixture, DIGEST, ok
 from tests.support.management_fixtures import client_core_outputs
@@ -86,13 +87,15 @@ class GatewayDeploymentTests(unittest.TestCase):
             workspace = local_paths(config, Path(directory).resolve())
             with self.assertRaisesRegex(ValueError, 'register|Register'):
                 gateway_obo_settings(config, workspace)
-            key_url = f"https://{foundation['vaultName']}.vault.azure.net/keys/gateway-obo/" + 'a' * 32
+            obo_vault = gateway_obo_vault_origin(config['resourceStem'])
+            key_url = obo_vault + '/keys/gateway-obo/' + 'a' * 32
             entra['obo'] = {'keyId': key_url, 'certificateThumbprint': '00' * 32}
             self.assertEqual(gateway_obo_settings(config, workspace), {
                 'tenantId': config['entraTenantId'], 'clientId': entra['audience'],
                 'keyUrl': key_url, 'certificateThumbprint': 'A' * 43,
             })
-            for wrong_url in (key_url.rsplit('/', 1)[0], key_url.replace('gateway-obo', 'portal-auth'), key_url + '?other=value'):
+            for wrong_url in (key_url.rsplit('/', 1)[0], key_url.replace('gateway-obo', 'portal-auth'),
+                              key_url.replace(obo_vault, application_vault_origin(config['resourceStem'])), key_url + '?other=value'):
                 with self.subTest(wrong_url=wrong_url), self.assertRaisesRegex(ValueError, 'selected infrastructure vault'):
                     entra['obo']['keyId'] = wrong_url
                     gateway_obo_settings(config, workspace)

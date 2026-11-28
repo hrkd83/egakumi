@@ -99,6 +99,26 @@ class GatewayHttpsInfrastructureTests(unittest.TestCase):
         config = {"gateway": {"publicHostName": "api.example.com"}, "apiDefinitions": []}
         self.assertIs(self.main_value(self.templates["main"]["variables"]["useIngressSecrets"], config), True)
 
+    def test_apim_premium_uses_a_static_standard_management_ip_and_keeps_the_gateway_internal(self):
+        template = self.templates["services"]
+        apim = next(item for item in self.resources("services") if item["type"] == "Microsoft.ApiManagement/service")
+        management_ip = next(item for item in self.resources("services") if item["type"] == "Microsoft.Network/publicIPAddresses")
+        resolver = NetworkArmExpression("[true()]", template)
+        self.assertEqual(apim["properties"]["virtualNetworkType"], "Internal")
+        for sku in ("Premium", "Developer"):
+            parameters = {"names": {"apim": "apim-test-fixture"}, "apimSkuName": sku}
+            with self.subTest(sku=sku):
+                self.assertEqual(resolver.resolve(management_ip["condition"], parameters), sku == "Premium")
+                ip_id = resolver.resolve(apim["properties"]["publicIpAddressId"], parameters)
+                if sku == "Premium":
+                    self.assertEqual(management_ip["sku"]["name"], "Standard")
+                    properties = resolver.resolve(management_ip["properties"], parameters)
+                    self.assertEqual(properties["publicIPAllocationMethod"], "Static")
+                    self.assertEqual(properties["dnsSettings"]["domainNameLabel"], "apim-test-fixture")
+                    self.assertTrue(ip_id.endswith("/pip-apim-test-fixture-management"))
+                else:
+                    self.assertIsNone(ip_id)
+
     def test_owner_tickets_still_follow_realtime_and_document_contracts(self):
         document = {"authorization": {"operationConstraints": {"status": {"kind": "documentAnalysisStatus"}}}}
         realtime = {"authorization": {"operationConstraints": {"create": {"kind": "realtimeCreate"}}}}

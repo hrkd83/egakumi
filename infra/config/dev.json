@@ -1,0 +1,82 @@
+{
+  "$schema": "./options.schema.json",
+  "$comment": "この環境の標準動作を選びます。サービス別の容量はcapacityディレクトリの共有設定と同名プロファイルから読みます。",
+  "network": {
+    "bgpRoutePropagation": {
+      "agw": true,
+      "apim": true,
+      "management": true
+    },
+    "dnsTtl": 300
+  },
+  "services": {
+    "grantApimSecretAccess": false,
+    "projectDisplayName": "egakumi",
+    "projectDescription": "Shared project for model, agent, and tool capabilities.",
+    "speechEnabled": true,
+    "grantApimFoundryModelsAccess": true
+  },
+  "gateway": {
+    "wafMode": "Prevention",
+    "backendRequestTimeoutSeconds": 600,
+    "wafCustomRules": [],
+    "wafExclusions": [],
+    "wafMaxRequestBodySizeInKb": 2000,
+    "wafRequestBodyInspectLimitInKb": 2000,
+    "wafFileUploadLimitInMb": 4,
+    "realtimeControlEnabled": true,
+    "authentication": {
+      "entra": {
+        "userLimits": {
+          "requestRate": {
+            "calls": 1000,
+            "renewalPeriodSeconds": 60
+          },
+          "tokensPerMinute": null,
+          "tokenQuota": null
+        }
+      },
+      "credentialLogin": {
+        "providerNames": [
+          "graph-delegated"
+        ],
+        "transactionLifetimeSeconds": 600,
+        "loginCallsPerMinute": 10,
+        "idleTimeoutSeconds": 604800,
+        "absoluteLifetimeSeconds": 2592000,
+        "rotationIntervalSeconds": 86400,
+        "rotationGraceSeconds": 300,
+        "rotationHandoffSeconds": 600,
+        "rotationCandidateTtlSeconds": 600,
+        "identity": {
+          "clientSecretFile": "./secrets/entra-credential-secret.txt"
+        }
+      }
+    }
+  },
+  "management": {
+    "sshPublicKeyFile": "./secrets/management-ssh.pub"
+  },
+  "certificate": {
+    "mode": "dnsPlugin",
+    "certificateName": "tls-public",
+    "renewBeforeDays": 30,
+    "checkEveryHours": 12,
+    "moduleVersion": "4.34.0",
+    "directory": "production",
+    "dnsSleepSeconds": 60,
+    "validationTimeoutSeconds": 120,
+    "minimumValidDays": 7
+  },
+  "credentialProviders": {
+    "graphDelegated": {
+      "displayName": "Delegated Graph connection",
+      "scopes": "openid profile email offline_access https://graph.microsoft.com/User.Read",
+      "clientSecretFile": "./secrets/entra-client-secret.txt"
+    }
+  },
+  "firewallTlsInspection": {
+    "rootCaCertificateFile": "./secrets/firewall-root-ca.cer"
+  },
+  "capacityProfile": "dev"
+}

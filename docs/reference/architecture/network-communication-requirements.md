@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 初期ネットワーク | 独立VNetと用途別のサブネット・NSG・ルートテーブル | AppGW、APIM、Private Endpoint、管理VM、Portal用ACA、Broker用ACA、証明書用ACAへNSGを関連付ける。AzureFirewallSubnetには顧客NSGを関連付けない |
 | 固定ルール集合 | NSGとFirewallの名称・優先度・用途を資材で固定 | ルール作成の条件は資材にあり、構築した資源のアドレスを設定する |
-| 公開入口 | AppGWのHTTP80とHTTPS443 | HTTPはHTTPSへのリダイレクト用。公開IPv4の初期範囲は`0.0.0.0/0`。企業の許可元IP制限は引渡し後に手動で変更する |
+| 公開入口 | AppGWのHTTP80とHTTPS443 | HTTPはHTTPSへのリダイレクト用。`stg`は管理者の接続元IPv4 CIDRに限定。`prod`と`dev`の初期範囲は`0.0.0.0/0` |
 | AppGWのバックエンド | APIMとPortalのACA入口へHTTPS443 | AppGWで再暗号化し、Firewall PremiumでTLS検査後に再暗号化する。 |
 | APIMからの接続 | Foundry・Key Vault PE、BrokerのACA入口等へHTTPS443 | AppGWのバックエンド設定とは別接続。サービスのHTTPS契約と認証を維持する |
 | L7入口保護 | AppGWが`X-Core-L7-Ingress`を上書きし、APIMが検査 | 入口の証明は公開文書・paramsへ記載しない。業務APIの認可には別途Bearerまたは例外発行の購読キーを使う |
@@ -57,9 +57,9 @@ NSGはstatefulである。許可された接続への応答に逆向きの新規
 
 | 通信ID | 送信元 → 宛先 | プロトコル・宛先ポート | 用途 | 経路・制御 |
 | --- | --- | --- | --- | --- |
-| <a id="flow-client-http"></a>`FLOW-CLIENT-HTTP` | 公開クライアント → AppGW | TCP80 / HTTP | HTTPS入口へのリダイレクト | AppGW Inbound NSG。FW非通過 |
-| <a id="flow-client-https"></a>`FLOW-CLIENT-HTTPS` | 公開クライアント → AppGW | TCP443 / HTTPS、WSS | API、SSE、WebSocket、MCP、Portal | AppGW Inbound NSGとWAF。バックエンド接続は次の行で区別 |
-| <a id="flow-firewall-public-appgw"></a>`FLOW-FIREWALL-PUBLIC-APPGW` | 構築Firewallのpublic IP → AppGW | TCP443 / HTTPS | Portal等の公開Gateway呼出しでFWの送信元変換を経る通信の明示 | AppGW Inbound NSG。クライアントAllowと重なるため、この1規則だけで公開元を限定したとは扱わない |
+| <a id="flow-client-http"></a>`FLOW-CLIENT-HTTP` | 公開クライアント → AppGW | TCP80 / HTTP | HTTPS入口へのリダイレクト | AppGW Inbound NSG。`stg`では承認済み接続元のみ。FW非通過 |
+| <a id="flow-client-https"></a>`FLOW-CLIENT-HTTPS` | 公開クライアント → AppGW | TCP443 / HTTPS、WSS | API、SSE、WebSocket、MCP、Portal | AppGW Inbound NSGとWAF。`stg`では承認済み接続元のみ |
+| <a id="flow-firewall-public-appgw"></a>`FLOW-FIREWALL-PUBLIC-APPGW` | 構築Firewallのpublic IP → AppGW | TCP443 / HTTPS | Portalや管理VMから公開Gatewayを呼ぶ際のFirewall送信元変換 | AppGW Inbound NSG。`stg`でもこの基盤自身のFirewall IPを許可し、PortalのサインインとAPI呼出しでは引き続きそれぞれの認可を適用する |
 | <a id="flow-appgw-apim"></a>`FLOW-APPGW-APIM` | AppGW → APIM内部VIP | TCP443 / HTTPS | API転送とAPIM health probe | VIP宛UDRでFWへ送り、標準Gateway FQDNでTLS検査。APIM Inboundの送信元はFirewallサブネット |
 | <a id="flow-appgw-aca"></a>`FLOW-APPGW-ACA` | AppGW → Portal用ACAの内部VIP | TCP443 / HTTPS。ACA NSGは443と31443 | Portal転送と`/api/health`のprobe | VIP宛UDRでFWへ送り、Portal FQDNでTLS検査。PortalのACA Inboundの送信元はFirewallサブネット |
 | <a id="flow-appgw-kv"></a>`FLOW-APPGW-KV` | AppGW → 公開TLS用Key Vault PE | TCP443 / HTTPS | 公開リスナー証明書のPFX secretを参照 | PE直接。AppGW Outbound、PE Inbound、対象secretの読取 |

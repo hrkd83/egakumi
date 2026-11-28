@@ -13,6 +13,7 @@ from .credential_login import key_only_gateway_telemetry
 
 COMMON_AUTHENTICATION_FRAGMENT_ID = "core-common-authentication"
 ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID = "core-entra-authentication-error"
+STAGING_ACCESS_ROLE = "Gateway.Staging.Access"
 OPERATION_ENTRA_AUTHENTICATION_ERROR_MARKER = "__OPERATION_ENTRA_AUTHENTICATION_ERROR_XML__"
 AUTHENTICATION_FRAGMENT_IDS = (COMMON_AUTHENTICATION_FRAGMENT_ID, ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID)
 COMMON_AUTHENTICATION_SECTIONS = (
@@ -110,10 +111,12 @@ def _render_telemetry(value: str) -> str:
     return render_audit_policy(value, source_comments="compact")
 
 
-def render_common_authentication_fragment(*, entra_enabled: bool) -> str:
+def render_common_authentication_fragment(*, entra_enabled: bool, required_app_role: str = "") -> str:
     """同名XMLへ同名CSの5区画を差し込み、現在と同じ共通認証を生成する。"""
     if type(entra_enabled) is not bool:
         raise ValueError("Authentication fragment rendering requires an explicit Boolean state")
+    if required_app_role and (not entra_enabled or required_app_role != STAGING_ACCESS_ROLE):
+        raise ValueError("Authentication fragment requires the fixed staging access role")
     directory = REPOSITORY / "apps/api-gateway/policies"
     value = (directory / AUTHENTICATION_FRAGMENT_FILES[COMMON_AUTHENTICATION_FRAGMENT_ID]).read_text(encoding="utf-8")
     sections = extract_common_authentication_sections((directory / COMMON_AUTHENTICATION_SOURCE).read_text(encoding="utf-8"))
@@ -129,6 +132,9 @@ def render_common_authentication_fragment(*, entra_enabled: bool) -> str:
         before, remaining = value.split(start)
         _, after = remaining.split(end)
         value = before + after
+    value = value.replace("__ENTRA_REQUIRED_APP_ROLE__", (
+        f'<claim name="roles" match="any"><value>{required_app_role}</value></claim>' if required_app_role else ""
+    ))
     value = value.replace("__ENTRA_OPEN_PRODUCT_ID__", "core-entra-model-users")
     value = _render_telemetry(value)
     if "__CORE_COMMON_AUTHENTICATION_" in value:
@@ -145,8 +151,9 @@ def render_entra_authentication_error_fragment() -> str:
     return value
 
 
-def render_common_authentication_fragments(*, entra_enabled: bool) -> dict[str, str]:
-    fragments = {COMMON_AUTHENTICATION_FRAGMENT_ID: render_common_authentication_fragment(entra_enabled=entra_enabled)}
+def render_common_authentication_fragments(*, entra_enabled: bool, required_app_role: str = "") -> dict[str, str]:
+    fragments = {COMMON_AUTHENTICATION_FRAGMENT_ID: render_common_authentication_fragment(
+        entra_enabled=entra_enabled, required_app_role=required_app_role)}
     if entra_enabled:
         fragments[ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID] = render_entra_authentication_error_fragment()
     return fragments
@@ -192,7 +199,8 @@ def expand_operation_entra_authentication_error(xml: str) -> str:
     return ET.tostring(root, encoding="unicode")
 
 
-def expand_common_authentication_fragments(xml: str, fragments: dict[str, str], *, entra_enabled: bool) -> str:
+def expand_common_authentication_fragments(xml: str, fragments: dict[str, str], *, entra_enabled: bool,
+                                           required_app_role: str = "") -> str:
     """明示された信頼済み辞書を固定生成元と完全照合してから、Globalの固定位置へ展開する。"""
     root = _xml(xml)
     if root.tag != "policies":
@@ -203,7 +211,7 @@ def expand_common_authentication_fragments(xml: str, fragments: dict[str, str], 
                 if node.get("fragment-id") in AUTHENTICATION_FRAGMENT_IDS or node.get("id") in AUTHENTICATION_FRAGMENT_IDS]
     if not includes:
         return xml
-    expected = render_common_authentication_fragments(entra_enabled=entra_enabled)
+    expected = render_common_authentication_fragments(entra_enabled=entra_enabled, required_app_role=required_app_role)
     if not isinstance(fragments, dict) or set(fragments) != set(expected):
         raise ValueError("Authentication expansion needs its complete trusted fragment dictionary")
     parsed = {}

@@ -8,10 +8,11 @@ from pathlib import Path
 import tempfile
 import unittest
 from tests.support.schema_helpers import local_schema_validator, read_schema, schema_path
-from tests.support.configuration_fixtures import bind_credential_fixture_id, fixture
+from tests.support.configuration_fixtures import bind_credential_fixture_id, fixture, profile_options, public_parameters
 from tests import REPOSITORY
 
 CORE = REPOSITORY
+from deployment.helpers.capacity_profiles import compose_capacity_options
 from deployment.helpers.configuration import (ConfigurationError, build_bicep_configuration,
                            load_configuration, load_configuration_source,
                            normalize_configuration, PARAMETER_OWNED_PATHS)
@@ -55,6 +56,11 @@ class SplitConfigurationTests(unittest.TestCase):
         self.write(self.options, options or {})
         self.write(self.parameters, {"configFile": "../defaults/config.json", **(parameters or {})})
         return load_configuration_source(self.parameters)
+
+    def standard_parameters(self, profile):
+        parameters = public_parameters(profile)
+        parameters["configFile"] = str(CORE / "infra/config" / f"{profile}.json")
+        return parameters
 
     def test_nested_parameters_merge_without_erasing_platform_options(self):
         result = self.sources(
@@ -183,7 +189,7 @@ class SplitConfigurationTests(unittest.TestCase):
             self.sources(options={"unknown": "value"})
 
     def test_public_examples_load_and_normalize_both_modes(self):
-        for name in ("test", "production"):
+        for name in ("prod", "stg", "dev"):
             raw = load_configuration_source(CORE / f"params/{name}.example.json")
             raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
             raw["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
@@ -202,7 +208,7 @@ class SplitConfigurationTests(unittest.TestCase):
                 self.assertNotIn("pluginArgumentsFile", arm["certificate"])
 
     def test_project_defaults_use_egakumi_display_name(self):
-        raw = load_configuration_source(CORE / "params/test.example.json")
+        raw = load_configuration_source(CORE / "params/dev.example.json")
         raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
         raw["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
         raw["entraTenantId"] = raw["azureTenantId"]
@@ -249,11 +255,12 @@ class SplitConfigurationTests(unittest.TestCase):
                 self.sources(**{owner: {"monitoring": {"auditAllowedIpAddresses": []}}})
 
     def test_complete_split_configuration_requires_environment_cidrs(self):
-        options = json.loads((CORE / "infra/config/test.json").read_text())
-        parameters = json.loads((CORE / "params/test.example.json").read_text())
+        options = profile_options("dev", CORE)
+        parameters = json.loads((CORE / "params/dev.example.json").read_text())
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"): parameters[key] = "11111111-1111-4111-8111-111111111111"
         adopt_azure_dns_references(parameters)
         parameters.pop("configFile")
+        parameters.pop("capacity")
         for key in ("addressSpaces", "subnetPrefixes"):
             missing = copy.deepcopy(parameters); del missing["network"][key]
             with self.subTest(missing=key):
@@ -274,9 +281,10 @@ class SplitConfigurationTests(unittest.TestCase):
         self.assertEqual(normalized["monitoring"]["auditAllowedIpAddresses"], [])
 
     def test_appgw_rule_inputs_are_rejected_in_split_files_even_with_fixed_values(self):
-        options = json.loads((CORE / "infra/config/test.json").read_text())
-        parameters = json.loads((CORE / "params/test.example.json").read_text())
+        options = profile_options("dev", CORE)
+        parameters = json.loads((CORE / "params/dev.example.json").read_text())
         parameters.pop("configFile")
+        parameters.pop("capacity")
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"):
             parameters[key] = fixture()[key]
         adopt_azure_dns_references(parameters)
@@ -315,9 +323,9 @@ class SplitConfigurationTests(unittest.TestCase):
                     self.assertNotIn("PRIVATE-INPUT-SENTINEL", str(caught.exception))
 
     def test_public_environment_cidrs_stay_in_params_and_fixed_ranges_are_absent(self):
-        for name in ("test", "production"):
+        for name in ("prod", "stg", "dev"):
             parameters = json.loads((CORE / "params" / (name + ".example.json")).read_text())
-            options = json.loads((CORE / "infra/config" / (name + ".json")).read_text())
+            options = profile_options(name, CORE)
             with self.subTest(sample=name):
                 self.assertLessEqual(set(NETWORK_IP_KEYS), parameters["network"].keys())
                 self.assertNotIn("firewall", parameters["network"])
@@ -374,7 +382,7 @@ class SplitConfigurationTests(unittest.TestCase):
                     self.sources(parameters={"gateway": {"grpc": {key: value}}})
 
     def test_environment_regions_do_not_silently_fall_back_to_another_region(self):
-        raw = load_configuration_source(CORE / "params/test.example.json")
+        raw = load_configuration_source(CORE / "params/dev.example.json")
         for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
             raw[key] = "11111111-1111-4111-8111-111111111111"
         adopt_azure_dns_references(raw)
@@ -384,13 +392,66 @@ class SplitConfigurationTests(unittest.TestCase):
             with self.subTest(missing=key), self.assertRaisesRegex(ConfigurationError, key):
                 normalize_configuration(missing)
 
-    def test_canonical_config_has_no_local_or_example_variants(self):
-        # 実行時の派生設定と導入先入力は.local、config正本は2個だけです。
-        self.assertEqual(
-            {path.name for path in (CORE / "infra/config").glob("*.json")
-             if not path.name.endswith(".schema.json")},
-            {"test.json", "production.json"},
+    def test_each_capacity_profile_has_its_own_standard_entrypoint(self):
+        for profile in ("prod", "stg", "dev"):
+            path = CORE / "infra/config" / f"{profile}.json"
+            raw = json.loads(path.read_text())
+            self.assertEqual(raw.pop("capacityProfile"), profile)
+            with self.subTest(profile=profile), self.assertRaisesRegex(ValueError, "must declare its capacityProfile"):
+                compose_capacity_options(path, raw)
+
+    def test_standard_capacity_rejects_missing_values_instead_of_falling_back(self):
+        paths = (
+            ("capacity",),
+            ("capacity", "applicationGateway"),
+            ("capacity", "applicationGateway", "maxInstances"),
+            ("capacity", "apim", "units"),
+            ("capacity", "credentialBroker", "minReplicas"),
+            ("capacity", "brokerSql", "maxDataGiB"),
         )
+        for path in paths:
+            parameters = self.standard_parameters("prod")
+            target = parameters
+            for part in path[:-1]:
+                target = target[part]
+            del target[path[-1]]
+            self.write(self.parameters, parameters)
+            with self.subTest(path=path), self.assertRaisesRegex(ConfigurationError, "capacity"):
+                load_configuration(self.parameters)
+
+    def test_standard_capacity_rejects_unsupported_sizing_and_unowned_settings(self):
+        invalid = (
+            ("prod", ("applicationGateway", "minInstances"), 31),
+            ("prod", ("applicationGateway", "maxInstances"), 126),
+            ("prod", ("apim", "units"), 1),
+            ("dev", ("apim", "units"), 2),
+            ("stg", ("apim", "units"), True),
+            ("prod", ("apim", "skuName"), "Developer"),
+            ("prod", ("credentialBroker", "maxReplicas"), 4),
+            ("prod", ("brokerSql", "vCores"), 3),
+            ("prod", ("brokerSql", "maxDataGiB"), 1025),
+            ("prod", ("foundry",), {"gpt-6.1-sol": 9}),
+        )
+        for profile, path, value in invalid:
+            parameters = self.standard_parameters(profile)
+            target = parameters["capacity"]
+            for part in path[:-1]:
+                target = target[part]
+            target[path[-1]] = value
+            self.write(self.parameters, parameters)
+            with self.subTest(profile=profile, path=path), self.assertRaisesRegex(ConfigurationError, "capacity"):
+                load_configuration(self.parameters)
+
+    def test_standard_capacity_requires_the_designed_subnet_sizes(self):
+        parameters = self.standard_parameters("prod")
+        parameters["capacity"]["applicationGateway"]["maxInstances"] = 125
+        parameters["capacity"]["apim"]["units"] = 12
+        for subnet, smaller in (("agw", "10.40.0.0/25"), ("apim", "10.40.2.64/28")):
+            selected = copy.deepcopy(parameters)
+            selected["network"]["subnetPrefixes"][subnet] = smaller
+            self.write(self.parameters, selected)
+            with self.subTest(subnet=subnet), self.assertRaisesRegex(ConfigurationError, r"network\.subnetPrefixes\." + subnet):
+                load_configuration(self.parameters)
 
 
 class SplitSchemaTests(unittest.TestCase):
@@ -404,12 +465,12 @@ class SplitSchemaTests(unittest.TestCase):
         for name in ("params", "options", "configuration"):
             schema = read_schema(name)
             if name == "params":
-                document = json.loads((CORE / "params/test.example.json").read_text())
+                document = json.loads((CORE / "params/dev.example.json").read_text())
                 for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
                     document[key] = fixture()[key]
                 adopt_azure_dns_references(document)
             elif name == "options":
-                document = json.loads((CORE / "infra/config/test.json").read_text())
+                document = profile_options("dev", CORE)
             else:
                 document = fixture()
             validator = local_schema_validator(schema)
@@ -440,8 +501,8 @@ class SplitSchemaTests(unittest.TestCase):
     def test_schema_editor_defaults_match_the_files_that_use_them(self):
         # エディターが挿入するschema既定値も、JSON利用元から新配置へ解決します。
         for name, example_paths in (
-            ("params", ("params/test.example.json", "params/production.example.json")),
-            ("options", ("infra/config/test.json", "infra/config/production.json")),
+            ("params", ("params/prod.example.json", "params/stg.example.json", "params/dev.example.json")),
+            ("options", ("infra/config/prod.json", "infra/config/stg.json", "infra/config/dev.json")),
         ):
             default = read_schema(name)["properties"]["$schema"]["default"]
             for relative in example_paths:
@@ -473,7 +534,7 @@ class SplitSchemaTests(unittest.TestCase):
             import jsonschema
         except ImportError:
             self.skipTest("jsonschema is available in the integration venv")
-        for name in ("test", "production"):
+        for name in ("prod", "stg", "dev"):
             for kind in ("params", "config"):
                 path = CORE / (f"params/{name}.example.json" if kind == "params" else f"infra/config/{name}.json")
                 value = json.loads(path.read_text())
@@ -510,7 +571,7 @@ class SplitSchemaTests(unittest.TestCase):
         try: import jsonschema
         except ImportError: self.skipTest("jsonschema is available in the integration venv")
         schema = json.loads((CORE / "params/params.schema.json").read_text())
-        sample = json.loads((CORE / "params/test.example.json").read_text())
+        sample = json.loads((CORE / "params/dev.example.json").read_text())
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"): sample[key] = "11111111-1111-4111-8111-111111111111"
         adopt_azure_dns_references(sample)
         for key in ("network", "addressSpaces", "subnetPrefixes"):
@@ -548,7 +609,7 @@ class SplitSchemaTests(unittest.TestCase):
         except ImportError:
             self.skipTest("jsonschema is available in the integration venv")
         schema = json.loads((CORE / "params/params.schema.json").read_text())
-        sample = json.loads((CORE / "params/test.example.json").read_text())
+        sample = json.loads((CORE / "params/dev.example.json").read_text())
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"):
             sample[key] = "11111111-1111-4111-8111-111111111111"
         adopt_azure_dns_references(sample)

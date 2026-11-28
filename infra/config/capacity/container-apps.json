@@ -1,0 +1,25 @@
+{
+  "$schema": "./capacity.schema.json",
+  "$comment": "Credential Broker業務APIのCPU・メモリ。レプリカ数はparams、Portalと各Jobの設定は各配備資材に定義します。",
+  "common": {},
+  "profiles": {
+    "prod": {
+      "credentialBroker": {
+        "cpu": 1,
+        "memory": "2Gi"
+      }
+    },
+    "stg": {
+      "credentialBroker": {
+        "cpu": 1,
+        "memory": "2Gi"
+      }
+    },
+    "dev": {
+      "credentialBroker": {
+        "cpu": 0.5,
+        "memory": "1Gi"
+      }
+    }
+  }
+}

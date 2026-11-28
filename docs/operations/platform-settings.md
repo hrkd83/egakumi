@@ -176,13 +176,13 @@ WAF／API／Portalの代表要求を共用し、ログ生成のために大量�
 
 | 対象 | Azure Portalの入口と変更する値 | 継続採用する正本 |
 | --- | --- | --- |
-| Application Gateway | 対象資源のConfigurationで、既存autoscaleの最小／最大だけを調整 | `gateway.autoscaleMinCapacity`・`autoscaleMaxCapacity` |
-| Broker Container App | config正本を変更し、`operations/release.py --component gateway`で計画・反映 | `credentialBroker.minReplicas`・`maxReplicas` |
+| Application Gateway | 対象資源のConfigurationで、既存autoscaleの最小／最大だけを調整 | paramsの `capacity.applicationGateway.minInstances`・`maxInstances` |
+| Broker Container App | paramsを変更し、`operations/release.py --component gateway`で計画・反映 | paramsの `capacity.credentialBroker.minReplicas`・`maxReplicas` |
 | Portal Container App | 同じ画面で最小／最大レプリカを調整 | `apps/portal/deploy/application.bicep`の`template.scale`。専用のconfigキーはない |
 
 1. 現在の値、SKU／workload profile、稼働revision・digest、公開ヘルスと
    切戻し先を記録する。変更後も最小値が最大値を超えないことを確認する。
-2. 代表となるBrokerはconfig正本の`credentialBroker.minReplicas`・`maxReplicas`を変更し、`scripts/operations/release.py --component gateway --config "$DEPLOY_PARAMS_FILE"`で計画、`--execute`で反映する。他の対象も1資源の予定した容量だけを変更する。SKU・ゾーン・
+2. 代表となるBrokerはparamsの `capacity.credentialBroker.minReplicas`・`maxReplicas` を変更し、`scripts/operations/release.py --component gateway --config "$DEPLOY_PARAMS_FILE"`で計画、`--execute`で反映する。他の対象も1資源の予定した容量だけを変更する。SKU・ゾーン・
    リスナー・WAF・バックエンド・認証・新しいscalerを同時に変更しない。
 3. 実設定、処理の終了、ヘルスと代表要求を確認する。Container Appでは
    スケール設定の変更で新revisionが作られるため、稼働revision・digestと

@@ -41,14 +41,19 @@ class ResourceNamingTests(unittest.TestCase):
         expected_names["apim"] = "[format('apim-{0}-{1}', variables('stem'), parameters('configuration').services.apimInstanceId)]"
         self.assertEqual(self.variables["serviceNames"], expected_names)
         storage = self.module("certificate-storage")
-        tls_vault, = [item for item in storage["resources"] if item["type"] == "Microsoft.KeyVault/vaults"]
-        self.assertEqual(tls_vault["name"], "[format('kvtls-{0}', parameters('stem'))]")
-        self.assertEqual(storage["outputs"]["vaultName"]["value"], tls_vault["name"])
+        vaults = {item["name"] for item in storage["resources"] if item["type"] == "Microsoft.KeyVault/vaults"}
+        self.assertEqual(vaults, {
+            "[format('kvtls-{0}', parameters('stem'))]",
+            "[format('kvobo-{0}', parameters('stem'))]",
+        })
+        self.assertEqual(storage["outputs"]["vaultName"]["value"], "[format('kvtls-{0}', parameters('stem'))]")
         cleanup = self.template["outputs"]["cleanup"]["value"]
         self.assertEqual(cleanup["certificateVaultName"], "[format('kvtls-{0}', variables('stem'))]")
-        self.assertEqual(cleanup["serviceResourceIds"]["certificateVault"],
-                         "[resourceId(subscription().subscriptionId, format('rg-{0}-svc', variables('stem')), "
-                         "'Microsoft.KeyVault/vaults', format('kvtls-{0}', variables('stem')))]")
+        for prefix in ("kvtls", "kvobo"):
+            self.assertIn(
+                "resourceId(subscription().subscriptionId, format('rg-{0}-svc', variables('stem')), "
+                "'Microsoft.KeyVault/vaults', format('" + prefix + "-{0}', variables('stem')))",
+                cleanup["serviceResourceIds"])
         groups = [item for item in self.template["resources"]
                   if item["type"] == "Microsoft.Resources/resourceGroups"]
         self.assertEqual({item["name"] for item in groups}, {

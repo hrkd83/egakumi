@@ -8,6 +8,7 @@ SCHEMA_PATHS = {
     'params': 'params/params.schema.json',
     'options': 'infra/config/options.schema.json',
     'configuration': 'infra/config/configuration.schema.json',
+    'capacity': 'infra/config/capacity/capacity.schema.json',
 }
 
 

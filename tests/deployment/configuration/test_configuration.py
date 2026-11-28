@@ -18,7 +18,7 @@ import xml.etree.ElementTree as ET
 
 from tests.support.configuration_fixtures import (
     CORE, configuration, fixture, ssh_fixture_key, api_fixture,
-    profiled_api_fixture, connection_fixture, pii_fixture, pii_key_fixture, bind_credential_fixture_id,
+    profiled_api_fixture, connection_fixture, pii_fixture, pii_key_fixture, bind_credential_fixture_id, profile_options,
 )
 from tests.support.schema_helpers import read_schema
 from deployment.helpers.firewall_destinations import generated_apim_service_fqdns
@@ -29,7 +29,7 @@ class PublicSampleTests(unittest.TestCase):
     def sample(self, name):
         manifest = CORE / "params" / (name + ".example.json")
         parameters = json.loads(manifest.read_text(encoding="utf-8"))
-        options = json.loads((manifest.parent / parameters["configFile"]).read_text(encoding="utf-8"))
+        options = profile_options(name)
         raw = configuration.load_configuration_source(manifest)
         bind_credential_fixture_id(raw)
         raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
@@ -67,7 +67,7 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertIn("apimInstanceId", service["required"])
                 self.assertEqual(service["properties"]["apimInstanceId"]["pattern"], "^[a-z0-9]{6}$")
                 self.assertNotIn("default", service["properties"]["apimInstanceId"])
-        for name in ("test", "production"):
+        for name in ("prod", "stg", "dev"):
             parameters, options, actual = self.sample(name)
             with self.subTest(profile=name):
                 self.assertEqual(parameters["services"]["apimInstanceId"], "<AUTO_GENERATED_APIM_INSTANCE_ID>")
@@ -75,7 +75,7 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertNotIn("apimInstanceId", options["services"])
 
     def test_required_org_inputs_are_separate_from_standard_options(self):
-        for name in ("test", "production"):
+        for name in ("prod", "stg", "dev"):
             with self.subTest(name=name):
                 parameters, options, actual = self.sample(name)
                 self.assertEqual(parameters["configFile"], "../infra/config/" + name + ".json")
@@ -89,7 +89,8 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertNotIn("oauthTenantId", parameters["credentialProviders"]["graphDelegated"])
                 provider = actual["credentialProviders"][0]
                 self.assertEqual(provider["name"], "graph-delegated")
-                self.assertEqual(provider["pool"], {"count": 12, "capacity": 8000})
+                expected_pool = options["credentialProviders"]["graphDelegated"]["pool"]
+                self.assertEqual(provider["pool"], expected_pool)
                 self.assertEqual(provider["clientId"], "44444444-4444-4444-8444-444444444444")
                 self.assertEqual(provider["oauthTenantId"], actual["entraTenantId"])
                 self.assertEqual(provider["connectionNames"], [])
@@ -110,8 +111,8 @@ class PublicSampleTests(unittest.TestCase):
                 deployed = configuration.build_bicep_configuration(actual)
                 self.assertNotIn("clientSecretFile", deployed["credentialProviders"][0])
                 self.assertEqual([item["name"] for item in deployed["credentialPhysicalProviders"]],
-                                 ["graph-delegated-" + suffix for suffix in "abcdefghijkl"])
-                self.assertEqual(len(deployed["credentialProfiles"]["graph-delegated"]["pools"]), 12)
+                                 ["graph-delegated-" + suffix for suffix in "abcdefghijkl"[:expected_pool["count"]]])
+                self.assertEqual(len(deployed["credentialProfiles"]["graph-delegated"]["pools"]), expected_pool["count"])
                 self.assertIn("addressSpaces", parameters["network"])
                 self.assertIn("subnetPrefixes", parameters["network"])
                 self.assertNotIn("addressSpaces", options["network"])
@@ -123,11 +124,11 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertNotIn("publicHostName", options["gateway"])
                 self.assertNotIn("publisherEmail", options["services"])
 
-    def test_both_samples_supply_full_model_catalogue_and_access(self):
+    def test_profiles_supply_full_model_catalogue_and_access(self):
         # モデル一覧の一意性と設定検証は test_initial_models.py で確認する。
         # ここでは公開例に主要用途が揃い、APIMから利用する設定が有効なことを調べる。
         required = {"gpt-6.1-sol", "text-embedding-3-small", "gpt-image-2.5-sunburst", "gpt-realtime-2.1", "Cohere-rerank-v4.0-fast", "decision-1"}
-        for name in ("test", "production"):
+        for name in ("prod", "stg", "dev"):
             with self.subTest(name=name):
                 _, options, actual = self.sample(name)
                 models = actual["services"]["modelDeployments"]
@@ -142,19 +143,19 @@ class PublicSampleTests(unittest.TestCase):
                 for model in models:
                     self.assertEqual(model["versionUpgradeOption"], "NoAutoUpgrade")
 
-    def test_test_and_production_zone_choices_remain_consistent(self):
-        for name, zones in (("test", []), ("production", ["1", "2", "3"])):
+    def test_profiles_use_azure_zone_allocation_for_ingress(self):
+        for name in ("prod", "stg", "dev"):
             with self.subTest(name=name):
                 _, options, actual = self.sample(name)
-                self.assertEqual(options["network"]["appGatewayZones"], zones)
-                self.assertEqual(actual["gateway"]["zones"], zones)
+                self.assertEqual(actual["network"]["appGatewayZones"], [])
+                self.assertEqual(actual["gateway"]["zones"], [])
                 self.assertEqual(options["network"]["firewall"]["zones"], [])
                 self.assertEqual(actual["network"]["firewall"]["zones"], [])
                 self.assertEqual(options["network"]["firewall"]["idpsMode"], "Deny")
                 self.assertEqual(actual["network"]["firewall"]["idpsMode"], "Deny")
 
     def test_network_defaults_match_current_firewall_and_monitoring_parameters(self):
-        for name in ("test", "production"):
+        for name in ("prod", "stg", "dev"):
             with self.subTest(environment=name):
                 parameters, options, actual = self.sample(name)
                 addresses = parameters["network"]
@@ -166,7 +167,7 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertEqual(actual["monitoring"]["auditAllowedIpAddresses"], [])
 
     def test_gateway_defaults_apply_waf_body_limits_and_realtime_control(self):
-        for name in ("test", "production"):
+        for name in ("prod", "stg", "dev"):
             _, options, actual = self.sample(name)
             gateway = options["gateway"]
             self.assertEqual(gateway["wafMaxRequestBodySizeInKb"], 2000)
@@ -178,7 +179,7 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertEqual(actual["gateway"][key], gateway[key])
 
     def test_org_inputs_cannot_be_deployed_with_unset_target_guids(self):
-        for name in ("test", "production"):
+        for name in ("prod", "stg", "dev"):
             with self.subTest(name=name), self.assertRaisesRegex(configuration.ConfigurationError, "subscriptionId"):
                 configuration.load_configuration(CORE / "params" / (name + ".example.json"))
 
@@ -396,7 +397,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(actual["apiPublicationStatus"], "not-published")
 
     def test_production_template_requires_target_ids(self):
-        raw = configuration.load_configuration_source(CORE / "params/production.example.json")
+        raw = configuration.load_configuration_source(CORE / "params/prod.example.json")
         with self.assertRaisesRegex(configuration.ConfigurationError, "subscriptionId"):
             self.normalize(raw)
         raw["subscriptionId"], raw["azureTenantId"] = fixture()["subscriptionId"], fixture()["azureTenantId"]
@@ -656,6 +657,10 @@ class ConfigurationTests(unittest.TestCase):
         raw["gateway"]["zones"] = ["1"]
         with self.assertRaisesRegex(configuration.ConfigurationError, "Public IP"):
             self.normalize(raw)
+        raw["network"]["appGatewayZones"] = ["1"]
+        actual = self.normalize(raw)
+        self.assertEqual(actual["gateway"]["zones"], ["1"])
+        self.assertEqual(actual["network"]["appGatewayZones"], ["1"])
 
     def test_bicep_config_excludes_secret_paths(self):
         result = configuration.build_bicep_configuration(self.normalize())
@@ -939,7 +944,9 @@ class ConfigurationTests(unittest.TestCase):
                     self.assertEqual(generated_apim_service_fqdns(document), ["backend-1.example.com"])
 
     def test_broker_defaults_are_validated_without_personal_login_or_fabricated_profiles(self):
-        normalized = self.normalize()
+        raw = fixture()
+        raw.pop("credentialBroker", None)
+        normalized = self.normalize(raw)
         result = configuration.build_bicep_configuration(normalized)
         self.assertNotIn("credentialLogin", result["gateway"]["authentication"])
         self.assertEqual(result["credentialProfiles"], {})
@@ -1142,12 +1149,12 @@ class UnknownConfigurationFieldTests(unittest.TestCase):
                 errors = list(internal_schema.iter_errors(raw))
                 self.assertTrue(any(error.validator == "additionalProperties"
                                     and "unexpectedSetting" in error.message for error in errors))
-        from tests.support.configuration_fixtures import public_fixture
+        from tests.support.configuration_fixtures import public_parameters
         public_schema = local_schema_validator(json.loads((CORE / "params/params.schema.json").read_text(encoding="utf-8")))
         for location in ((), ("services",), ("gateway", "authentication"),
                          ("credentialProviders", "graphDelegated")):
             with self.subTest(public_location=location):
-                raw, options = public_fixture()
+                raw = public_parameters()
                 target = raw
                 for part in location:
                     target = target[part]
@@ -1157,7 +1164,7 @@ class UnknownConfigurationFieldTests(unittest.TestCase):
                                     and "unexpectedSetting" in error.message for error in errors))
                 with tempfile.TemporaryDirectory() as folder:
                     root = Path(folder)
-                    (root / "options.json").write_text(json.dumps(options), encoding="utf-8")
+                    raw["configFile"] = str(CORE / "infra/config/dev.json")
                     source = root / "params.json"
                     source.write_text(json.dumps(raw), encoding="utf-8")
                     with self.assertRaises(configuration.ConfigurationError):

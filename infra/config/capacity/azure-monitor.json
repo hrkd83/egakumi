@@ -1,0 +1,18 @@
+{
+  "$schema": "./capacity.schema.json",
+  "$comment": "Log Analyticsの保持と取り込み設定、Application Insightsの使用量警報、診断アラート。",
+  "common": {
+    "monitoring": {
+      "retentionInDays": 90,
+      "workspaceDailyQuotaGb": -1,
+      "appInsightsDailyCapGb": 100,
+      "appInsightsIngestionWarningGb": 80,
+      "enableLogAlerts": true
+    }
+  },
+  "profiles": {
+    "prod": {},
+    "stg": {},
+    "dev": {}
+  }
+}

@@ -1,4 +1,5 @@
 """分割schemaのローカル参照と、未知外部参照の拒否を新旧runtimeで確認する。"""
+from tests.support.configuration_fixtures import profile_options
 import inspect
 import json
 from pathlib import Path
@@ -32,8 +33,23 @@ class LocalSchemaHelperTests(unittest.TestCase):
                         validator.validate('not-a-valid-value')
             # 既存の標準config全体も、同じオフラインvalidatorで検証します。
             options = schema_helpers.read_schema('options')
-            sample = json.loads((root / 'infra/config/test.json').read_text(encoding='utf-8'))
+            sample = profile_options("dev", root)
             schema_helpers.local_schema_validator(options).validate(sample)
+
+    def test_standard_capacity_profiles_and_service_inputs_validate_offline(self):
+        root = schema_helpers.ROOT
+        options = schema_helpers.local_schema_validator(schema_helpers.read_schema('options'))
+        for profile in ('prod', 'stg', 'dev'):
+            source = root / 'infra/config' / f'{profile}.json'
+            with self.subTest(profile=profile):
+                options.validate(json.loads(source.read_text(encoding='utf-8')))
+                options.validate(profile_options(profile, root))
+        capacity_schema = schema_helpers.schema_path('capacity')
+        capacity = schema_helpers.local_schema_validator({'$ref': capacity_schema.resolve().as_uri()})
+        for source in capacity_schema.parent.glob('*.json'):
+            if source != capacity_schema:
+                with self.subTest(resource=source.stem):
+                    capacity.validate(json.loads(source.read_text(encoding='utf-8')))
 
     def test_unknown_http_https_file_and_relative_references_are_rejected_without_value_echo(self):
         references = (

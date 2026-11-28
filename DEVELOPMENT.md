@@ -162,7 +162,7 @@ SQL統合試験は通常の `npm test` ではスキップします。[SQL統合�
 
 | 順番 | 入口 | 分かること |
 | --- | --- | --- |
-| 1 | [params](params/test.example.json)・[config](infra/config/test.json) | 自社の値と標準値。JSONの説明はSchemaとREADMEに記載 |
+| 1 | [params](params/)・[標準config](infra/config/)・[サービス別config](infra/config/capacity/) | 容量を明記した環境入力と、SKU・ゾーン・保護の標準値。JSONの説明はSchemaとREADMEに記載 |
 | 2 | [azure.yaml](azure.yaml) | 基盤のup/downのhookと処理順序 |
 | 3 | [configuration.py](scripts/deployment/helpers/configuration.py)・[lifecycle.py](scripts/deployment/lifecycle.py) | 合成、入力・秘密参照検査、事前確認、構築後の設定 |
 | 4 | [main.bicep](infra/main.bicep)・[資材一覧](infra/README.md) | 5RG、ネットワーク、ID、サービスの依存関係 |
@@ -182,7 +182,9 @@ Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshe
 
 構築済み環境の更新・途中失敗からの再開では、同じparamsと基盤の配備記録 `.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。
 
-APIM全体ポリシーは[service.xml](apps/api-gateway/policies/service.xml)、各APIのXMLは`apps/api-gateway/policies/`、標準APIのJSONは[apps/api-gateway/apis/](apps/api-gateway/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。モデルの配備・SKU・容量は`infra/config/test.json`または`infra/config/production.json`、標準GraphのClient ID・秘密参照と環境固有値はparams、Graph表示名・scope・poolはconfigの`credentialProviders.graphDelegated`で管理します。追加providerは双方の`additional[]`を論理名で照合します。`apps/api-gateway/api-publication.bicep`と`apps/api-gateway/deploy/api_publication.py`が登録を担当し、`apps/credential-broker/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
+APIM全体ポリシーは[service.xml](apps/api-gateway/policies/service.xml)、各APIのXMLは`apps/api-gateway/policies/`、標準APIのJSONは[apps/api-gateway/apis/](apps/api-gateway/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。標準GraphのClient ID・秘密参照と環境固有値はparams、Graphの表示名とscopeは環境のconfig、poolは`infra/config/capacity/credential-manager.json`で管理します。追加providerは双方の`additional[]`を論理名で照合します。`apps/api-gateway/api-publication.bicep`と`apps/api-gateway/deploy/api_publication.py`が登録を担当し、`apps/credential-broker/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
+
+モデルの配備名・版・SKUは`infra/config/capacity/foundry.json`の`modelDeployments`で管理します。新規配備に使う最小容量は構築前検査で決定し、構築後の容量はMicrosoft Foundryポータルで調整します。 [Foundryの容量とクォータ](docs/reference/configuration/capacity/foundry.md) · [配備容量の変更手順](docs/operations/foundry.md#容量だけを変更する)
 
 購読キーによる共通認可は全体ポリシーに集約し、資材固定の購読キーヘッダー`api-key`とAPIM標準の購読検証を使います。公開ヘッダー入力と`requiredScope`は廃止し、社員委任scopeは`Gateway.Invoke`へ固定します。API側は`<base />`で継承し、モデル・入力・出力等の操作制約と下流認証を設定します。API登録は子資源の配備成功を確認した後、ETag付きで共通ポリシーを統合・読戻し確認します。
 

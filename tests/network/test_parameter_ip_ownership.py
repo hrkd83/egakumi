@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 from tests.support.arm_helpers import ArmExpression
-from tests.support.configuration_fixtures import bind_credential_fixture_id, fixture
+from tests.support.configuration_fixtures import bind_credential_fixture_id, fixture, profile_options
 from tests.support.schema_helpers import local_schema_validator
 from tests import REPOSITORY
 
@@ -39,9 +39,9 @@ FIREWALL_INPUTS = {
 }
 
 
-def public_documents(name="test"):
+def public_documents(name="prod"):
     """公開例だけを読み、実在する組織や秘密ファイルを使わない。"""
-    options = json.loads((CORE / f"infra/config/{name}.json").read_text(encoding="utf-8"))
+    options = profile_options(name)
     parameters = json.loads((CORE / f"params/{name}.example.json").read_text(encoding="utf-8"))
     bind_credential_fixture_id(parameters)
     parameters["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
@@ -73,20 +73,28 @@ def load_documents(options, parameters):
         directory = Path(folder)
         (directory / "config.json").write_text(json.dumps(options))
         path = directory / "params.json"
-        path.write_text(json.dumps({**parameters, "configFile": "config.json"}))
+        split = {**parameters, "configFile": "config.json"}
+        split.pop("capacity", None)
+        path.write_text(json.dumps(split))
         return load_configuration_source(path)
 
 
 class ParameterIpOwnershipTests(unittest.TestCase):
     def test_public_samples_keep_only_environment_addresses_as_network_inputs(self):
         """独立した合成IP計画を期待値にし、固定NSG/DNS/NTP設定の再導入を検出する。"""
-        for name in ("test", "production"):
+        for name, octet in (("prod", 40), ("stg", 41), ("dev", 42)):
             options, parameters = public_documents(name)
+            network = copy.deepcopy(parameters["network"])
             with self.subTest(name=name):
-                self.assertEqual(parameters["network"], NETWORK_INPUTS)
+                if name == "stg":
+                    staging_sources = network.pop("stagingClientAddressPrefixes")
+                    self.assertTrue(staging_sources)
+                    self.assertTrue(all(ip_network(prefix).prefixlen > 0 for prefix in staging_sources))
+                expected = json.loads(json.dumps(NETWORK_INPUTS).replace("10.40.", f"10.{octet}."))
+                self.assertEqual(network, expected)
                 self.assertNotIn("firewall", parameters["network"])
                 self.assertNotIn("auditAllowedIpAddresses", parameters["monitoring"])
-                self.assertFalse(set(options["network"]) & set(NETWORK_INPUTS))
+                self.assertFalse(set(options["network"]) & set(parameters["network"]))
                 self.assertFalse(set(options["network"]["firewall"]) & set(FIREWALL_INPUTS))
                 self.assertNotIn("dnsServers", options["network"]["firewall"])
                 self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
@@ -357,6 +365,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
             'network': compile_bicep('infra/modules/network/network.bicep'),
             'network-bindings': compile_bicep('infra/modules/network/network-bindings.bicep'),
             'portal-network-bindings': compile_bicep('infra/modules/network/portal-network-bindings.bicep'),
+            'application-gateway': compile_bicep('infra/modules/ingress/application-gateway.bicep'),
         }
 
     def configuration(self):
@@ -443,7 +452,6 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
 
     def test_firewall_and_its_public_ip_default_to_azure_zone_allocation(self):
         config = self.configuration()
-        config["network"]["appGatewayZones"] = ["1", "2", "3"]
         resources = self.templates["network"]["resources"]
         for supplied, expected in (([], None), (["2"], ["2"])):
             with self.subTest(zones=supplied):
@@ -453,8 +461,22 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                 self.assertIn("firewallPublicIp", firewall["dependsOn"])
                 for name in ("firewall", "firewallPublicIp"):
                     self.assertEqual(expression.resolve(resources[name]["zones"], parameters), expected)
-                self.assertEqual(expression.resolve(resources["appGatewayPublicIp"]["zones"], parameters),
-                                 ["1", "2", "3"])
+
+    def test_gateway_and_its_public_ip_use_azure_zone_allocation_unless_selected(self):
+        config = self.configuration()
+        network = self.templates["network"]["resources"]
+        gateway_template = self.templates["application-gateway"]
+        gateway, = (resource for resource in gateway_template["resources"]
+                    if resource["type"] == "Microsoft.Network/applicationGateways")
+        gateway_expression = NetworkArmExpression("[createObject()]", gateway_template)
+        selected_zones = ["1", "2"]
+        for zones, expected in (([], None), (selected_zones, selected_zones)):
+            with self.subTest(zones=zones):
+                config["network"]["appGatewayZones"] = zones
+                network_expression, parameters = self.resolver("network", config)
+                self.assertEqual(network_expression.resolve(network["appGatewayPublicIp"]["zones"], parameters),
+                                 expected)
+                self.assertEqual(gateway_expression.resolve(gateway["zones"], {"zones": zones}), expected)
 
     def test_portal_delegation_links_the_subnet_to_the_firewall_egress_route(self):
         config = self.configuration()

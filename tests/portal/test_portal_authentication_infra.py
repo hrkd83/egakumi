@@ -22,6 +22,7 @@ from deployment.helpers.configuration import normalize_configuration, build_bice
 from deployment.helpers.portal_authentication import prepare_secret, remove_secret
 from deployment.helpers.ingress import secret_path
 from deployment.lifecycle import parameters
+from tests.support.configuration_fixtures import profile_options
 from tests.support.configuration_fixtures import fixture
 
 
@@ -47,14 +48,14 @@ class PortalAuthenticationOptionsTests(unittest.TestCase):
                 with self.assertRaises(ConfigurationError):
                     normalize_configuration(raw)
 
-    def test_test_and_production_settings_do_not_contain_tenant_specific_inputs(self):
+    def test_profile_settings_do_not_contain_tenant_specific_inputs(self):
         schemas = [read_schema(name.removesuffix(".schema.json"))
                    for name in ("options.schema.json", "configuration.schema.json")]
         self.assertEqual(schemas[0]["properties"]["portalAuthentication"],
                          schemas[1]["properties"]["portalAuthentication"])
         self.validator = Draft202012Validator(schemas[0]["properties"]["portalAuthentication"])
-        for profile, tier in (("test", "Basic"), ("production", "GeneralPurpose")):
-            settings = json.loads((ROOT / "infra/config" / (profile + ".json")).read_text(encoding="utf-8"))["portalAuthentication"]
+        for profile, tier in (("prod", "GeneralPurpose"), ("stg", "GeneralPurpose"), ("dev", "Basic")):
+            settings = profile_options(profile, ROOT)["portalAuthentication"]
             self.assertEqual(list(self.validator.iter_errors(settings)), [])
             self.assertEqual(settings["sqlTier"], tier)
             self.assertTrue(set(settings) <= {"sqlSkuName", "sqlTier", "sqlCapacity",
@@ -63,7 +64,7 @@ class PortalAuthenticationOptionsTests(unittest.TestCase):
     def test_basic_configuration_rejects_unavailable_size_retention_and_zone_features(self):
         schema = json.loads((ROOT / "infra/config/options.schema.json").read_text(encoding="utf-8"))["properties"]["portalAuthentication"]
         validator = Draft202012Validator(schema)
-        basic = json.loads((ROOT / "infra/config/test.json").read_text(encoding="utf-8"))["portalAuthentication"]
+        basic = profile_options("dev", ROOT)["portalAuthentication"]
         for key, value in (("sqlSkuName", "GP_Gen5_2"), ("sqlCapacity", 2), ("sqlMaxSizeGB", 3),
                            ("backupRetentionDays", 8), ("zoneRedundant", True)):
             with self.subTest(key=key):
@@ -179,6 +180,27 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         assignment = next(item for item in resources if item['type'].endswith('/roleAssignments'))
         self.assertIn('Microsoft.KeyVault/vaults/keys', assignment['scope'])
         self.assertEqual(assignment['properties']['principalType'], 'ServicePrincipal')
+
+    def test_obo_certificate_worker_uses_a_private_standard_vault_with_diagnostics(self):
+        storage = compile_bicep('infra/modules/certificates/certificate-storage.bicep')
+        resources = storage['resources']
+        if isinstance(resources, dict):
+            resources = list(resources.values())
+        obo_vault_name = "[format('kvobo-{0}', parameters('stem'))]"
+        vault, = [item for item in resources if item['type'] == 'Microsoft.KeyVault/vaults'
+                  and item['name'] == obo_vault_name]
+        self.assertEqual(vault['condition'], "[parameters('prepareGatewayObo')]")
+        properties = GatewayExpression(vault['properties'], storage.get('variables', {})).evaluate({
+            'tenantId': str(UUID(int=1)), 'vaultPurgeProtection': True, 'vaultRetentionDays': 90,
+        })
+        self.assertEqual(properties['sku']['name'], 'standard')
+        self.assertEqual(properties['networkAcls']['bypass'], 'None')
+        self.assertEqual(properties['publicNetworkAccess'], 'Disabled')
+        self.assertTrue(properties['enableRbacAuthorization'])
+        self.assertTrue(properties['enablePurgeProtection'])
+        diagnostics = [item for item in resources if item['type'] == 'Microsoft.Insights/diagnosticSettings'
+                       and 'kvobo-' in item['scope']]
+        self.assertEqual({item['name'] for item in diagnostics}, {'core-audit', 'core-metrics'})
 
     def test_database_is_separate_and_reuses_existing_server(self):
         module = self.module("portal-database", "portal")

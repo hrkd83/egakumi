@@ -17,7 +17,7 @@ from . import certificate_image
 from .configuration import entra_app_separation_enabled
 from .credential_image import checked, checked_response
 from .paths import REPOSITORY
-from .portal_auth_certificate import certificate_record
+from .portal_auth_certificate import certificate_record, gateway_obo_vault_name
 from .private_permissions import check_private_permissions
 
 APP_API = '2025-07-01'
@@ -74,6 +74,8 @@ def _targets(config, outputs):
         cert_vault = b['certificateVaultName']
         names = (b['jobName'], b['portalJobName'])
         expected_names = (f'caj-{stem}-tls', f'caj-{stem}-auth-cert')
+        expected_obo = {'vaultName': gateway_obo_vault_name(stem), 'certificateName': 'gateway-obo',
+                        'validityMonths': 12} if entra_app_separation_enabled(config) else {}
         if (outputs['managementVm']['id'].casefold() != vm.casefold()
                 or b['resourceGroup'] != config['resourceGroupNames']['svc']
                 or b['location'] != config['location']
@@ -96,9 +98,10 @@ def _targets(config, outputs):
                 or ids['jobName'] != b['jobName'] or ids['portalJobName'] != b['portalJobName']
                 or ids['storageUrl'].rstrip('/') != b['storageUrl'].rstrip('/')
                 or ids['receiptContainerName'] != b['receiptContainerName']
+                or ids.get('gatewayOboConfig', {}) != expected_obo
                 or ids['portalStateContainerName'] != 'portal-certificate-state'):
             raise ValueError()
-        return {**b, 'subscription': subscription, 'svc': svc, 'vmId': vm,
+        return {**b, 'stem': stem, 'subscription': subscription, 'svc': svc, 'vmId': vm,
                 'tlsJobId': app_scope + '/jobs/' + b['jobName'],
                 'portalJobId': app_scope + '/jobs/' + b['portalJobName'],
                 'receiptContainers': {'tls': b['receiptContainerName'], 'portal': ids['portalStateContainerName']}}
@@ -265,7 +268,8 @@ def _template(job, target, mode, action, args, attempt, image):
     changes = {'CERTIFICATE_ATTEMPT_ID': attempt, 'CERTIFICATE_ACTION': action,
                'CERTIFICATE_ARGUMENTS_JSON': json.dumps(args, separators=(',', ':'), sort_keys=True)}
     if args.get('purpose') == 'gateway-obo':
-        expected_obo = {**plan['portalConfig'], 'certificateName': 'gateway-obo', 'validityMonths': 12}
+        expected_obo = {'vaultName': gateway_obo_vault_name(target['stem']),
+                        'certificateName': 'gateway-obo', 'validityMonths': 12}
         if plan.get('gatewayOboConfig') != expected_obo:
             raise ValueError('The Gateway OBO certificate plan differs from the selected foundation')
         changes['CERTIFICATE_CONFIG_JSON'] = json.dumps(expected_obo, separators=(',', ':'), sort_keys=True)

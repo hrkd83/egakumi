@@ -50,7 +50,7 @@ BicepはHTTPの操作ID辞書`queryObservations`、またはMCPのHTTPメソッ�
 
 - APIの公開パス、操作、許可モデル、要求上限、下流接続、製品・購読との関連は、対象APIのJSONで変更します。
 - `released: true`のAPIと生成MCPは、通常キーで使う`released-apis`製品へ関連付けます。省略・`false`は検証用製品のみで、標準19 APIはすべて`true`を明示しています。リリースを取り消す場合は`false`へ変更してGatewayを配備します。`productId`は既存の検証用製品を指定したままにします。
-- モデルの配備名・版・SKU・容量は、`infra/config/test.json`または`infra/config/production.json`で管理します。APIファイルへモデルの配備設定を重複させません。
+- モデルの配備名・版・SKUは、`infra/config/capacity/foundry.json`で管理します。初回は配備SKUが許容する最小容量を使い、構築後はクォータに合わせてMicrosoft Foundryポータルで調整します。APIファイルへモデルの配備設定を重複させません。 [配備容量の変更手順](../../../docs/operations/foundry.md#容量だけを変更する)
 - CM共通定義・ログインセッション設定はconfig、アプリ登録・秘密参照と環境固有のID・公開ホスト名はparamsで管理します。標準Graphは双方の`credentialProviders.graphDelegated`、追加providerは`additional[]`で定義／登録を分けます。APIファイルには、そのAPIが必要とする本人接続の条件だけを持たせます。
 - 共通ポリシーは[../policies/](../policies/)、APIMへ登録する入出力スキーマは[../schemas/](../schemas/)で管理します。
 

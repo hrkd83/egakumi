@@ -183,6 +183,35 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(result["status"], "applied")
         self.assertEqual(self.context.resources[self.context.deployment]["properties"]["raiPolicyName"], "preserved-rai")
 
+    def test_standard_profiles_preserve_portal_allocation_during_model_updates(self):
+        """通常の更新と明示した版変更の両方で、ポータルの割当を保持する。"""
+        for profile in ("prod", "stg", "dev"):
+            with self.subTest(profile=profile):
+                context = Context()
+                context.config["capacityProfile"] = profile
+                context.config["services"]["modelDeployments"][0]["capacity"] = 1
+                context.resources[context.deployment]["sku"]["capacity"] = 7
+
+                result = model.operate(context, "fixture-model", "update", execute=True)
+                self.assertEqual(result["status"], "unchanged")
+                self.assertEqual(result["expected"]["sku"]["capacity"], 7)
+                self.assertFalse(context.mutations())
+
+                context.config["services"]["modelDeployments"][0]["modelVersion"] = "2"
+                result = model.operate(context, "fixture-model", "update", allow_version_change=True, execute=True)
+                self.assertEqual(result["status"], "applied")
+                method, _, _, body, _ = context.mutations()[0]
+                self.assertEqual(method, "PUT")
+                self.assertEqual(body["sku"]["capacity"], 7)
+                self.assertEqual(body["properties"]["model"]["version"], "2")
+
+    def test_standard_update_requires_a_verified_existing_portal_allocation(self):
+        self.context.config["capacityProfile"] = "prod"
+        self.context.resources[self.context.deployment]["sku"].pop("capacity")
+        with self.assertRaisesRegex(OperationError, "existing model capacity"):
+            model.operate(self.context, "fixture-model", "update", execute=True)
+        self.assertFalse(self.context.mutations())
+
     def test_existing_identity_sku_and_upgrade_policy_cannot_be_replaced(self):
         """モデル名・形式・SKU・更新方針の意図外置換は書込み前に停止する。"""
         for key, value in (("modelName", "another"), ("modelFormat", "Cohere"),
@@ -225,6 +254,38 @@ class ModelTests(unittest.TestCase):
         result = model.operate(self.context, "fixture-model", "create", execute=True)
         self.assertEqual(result["status"], "applied")
         self.assertEqual(self.context.mutations()[0][4], {"If-None-Match": "*"})
+
+    def test_standard_create_uses_matching_provider_minimum(self):
+        context = self.context
+        context.config.update(capacityProfile="stg", foundryLocation="japaneast")
+        row = context.config["services"]["modelDeployments"][0]
+        row.update(capacity=1, quotaUsageName="OpenAI.GlobalStandard.fixture-base")
+        context.resources.pop(context.deployment)
+        catalog = [{"model": {"name": "fixture-base", "version": "1", "format": "OpenAI"}, "skus": [
+            {"name": "GlobalStandard", "usageName": row["quotaUsageName"],
+             "capacity": {"minimum": 5, "maximum": 20, "step": 5, "default": 10}},
+        ]}]
+        with patch.object(context, "run_cli", return_value=json.dumps(catalog), create=True) as run_cli:
+            result = model.operate(context, "fixture-model", "create", execute=True)
+        run_cli.assert_called_once_with(
+            ["az", "cognitiveservices", "model", "list", "--location", "japaneast",
+             "--subscription", context.config["subscriptionId"], "-o", "json"], timeout_seconds=120,
+        )
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(context.mutations()[0][3]["sku"]["capacity"], 5)
+
+    def test_standard_create_rejects_conflicting_catalog_minimum(self):
+        context = self.context
+        context.config.update(capacityProfile="dev", foundryLocation="japaneast")
+        context.resources.pop(context.deployment)
+        catalog = [{"model": {"name": "fixture-base", "version": "1", "format": "OpenAI"},
+                    "skus": [{"name": "GlobalStandard", "usageName": "OpenAI.GlobalStandard.fixture-base",
+                              "capacity": {"minimum": minimum, "maximum": 20, "step": 5}}]}
+                   for minimum in (5, 10)]
+        with patch.object(context, "run_cli", return_value=json.dumps(catalog), create=True):
+            with self.assertRaisesRegex(OperationError, "initial model capacity"):
+                model.operate(context, "fixture-model", "create", execute=True)
+        self.assertFalse(context.mutations())
 
     def test_fresh_change_and_unresolved_operation_prevent_mutation(self):
         """比較後の変更や未完了の配備へ更新を重ねない。"""

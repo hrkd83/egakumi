@@ -65,6 +65,25 @@ class MonitoringActivityAlertTests(unittest.TestCase):
         self.assertIn("Microsoft.Insights/actionGroups", groups[0]["actionGroupId"])
         self.assertIn("variables('pipelineActivityDefinitions')", self.variables["activityDefinitions"])
 
+    def test_log_alerts_can_be_enabled_before_their_identities_have_query_access(self):
+        alerts = next(item for item in self.template["resources"]
+                      if item["type"] == "Microsoft.Insights/scheduledQueryRules")
+        self.assertEqual(alerts["identity"], {"type": "SystemAssigned"})
+        self.assertEqual(alerts["properties"]["enabled"], "[parameters('enableLogAlerts')]")
+        self.assertIs(alerts["properties"]["skipQueryValidation"], True)
+        grants = next(item for item in self.template["resources"]
+                      if item.get("copy", {}).get("name") == "queryReaderGrants")
+        self.assertIn("principalId", grants["properties"])
+        self.assertIn("73c42c96-874c-492b-b04d-ab87d138a893", grants["properties"]["roleDefinitionId"])
+
+    def test_gateway_5xx_alert_measures_gateway_diagnostics(self):
+        query = self.variables["failureRateQuery"]
+        self.assertIn("ApiManagementGatewayLogs", query)
+        self.assertIn("parameters('apimId')", query)
+        self.assertIn("ResponseCode between (500 .. 599)", query)
+        rule = next(item for item in self.variables["baseQueryDefinitions"] if item["key"] == "api-failure-rate")
+        self.assertEqual(rule["query"], "[variables('failureRateQuery')]")
+
 
 if __name__ == "__main__":
     unittest.main()

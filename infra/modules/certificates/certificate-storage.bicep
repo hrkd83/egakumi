@@ -36,6 +36,25 @@ resource tlsVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }, vaultPurgeProtection ? { enablePurgeProtection: true } : {})
 }
 
+resource oboVault 'Microsoft.KeyVault/vaults@2023-07-01' = if (prepareGatewayObo) {
+  name: 'kvobo-${stem}'
+  location: location
+  tags: tags
+  properties: union({
+    tenantId: tenantId
+    sku: { family: 'A', name: 'standard' }
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    softDeleteRetentionInDays: vaultRetentionDays
+    enabledForDeployment: false
+    enabledForDiskEncryption: false
+    enabledForTemplateDeployment: false
+    publicNetworkAccess: 'Disabled'
+    networkAcls: { defaultAction: 'Deny', bypass: 'None', ipRules: [], virtualNetworkRules: [] }
+    accessPolicies: []
+  }, vaultPurgeProtection ? { enablePurgeProtection: true } : {})
+}
+
 resource state 'Microsoft.Storage/storageAccounts@2025-01-01' = {
   name: 'st${replace(stem, '-', '')}cert'
   location: location
@@ -127,13 +146,13 @@ resource tlsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for rol
   }
 }]
 
-// Portal's worker can create/read its managed certificate but has no secrets permissions.
+// The worker can create or read managed certificates in the Portal and OBO vaults.
 resource portalVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: portalVaultName }
 resource portalKeyOperations 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
   name: guid(portalVault.id, 'portal-certificate-job')
   properties: {
     roleName: 'Portal certificate generation ${resourceGroup().name}'
-    description: 'Create and read certificates in the application signing vault.'
+    description: 'Create and read certificates in the application and OBO signing vaults.'
     type: 'CustomRole'
     assignableScopes: [resourceGroup().id]
     permissions: [{
@@ -153,6 +172,15 @@ resource portalOperationGrant 'Microsoft.Authorization/roleAssignments@2022-04-0
     principalType: 'ServicePrincipal'
   }
 }
+resource oboCertificateGrant 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (prepareGatewayObo) {
+  scope: oboVault
+  name: guid(oboVault.id, portalPrincipalId, portalKeyOperations.id)
+  properties: {
+    roleDefinitionId: portalKeyOperations.id
+    principalId: portalPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
 module portalSigningKey 'portal-auth-key-operations.bicep' = {
   name: '${stem}-portal-job-key-operations'
   params: {
@@ -165,7 +193,7 @@ module portalSigningKey 'portal-auth-key-operations.bicep' = {
 module gatewayOboKey 'portal-auth-key-operations.bicep' = if (prepareGatewayObo) {
   name: '${stem}-gateway-obo-key-reader'
   params: {
-    vaultName: portalVaultName
+    vaultName: oboVault!.name
     keyName: 'gateway-obo'
     principalId: portalPrincipalId
     allowDisable: false
@@ -178,6 +206,18 @@ resource vaultLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = 
   properties: diagnosticSettingProperties['certificate-vault-logs']
 }
 
+resource oboVaultLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (prepareGatewayObo) {
+  name: 'core-audit'
+  scope: oboVault
+  properties: diagnosticSettingProperties['obo-vault-logs']
+}
+
+resource oboVaultMetrics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (prepareGatewayObo) {
+  name: 'core-metrics'
+  scope: oboVault
+  properties: diagnosticSettingProperties['obo-vault-metrics']
+}
+
 resource stateBlobAudit 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-audit'
   scope: blobService
@@ -186,6 +226,8 @@ resource stateBlobAudit 'Microsoft.Insights/diagnosticSettings@2021-05-01-previe
 
 output vaultId string = tlsVault.id
 output vaultName string = tlsVault.name
+output oboVaultId string = prepareGatewayObo ? oboVault!.id : ''
+output oboVaultName string = prepareGatewayObo ? oboVault!.name : ''
 output storageAccountId string = state.id
 output storageAccountName string = state.name
 output storageUrl string = 'https://${state.name}.blob.${environment().suffixes.storage}'

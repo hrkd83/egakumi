@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 
+from tests.support.configuration_fixtures import profile_options
 from tests.waf.test_ssml_waf import GatewayExpression
 from tests import REPOSITORY
 from deployment.helpers.log_privacy import ARCHIVE_CONTAINERS, EXPORT_TABLES
@@ -59,13 +60,12 @@ class ApimAuditRetentionTests(unittest.TestCase):
                           if resource['type'].endswith('/immutabilityPolicies'))
         cls.export = next(resource for resource in cls.template['resources'] if resource['type'].endswith('/dataExports'))
 
-    def parameters(self, profile='production', **overrides):
+    def parameters(self, profile='prod', **overrides):
         result = {key: copy.deepcopy(value['defaultValue'])
                   for key, value in self.template['parameters'].items() if 'defaultValue' in value}
-        environment = 'prod' if profile == 'production' else profile
-        result.update(productName='fixture', environmentName=environment, resourceStem=environment + '-fixture',
+        result.update(productName='fixture', environmentName=profile, resourceStem=profile + '-fixture',
                       location='japaneast', foundryLocation='eastus2')
-        options = json.loads((CORE / f'infra/config/{profile}.json').read_text())['monitoring']
+        options = profile_options(profile, CORE)['monitoring']
         result.update({key: options[key] for key in ('auditImmutabilityMode', 'auditRetentionDays', 'auditStorageSku')})
         result.update(overrides)
         return result
@@ -104,8 +104,13 @@ class ApimAuditRetentionTests(unittest.TestCase):
         self.assertEqual(set(self.evaluate(expression, self.parameters(preserveAgentContentExport=True))),
                          {*EXPORT_TABLES, 'AppGenAIContent'})
 
-    def test_test_environment_does_not_create_immutability_policies(self):
-        self.assertEqual(self.selected(self.parameters('test')), [])
+    def test_smaller_profiles_keep_locked_mode_with_their_hold_periods(self):
+        for profile, days in (('stg', 2557), ('dev', 7)):
+            with self.subTest(profile=profile):
+                params = self.parameters(profile)
+                self.assertTrue(APIM_CONTAINERS <= set(self.selected(params)))
+                self.assertEqual(params['auditImmutabilityMode'], 'Locked')
+                self.assertEqual(self.evaluate(self.policy['properties']['immutabilityPeriodSinceCreationInDays'], params), days)
 
     def test_retained_container_policies_only_add_two_missing_apim_categories(self):
         params = self.parameters()

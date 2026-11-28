@@ -33,7 +33,7 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 | [network-bindings.bicep](../../infra/modules/network/network-bindings.bicep) | AppGW／APIM／管理VM割当IP・Foundry／Key Vault全PE IP・終端拒否 |
 | [portal-network.bicep](../../infra/modules/network/portal-network.bicep)と[bindings](../../infra/modules/network/portal-network-bindings.bicep) | ACA VIP・ACR全PE IP |
 | [credential-broker-network.bicep](../../infra/modules/network/credential-broker-network.bicep) | 共有SQL全PE IP・APIMからPortal／Brokerそれぞれの内部VIPへの許可 |
-| [certificate-network.bicep](../../infra/modules/certificates/certificate-network.bicep) | 証明書用ACAとTLS用Key Vault、証明書の状態保存BlobのPE間の許可 |
+| [certificate-network.bicep](../../infra/modules/certificates/certificate-network.bicep) | 証明書用ACA、公開TLS・Graph OBO用Key Vault、証明書の状態保存BlobのPE間の許可 |
 
 ## AppGW（agw）
 
@@ -117,6 +117,9 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 229 | `allow-mgmt-vm-audit-platform-blob-https-ingress` | 管理VM private IP /32 | 基盤監査Storage（`collectPlatform`）のBlob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-PLATFORM-BLOB-HTTPS` |
 | 230 | `allow-mgmt-vm-audit-foundry-blob-https-ingress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-FOUNDRY-BLOB-HTTPS` |
 | 233 | `allow-mgmt-vm-certificate-blob-https-ingress` | 管理VM private IP /32 | 証明書ジョブの状態Storage Blob PE全IP /32 | TCP／443 | [証明書ジョブのNSG定義](../../infra/modules/network/nsg/certificate-rules.json) |
+| 234 | `allow-certificate-obo-vault-https-ingress` | 証明書用ACAサブネットCIDR | OBO署名用Key Vault PE全IP /32 | TCP／443 | [OBOのNSG定義](../../infra/modules/network/nsg/obo-rules.json) |
+| 235 | `allow-broker-obo-vault-https-ingress` | BrokerサブネットCIDR | OBO署名用Key Vault PE全IP /32 | TCP／443 | [OBOのNSG定義](../../infra/modules/network/nsg/obo-rules.json) |
+| 236 | `allow-management-obo-vault-https-ingress` | 管理VM private IP /32 | OBO署名用Key Vault PE全IP /32 | TCP／443 | [OBOのNSG定義](../../infra/modules/network/nsg/obo-rules.json) |
 | 4096 | `deny-any-ingress` | Any | Any | Any／Any | `B-PE-14` |
 
 ### Outbound
@@ -144,6 +147,7 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 227 | `allow-audit-platform-blob-https-egress` | 管理VM private IP /32 | 基盤監査Storage（`collectPlatform`）のBlob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-PLATFORM-BLOB-HTTPS` |
 | 228 | `allow-audit-foundry-blob-https-egress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-FOUNDRY-BLOB-HTTPS` |
 | 229 | `allow-certificate-blob-https-egress` | 管理VM private IP /32 | 証明書ジョブの状態Storage Blob PE全IP /32 | TCP／443 | [証明書ジョブのNSG定義](../../infra/modules/network/nsg/certificate-rules.json) |
+| 230 | `allow-obo-vault-https-egress` | 管理VM private IP /32 | OBO署名用Key Vault PE全IP /32 | TCP／443 | [OBOのNSG定義](../../infra/modules/network/nsg/obo-rules.json) |
 | 320 | `allow-azure-resource-manager-egress` | 管理VMサブネットCIDR | `AzureResourceManager`タグ | TCP／443 | `B-MGMT-06` |
 | 321 | `allow-entra-egress` | 管理VMサブネットCIDR | `AzureActiveDirectory`タグ | TCP／443 | `B-MGMT-07` |
 | 322 | `allow-monitor-egress` | 管理VMサブネットCIDR | `AzureMonitor`タグ | TCP／443 | `B-MGMT-08` |
@@ -223,6 +227,7 @@ Brokerの業務入口をAPIMのサブネットに限定する。専用環境の�
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |
 | --- | --- | --- | --- | --- | --- |
 | 220 | `allow-key-vault-https-egress` | BrokerサブネットCIDR | 業務用Key Vault PE全IP /32 | TCP／443 | `N-BROKER-KEY-VAULT-HTTPS-EGRESS` |
+| 224 | `allow-obo-vault-https-egress` | BrokerサブネットCIDR | OBO署名用Key Vault PE全IP /32 | TCP／443 | [OBOのNSG定義](../../infra/modules/network/nsg/obo-rules.json) |
 | 221 | `allow-sql-1433-egress` | BrokerサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `N-BROKER-SQL-1433-EGRESS` |
 | 222 | `allow-acr-https-egress` | BrokerサブネットCIDR | ACR PE全IP /32 | TCP／443 | `N-BROKER-ACR-HTTPS-EGRESS` |
 | 223 | `allow-arm-https-egress` | BrokerサブネットCIDR | `AzureResourceManager`タグ | TCP／443 | `N-BROKER-ARM-HTTPS-EGRESS` |

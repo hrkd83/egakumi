@@ -35,7 +35,7 @@ from deployment.helpers.apim_ingress import (
 from deployment.helpers.apim_browser_exception import BROWSER_EXCEPTION_ID, BROWSER_EXCEPTION_VARIABLE, render_browser_exception_fragment
 from deployment.helpers.apim_common_authentication import (
     AUTHENTICATION_FRAGMENT_IDS, COMMON_AUTHENTICATION_FRAGMENT_ID, ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID,
-    render_common_authentication_fragments,
+    render_common_authentication_fragments, STAGING_ACCESS_ROLE,
 )
 from deployment.helpers.apim_samples import SAMPLE_API, is_default_echo_api
 from deployment.helpers.credential_login import API_ID as CREDENTIAL_LOGIN_API_ID, OPERATIONS as CREDENTIAL_LOGIN_OPERATIONS
@@ -345,7 +345,8 @@ def _audit_fragment_scope(policies, apim_id, *, api_properties=None):
         if fragment_name in AUTHENTICATION_FRAGMENT_IDS:
             if not any(fragment_name in generated and _structure(root) == _structure(_xml(generated[fragment_name], fragment=True))
                        for generated in (render_common_authentication_fragments(entra_enabled=False),
-                                         render_common_authentication_fragments(entra_enabled=True))):
+                                         render_common_authentication_fragments(entra_enabled=True),
+                                         render_common_authentication_fragments(entra_enabled=True, required_app_role=STAGING_ACCESS_ROLE))):
                 raise ValueError("Authentication fragments must match their complete fixed generated source")
         if fragment_name in AUDIT_FRAGMENT_FILES:
             children = list(root)

@@ -7,7 +7,7 @@
 | 変更対象 | 実行する入口 |
 | --- | --- |
 | 共通基盤の設定 | [WAF・外向き通信・監視・容量](platform-settings.md)から対象を選び、変更後に現物と構築入力を合わせます |
-| Foundryのモデル | [モデル運用](foundry.md)に従い、配備・容量・版を変更する |
+| Foundryのモデル | 容量は[Microsoft Foundryポータル](foundry.md#容量だけを変更する)で変更する。[配備や版の変更](foundry.md#版変更新規配備を明示する)は対象モデルごとに行う |
 | Gatewayのみ | `python3 -B scripts/operations/release.py --component gateway --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`で反映 |
 | Portalのみ | `python3 -B scripts/operations/release.py --component portal --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`で反映 |
 | 両アプリを順に更新 | `python3 -B scripts/operations/release.py --component all --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`でGateway→Portalを実行 |

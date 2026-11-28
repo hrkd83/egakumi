@@ -64,7 +64,8 @@ def group_scope(config):
 def foundation_inputs(config, state):
     """現在のinfraが保存した共通基盤出力だけを参照する。"""
     if (any(state.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem'))
-            or state.get('apimInstanceId') != apim_instance_id(config)):
+            or state.get('apimInstanceId') != apim_instance_id(config)
+            or state.get('capacityProfile') != config.get('capacityProfile')):
         raise ValueError('Infrastructure deployment state differs from the selected configuration')
     output, stem = state['outputs'], config['resourceStem']
     foundation = output.get('gatewayFoundation')

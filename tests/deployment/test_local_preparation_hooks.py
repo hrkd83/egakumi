@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import ssl
 import sys
@@ -23,6 +24,7 @@ from deployment import lifecycle
 from deployment.helpers import cleanup, configuration
 from deployment.helpers import prepare_secrets as secret_preparation
 from deployment.helpers.configuration import normalize_configuration
+from deployment.helpers.portal_auth_certificate import gateway_obo_vault_origin
 from tests.support.configuration_fixtures import bind_credential_fixture_id, connection_fixture, fixture, ssh_fixture_key
 
 
@@ -262,22 +264,24 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
         source = (self.root / ".local/test/params.local.json").resolve()
         lifecycle.private_parent(source, self.root)
         (self.root / "infra/config").mkdir(parents=True)
-        raw = json.loads((core / "params/test.example.json").read_text(encoding="utf-8"))
+        raw = json.loads((core / "params/dev.example.json").read_text(encoding="utf-8"))
         bind_credential_fixture_id(raw)
+        raw["environmentName"] = "test"
         for field in ("subscriptionId", "azureTenantId", "entraTenantId"):
             raw[field] = self.config[field]
         for field in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
             raw["certificate"][field] = self.config["certificate"][field]
         raw["gateway"]["authentication"]["entra"] = {
             "audience": "33333333-3333-4333-8333-333333333333",
-            "obo": {"keyId": "https://" + f"kv-{self.config['resourceStem']}" + ".vault.azure.net/keys/gateway-obo/" + "1" * 32,
+            "obo": {"keyId": gateway_obo_vault_origin(self.config["resourceStem"]) + "/keys/gateway-obo/" + "1" * 32,
                     "certificateThumbprint": "2" * 64},
         }
         raw["services"]["apimInstanceId"] = "abc123"
         raw["credentialProviders"]["graphDelegated"]["clientId"] = "44444444-4444-4444-8444-444444444444"
-        raw["configFile"] = "../../infra/config/test.json"
+        raw["configFile"] = "../../infra/config/dev.json"
         source.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n")
-        (self.root / "infra/config/test.json").write_bytes((core / "infra/config/test.json").read_bytes())
+        (self.root / "infra/config/dev.json").write_bytes((core / "infra/config/dev.json").read_bytes())
+        shutil.copytree(core / "infra/config/capacity", self.root / "infra/config/capacity")
         return source
 
     def test_fresh_clone_entra_input_and_non_tty_retry_keep_prepared_azure_params(self):
@@ -434,7 +438,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
     def test_unsupported_or_incomplete_dns_preconditions_stop_before_local_or_azure_changes(self):
         source = self.clone_public_inputs()
         raw = json.loads(source.read_text())
-        config_file = self.root / "infra/config/test.json"
+        config_file = self.root / "infra/config/dev.json"
         original_options = config_file.read_bytes()
         cases = ("cloudflare", "route53", "unsupported-mode", "dns-file",
                  "missing-subscription", "zero-subscription", "missing-identity", "invalid-identity")

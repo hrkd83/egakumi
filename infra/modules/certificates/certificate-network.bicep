@@ -12,6 +12,7 @@ param managementPrivateIp string
 param keyVaultPrivateIps array
 param registryPrivateIps array
 param tlsVaultId string
+param oboVaultId string
 param storageAccountId string
 param vaultPrivateDnsZoneId string
 param blobPrivateDnsZoneId string
@@ -26,6 +27,18 @@ resource tlsVaultPe 'Microsoft.Network/privateEndpoints@2025-01-01' = {
     privateLinkServiceConnections: [{
       name: 'vault'
       properties: { privateLinkServiceId: tlsVaultId, groupIds: ['vault'] }
+    }]
+  }
+}
+resource oboVaultPe 'Microsoft.Network/privateEndpoints@2025-01-01' = if (!empty(oboVaultId)) {
+  name: 'pe-${stem}-obo-vault'
+  location: location
+  tags: tags
+  properties: {
+    subnet: { id: subnetIds.pep }
+    privateLinkServiceConnections: [{
+      name: 'vault'
+      properties: { privateLinkServiceId: oboVaultId, groupIds: ['vault'] }
     }]
   }
 }
@@ -47,6 +60,11 @@ resource vaultDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@
   name: 'default'
   properties: { privateDnsZoneConfigs: [{ name: 'vault', properties: { privateDnsZoneId: vaultPrivateDnsZoneId } }] }
 }
+resource oboVaultDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2025-01-01' = if (!empty(oboVaultId)) {
+  parent: oboVaultPe
+  name: 'default'
+  properties: { privateDnsZoneConfigs: [{ name: 'vault', properties: { privateDnsZoneId: vaultPrivateDnsZoneId } }] }
+}
 resource blobDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2025-01-01' = {
   parent: blobPe
   name: 'default'
@@ -57,15 +75,20 @@ module vaultIps '../network/private-endpoint-addresses.bicep' = {
   name: '${stem}-tls-vault-addresses'
   params: { privateEndpointNicIds: map(tlsVaultPe.properties.networkInterfaces, nic => nic.id) }
 }
+module oboVaultIps '../network/private-endpoint-addresses.bicep' = if (!empty(oboVaultId)) {
+  name: '${stem}-obo-vault-addresses'
+  params: { privateEndpointNicIds: map(oboVaultPe!.properties.networkInterfaces, nic => nic.id) }
+}
 module blobIps '../network/private-endpoint-addresses.bicep' = {
   name: '${stem}-certificate-blob-addresses'
   params: { privateEndpointNicIds: map(blobPe.properties.networkInterfaces, nic => nic.id) }
 }
 
 var vaultCidrs = map(union([], flatten(vaultIps.outputs.privateIpsByNic)), ip => '${ip}/32')
+var oboVaultCidrs = empty(oboVaultId) ? [] : map(union([], flatten(oboVaultIps!.outputs.privateIpsByNic)), ip => '${ip}/32')
 var blobCidrs = map(union([], flatten(blobIps.outputs.privateIpsByNic)), ip => '${ip}/32')
 var regionalRegistryStorage = 'Storage.${replace(location, ' ', '')}'
-var certificateDestinations = union(vaultCidrs, blobCidrs, map(union(keyVaultPrivateIps, registryPrivateIps), ip => '${ip}/32'))
+var certificateDestinations = union(vaultCidrs, oboVaultCidrs, blobCidrs, map(union(keyVaultPrivateIps, registryPrivateIps), ip => '${ip}/32'))
 
 func prefixProperties(sources array, destinations array) object => union(
   length(sources) == 1 ? { sourceAddressPrefix: sources[0] } : { sourceAddressPrefixes: sources },
@@ -75,13 +98,15 @@ func prefixProperties(sources array, destinations array) object => union(
 var knownTargets = {
   'subnet:agw': [subnetPrefixes.agw]
   'subnet:certificate': [subnetPrefixes.certificate]
+  'subnet:broker': [subnetPrefixes.broker]
   'ip:management': ['${managementPrivateIp}/32']
   'ips:certificateVault': vaultCidrs
+  'ips:oboVault': oboVaultCidrs
   'ips:certificateBlob': blobCidrs
   'ips:keyVault': map(keyVaultPrivateIps, ip => '${ip}/32')
   'ips:registry': map(registryPrivateIps, ip => '${ip}/32')
 }
-var boundary = loadJsonContent('../network/nsg/certificate-rules.json').groups
+var boundary = union(loadJsonContent('../network/nsg/certificate-rules.json').groups, empty(oboVaultId) ? {} : loadJsonContent('../network/nsg/obo-rules.json').groups)
 var sharedRules = flatten(map(items(boundary), group => map(items(group.value), rule => {
   name: '${nsgNames[group.key]}/${rule.key}'
   definition: rule.value

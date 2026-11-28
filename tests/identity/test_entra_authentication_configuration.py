@@ -325,7 +325,7 @@ class EntraSchemaTests(unittest.TestCase):
         resolved = combined["$defs"]["entraAuthentication"]
         self.assertEqual(set(public["properties"]), {"audience", "obo"})
         self.assertEqual(set(auth(options)["properties"]["entra"]["properties"]), {"userLimits"})
-        self.assertEqual(set(resolved["properties"]), {"audience", "requiredScope", "userLimits", "obo"})
+        self.assertEqual(set(resolved["properties"]), {"audience", "requiredScope", "requiredAppRole", "userLimits", "obo"})
         self.assertEqual(public["properties"]["obo"], resolved["properties"]["obo"])
         self.assertCountEqual(public["properties"]["obo"]["required"], ["keyId", "certificateThumbprint"])
         self.assertIn("entra", configuration.PARAMETER_GATEWAY_NESTED_KEYS["authentication"])

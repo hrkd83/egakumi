@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 
+from tests.support.configuration_fixtures import profile_options
 from tests.support.configuration_fixtures import bind_credential_fixture_id
 from tests import REPOSITORY
 
@@ -46,10 +47,11 @@ class SplitCliTests(unittest.TestCase):
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(CORE / relative, target)
-        self.options = json.loads((CORE / "infra/config/test.json").read_text())
-        self.parameters = json.loads((CORE / "params/test.example.json").read_text())
+        self.options = profile_options("dev", CORE)
+        self.parameters = json.loads((CORE / "params/dev.example.json").read_text())
+        self.parameters.pop("capacity")
         bind_credential_fixture_id(self.parameters)
-        self.parameters.update(subscriptionId=SUBSCRIPTION, azureTenantId=TENANT, entraTenantId=TENANT,
+        self.parameters.update(environmentName="test", subscriptionId=SUBSCRIPTION, azureTenantId=TENANT, entraTenantId=TENANT,
                                configFile="../../platform/config/options.json")
         self.assertNotIn("subscriptionKeyHeader", self.parameters["gateway"]["authentication"])
         self.assertEqual(self.options["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
@@ -97,7 +99,7 @@ class SplitCliTests(unittest.TestCase):
         self.assertEqual(rendered["credentialProviders"][0]["oauthTenantId"], TENANT)
         self.assertNotIn("nonexistent-protected", json.dumps(rendered))
         self.assertEqual(rendered["services"]["modelDeployments"],
-                         json.loads((CORE / "infra/config/test.json").read_text())["services"]["modelDeployments"])
+                         profile_options("dev", CORE)["services"]["modelDeployments"])
 
 
 if __name__ == "__main__":

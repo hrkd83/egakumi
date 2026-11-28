@@ -22,6 +22,8 @@
 
 対象APIの通常HTTP・SSE・WebSocket・MCPは、使う方式ごとに応答を確認します。App GatewayからFirewallを経由したAPIM／ACAへのHTTPS 443、TLS検査、入口証明なしの拒否も照合します。 [統合試験の手順](../testing/integration-tests.md) · [Portal認証の試験](../testing/portal-authentication-tests.md)
 
+`stg`では許可済みIPv4 CIDRからHTTPのHTTPSリダイレクトとHTTPSの正常応答を確認し、未許可の送信元からは両方に接続できないことを確認します。新しいセッションを使い、同じ許可済みの送信元で、API・Portalの両アプリへ `Gateway.Staging.Access` を割り当てた利用者のサインインと試用が成功し、割当のない利用者が拒否されることを確認します。例外発行キーの受入も許可済みの送信元で行います。
+
 ## 監視・保守・通信の受入
 
 - Portal用ACAとBroker用ACAの両方向の末尾DenyとFirewall経路を読み戻します。ACR Private Endpointからのイメージ取得、App／Jobの起動・スケールと監視、新規の未許可通信の拒否を確認します。 [ネットワークの受入条件](../testing/network-security-validation.md#実環境の受入確認)

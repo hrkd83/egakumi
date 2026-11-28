@@ -1,0 +1,48 @@
+{
+  "$schema": "./capacity.schema.json",
+  "$comment": "BrokerのSQL階層・世代・バックアップ設定と、Portal認証DBの構成。BrokerのvCore数と最大データ容量はparamsで指定します。",
+  "common": {
+    "credentialBroker": {
+      "sqlTier": "GeneralPurpose",
+      "backupRetentionDays": 35,
+      "zoneRedundant": true,
+      "backupRedundancy": "Geo",
+      "sqlSkuFamily": "GP_Gen5"
+    }
+  },
+  "profiles": {
+    "prod": {
+      "portalAuthentication": {
+        "sqlSkuName": "GP_Gen5_2",
+        "sqlTier": "GeneralPurpose",
+        "sqlCapacity": 2,
+        "sqlMaxSizeGB": 32,
+        "backupRetentionDays": 14,
+        "zoneRedundant": false,
+        "backupRedundancy": "Geo"
+      }
+    },
+    "stg": {
+      "portalAuthentication": {
+        "sqlSkuName": "GP_Gen5_2",
+        "sqlTier": "GeneralPurpose",
+        "sqlCapacity": 2,
+        "sqlMaxSizeGB": 32,
+        "backupRetentionDays": 14,
+        "zoneRedundant": false,
+        "backupRedundancy": "Geo"
+      }
+    },
+    "dev": {
+      "portalAuthentication": {
+        "sqlSkuName": "Basic",
+        "sqlTier": "Basic",
+        "sqlCapacity": 5,
+        "sqlMaxSizeGB": 2,
+        "backupRetentionDays": 7,
+        "zoneRedundant": false,
+        "backupRedundancy": "Geo"
+      }
+    }
+  }
+}

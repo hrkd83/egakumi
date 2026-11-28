@@ -57,7 +57,8 @@ def deployment_inputs(config, state, image_digest=None, *, workspace=None):
     if image_digest is not None and not re.fullmatch(r'sha256:[0-9a-f]{64}', image_digest):
         raise ValueError('Use an immutable sha256 image digest')
     if (any(state.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem'))
-            or state.get('apimInstanceId') != apim_instance_id(config)):
+            or state.get('apimInstanceId') != apim_instance_id(config)
+            or state.get('capacityProfile') != config.get('capacityProfile')):
         raise ValueError('Infrastructure deployment state differs from the selected configuration')
     stem = config['resourceStem']
     outputs = state.get('outputs', {})

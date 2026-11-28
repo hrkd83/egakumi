@@ -40,7 +40,7 @@ PortalはEntraサインインと本人のBearerによるAPI試用を提供しま
 | 04 | [egakumi-credentialを登録](docs/setup/04-entra-credential.md) | 本人確認用のWeb戻り先と専用シークレットを設定 |
 | 05 | [公開DNSの準備](docs/setup/05-public-dns.md) | Azure Public DNSゾーンを用意し、NSを委任 |
 | 06 | [DNS用マネージドIDの準備](docs/setup/06-dns-identity.md) | 証明書の発行と更新に使うIDを作成し、DNSの操作権限を付与 |
-| 07 | [paramsを完成させる](docs/setup/07-params.md) | 導入先のID・公開名・IPと、Entra・DNSの準備結果をひな型へ反映 |
+| 07 | [paramsを完成させる](docs/setup/07-params.md) | 容量の標準値を確認し、導入先のID・公開名・IPとEntra・DNSの準備結果を記入 |
 | 08 | [基盤を構築する](docs/setup/08-build-infra.md) | `azd up` で共用基盤、Portal初期サンプル、認証用公開証明書2枚を準備 |
 | 09 | [基盤構築後のEntra登録](docs/setup/09-egakumi-portal.md) | `egakumi-api` にGraph OBO用証明書を登録し、`egakumi-portal` を作成・証明書登録してparamsを追記 |
 | 10 | [ハブ＆スポーク接続（任意）](docs/setup/10-hub-spoke.md) | 必要な環境でピアリング・DNS・経路・Firewallを整え、Gateway・Portalの配備前に通信を確認 |
@@ -48,7 +48,7 @@ PortalはEntraサインインと本人のBearerによるAPI試用を提供しま
 | 12 | [Portalを個別配備する](docs/setup/12-deploy-portal.md) | `deploy_portal.py` で認証DB・SQL権限・Portal本体を配備し、Portal本体で初期サンプルを置き換え |
 | 13 | [初回構築を受け入れる](docs/setup/13-verify-deployment.md) | 公開DNS・TLS、Gatewayのキー／Bearer、Portalのヘルス・サインインと必要な機能を確認 |
 
-検証・本番の標準configはそのまま使います。既定値を確認したい場合や、変更が必要な場合に参照してください。 [configリファレンス](docs/reference/configuration/config-options.md)
+環境別の公開paramsには容量の標準値を記入しています。準備コマンドで作成した保護paramsで全項目を確認し、必要な容量を設定します。SKU・ゾーン・冗長化は標準configで管理します。 [容量の入力項目](docs/reference/configuration/parameters.md#環境ごとに確定する容量) · [configリファレンス](docs/reference/configuration/config-options.md)
 
 基盤構築の完了からPortal本体の配備までは、App GatewayでPortalバックエンドが異常表示でも進めます。Portalの `/api/health` が HTTP 200 を返すことは、第12章の配備後に確認します。
 
@@ -96,7 +96,9 @@ RGと共通基盤用マネージドIDは`azd up`が作成します。[管理ポ�
 | 永続化・運用 | 共用SQLサーバー内のPortal／credentials DB、管理VMとディスク、Key Vault、LAW／App Insights、ログexport、監査Storageと保持・複製、アラート・通知 |
 | 基盤外の共有資源 | 公開DNS・ドメイン、企業ハブ・ExpressRoute／VPN・中央DNS等、採用する共有資源 |
 
-標準構成は [test.json](infra/config/test.json)・[production.json](infra/config/production.json)、アプリ資源は [Gateway Bicep](apps/api-gateway/deploy/)・[Portal Bicep](apps/portal/deploy/)で確認できます。導入・変更時に、これらを含む全資源で見積もり、稼働後は対象Subscriptionの利用額と照合します。撤去後も保護・保持により残るデータや共有資源の費用を確認します。
+App Gateway・APIM・Broker・Broker SQLの容量は、[prod](params/prod.example.json)・[stg](params/stg.example.json)・[dev](params/dev.example.json)の公開paramsに標準値を記入しています。全環境でFoundryモデルを最小容量で新規配備し、構築後の容量は承認済みクォータに合わせてMicrosoft Foundryポータルで調整します。 [モデル設定](infra/config/capacity/foundry.json) · [SKU・保護設定](infra/config/) · [配備容量の変更手順](docs/operations/foundry.md#容量だけを変更する)
+
+[本番の概算月額](docs/reference/configuration/production-running-cost.md)を基に、導入・変更時には対象リージョンの単価と利用量で見積もり、稼働後は対象Subscriptionの利用額と照合します。撤去後も保護・保持により残るデータや共有資源の費用を確認します。
 
 ## 構築後に使う資料
 

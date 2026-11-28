@@ -2,6 +2,8 @@
 
 本文監査を追加したAI Gatewayの暫定性能目標。日々3万人がCodexやClaude Codeなどを使う想定とし、呼び出し頻度、集中度、接続時間、本文サイズは初期試算の仮定を置く。構成や数量は、利用の計測とAzureでの通し試験を経て決める。
 
+配備するSKU、初期ユニット数、環境ごとの受入範囲は[prod・stg・devの容量設計](../reference/configuration/environment-capacity.md)を参照する。
+
 ## 1日あたりの利用からピークを求める
 
 エージェントは、利用者の1回の指示からモデルを複数回呼び出す。推論の繰り返し、並行実行、再試行を含め、Gatewayに到達したモデルAPI呼び出しを数える。例えば、1人がエージェントを1日計2時間動かし、平均1分間に1回呼び出すと120回になる。端末内で完結する処理はこの件数に含めない。
@@ -48,8 +50,8 @@ HTTP完了時間、SSEの最初のイベントと以降のイベント間隔はp
 ## 容量の確定
 
 - **ACAとYARP**。単一レプリカから始め、CPU、メモリ、送受信バイト数、同時接続、負荷分散の偏り、起動と終了時の接続処理を測る。Azureの通し試験で標準HTTPS ingressの処理能力を確認して、普段確保するレプリカ数と最大数を決める。
-- **App Gateway、Firewall、APIM**。現行経路と中継経路を比べ、どの区間が先に飽和するかを確認する。現行の本番向けconfigではAPIMがClassic Premium 1ユニット。単一のFoundryホストにHTTP/1.1で転送し、全SSEが同時にバックエンド接続を占有する場合、公式上限は接続先あたり2,048本/ユニットなので、12,000本で6ユニット、24,000本で12ユニットが理論下限になる。接続先ごとの内訳、短いHTTP、ユニット間の偏り、停止時の縮退を加味して実測する。 [本番config](../../infra/config/production.json) · [APIMの実行時上限](https://learn.microsoft.com/en-us/azure/api-management/api-management-gateways-overview#gateway-runtime-limits)
-- **Foundry**。Gateway自体は合成バックエンドで計測し、モデルの供給能力は配備単位で別に確かめる。通常ピークの400モデルRPSは24,000 RPM。仮に1回あたり入力8,000・出力1,000トークンなら、合算で入力1億9,200万 TPM、出力2,400万 TPM相当。モデルごとの利用割合と、キャッシュを含むクォータの数え方で見直す。 [Azure OpenAIのクォータ](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/quota) · [FoundryのClaudeのクォータ](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models-quotas-limits)
+- **App Gateway、Firewall、APIM**。現行経路と中継経路を比べ、どの区間が先に飽和するかを確認する。本番公開例はAPIM Classic Premium 12ユニット。単一のFoundryホストにHTTP/1.1で転送し、全SSEが同時にバックエンド接続を占有する場合、公式上限は接続先あたり2,048本/ユニットなので、12,000本で6ユニット、24,000本で12ユニットが理論下限になる。接続先ごとの内訳、短いHTTP、ユニット間の偏り、停止時の縮退を加味して実測する。 [容量の入力項目](../reference/configuration/parameters.md#環境ごとに確定する容量) · [APIMの実行時上限](https://learn.microsoft.com/en-us/azure/api-management/api-management-gateways-overview#gateway-runtime-limits)
+- **Foundry**。Gateway自体は合成バックエンドで計測する。モデルの供給能力は、試験するサブスクリプションの承認済みクォータから必要な容量を割り当て、配備単位で別に確かめる。通常ピークの400モデルRPSは24,000 RPM。仮に1回あたり入力8,000・出力1,000トークンなら、合算で入力1億9,200万 TPM、出力2,400万 TPM相当。モデルごとの利用割合と、キャッシュを含むクォータの数え方で見直す。 [配備容量の変更手順](../operations/foundry.md#容量だけを変更する) · [Azure OpenAIのクォータ](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/quota) · [FoundryのClaudeのクォータ](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models-quotas-limits)
 - **監査経路**。キューの滞留量、Event Hubsの受理・制限、保存までの遅延、再処理、検査結果の着信を計測する。第三者製品の検査能力は合成入力で個別に測り、非同期処理が追いつくかを確認する。
 
 先行利用で、1人日あたりのモデル・ツール呼び出し数、秒・分単位のピーク、同時SSE、応答時間、本文サイズ、再試行、クライアントごとの接続方式を集計する。計測値で仮定を更新し、Azureの通し試験に合格した構成を展開時の容量として採用する。 [現行の利用量観測](subscription-limits.md)

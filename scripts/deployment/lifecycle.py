@@ -93,7 +93,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     __package__ = "deployment"
 
-from .helpers.paths import AZD_PROJECT_NAME, REPOSITORY, configuration_path, local_paths, private_parent
+from .helpers.paths import AZD_PROJECT_NAME, REPOSITORY, STANDARD_CONFIG_PROFILES, configuration_path, local_paths, private_parent
 from .helpers.azd_parameters import ARM_PARAMETERS_ENV, arm_parameters_reference, complete_arm_parameters
 from .helpers.configuration import ConfigurationError, build_bicep_configuration, entra_tenant_id, load_configuration, load_firewall_tls_inspection, load_secret_inputs
 from .helpers.diagnostics import DiagnosticPreservationError, canonical_settings, prepare_settings
@@ -414,12 +414,17 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
                existing_portal_app: bool = False,
                existing_apim_egress_fqdns: list[str] | None = None,
                existing_workspace_privacy_dcr_id: str = "",
+               model_deployments_to_create: list[dict] | None = None,
                diagnostic_setting_properties: dict | None = None) -> dict:
     """公開設定と必要時だけ秘密入力をまとめ、Bicep用パラメーター形式へ変換する。"""
     configuration = build_bicep_configuration(config)
     # 検証済みの既存宛先は内部の生成集合だけへ引き継ぐ。元のparamsやAPI定義を
     # 書き換えず、基盤再up時も公開済みAPI・構築後の手動追加先を維持する。
     if phase == "core":
+        if model_deployments_to_create is not None:
+            # Incremental ARMでは、既存配備を入れないことで現在の容量とPortal変更を保つ。
+            # カタログは上で完全な設定から生成済みなので、API側のモデル参照は保持する。
+            configuration["services"]["modelDeployments"] = copy.deepcopy(model_deployments_to_create)
         allowed = configuration["generatedApimServiceFqdns"]
         known = {host.casefold() for host in allowed}
         for host in existing_apim_egress_fqdns or []:
@@ -789,7 +794,7 @@ def capacity_preflight(config: dict, transport: ArmTransport, previous_outputs: 
     """有料資源を作る前に、同一環境の現在割当と追加必要量を調べて保存する。
 
     既存割当を差し引くのは、今回の正確なVMと配備記録で特定したFoundryだけ。
-    記録のないモデルを推測で自分の割当として扱わず、不明なら利用可と判断しない。
+    標準環境で、記録のない既存配備を発見した場合は構築を止めて配備記録の確認を求める。
     """
     scope = f"/subscriptions/{config['subscriptionId']}/resourceGroups/"
     vm_id = scope + config['resourceGroupNames']['maint'] + f"/providers/Microsoft.Compute/virtualMachines/vm-{config['resourceStem']}-mgmt"
@@ -799,13 +804,15 @@ def capacity_preflight(config: dict, transport: ArmTransport, previous_outputs: 
     existing = {"vm": vm, "modelDeployments": []}
     cleanup = previous_outputs.get("cleanup", {}).get("value", {})
     foundry_id = cleanup.get("serviceResourceIds", {}).get("foundry")
-    if foundry_id and config["services"]["modelDeployments"]:
+    initialize_models = config.get("capacityProfile") in STANDARD_CONFIG_PROFILES
+    if (foundry_id is not None or initialize_models) and config["services"]["modelDeployments"]:
         expected_foundry_id = scope + config['resourceGroupNames']['svc'] + f"/providers/Microsoft.CognitiveServices/accounts/aif-{config['resourceStem']}"
-        # 同じ接頭辞を持つ他の資源を、今回のクォータ割当として数えない。
-        if not isinstance(foundry_id, str) or foundry_id.casefold() != expected_foundry_id.casefold():
+        if foundry_id is not None and (
+                not isinstance(foundry_id, str) or foundry_id.casefold() != expected_foundry_id.casefold()):
             raise DeploymentError("Prior Foundry output does not match this environment; quota credit was not attempted")
-        expected_path = urlparse(foundry_id + "/deployments").path.lower()
-        next_page = foundry_id + "/deployments?api-version=2025-06-01"
+        deployments_path = expected_foundry_id + "/deployments"
+        expected_path = deployments_path.casefold()
+        next_page = deployments_path + "?api-version=2025-06-01"
         visited = set()
         while next_page:
             if next_page in visited or urlparse(next_page).path.lower() != expected_path:
@@ -820,11 +827,13 @@ def capacity_preflight(config: dict, transport: ArmTransport, previous_outputs: 
             entries = page.get("value")
             if not isinstance(entries, list):
                 raise DeploymentError("The existing model allocation list was malformed")
+            if foundry_id is None and entries:
+                raise DeploymentError("Recover the prior Foundry deployment outputs before reapplying existing models")
             existing["modelDeployments"].extend(entries)
             next_page = page.get("nextLink")
             if next_page is not None and not isinstance(next_page, str):
                 raise DeploymentError("The existing model allocation continuation was malformed")
-    report = verify_capacity(config, run, existing_resources=existing)
+    report = verify_capacity(config, run, existing_resources=existing, initialize_models=initialize_models)
     protected_json((local_paths(config, ROOT).state / "capacity.json"), report)
     if report["status"] != "verified":
         codes = sorted({issue["code"] for issue in report["issues"]})
@@ -1133,6 +1142,9 @@ def _assert_current_apim_instance(config: dict) -> None:
 
 def state_from_outputs(config: dict, outputs: dict) -> dict:
     """実際のBicep出力から、再実行と撤去に使う所有RG・サービスIDの記録を作る。"""
+    profile = outputs.get("capacityProfile") or None
+    if profile != config.get("capacityProfile"):
+        raise DeploymentError("Infrastructure output capacity profile differs from the selected configuration")
     service_ids = outputs.get("cleanup", {}).get("serviceResourceIds", {})
     service_locations = {"keyVault": config["location"], "foundry": config["foundryLocation"], "apim": config["location"]}
     state = {
@@ -1140,13 +1152,15 @@ def state_from_outputs(config: dict, outputs: dict) -> dict:
         "entraTenantId": entra_tenant_id(config),
         "resourceStem": config["resourceStem"], "resourceGroupNames": config["resourceGroupNames"],
         "apimInstanceId": apim_instance_id(config),
+        "capacityProfile": profile,
         "storage": outputs.get("auditStorage", {}), "monitoring": outputs.get("monitoring", {}),
         "serviceResourceIds": service_ids,
         "serviceLocations": service_locations,
         "outputs": outputs,
     }
-    if "certificateVault" in state["serviceResourceIds"]:
-        state["serviceLocations"]["certificateVault"] = config["location"]
+    for key in ("certificateVault", "oboVault"):
+        if key in service_ids:
+            service_locations[key] = config["location"]
     try:
         verify_apim_state(config, state)
     except ValueError as error:
@@ -1166,7 +1180,8 @@ def _read_core_checkpoint(config: dict) -> dict | None:
         raise DeploymentError("Preserve and review the existing deployment state before rebuilding because its ownership could not be verified")
     if (any(not isinstance(previous.get(key), str) or previous[key].casefold() != config[key].casefold()
             for key in ("subscriptionId", "azureTenantId", "resourceStem"))
-            or previous.get("resourceGroupNames") != config["resourceGroupNames"]):
+            or previous.get("resourceGroupNames") != config["resourceGroupNames"]
+            or previous.get("capacityProfile") != config.get("capacityProfile")):
         raise DeploymentError("Existing application infrastructure checkpoint belongs to a different infrastructure environment")
     try:
         verify_apim_state(config, previous)
@@ -1275,7 +1290,8 @@ def configure_app_insights_cap(config: dict, outputs: dict) -> None:
         "tenantId": config["azureTenantId"], "subscriptionId": config["subscriptionId"],
         "accountId": account["user"]["name"], "accessToken": auth["accessToken"],
         "resourceGroupName": config["resourceGroupNames"]["monitor"],
-        "appInsightsName": outputs["monitoring"]["appInsightsName"], "dailyCapGb": 100,
+        "appInsightsName": outputs["monitoring"]["appInsightsName"],
+        "dailyCapGb": config["monitoring"]["appInsightsDailyCapGb"],
     })
 
 
@@ -1321,7 +1337,12 @@ def _preprovision(config: dict) -> None:
     })
     previous_response = transport.request("GET", f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/{config['resourceStem']}-monitoring?api-version=2022-09-01")
     previous_outputs = require_success(previous_response, "Read prior monitoring deployment", allowed=(200, 404)).get("properties", {}).get("outputs", {})
-    capacity_preflight(config, transport, previous_outputs)
+    capacity_report = capacity_preflight(config, transport, previous_outputs)
+    initial_models = None
+    if config.get("capacityProfile") in STANDARD_CONFIG_PROFILES:
+        initial_models = capacity_report.get("modelDeploymentsToCreate")
+        if not isinstance(initial_models, list):
+            raise DeploymentError("The verified initial Foundry model allocation plan is missing")
     # 第3段階: 既存の監査保存先を照合する。保持設定や証跡を初期化しない。
     previous = {"storage": previous_outputs.get("auditStorage", {}).get("value", {})}
     retained_policy_ids = []
@@ -1400,6 +1421,7 @@ def _preprovision(config: dict) -> None:
         existing_portal_app=existing_portal_app,
         existing_apim_egress_fqdns=existing_apim_egress_fqdns,
         existing_workspace_privacy_dcr_id=workspace_privacy_dcr_id,
+        model_deployments_to_create=initial_models,
         diagnostic_setting_properties=core_diagnostics))
     print("Monitoring destinations are prepared. Native azd provision will create the infrastructure resources.")
 

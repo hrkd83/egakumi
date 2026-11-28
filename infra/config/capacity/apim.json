@@ -1,0 +1,22 @@
+{
+  "$schema": "./capacity.schema.json",
+  "$comment": "API Management Classicの環境別SKU。ユニット数はparamsで指定します。",
+  "common": {},
+  "profiles": {
+    "prod": {
+      "services": {
+        "apimSkuName": "Premium"
+      }
+    },
+    "stg": {
+      "services": {
+        "apimSkuName": "Premium"
+      }
+    },
+    "dev": {
+      "services": {
+        "apimSkuName": "Developer"
+      }
+    }
+  }
+}

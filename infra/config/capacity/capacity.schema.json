@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "egakumi サービス別容量設定",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["common", "profiles"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "$comment": { "type": "string" },
+    "common": { "$ref": "#/$defs/fragment" },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prod", "stg", "dev"],
+      "properties": {
+        "prod": { "$ref": "#/$defs/fragment" },
+        "stg": { "$ref": "#/$defs/fragment" },
+        "dev": { "$ref": "#/$defs/fragment" }
+      }
+    }
+  },
+  "$defs": {
+    "fragment": {
+      "anyOf": [
+        {
+          "allOf": [
+            { "$ref": "../options.schema.json" },
+            {
+              "not": {
+                "required": ["services"],
+                "properties": { "services": { "required": ["modelDeployments"] } }
+              }
+            }
+          ]
+        },
+        { "$ref": "#/$defs/foundryCatalogFragment" },
+        { "$ref": "#/$defs/brokerSqlFragment" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["credentialProviders"],
+          "properties": {
+            "credentialProviders": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["graphDelegated"],
+              "properties": {
+                "graphDelegated": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["pool"],
+                  "properties": {
+                    "pool": { "$ref": "../options.schema.json#/properties/credentialProviders/properties/graphDelegated/properties/pool" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "foundryCatalogFragment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["services"],
+      "properties": {
+        "services": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["modelDeployments"],
+          "properties": {
+            "modelDeployments": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "items": { "$ref": "#/$defs/catalogDeployment" }
+            }
+          }
+        }
+      }
+    },
+    "catalogDeployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "modelName", "modelVersion", "modelFormat", "skuName", "versionUpgradeOption"],
+      "properties": {
+        "name": { "$ref": "../options.schema.json#/$defs/modelDeployment/properties/name" },
+        "modelName": { "$ref": "../options.schema.json#/$defs/modelDeployment/properties/modelName" },
+        "modelVersion": { "$ref": "../options.schema.json#/$defs/modelDeployment/properties/modelVersion" },
+        "modelFormat": { "$ref": "../options.schema.json#/$defs/modelDeployment/properties/modelFormat" },
+        "skuName": { "$ref": "../options.schema.json#/$defs/modelDeployment/properties/skuName" },
+        "versionUpgradeOption": { "$ref": "../options.schema.json#/$defs/modelDeployment/properties/versionUpgradeOption" },
+        "quotaUsageName": { "$ref": "../options.schema.json#/$defs/modelDeployment/properties/quotaUsageName" }
+      }
+    },
+    "brokerSqlFragment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["credentialBroker"],
+      "properties": {
+        "credentialBroker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sqlTier", "sqlSkuFamily", "backupRetentionDays", "zoneRedundant", "backupRedundancy"],
+          "properties": {
+            "sqlTier": { "const": "GeneralPurpose" },
+            "sqlSkuFamily": { "const": "GP_Gen5" },
+            "backupRetentionDays": { "$ref": "../options.schema.json#/properties/credentialBroker/properties/backupRetentionDays" },
+            "zoneRedundant": { "$ref": "../options.schema.json#/properties/credentialBroker/properties/zoneRedundant" },
+            "backupRedundancy": { "$ref": "../options.schema.json#/properties/credentialBroker/properties/backupRedundancy" }
+          }
+        }
+      }
+    }
+  }
+}

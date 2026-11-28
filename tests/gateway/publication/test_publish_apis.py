@@ -17,6 +17,7 @@ import api_publication as publish
 from deployment.helpers.configuration import build_bicep_configuration
 from deployment.helpers.apim_authentication import render_service_policy, validate_common_authentication_policy
 from deployment.helpers.apim_common_authentication import render_common_authentication_fragments
+from deployment.helpers.portal_auth_certificate import gateway_obo_vault_origin
 from policy import render_apim_policy
 from catalog.standard_apis import API_DEFINITION_DIRECTORY, load_api_definitions
 
@@ -395,7 +396,7 @@ class PublicationTests(unittest.TestCase):
         config, plan, apim, inventory, _ = self.credential_role_fixture()
         plan["parameters"] = {**plan["parameters"], "graphOboEnabled": {"value": True}}
         settings = {"tenantId": config["azureTenantId"], "clientId": "66666666-6666-4666-8666-666666666666",
-                    "keyUrl": "https://kv-" + config["resourceStem"] + ".vault.azure.net/keys/gateway-obo/" + "a" * 32,
+                    "keyUrl": gateway_obo_vault_origin(config["resourceStem"]) + "/keys/gateway-obo/" + "a" * 32,
                     "certificateThumbprint": "b" * 43}
         app_id = publish._scope(config, "svc") + "/providers/Microsoft.App/containerApps/" + publish.resource_names(config)["application"]
         revision_id = app_id + "/revisions/ready-001"

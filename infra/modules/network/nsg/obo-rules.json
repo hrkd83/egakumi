@@ -1,0 +1,60 @@
+{
+  "groups": {
+    "pep": {
+      "allow-certificate-obo-vault-https-ingress": {
+        "priority": 234,
+        "direction": "Inbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "sourcePort": "*",
+        "source": ["subnet:certificate"],
+        "destination": ["ips:oboVault"],
+        "destinationPorts": ["443"]
+      },
+      "allow-broker-obo-vault-https-ingress": {
+        "priority": 235,
+        "direction": "Inbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "sourcePort": "*",
+        "source": ["subnet:broker"],
+        "destination": ["ips:oboVault"],
+        "destinationPorts": ["443"]
+      },
+      "allow-management-obo-vault-https-ingress": {
+        "priority": 236,
+        "direction": "Inbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "sourcePort": "*",
+        "source": ["ip:management"],
+        "destination": ["ips:oboVault"],
+        "destinationPorts": ["443"]
+      }
+    },
+    "broker": {
+      "allow-obo-vault-https-egress": {
+        "priority": 224,
+        "direction": "Outbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "sourcePort": "*",
+        "source": ["subnet:broker"],
+        "destination": ["ips:oboVault"],
+        "destinationPorts": ["443"]
+      }
+    },
+    "management": {
+      "allow-obo-vault-https-egress": {
+        "priority": 230,
+        "direction": "Outbound",
+        "access": "Allow",
+        "protocol": "Tcp",
+        "sourcePort": "*",
+        "source": ["ip:management"],
+        "destination": ["ips:oboVault"],
+        "destinationPorts": ["443"]
+      }
+    }
+  }
+}

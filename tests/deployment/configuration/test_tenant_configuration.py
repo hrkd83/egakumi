@@ -4,7 +4,7 @@ import unittest
 from tests.support.schema_helpers import local_schema_validator, read_schema
 from unittest import mock
 
-from tests.support.configuration_fixtures import CORE, fixture, connection_fixture, pii_fixture, public_fixture
+from tests.support.configuration_fixtures import CORE, fixture, connection_fixture, pii_fixture, public_parameters
 from deployment.helpers import configuration
 from deployment import lifecycle
 
@@ -125,7 +125,7 @@ class TenantConfigurationTests(unittest.TestCase):
                 self.assertNotIn('entraTenantId', schema['required'])
                 self.assertNotIn('tenantId', schema['properties'])
                 jsonschema.Draft202012Validator.check_schema(schema)
-                sample = public_fixture()[0] if name == 'params' else fixture()
+                sample = public_parameters() if name == 'params' else fixture()
                 for tenant in (None, ENTRA):
                     value = copy.deepcopy(sample)
                     if tenant is not None:

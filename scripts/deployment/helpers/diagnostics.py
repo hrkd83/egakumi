@@ -5,7 +5,9 @@ import copy
 import re
 
 from .apim_naming import apim_name
+from .configuration import entra_app_separation_enabled
 from .log_privacy import PRIVACY, audit_storage_account_name
+from .portal_auth_certificate import gateway_obo_vault_name
 
 
 API = "2021-05-01-preview"
@@ -221,12 +223,15 @@ def canonical_settings(config, phase, preserve_collection=False):
         nsg = resource("nw", "Microsoft.Network/networkSecurityGroups", f"nsg-{stem}-{suffix}")
         add(f"nsg-{suffix}", nsg, "Microsoft.Network/networkSecurityGroups", "2025-01-01", "core-audit",
             logs=NSG_LOGS, storage=platform_storage)
-    for key, prefix in (("vault", "kv"), ("certificate-vault", "kvtls")):
-        vault = resource("svc", "Microsoft.KeyVault/vaults", f"{prefix}-{stem}")
+    vaults = {"vault": f"kv-{stem}", "certificate-vault": f"kvtls-{stem}"}
+    if entra_app_separation_enabled(config):
+        vaults["obo-vault"] = gateway_obo_vault_name(stem)
+    for key, name in vaults.items():
+        vault = resource("svc", "Microsoft.KeyVault/vaults", name)
         add(f"{key}-logs", vault, "Microsoft.KeyVault/vaults", "2023-07-01", "core-audit",
             logs=["AuditEvent"], storage=platform_storage)
-        if key == "vault":
-            add("vault-metrics", vault, "Microsoft.KeyVault/vaults", "2023-07-01", "core-metrics", metrics=["AllMetrics"])
+        if key in ("vault", "obo-vault"):
+            add(f"{key}-metrics", vault, "Microsoft.KeyVault/vaults", "2023-07-01", "core-metrics", metrics=["AllMetrics"])
     certificate_storage = resource("svc", "Microsoft.Storage/storageAccounts", "st" + stem.replace("-", "") + "cert")
     add("certificate-blob-logs", certificate_storage + "/blobServices/default", "Microsoft.Storage/storageAccounts/blobServices",
         "2025-01-01", "core-audit", logs=BLOB_LOGS, storage=platform_storage, dedicated=True, owner=certificate_storage,

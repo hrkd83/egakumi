@@ -111,11 +111,11 @@ Toolsアプリの戻り先には予定APIM名が必要です。ここでAPIM識�
 
 公開資材はこの1つのcheckoutを正本として使い、実情報はリポジトリルートの`.local/`とazd専用の`.azure/`だけへ保存します。[共通ルール](../../AGENTS.md)に従い、この2領域はGit・公開文書・配布物へ含めません。ルートの`secrets/`・`.state/`、`params/`内の実params、アプリ直下の`.env.local`へ実情報を作らないでください。
 
-選ぶのは標準構成 `test` または `production` です。準備コマンドが選んだconfigへの参照と秘密ファイルの保存先をひな型に設定します。通常の構築ではconfigファイルを編集しません。
+標準構成 `prod`、`stg`、`dev` のいずれかを選びます。準備コマンドが、容量の標準値を記入済みの公開paramsから保護paramsを作成し、選んだconfigへの参照と秘密ファイルの保存先を設定します。容量は作成したparamsで確認します。 [環境の容量と保護設定](../reference/configuration/environment-capacity.md)
 
 ```sh
 umask 077
-export DEPLOY_PROFILE='test' # 本番向け標準構成を選ぶ場合は production
+export DEPLOY_PROFILE='dev' # 本番は prod、管理者検証は stg
 python3 scripts/setup/prepare_local_environment.py \
   --environment "$DEPLOY_ENVIRONMENT" --profile "$DEPLOY_PROFILE"
 export DEPLOY_LOCAL_DIRECTORY="$(pwd)/.local/${DEPLOY_ENVIRONMENT}"
