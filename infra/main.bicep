@@ -328,8 +328,8 @@ module networkBindings 'modules/network/network-bindings.bicep' = if (deployCore
     foundryPrivateIps: endpoints!.outputs.foundryPrivateIps
     keyVaultPrivateIps: endpoints!.outputs.keyVaultPrivateIps
     managementPrivateIp: management!.outputs.managementVm.privateIp
-    auditStorageJapanPrivateIps: auditPrivateEndpoints!.outputs.privateEndpoints.collectJapan.privateIps
-    auditStorageFoundryPrivateIps: auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps
+    auditPlatformBlobPrivateIps: auditPrivateEndpoints!.outputs.privateEndpoints.collectPlatform.privateIps
+    auditFoundryBlobPrivateIps: auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps
   }
 }
 
@@ -345,11 +345,11 @@ module auditPrivateDns 'modules/monitoring/audit-storage-private-dns.bicep' = if
   dependsOn: [networkBindings]
 }
 var auditDnsChecks = deployCore ? [
-  length(auditPrivateEndpoints!.outputs.privateEndpoints.collectJapan.privateIps) > 0
+  length(auditPrivateEndpoints!.outputs.privateEndpoints.collectPlatform.privateIps) > 0
   length(auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps) > 0
-  length(auditPrivateDns!.outputs.recordPrivateIps.collectJapan) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectJapan.privateIps)
+  length(auditPrivateDns!.outputs.recordPrivateIps.collectPlatform) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectPlatform.privateIps)
   length(auditPrivateDns!.outputs.recordPrivateIps.collectFoundry) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps)
-  length(intersection(auditPrivateDns!.outputs.recordPrivateIps.collectJapan, auditPrivateEndpoints!.outputs.privateEndpoints.collectJapan.privateIps)) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectJapan.privateIps)
+  length(intersection(auditPrivateDns!.outputs.recordPrivateIps.collectPlatform, auditPrivateEndpoints!.outputs.privateEndpoints.collectPlatform.privateIps)) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectPlatform.privateIps)
   length(intersection(auditPrivateDns!.outputs.recordPrivateIps.collectFoundry, auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps)) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps)
 ] : [false]
 var auditDnsReady = empty(filter(auditDnsChecks, ready => !ready))
@@ -655,7 +655,7 @@ var managementClientInventory = deployCore ? {
   sqlDatabases: []
   environments: [portal!.outputs.platform.environmentId, brokerEnvironment!.outputs.platform.environmentId]
   workspace: { id: monitoring.outputs.monitoring.workspaceId, customerId: monitoring.outputs.monitoring.workspaceCustomerId }
-  auditStorage: map(['collectJapan', 'collectFoundry'], collector => {
+  auditStorage: map(['collectPlatform', 'collectFoundry'], collector => {
     id: monitoring.outputs.storage[collector].id
     containers: map(filter(monitoring.outputs.storage.containerIds, id => startsWith(toLower(id), '${toLower(monitoring.outputs.storage[collector].id)}/')), id => last(split(id, '/')))
   })

@@ -104,7 +104,7 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         self.assertFalse(transport.mutations())
 
     def test_own_subscription_diagnostic_removed_after_destination_verification(self):
-        transport = FakeTransport({self.diag_id: {"id": self.diag_id, "properties": {"workspaceId": self.workspace_id, "storageAccountId": self.state["storage"]["collectJapan"]["id"]}}})
+        transport = FakeTransport({self.diag_id: {"id": self.diag_id, "properties": {"workspaceId": self.workspace_id, "storageAccountId": self.state["storage"]["collectPlatform"]["id"]}}})
         result = self.pre(transport)
         self.assertEqual(404, result["activityDiagnostic"]["httpStatus"])
         self.assertEqual([self.diag_id], [call["id"] for call in transport.mutations()])
@@ -125,6 +125,17 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         transport = FakeTransport()
         self.assert_code("invalid-state", lambda: self.pre(transport))
         self.assertFalse(transport.calls)
+
+    def test_audit_storage_role_mismatch_rejects_teardown_before_arm_calls(self):
+        storage = self.state["storage"]
+        platform_id = storage["collectPlatform"]["id"]
+        wrong_accounts = [storage["collectFoundry"]["id"], platform_id.rsplit("/", 1)[0] + "/stsyntheticother"]
+        for account_id in wrong_accounts:
+            with self.subTest(account_id=account_id):
+                storage["collectPlatform"]["id"] = account_id
+                transport = FakeTransport()
+                self.assert_code("invalid-state", lambda: self.pre(transport))
+                self.assertFalse(transport.calls)
 
     def test_policy_inventory_rejects_non_string(self):
         self.state["storage"]["immutabilityPolicyIds"] = [{}]

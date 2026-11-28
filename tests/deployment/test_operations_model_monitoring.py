@@ -49,7 +49,7 @@ class Context:
         self.log = self.scope("monitor") + "/providers/Microsoft.Insights/scheduledQueryRules/la-sandbox-fixture-appi-ingestion-high"
         self.metric = self.scope("monitor") + "/providers/Microsoft.Insights/metricAlerts/ma-sandbox-fixture-apim-capacity-high"
         self.state = {"storage": {key: {"id": self.scope("monitor") + "/providers/Microsoft.Storage/storageAccounts/" + name}
-                                   for key, name in (("collectJapan", "fixturejapan"), ("collectFoundry", "fixturefoundry"))}}
+                                   for key, name in (("collectPlatform", "fixtureplatform"), ("collectFoundry", "fixturefoundry"))}}
         self.resources = {
             self.foundry: {"id": self.foundry, "type": "Microsoft.CognitiveServices/accounts", "properties": {"provisioningState": "Succeeded"}},
             self.deployment: {"id": self.deployment, "type": model.TYPE, "etag": '"first"',
@@ -359,9 +359,19 @@ class MonitoringTests(unittest.TestCase):
 
     def test_static_log_and_metric_thresholds_patch_only_criteria(self):
         """数値・ログの双方で、scopeやアクションを変えずcriteriaだけを送る。"""
-        for kind, rule in (("log", "appi-ingestion-high"), ("metric", "apim-capacity-high")):
-            with self.subTest(kind=kind):
+        for kind, rule, collector in (("log", "appi-ingestion-high", None),
+                                      ("metric", "apim-capacity-high", None),
+                                      ("metric", "audit-platform-blob-availability", "collectPlatform"),
+                                      ("metric", "audit-foundry-blob-availability", "collectFoundry")):
+            with self.subTest(rule=rule):
                 context = Context()
+                if collector:
+                    target = context.metric.replace("apim-capacity-high", rule)
+                    alert = copy.deepcopy(context.resources[context.metric])
+                    alert["id"] = target
+                    alert["properties"]["scopes"] = [context.state["storage"][collector]["id"] + "/blobServices/default"]
+                    alert["properties"]["criteria"]["allOf"][0]["metricName"] = "Availability"
+                    context.resources[target] = alert
                 result = monitoring.operate(context, "threshold", rule_kind=kind, rule=rule, threshold=90, execute=True)
                 write = context.mutations()[0]
                 self.assertEqual(write[0], "PATCH")

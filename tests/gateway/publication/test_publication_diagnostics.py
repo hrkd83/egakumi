@@ -49,10 +49,10 @@ class PublicationDiagnosticTests(unittest.TestCase):
         self.apim_id = base + "svc/providers/Microsoft.ApiManagement/service/apim-test-fixture"
         self.resource_id = self.apim_id + "/providers/Microsoft.Insights/diagnosticSettings/core-audit"
         self.workspace_id = base + "monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-fixture"
-        self.storage_id = base + "monitor/providers/Microsoft.Storage/storageAccounts/sttestfixturejp"
+        self.storage_id = base + "monitor/providers/Microsoft.Storage/storageAccounts/sttestfixtureplat"
         self.state = {"outputs": {
             "monitoring": {"workspaceId": self.workspace_id},
-            "auditStorage": {"collectJapan": {"id": self.storage_id}},
+            "auditStorage": {"collectPlatform": {"id": self.storage_id}},
         }}
         self.plan = {"apimId": self.apim_id,
                      "webSocketDiagnostics": {"required": True, "resourceId": self.resource_id}}
@@ -250,7 +250,7 @@ class PublicationDiagnosticIntegrationTests(unittest.TestCase):
         unit = PublicationDiagnosticTests()
         unit.setUp()
         self.fixture.state["outputs"]["monitoring"] = {"workspaceId": unit.workspace_id}
-        self.fixture.state["outputs"]["auditStorage"] = {"collectJapan": {"id": unit.storage_id}}
+        self.fixture.state["outputs"]["auditStorage"] = {"collectPlatform": {"id": unit.storage_id}}
         self.diagnostic_id = self.fixture.plan["apimId"] + "/providers/Microsoft.Insights/diagnosticSettings/core-audit"
         self.fixture.inventory[self.diagnostic_id] = response({"id": self.diagnostic_id,
                                                                "properties": unit.properties})

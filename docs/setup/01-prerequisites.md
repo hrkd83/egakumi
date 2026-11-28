@@ -94,7 +94,7 @@ export DEPLOY_PORTAL_FQDN='<Portalの公開FQDN。httpsやパスを含めない>
 
 | 決める値 | 確認すること |
 | --- | --- |
-| 製品名・環境名 | 英小文字開始、英小文字・数字・内部ハイフン。製品名24字以下・環境名12字以下に加え、共通部分`<environment>-<product>`は17字以下。`ca-<stem>-credentials`の32字上限に合わせ、Key Vault・Storage等の名前も同時に収める |
+| 製品名・環境名 | 英小文字で始め、英小文字・数字・内部ハイフンを使う。製品名は最大12文字、環境名は最大4文字。区切りを含む共通部分 `<environment>-<product>` は最大17文字で、`ca-<stem>-credentials` の32文字上限に収まる |
 | リージョン | ネットワークとFoundryは別リージョンを指定可能。SKU・モデルの提供・クォータ・組織の配置制約を確認 |
 | 公開FQDN・公開ゾーン | GatewayとPortalの公開名を決め、両方を証明書SAN・公開DNS・EntraのWeb戻り先へ対応付ける |
 | IP計画 | 公開例は使用4区画と予備1区画の `/24` をVNetに登録する。導入先のVNet、オンプレミス、接続予定先との重複は予備も含めて確認する。 [公開例の割り当て](../reference/configuration/parameters.md#公開例のvnet割り当て) |

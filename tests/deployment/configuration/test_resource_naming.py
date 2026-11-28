@@ -5,10 +5,11 @@
 名前の切り詰めや実行ごとの識別子変更は、Entra に事前登録する URI と実資源の
 不整合を招くため、設定検査とは別に生成結果の契約も確認する。
 """
-from tests.support.bicep_helpers import compile_bicep
-
 import unittest
+
 from tests import REPOSITORY
+from tests.network.test_parameter_ip_ownership import NetworkArmExpression
+from tests.support.bicep_helpers import compile_bicep
 
 
 CORE = REPOSITORY
@@ -82,11 +83,19 @@ class ResourceNamingTests(unittest.TestCase):
 
     def test_storage_names_remove_only_hyphens_and_retain_collector_purpose(self):
         monitoring = self.module("monitoring")
-        self.assertEqual(monitoring["variables"]["compactName"],
-                         "[replace(parameters('resourceStem'), '-', '')]")
-        self.assertEqual([entry["name"] for entry in monitoring["variables"]["auditAccounts"]],
-                         ["[format('st{0}jp', variables('compactName'))]",
-                          "[format('st{0}us', variables('compactName'))]"])
+        for foundry_location in ("japaneast", "japanwest", "westus"):
+            with self.subTest(foundry_location=foundry_location):
+                parameters = {"resourceStem": "test-egakumi", "location": "japaneast",
+                              "foundryLocation": foundry_location}
+                accounts = NetworkArmExpression("[variables('auditAccounts')]", monitoring).evaluate(parameters)
+                self.assertEqual(accounts, [
+                    {"key": "collectPlatform", "name": "sttestegakumiplat", "location": "japaneast"},
+                    {"key": "collectFoundry", "name": "sttestegakumifndry", "location": foundry_location},
+                ])
+        certificate = self.module("certificate-storage")
+        account, = [resource for resource in certificate["resources"] if resource["type"] == "Microsoft.Storage/storageAccounts"]
+        expression = NetworkArmExpression("[true()]", certificate)
+        self.assertEqual(expression.resolve(account["name"], {"stem": "test-egakumi"}), "sttestegakumicert")
 
     def test_linux_host_name_remains_recognizable_without_hash(self):
         self.assertEqual(self.module("management")["variables"]["computerName"],

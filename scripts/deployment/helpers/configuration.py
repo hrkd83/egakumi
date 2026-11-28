@@ -45,7 +45,8 @@ from .apim_naming import apim_instance_id
 from .apim_input_contract import validate_input_contract
 from .apim_document_contract import DOCUMENT_API_VERSION
 from .credential_login import SESSION_POLICY_DEFAULTS, SESSION_POLICY_BOUNDS, MAX_TRANSACTION_LIFETIME_SECONDS
-from .paths import STANDARD_CONFIG_DIRECTORY, _no_links
+from .paths import (ENVIRONMENT_NAME_MAX_LENGTH, PRODUCT_NAME_MAX_LENGTH, RESOURCE_NAME_COMPONENT,
+                    STANDARD_CONFIG_DIRECTORY, _no_links)
 
 
 class ConfigurationError(ValueError):
@@ -68,7 +69,6 @@ TOP_KEYS = {
     "services", "gateway", "management", "monitoring", "certificate", "firewallTlsInspection", "authorization",
     "apiDefinitions", "publishApis", "credentialProviders", "portal", "credentialBroker", "portalAuthentication", "codex",
 }
-NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 API_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
 EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+\Z")
 REGION = re.compile(r"[a-z][a-z0-9]+\Z")
@@ -1059,10 +1059,10 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _string(c["$comment"], "$comment", maximum=4096)
     if c.get("schemaVersion") != 1 or isinstance(c.get("schemaVersion"), bool):
         _fail("schemaVersion", "must be 1 for the infrastructure configuration")
-    for key, limit in (("productName", 24), ("environmentName", 12)):
-        value = _string(c.get(key), key, maximum=limit)
-        if not NAME.fullmatch(value):
-            _fail(key, "must use lowercase letters, digits and single internal hyphens")
+    for key, limit in (("productName", PRODUCT_NAME_MAX_LENGTH), ("environmentName", ENVIRONMENT_NAME_MAX_LENGTH)):
+        value = c.get(key)
+        if not isinstance(value, str) or len(value) > limit or not RESOURCE_NAME_COMPONENT.fullmatch(value):
+            _fail(key, f"must start with a lowercase letter and use lowercase letters, digits or internal hyphens (maximum {limit} characters)")
     c["subscriptionId"] = _guid(c.get("subscriptionId"), "subscriptionId")
     c["azureTenantId"] = _guid(c.get("azureTenantId"), "azureTenantId")
     c["entraTenantId"] = _guid(entra_tenant_id(c), "entraTenantId")
@@ -1074,12 +1074,10 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         c[key] = value
     # 名前は「種類-環境名-製品名」で一貫して派生させます。世界で一意な名前も
     # 勝手に切り詰めず、名前の最も厳しい制約を構築前にまとめて確認します。
-    # Broker CA の ca-<stem>-credentials が最大32文字のため、stem は17文字までです。
-    # この上限なら Key Vault は20文字以下、Storage は20文字以下に収まります。
+    # 環境名4文字、区切り1文字、製品名12文字でstemは最大17文字です。
+    # ca-<stem>-credentialsは32文字、kvtls-<stem>は23文字に収まります。
     # 環境名test/dev/prodではSKU等を切り替えず、実際の動作はconfigで指定します。
     stem = f"{c['environmentName']}-{c['productName']}"
-    if len(stem) > 17:
-        _fail("productName/environmentName", "environmentName-productName must fit within 17 characters so ca-<environment>-<product>-credentials stays within the Container App 32-character limit; shorten the product or environment name")
     c["resourceStem"] = stem
     c["resourceGroupNames"] = {kind: f"rg-{stem}-{kind}" for kind in RG_KINDS}
     c["certificateIdentityName"] = f"id-{stem}-certificate"
@@ -1243,7 +1241,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     for reader in _list(mon.setdefault("auditReaders", []), "monitoring.auditReaders"):
         _object(reader, "monitoring.auditReaders", {"principalId", "principalType", "collector", "containerName"})
         _principals([{key: reader.get(key) for key in ("principalId", "principalType")}], "monitoring.auditReaders")
-        collector = _choice(reader.get("collector"), "monitoring.auditReaders.collector", ("collectJapan", "collectFoundry"))
+        collector = _choice(reader.get("collector"), "monitoring.auditReaders.collector", ("collectPlatform", "collectFoundry"))
         if reader.get("containerName") not in ARCHIVE_CONTAINERS[collector]:
             _fail("monitoring.auditReaders.containerName", "must identify an owned audit container in the selected regional collector")
         key = (reader["principalId"], collector, reader["containerName"])

@@ -355,7 +355,7 @@ class FixedInitialConfigurationTests(unittest.TestCase):
         cases = [
             (("gateway", "existingWafPolicyId"), "https://waf.example.com/policy"),
             (("monitoring", "auditAllowedIpAddresses"), ["203.0.113.71/32"]),
-            (("monitoring", "auditReaders"), [{**principal, "collector": "collectJapan", "containerName": "insights-logs-audit"}]),
+            (("monitoring", "auditReaders"), [{**principal, "collector": "collectPlatform", "containerName": "insights-logs-audit"}]),
             (("network", "firewall", "bypassTrafficSettings"), [{"name": "synthetic-bypass"}]),
             (("network", "firewall", "snatPrivateRanges"), ["192.0.2.0/24"]),
             (("network", "firewall", "snatPrivateRanges"), []),

@@ -8,6 +8,8 @@ from __future__ import annotations
 import copy
 import re
 
+from .paths import checked_environment
+
 
 ARM_PARAMETERS_ENV = "EGAKUMI_ARM_PARAMETERS_FILE"
 ARM_PARAMETERS_SCHEMA = "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"
@@ -38,10 +40,7 @@ ARM_PARAMETER_DEFAULTS = {
 
 def arm_parameters_reference(environment_name: str) -> str:
     """azd環境へ保存する、実行ルート基準の非秘密の相対パスを返す。"""
-    if (not isinstance(environment_name, str) or len(environment_name) > 12
-            or not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", environment_name)):
-        raise ValueError("ARM parameter reference requires a valid environment name")
-    return f".local/{environment_name}/generated/main.parameters.json"
+    return f".local/{checked_environment(environment_name)}/generated/main.parameters.json"
 
 
 def complete_arm_parameters(document: dict) -> dict:

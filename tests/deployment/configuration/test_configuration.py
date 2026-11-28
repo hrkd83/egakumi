@@ -627,19 +627,17 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(raw, before)
 
 
-    def test_combined_names_fit_container_app_key_vault_and_storage_without_truncation(self):
-        """個別の長さだけでなく、Azureへ送る連結名が上限に収まることを確かめる。"""
+    def test_environment_and_product_name_limits_keep_derived_names_within_azure_limits(self):
+        """個別の上限と、両方が最長の場合の連結名を確かめる。"""
         raw = fixture()
         raw["productName"], raw["environmentName"] = "p" * 12, "test"
         actual = self.normalize(raw)
         self.assertEqual(actual["resourceStem"], "test-" + "p" * 12)
         self.assertEqual(len("ca-" + actual["resourceStem"] + "-credentials"), 32)
-        self.assertEqual(len("kv-" + actual["resourceStem"]), 20)
-        self.assertEqual(len("st" + actual["resourceStem"].replace("-", "") + "jp"), 20)
-        for product, environment in (("p" * 13, "test"), ("p" * 16, "test"), ("p" * 24, "test"), ("product-name", "environment")):
-            raw["productName"], raw["environmentName"] = product, environment
-            with self.subTest(product=product, environment=environment), self.assertRaisesRegex(configuration.ConfigurationError, "17 characters"):
-                self.normalize(raw)
+        self.assertEqual(len("kvtls-" + actual["resourceStem"]), 23)
+        for field, value, limit in (("environmentName", "x" * 5, 4), ("productName", "p" * 13, 12)):
+            with self.subTest(field=field), self.assertRaisesRegex(configuration.ConfigurationError, f"{field}.*maximum {limit} characters"):
+                self.normalize({**fixture(), field: value})
 
     def test_image_version_must_be_fixed(self):
         raw = fixture()
@@ -841,9 +839,9 @@ class ConfigurationTests(unittest.TestCase):
         raw = fixture()
         principal = "77777777-7777-4777-8777-777777777777"
         raw["monitoring"]["auditReaders"] = [
-            {"principalId": principal, "principalType": "Group", "collector": "collectJapan", "containerName": "insights-logs-gatewaylogs"},
-            {"principalId": principal, "principalType": "Group", "collector": "collectJapan", "containerName": "insights-logs-gatewayllmlogs"},
-            {"principalId": principal, "principalType": "Group", "collector": "collectJapan", "containerName": "insights-logs-websocketconnectionlogs"},
+            {"principalId": principal, "principalType": "Group", "collector": "collectPlatform", "containerName": "insights-logs-gatewaylogs"},
+            {"principalId": principal, "principalType": "Group", "collector": "collectPlatform", "containerName": "insights-logs-gatewayllmlogs"},
+            {"principalId": principal, "principalType": "Group", "collector": "collectPlatform", "containerName": "insights-logs-websocketconnectionlogs"},
             {"principalId": principal, "principalType": "Group", "collector": "collectFoundry", "containerName": "insights-logs-audit"},
         ]
         actual = self.normalize(raw)
@@ -855,7 +853,7 @@ class ConfigurationTests(unittest.TestCase):
         for collector, container in (("collectFoundry", "insights-logs-gatewaylogs"),
                                      ("collectFoundry", "insights-logs-gatewayllmlogs"),
                                      ("collectFoundry", "insights-logs-websocketconnectionlogs"),
-                                     ("collectJapan", "$logs"), ("collectJapan", "all"), ("unownedCollector", "insights-logs-audit")):
+                                     ("collectPlatform", "$logs"), ("collectPlatform", "all"), ("unownedCollector", "insights-logs-audit")):
             with self.subTest(collector=collector, container=container):
                 broken = fixture()
                 broken["monitoring"]["auditReaders"] = [{"principalId": principal, "principalType": "Group", "collector": collector, "containerName": container}]
@@ -1104,9 +1102,9 @@ class ConfigurationTests(unittest.TestCase):
     def test_environment_name_does_not_select_configuration_defaults(self):
         raw = fixture()
         before = self.normalize(raw)
-        raw["environmentName"] = "lab-01"
+        raw["environmentName"] = "qa-1"
         actual = self.normalize(raw)
-        self.assertEqual(actual["resourceStem"], "lab-01-egakumi")
+        self.assertEqual(actual["resourceStem"], "qa-1-egakumi")
         for key in ("network", "gateway", "monitoring"):
             self.assertEqual(actual[key], before[key])
         self.assertEqual(actual["services"]["apimSkuName"], before["services"]["apimSkuName"])

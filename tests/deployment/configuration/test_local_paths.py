@@ -29,7 +29,7 @@ class LocalPathsTests(unittest.TestCase):
         self.addCleanup(self.environment.stop)
 
     def test_environments_have_independent_state_secrets_and_generated_inputs(self):
-        for name in ("alpha", "beta"):
+        for name in ("alfa", "beta"):
             paths = LocalPaths(self.root, name)
             paths.ensure()
             target = private_parent(paths.state / "latest.json", self.root)
@@ -37,9 +37,9 @@ class LocalPathsTests(unittest.TestCase):
             self.assertEqual(target.read_text(), name)
             for folder in (self.root / ".local", paths.root, paths.secrets, paths.state, paths.parameters.parent):
                 self.assertEqual(stat.S_IMODE(folder.stat().st_mode), 0o700)
-        self.assertNotEqual(LocalPaths(self.root, "alpha").parameters, LocalPaths(self.root, "beta").parameters)
+        self.assertNotEqual(LocalPaths(self.root, "alfa").parameters, LocalPaths(self.root, "beta").parameters)
         with self.assertRaises(ValueError):
-            LocalPaths(self.root, "alpha").checked(LocalPaths(self.root, "beta").state / "latest.json")
+            LocalPaths(self.root, "alfa").checked(LocalPaths(self.root, "beta").state / "latest.json")
 
     def test_private_files_cannot_be_created_in_public_or_legacy_directories(self):
         for relative in ("params/test.local.json", "secrets/key", ".state/latest.json", "infra/main.parameters.json", "output/report.json"):
@@ -68,7 +68,7 @@ class LocalPathsTests(unittest.TestCase):
             self.assertEqual(private_output(target, self.root), target)
             (external / "linked").symlink_to(self.root, target_is_directory=True)
             with self.assertRaises(ValueError):
-                private_output(external / "linked/.local/alpha/runtime-output.json", self.root)
+                private_output(external / "linked/.local/alfa/runtime-output.json", self.root)
 
     @unittest.skipUnless(sys.platform == "darwin" and Path("/tmp").is_symlink()
                          and Path("/tmp").resolve() == Path("/private/tmp"),
@@ -81,12 +81,12 @@ class LocalPathsTests(unittest.TestCase):
             for relative in ("config/runtime-output.json", "infra/main.parameters.json"):
                 with self.subTest(relative=relative), self.assertRaises(ValueError):
                     private_output(alias / relative, root)
-            target = root / ".local/alpha/runtime-output.json"
-            self.assertEqual(private_output(alias / ".local/alpha/runtime-output.json", root), target)
+            target = root / ".local/alfa/runtime-output.json"
+            self.assertEqual(private_output(alias / ".local/alfa/runtime-output.json", root), target)
             self.assertEqual(list(root.iterdir()), [])
 
     def test_environment_names_cannot_escape_the_private_root(self):
-        for value in ("", "../test", "test/other", "Test", "-test", "a" * 13):
+        for value in ("", "../test", "test/other", "Test", "-test", "a" * 5):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 LocalPaths(self.root, value)
 
@@ -103,8 +103,8 @@ class LocalPathsTests(unittest.TestCase):
     def test_configuration_selection_has_no_implicit_test_environment(self):
         with self.assertRaises(ValueError):
             configuration_path(self.root)
-        with mock.patch.dict(os.environ, {"AZURE_ENV_NAME": "alpha"}):
-            self.assertEqual(configuration_path(self.root), LocalPaths(self.root, "alpha").params)
+        with mock.patch.dict(os.environ, {"AZURE_ENV_NAME": "alfa"}):
+            self.assertEqual(configuration_path(self.root), LocalPaths(self.root, "alfa").params)
         path = private_parent(self.root / ".azure/config.json", self.root)
         path.write_text(json.dumps({"defaultEnvironment": "beta"}))
         self.assertEqual(configuration_path(self.root), LocalPaths(self.root, "beta").params)
@@ -125,21 +125,21 @@ class LocalPreparationTests(unittest.TestCase):
     def test_prepare_rebases_references_and_preserves_subsequent_user_edits(self):
         before = {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
         with mock.patch.object(prepare_local_environment, "generate_apim_instance_id", return_value="m8q3r2") as generate:
-            result = prepare_local_environment.prepare("alpha", "test", self.root)
+            result = prepare_local_environment.prepare("alfa", "test", self.root)
         generate.assert_called_once_with()
         self.assertEqual(result["status"], "created")
-        paths = LocalPaths(self.root, "alpha")
+        paths = LocalPaths(self.root, "alfa")
         raw = json.loads(paths.params.read_text())
         self.assertEqual(raw["configFile"], "../../infra/config/test.json")
         self.assertEqual((paths.params.parent / raw["$schema"]).resolve(),
                          self.root / "params/params.schema.json")
-        self.assertEqual(raw["environmentName"], "alpha")
+        self.assertEqual(raw["environmentName"], "alfa")
         self.assertEqual(raw["services"]["apimInstanceId"], "m8q3r2")
         self.assertNotIn("sshPublicKeyFile", raw["management"])
         normalized = load_configuration_source(paths.params)
         self.assertEqual(normalized["management"]["sshPublicKeyFile"], str(paths.secrets / "management-ssh.pub"))
         self.assertEqual(stat.S_IMODE(paths.params.stat().st_mode), 0o600)
-        raw["productName"] = "synthetic-product"
+        raw["productName"] = "synth-prod"
         standard_reference = raw["configFile"]
         paths.params.write_text(json.dumps(raw))
         expected = load_configuration_source(paths.params)
@@ -150,7 +150,7 @@ class LocalPreparationTests(unittest.TestCase):
                 paths.params.write_text(json.dumps(raw))
                 content = paths.params.read_bytes()
                 self.assertEqual(load_configuration_source(paths.params), expected)
-                repeated = prepare_local_environment.prepare("alpha", "test", self.root)
+                repeated = prepare_local_environment.prepare("alfa", "test", self.root)
                 self.assertEqual(repeated["status"], "existing-input-preserved")
                 generate.assert_not_called()
                 self.assertEqual(paths.params.read_bytes(), content)
@@ -159,8 +159,8 @@ class LocalPreparationTests(unittest.TestCase):
         self.assertEqual(list(paths.secrets.iterdir()), [])
 
     def test_existing_missing_or_invalid_apim_identifier_is_never_repaired_implicitly(self):
-        prepare_local_environment.prepare("alpha", "test", self.root)
-        paths = LocalPaths(self.root, "alpha")
+        prepare_local_environment.prepare("alfa", "test", self.root)
+        paths = LocalPaths(self.root, "alfa")
         original = json.loads(paths.params.read_text())
         for identifier in (None, "", "ABC123", "short", "toolong"):
             current = json.loads(json.dumps(original))
@@ -172,23 +172,23 @@ class LocalPreparationTests(unittest.TestCase):
             before = paths.params.read_bytes()
             with self.subTest(identifier=identifier), mock.patch.object(prepare_local_environment, "generate_apim_instance_id") as generate:
                 with self.assertRaises(ValueError):
-                    prepare_local_environment.prepare("alpha", "test", self.root)
+                    prepare_local_environment.prepare("alfa", "test", self.root)
             generate.assert_not_called()
             self.assertEqual(paths.params.read_bytes(), before)
 
     def test_new_environments_generate_their_own_identifier(self):
         with mock.patch.object(prepare_local_environment, "generate_apim_instance_id", side_effect=["m8q3r2", "v4n7p1"]):
-            prepare_local_environment.prepare("alpha", "test", self.root)
+            prepare_local_environment.prepare("alfa", "test", self.root)
             prepare_local_environment.prepare("beta", "test", self.root)
-        self.assertEqual(json.loads(LocalPaths(self.root, "alpha").params.read_text())["services"]["apimInstanceId"], "m8q3r2")
+        self.assertEqual(json.loads(LocalPaths(self.root, "alfa").params.read_text())["services"]["apimInstanceId"], "m8q3r2")
         self.assertEqual(json.loads(LocalPaths(self.root, "beta").params.read_text())["services"]["apimInstanceId"], "v4n7p1")
 
     def test_existing_environment_profile_is_never_overwritten(self):
-        prepare_local_environment.prepare("alpha", "production", self.root)
-        paths = LocalPaths(self.root, "alpha")
+        prepare_local_environment.prepare("alfa", "production", self.root)
+        paths = LocalPaths(self.root, "alfa")
         before = paths.params.read_bytes()
         with self.assertRaises(ValueError):
-            prepare_local_environment.prepare("alpha", "test", self.root)
+            prepare_local_environment.prepare("alfa", "test", self.root)
         self.assertEqual(paths.params.read_bytes(), before)
 
     def test_parameter_bridge_check_cleans_generated_input_on_success_and_failure(self):

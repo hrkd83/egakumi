@@ -1203,7 +1203,7 @@ def _read_websocket_diagnostics(plan, state, transport):
         raise ValueError("Audit diagnostic properties require review")
     outputs = state.get("outputs", {})
     workspace_id = outputs.get("monitoring", {}).get("workspaceId")
-    storage_id = outputs.get("auditStorage", {}).get("collectJapan", {}).get("id")
+    storage_id = outputs.get("auditStorage", {}).get("collectPlatform", {}).get("id")
     if not workspace_id or not storage_id:
         raise ValueError("Audit destinations are missing from the deployment state")
     _assert_same(properties.get("workspaceId"), workspace_id, "Audit workspace")

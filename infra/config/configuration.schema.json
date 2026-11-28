@@ -21,9 +21,9 @@
     "productName": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 24,
+      "maxLength": 12,
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
-      "description": "各リソース名に使う製品名です。 命名順は種類-環境名-製品名。environmentName-productNameは合計17文字以内にしてください。ca-<stem>-credentialsのContainer App上限32文字に合わせます。超過時は構築前にエラーになります。",
+      "description": "各リソース名に使う最大12文字の製品名です。環境名と区切りのハイフンを含む共通部分は最大17文字です。ca-<stem>-credentialsのContainer App上限32文字に合わせています。",
       "examples": [
         "egakumi"
       ]
@@ -31,9 +31,9 @@
     "environmentName": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 12,
+      "maxLength": 4,
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
-      "description": "リソース名とタグに使う任意の環境識別子です。例test/dev/prod。値によるSKU・保持期間などの切替はありません。Azure共通命名のため先頭英小文字、以降は英小文字・数字・内部ハイフン、最大12字。 命名順は種類-環境名-製品名。environmentName-productNameは合計17文字以内にしてください。ca-<stem>-credentialsのContainer App上限32文字に合わせます。超過時は構築前にエラーになります。"
+      "description": "リソース名とタグに使う最大4文字の環境識別子です。例はtest、dev、prod。先頭は英小文字、以降は英小文字・数字・内部ハイフンを使えます。SKU・保持期間の選択とは独立しています。"
     },
     "subscriptionId": {
       "$ref": "#/$defs/guid"

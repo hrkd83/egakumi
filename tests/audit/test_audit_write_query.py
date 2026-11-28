@@ -92,7 +92,7 @@ class AuditWriteQueryTests(unittest.TestCase):
                              for value in variables.values()), 1)
         query = variables['auditWriteQuery']
         self.assertIn('AuditWriteFailures(StorageBlobLogs, now(), dynamic(["{1}", "{2}"]))', query)
-        self.assertIn("parameters('storage').collectJapan.name", query)
+        self.assertIn("parameters('storage').collectPlatform.name", query)
         self.assertIn("parameters('storage').collectFoundry.name", query)
         definition = next(row for row in variables['baseQueryDefinitions'] if row['key'] == 'audit-write-failed')
         self.assertEqual(definition, {'key': 'audit-write-failed', 'query': "[variables('auditWriteQuery')]",

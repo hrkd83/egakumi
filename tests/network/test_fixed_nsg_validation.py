@@ -40,8 +40,8 @@ def fixture_bindings(config):
                     'firewallPublic': '192.0.2.10', 'appGatewayPublic': '198.51.100.10'},
             'ipSets': {'foundry': ['10.70.1.4', '10.70.1.5'], 'keyVault': ['10.70.1.6', '10.70.1.7'],
                        'registry': ['10.70.1.8', '10.70.1.9'], 'sql': ['10.70.1.10', '10.70.1.11'],
-                       'auditStorageJapan': ['10.70.1.12', '10.70.1.13'],
-                       'auditStorageFoundry': ['10.70.1.14', '10.70.1.15']}}
+                       'auditPlatformBlob': ['10.70.1.12', '10.70.1.13'],
+                       'auditFoundryBlob': ['10.70.1.14', '10.70.1.15']}}
 
 
 def writable(canonical):
@@ -138,11 +138,11 @@ class MemoryTransport:
                    ('keyVault', 'kv', svc+'Microsoft.KeyVault/vaults/kv-'+self.stem, 'Microsoft.KeyVault/vaults', ['vault']),
                    ('registry', 'acr', svc+'Microsoft.ContainerRegistry/registries/acr'+self.stem.replace('-', ''), 'Microsoft.ContainerRegistry/registries', ['registry']),
                    ('sql', 'sql', svc+'Microsoft.Sql/servers/sql-'+self.stem, 'Microsoft.Sql/servers', ['sqlServer']),
-                   ('auditStorageJapan', 'audit-japan-blob', mon+'st'+self.stem.replace('-', '')+'jp', 'Microsoft.Storage/storageAccounts', ['blob']),
-                   ('auditStorageFoundry', 'audit-foundry-blob', mon+'st'+self.stem.replace('-', '')+'us', 'Microsoft.Storage/storageAccounts', ['blob']))
+                   ('auditPlatformBlob', 'audit-platform-blob', mon+'st'+self.stem.replace('-', '')+'plat', 'Microsoft.Storage/storageAccounts', ['blob']),
+                   ('auditFoundryBlob', 'audit-foundry-blob', mon+'st'+self.stem.replace('-', '')+'fndry', 'Microsoft.Storage/storageAccounts', ['blob']))
         for key, suffix, target_id, kind, group_ids in targets:
             self.add(target_id, kind, {},
-                     location='eastus2' if key in ('foundry', 'auditStorageFoundry') else 'japaneast')
+                     location='eastus2' if key in ('foundry', 'auditFoundryBlob') else 'japaneast')
             pe_id = self.nw+'privateEndpoints/pe-'+self.stem+'-'+suffix
             nic_id = self.nw+'networkInterfaces/nic-'+suffix+'-synthetic'
             self.add(pe_id, 'Microsoft.Network/privateEndpoints', {'subnet': {'id': self.subnets['pep']},
@@ -250,8 +250,8 @@ class FixedNsgValidationTests(unittest.TestCase):
 
     def test_audit_blob_discovery_keeps_every_ip_across_every_endpoint_nic(self):
         transport = MemoryTransport(self.config)
-        for key, suffix, address in (('auditStorageJapan', 'audit-japan-blob', '10.70.1.16'),
-                                     ('auditStorageFoundry', 'audit-foundry-blob', '10.70.1.17')):
+        for key, suffix, address in (('auditPlatformBlob', 'audit-platform-blob', '10.70.1.16'),
+                                     ('auditFoundryBlob', 'audit-foundry-blob', '10.70.1.17')):
             pe_id = transport.nw + 'privateEndpoints/pe-' + transport.stem + '-' + suffix
             nic_id = transport.nw + 'networkInterfaces/nic-' + suffix + '-additional'
             transport.resources[pe_id]['properties']['networkInterfaces'].append({'id': nic_id})
@@ -262,10 +262,10 @@ class FixedNsgValidationTests(unittest.TestCase):
         discovered = nsg.read_fixed_nsg_bindings(self.config, transport)
         self.assertEqual(discovered, transport.bindings)
         manifest = nsg._catalog('core-rules.json')
-        for key, suffix in (('auditStorageJapan', 'platform'), ('auditStorageFoundry', 'foundry')):
+        for key, suffix in (('auditPlatformBlob', 'platform'), ('auditFoundryBlob', 'foundry')):
             allowed = [ip + '/32' for ip in discovered['ipSets'][key]]
-            for group, name in (('management', 'allow-audit-storage-' + suffix + '-https-egress'),
-                                ('pep', 'allow-mgmt-vm-audit-storage-' + suffix + '-https-ingress')):
+            for group, name in (('management', f'allow-audit-{suffix}-blob-https-egress'),
+                                ('pep', f'allow-mgmt-vm-audit-{suffix}-blob-https-ingress')):
                 with self.subTest(group=group, storage=key):
                     rule = nsg._definition(manifest['groups'][group]['rules'][name], discovered)
                     self.assertEqual(rule['sourceAddressPrefix'], [discovered['ips']['management'] + '/32'])
@@ -287,7 +287,7 @@ class FixedNsgValidationTests(unittest.TestCase):
             elif change == 'subnet': endpoint['subnet']['id'] = transport.subnets['management']
             elif change == 'backlink': transport.resources[nic_id]['properties']['privateEndpoint']['id'] = '/synthetic/foreign-pe'
             elif change == 'duplicate-ip':
-                transport.resources[nic_id]['properties']['ipConfigurations'][0]['properties']['privateIPAddress'] = transport.bindings['ipSets']['auditStorageJapan'][0]
+                transport.resources[nic_id]['properties']['ipConfigurations'][0]['properties']['privateIPAddress'] = transport.bindings['ipSets']['auditPlatformBlob'][0]
             elif change == 'foreign-rg': transport.resources[transport.groups['monitor']]['tags'] = {'product': 'foreign'}
             else: transport.resources.pop(pe_id)
             with self.subTest(change=change), self.assertRaises(nsg.FixedNsgError):
@@ -307,7 +307,7 @@ class FixedNsgValidationTests(unittest.TestCase):
 
     def test_pending_audit_phase_cannot_ignore_a_rule_whose_binding_is_missing(self):
         transport = MemoryTransport(self.config)
-        transport.resources.pop(transport.nw + 'privateEndpoints/pe-' + transport.stem + '-audit-japan-blob')
+        transport.resources.pop(transport.nw + 'privateEndpoints/pe-' + transport.stem + '-audit-platform-blob')
         with self.assertRaises(nsg.FixedNsgError):
             nsg.verify_fixed_nsg_before_deployment(self.config, transport)
         self.assertFalse(transport.mutations())
@@ -436,10 +436,10 @@ class FixedNsgValidationTests(unittest.TestCase):
             parent = transport.resources[transport.nsg_id(group)]
             parent['properties']['securityRules'] = [
                 rule for rule in parent['properties']['securityRules']
-                if 'audit-storage-' not in rule['name']
+                if 'audit-platform-blob-' not in rule['name'] and 'audit-foundry-blob-' not in rule['name']
                 and not (group == 'portal' and rule['name'] in PORTAL_TERMINAL_STAGE_RULES)]
         endpoints = {}
-        for suffix in ('audit-japan-blob', 'audit-foundry-blob'):
+        for suffix in ('audit-platform-blob', 'audit-foundry-blob'):
             identity = transport.nw + 'privateEndpoints/pe-' + transport.stem + '-' + suffix
             endpoints[identity] = transport.resources.pop(identity)
 

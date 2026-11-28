@@ -25,7 +25,7 @@
 
 ## 7-2. 環境別paramsと自動生成IDを確認する
 
-第1章の[準備コマンド](01-prerequisites.md#1-5-環境別のローカル領域を準備する)で、選んだ公開exampleからparamsを作成します。本番向けの標準構成は`--profile production`を選びます。環境名は任意で、SKUの選択とは独立です。
+第1章の[準備コマンド](01-prerequisites.md#1-5-環境別のローカル領域を準備する)で、選んだ公開exampleからparamsを作成します。本番向けの標準構成は`--profile production`を選びます。環境名は最大4文字、製品名は最大12文字です。環境名はSKUの選択とは独立です。
 
 ```sh
 export DEPLOY_LOCAL_DIRECTORY="$(pwd)/.local/${DEPLOY_ENVIRONMENT}"

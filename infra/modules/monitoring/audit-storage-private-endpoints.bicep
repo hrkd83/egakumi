@@ -7,12 +7,13 @@ param location string
 param tags object = {}
 @description('構築したPrivate EndpointサブネットのID。')
 param pepSubnetId string
-@description('構築した監査Storageの出力。collectJapan/collectFoundryの実IDを使います。')
+@description('構築した監査Storageの出力。collectPlatform/collectFoundryの実IDを使います。')
 param auditStorage object
 
+var archive = loadJsonContent('audit-archive.json')
 var collectors = [
-  { key: 'collectJapan', suffix: 'audit-japan-blob' }
-  { key: 'collectFoundry', suffix: 'audit-foundry-blob' }
+  { key: 'collectPlatform', suffix: archive.collectors.collectPlatform.endpointSuffix }
+  { key: 'collectFoundry', suffix: archive.collectors.collectFoundry.endpointSuffix }
 ]
 
 // 同じサブネットを参照するPEの作成は順に行います。
@@ -41,9 +42,9 @@ module addresses '../network/private-endpoint-addresses.bicep' = [for (collector
 }]
 
 output privateEndpoints object = {
-  collectJapan: {
+  collectPlatform: {
     id: endpoints[0].id
-    storageAccountId: auditStorage.collectJapan.id
+    storageAccountId: auditStorage.collectPlatform.id
     networkInterfaceIds: map(endpoints[0].properties.networkInterfaces, nic => nic.id)
     privateIps: union([], flatten(addresses[0].outputs.privateIpsByNic))
   }

@@ -85,7 +85,7 @@ AppGWは公開TLSを終端してWAFで検査し、Firewall経由でAPIMとPortal
 | <a id="flow-mgmt-sql"></a>`FLOW-MGMT-SQL` | 管理VM → SQL PE群 | TCP1433、SQL接続時のTLS | 構築Gateway/PortalのDB直接保守 | PE直接。管理VM Outbound、PE Inbound。担当者本人のEntra認証、作業期間中の対象DB内の権限、ODBC clientが必要 |
 | <a id="flow-mgmt-apim"></a>`FLOW-MGMT-APIM` | 管理VM → APIMサブネット | TCP443 / HTTPS | private Gateway側の保守確認 | VNet直接。管理VM Outbound、APIM Inbound。APIM管理用ARMとは別 |
 | <a id="flow-mgmt-aca-https"></a>`FLOW-MGMT-ACA-HTTPS` | 管理VM → Portal用ACAの内部VIP | TCP443 / HTTPS。Portal用ACA NSGは443と31443 | Portalのprivate HTTPS入口確認 | VNet直接。Brokerの保守ログ・execは対象環境に許可されたDev APIを使う |
-| <a id="flow-mgmt-audit-japan"></a>`FLOW-MGMT-AUDIT-JAPAN` | 管理VM → 基盤監査Storage（`collectJapan`）のBlob PE群 | TCP443 / HTTPS | APIM、Firewall、WAFなどの基盤監査Blobの閲覧 | PE直接。管理VM Outbound227、PE Inbound229。構築コンテナー単位の読取権限 |
+| <a id="flow-mgmt-audit-platform"></a>`FLOW-MGMT-AUDIT-PLATFORM` | 管理VM → 基盤監査Storage（`collectPlatform`）のBlob PE群 | TCP443 / HTTPS | APIM、Firewall、WAFなどの基盤監査Blobの閲覧 | PE直接。管理VM Outbound227、PE Inbound229。構築コンテナー単位の読取権限 |
 | <a id="flow-mgmt-audit-foundry"></a>`FLOW-MGMT-AUDIT-FOUNDRY` | 管理VM → collectFoundry監査StorageのBlob PE群 | TCP443 / HTTPS | Foundry側監査Blobの閲覧 | PE直接。管理VM Outbound228、PE Inbound230。Foundry APIへの接続とは別 |
 | <a id="flow-mgmt-aca-dev"></a>`FLOW-MGMT-ACA-DEV` | 管理VM → 構築リージョンのACA Dev gateway | TCP443 / HTTPS、WSS | App/環境/Jobのライブログ、App exec | FW経由。NSGのInternet443とFWの単一リージョン宛FQDN規則。本人のARM token、対象リソースのRBAC、対象実行の存続も必要 |
 

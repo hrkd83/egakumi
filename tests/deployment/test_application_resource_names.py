@@ -22,7 +22,7 @@ class ApplicationResourceNameTests(unittest.TestCase):
         cls.portal = compile_bicep('infra/modules/container-apps/portal-platform.bicep')
 
     def configurations(self):
-        for product, environment, length in (('sample', 'dev', 10), ('sample', 'staging', 14),
+        for product, environment, length in (('sample', 'dev', 10), ('sample', 'qa-1', 11),
                                              ('egakumi', 'prod', 12), ('egakumi', 'test', 12), ('p' * 12, 'test', 17)):
             raw = fixture()
             raw['productName'], raw['environmentName'] = product, environment

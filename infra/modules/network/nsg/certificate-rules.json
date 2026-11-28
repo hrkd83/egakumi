@@ -33,7 +33,7 @@
         "destination": ["ips:certificateVault", "ips:keyVault", "ips:registry", "ips:certificateBlob"],
         "destinationPorts": ["443"]
       },
-      "allow-mgmt-vm-certificate-jobs-blob-https-ingress": {
+      "allow-mgmt-vm-certificate-blob-https-ingress": {
         "priority": 233,
         "direction": "Inbound",
         "access": "Allow",
@@ -45,7 +45,7 @@
       }
     },
     "management": {
-      "allow-certificate-jobs-blob-https-egress": {
+      "allow-certificate-blob-https-egress": {
         "priority": 229,
         "direction": "Outbound",
         "access": "Allow",

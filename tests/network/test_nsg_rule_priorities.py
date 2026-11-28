@@ -59,14 +59,14 @@ class NsgRulePriorityTests(unittest.TestCase):
                    'broker': prefix+'.3.0/26'}
         sets = {k: [prefix+'.1.'+str(i), prefix+'.1.'+str(i+1)] for k, i in
                 (('foundry', 4), ('keyVault', 6), ('registry', 8), ('sql', 10),
-                 ('auditStorageJapan', 12), ('auditStorageFoundry', 14))}
+                 ('auditPlatformBlob', 12), ('auditFoundryBlob', 14))}
         if not multiple: sets = {k: v[:1] for k, v in sets.items()}
         ips = {'apim': prefix+'.2.68', 'portal': prefix+'.2.196', 'management': prefix+'.2.132', 'broker': prefix+'.3.4',
                'firewallPublic': '192.0.2.10', 'appGatewayPublic': '198.51.100.10'}
         return {'config': {'subnetPrefixes': subnets}, 'resourcePrefix': 'test-fixture', 'subnetPrefixes': subnets,
                 'foundryPrivateIps': sets['foundry'], 'keyVaultPrivateIps': sets['keyVault'],
-                'auditStorageJapanPrivateIps': sets['auditStorageJapan'],
-                'auditStorageFoundryPrivateIps': sets['auditStorageFoundry'],
+                'auditPlatformBlobPrivateIps': sets['auditPlatformBlob'],
+                'auditFoundryBlobPrivateIps': sets['auditFoundryBlob'],
                 'managementPrivateIp': ips['management'], 'firewallPublicIpAddress': ips['firewallPublic'],
                 'appGatewayPublicIpAddress': ips['appGatewayPublic'], 'apimPrivateIp': ips['apim'],
                 'staticIp': ips['portal'], 'portalPrefix': subnets['portal'],

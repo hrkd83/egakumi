@@ -23,7 +23,7 @@ class LocalPortalLauncherTests(unittest.TestCase):
         self.root = Path(self.temporary.name).resolve() / "repository"
         (self.root / "apps/portal").mkdir(parents=True)
         self.configuration = {
-            "environmentName": "example",
+            "environmentName": "demo",
             "azureTenantId": "<AZURE_TENANT_ID>",
             "portal": {"authentication": {
                 "clientId": "<PORTAL_ENTRA_CLIENT_ID>",
@@ -119,10 +119,10 @@ class LocalPortalLauncherTests(unittest.TestCase):
         with patch.object(launcher, "load_configuration", return_value=self.configuration) as load, \
                 patch.object(launcher, "run", return_value=3) as run:
             self.assertEqual(3, launcher.main([
-                "--config", ".local/example/params.local.json", "--admin", "--",
+                "--config", ".local/demo/params.local.json", "--admin", "--",
                 "node", "synthetic script.ts", "literal$argument",
             ]))
-        load.assert_called_once_with(".local/example/params.local.json")
+        load.assert_called_once_with(".local/demo/params.local.json")
         run.assert_called_once_with(self.configuration, launcher.REPOSITORY,
                                     ["node", "synthetic script.ts", "literal$argument"], admin=True)
 

@@ -26,7 +26,7 @@ def client_inventory(config):
         'workspace': {'id': monitor + 'Microsoft.OperationalInsights/workspaces/law-' + config['resourceStem'],
                       'customerId': '66666666-6666-4666-8666-666666666666'},
         'auditStorage': [{'id': monitor + 'Microsoft.Storage/storageAccounts/st' + config['resourceStem'].replace('-', '') + suffix,
-                          'containers': ['insights-logs-audit']} for suffix in ('jp', 'us')],
+                          'containers': ['insights-logs-audit']} for suffix in ('plat', 'fndry')],
     }
 
 
@@ -40,7 +40,7 @@ def client_core_outputs(config):
         'brokerPlatform': {'environmentId': broker, 'environmentName': broker.rsplit('/', 1)[-1]},
         'managementVm': {'id': inventory['managementVmId'], 'principalId': inventory['managementPrincipalId']},
         'monitoring': {'workspaceId': inventory['workspace']['id'], 'workspaceCustomerId': inventory['workspace']['customerId']},
-        'auditStorage': {'collectJapan': {'id': accounts[0]['id']}, 'collectFoundry': {'id': accounts[1]['id']},
+        'auditStorage': {'collectPlatform': {'id': accounts[0]['id']}, 'collectFoundry': {'id': accounts[1]['id']},
                          'containerIds': [account['id'] + '/blobServices/default/containers/' + name
                                           for account in accounts for name in account['containers']]},
     }

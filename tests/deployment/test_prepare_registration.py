@@ -65,10 +65,11 @@ class RegistrationTests(unittest.TestCase):
         self.assertNotIn("WORKFORCE_REGISTRATION_SUBSCRIPTION_SCOPE", values)
         self.assertEqual(registration.registration_inputs(INPUT), values)
 
-    def test_combined_name_length_is_checked_before_compiler(self):
+    def test_environment_and_product_name_lengths_are_checked_before_compiler(self):
         with mock.patch.object(registration, "bicep_executable") as executable:
-            with self.assertRaisesRegex(ValueError, "17 characters"):
-                registration.prepare_registration({**INPUT, "productName": "p" * 13})
+            for field, value, limit in (("environmentName", "x" * 5, 4), ("productName", "p" * 13, 12)):
+                with self.subTest(field=field), self.assertRaisesRegex(ValueError, f"{field}.*maximum {limit} characters"):
+                    registration.prepare_registration({**INPUT, field: value})
         executable.assert_not_called()
         values = registration.registration_inputs({**INPUT, "productName": "p" * 12})
         self.assertEqual(values["WORKFORCE_REGISTRATION_RESOURCE_STEM"], "test-" + "p" * 12)

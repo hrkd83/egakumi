@@ -493,6 +493,19 @@ class SplitSchemaTests(unittest.TestCase):
             with self.subTest(name=name, kind="merged"):
                 local_schema_validator(schema).validate(merged)
 
+    def test_environment_and_product_name_lengths_match_across_input_schemas(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is available in the integration venv")
+        for path in ("params/params.schema.json", "infra/config/configuration.schema.json"):
+            properties = json.loads((CORE / path).read_text())["properties"]
+            for field, limit in (("environmentName", 4), ("productName", 12)):
+                with self.subTest(schema=path, field=field):
+                    validator = jsonschema.Draft202012Validator(properties[field])
+                    self.assertTrue(validator.is_valid("a" * limit))
+                    self.assertFalse(validator.is_valid("a" * (limit + 1)))
+
     def test_params_network_cidrs_are_required_and_firewall_inputs_are_removed(self):
         try: import jsonschema
         except ImportError: self.skipTest("jsonschema is available in the integration venv")

@@ -364,7 +364,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.config['monitoring']['auditImmutabilityMode'] = 'Locked'
         policy = (f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/"
                   f"{self.config['resourceGroupNames']['monitor']}/providers/Microsoft.Storage/"
-                  'storageAccounts/sttestegakumijp/blobServices/default/containers/'
+                  'storageAccounts/sttestegakumiplat/blobServices/default/containers/'
                   'insights-logs-gatewaylogs/immutabilityPolicies/default')
         previous = {'immutabilityMode': 'Locked', 'retentionInDays': 2557,
                     'immutabilityPolicyIds': [policy]}

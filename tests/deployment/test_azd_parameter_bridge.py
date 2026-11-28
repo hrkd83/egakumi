@@ -37,9 +37,9 @@ class ArmParameterContractTests(unittest.TestCase):
     """生成入力と既存mainの境界を、実値なしで検査する。"""
 
     def test_reference_is_relative_and_cannot_cross_environment_directories(self):
-        self.assertEqual(arm_parameters_reference("test-a"),
-                         ".local/test-a/generated/main.parameters.json")
-        for invalid in ("", "../other", "/tmp/input", "test/a", "test\\a", "UPPER", "a" * 13, None):
+        self.assertEqual(arm_parameters_reference("qa-1"),
+                         ".local/qa-1/generated/main.parameters.json")
+        for invalid in ("", "../other", "/tmp/input", "test/a", "test\\a", "UPPER", "a" * 5, None):
             with self.subTest(case=invalid), self.assertRaises(ValueError):
                 arm_parameters_reference(invalid)
 
@@ -137,14 +137,14 @@ class NativeBicepParameterBridgeTests(unittest.TestCase):
 
     def test_sparse_input_uses_the_existing_main_defaults(self):
         raw = parameter_document({"marker": "SYNTHETIC_ALPHA"})
-        reference = self.write_document("alpha", raw)
+        reference = self.write_document("alfa", raw)
         parameters, template = self.compiled_documents(reference)
         self.assertEqual(parameters, complete_arm_parameters(raw))
         self.assertEqual(template["parameters"]["credentialProviderSecrets"]["type"], "secureObject")
         self.assertNotIn("SYNTHETIC_ALPHA", json.dumps(template))
 
     def test_all_values_are_forwarded_and_two_environments_stay_separate(self):
-        for name in ("alpha", "beta"):
+        for name in ("alfa", "beta"):
             raw = complete_arm_parameters(parameter_document({"marker": name}))
             values = raw["parameters"]
             values["phase"]["value"] = "monitoring"
@@ -159,7 +159,7 @@ class NativeBicepParameterBridgeTests(unittest.TestCase):
             self.assertFalse((self.project / "infra/main.parameters.json").exists())
 
     def test_missing_reference_or_missing_file_fails_without_creating_infra_input(self):
-        for reference in (None, arm_parameters_reference("missing")):
+        for reference in (None, arm_parameters_reference("none")):
             with self.subTest(reference=reference):
                 result = self.compile(reference)
                 self.assertNotEqual(result.returncode, 0)

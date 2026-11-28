@@ -33,6 +33,9 @@ class ApimNamingTests(unittest.TestCase):
         for stem in ("a" * 18, "Upper", "bad--stem", "bad\nstem", 42, ""):
             with self.subTest(stem=stem), self.assertRaises(ValueError):
                 apim_name({"resourceStem": stem, "services": {"apimInstanceId": "k7m2q9"}})
+        for field, value in (("environmentName", "x" * 5), ("productName", "p" * 13)):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                apim_name({**self.config(), field: value})
         with self.assertRaises(ValueError):
             apim_name({"services": {"apimInstanceId": "k7m2q9"}})
 
