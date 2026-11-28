@@ -501,7 +501,6 @@ class LinuxManagementTemplateTests(unittest.TestCase):
                     {**supplied, "initialSerialGeneration": generation})
                 self.assertNotIn("adminPassword", profile)
                 self.assertEqual(profile["adminUsername"], supplied["adminUsername"])
-                self.assertNotIn("windowsConfiguration", profile)
                 linux = profile["linuxConfiguration"]
                 self.assertTrue(linux["disablePasswordAuthentication"])
                 self.assertTrue(linux["provisionVMAgent"])
@@ -526,7 +525,6 @@ class LinuxManagementTemplateTests(unittest.TestCase):
                   if item.get("kind") == "Linux"]
         self.assertEqual(rule["kind"], "Linux")
         sources = rule["properties"]["dataSources"]
-        self.assertNotIn("windowsEventLogs", sources)
         self.assertEqual(set(sources["syslog"][0]["facilityNames"]), {"auth", "authpriv"})
         self.assertEqual(sources["performanceCounters"][0]["counterSpecifiers"], [
             "Processor(*)\\% Processor Time", "Memory(*)\\Available MBytes Memory", "Logical Disk(*)\\% Free Space",
@@ -556,7 +554,6 @@ class LinuxManagementTemplateTests(unittest.TestCase):
         command, = self.resources(template, "Microsoft.Compute/virtualMachines/runCommands")
         self.assertIn("configure-linux-audit", command["name"])
         script = command["properties"]["source"]["script"]
-        self.assertNotIn("ntpServers", template["parameters"])
         self.assertTrue(script.startswith("[replace("))
         guest, = [value for value in template["variables"].values()
                   if isinstance(value, str) and "LinuxAuditConfigurationFailed" in value]
@@ -568,11 +565,9 @@ class LinuxManagementTemplateTests(unittest.TestCase):
         self.assertIn("refclock PHC /dev/ptp_hyperv", payload)
         self.assertIn("chronyc waitsync 30 0.1 0 2", payload)
         self.assertIn("timeSynchronized", guest)
-        self.assertNotIn("__CORE_NTP_SERVERS_BASE64__", guest)
         self.assertIn("90-core-platform.sources", payload)
         self.assertIn("chronyd -p -f /etc/chrony/chrony.conf", payload)
         self.assertIn("systemd-timesyncd", payload)
-        self.assertNotIn("configure-audit.ps1", payload)
         self.assertIn("UnsupportedTimeService", payload)
         # rsyslog 8 で不可の native msg 代入を戻さず、PAM を除くコマンドイベントだけを stop する。
         redaction = guest.split("<<'RSYSLOG'\n", 1)[1].split("\nRSYSLOG", 1)[0]

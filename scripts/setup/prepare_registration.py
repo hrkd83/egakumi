@@ -2,7 +2,7 @@
 """Azure資源を作る前に、Entra登録に必要な名前と戻り先URIを計算する。
 
 保護されたローカルparamsのプロダクト名、環境名、保存済みAPIM識別子、
-API Centerリージョン、Gatewayの公開FQDNから、予定名と戻り先をJSONで返す。
+Gatewayの公開FQDNから、予定名と戻り先をJSONで返す。
 クライアントの名前・戻り先は独立リポジトリの設定で管理する。
 名前の計算は実構築と同じBicepの式をローカル実行して行い、Python独自の
 計算で異なる名前になることを避ける。Bicep CLIは事前に必要である。
@@ -34,7 +34,6 @@ from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.paths import LocalPaths, private_output
 
 NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
-REGION = re.compile(r"[a-z][a-z0-9]+")
 
 
 def load_registration_configuration(path: Path | str, repository: Path | None = None) -> dict:
@@ -80,9 +79,6 @@ def registration_inputs(config: dict) -> dict:
     identifier = apim_instance_id(config)
     # 同じ保存済み入力から求めることを命名ヘルパーとも照合する。
     apim_name({"resourceStem": stem, "services": {"apimInstanceId": identifier}})
-    api_center_location = config.get("apiCenterLocation")
-    if not isinstance(api_center_location, str) or not REGION.fullmatch(api_center_location):
-        raise ValueError("apiCenterLocation must be an Azure region code")
     gateway = config.get("gateway")
     public_host_name = gateway.get("publicHostName") if isinstance(gateway, dict) else None
     if (not isinstance(public_host_name, str) or len(public_host_name) > 253
@@ -93,7 +89,6 @@ def registration_inputs(config: dict) -> dict:
     return {
         "WORKFORCE_REGISTRATION_RESOURCE_STEM": stem,
         "WORKFORCE_REGISTRATION_APIM_INSTANCE_ID": identifier,
-        "WORKFORCE_REGISTRATION_API_CENTER_LOCATION": api_center_location,
         "WORKFORCE_REGISTRATION_PUBLIC_HOST_NAME": public_host_name,
     }
 
@@ -132,8 +127,8 @@ def prepare_registration(config: dict) -> dict:
         parameters = json.loads(compiled["parametersJson"])
         names = parameters["parameters"]["registration"]["value"]
         if not isinstance(names, dict) or set(names) != {
-            "resourceStem", "apimName", "apiCenterName", "gatewayOrigin", "credentialManagerRedirectUri",
-            "credentialIdentityRedirectUri", "apiCenterPortalRedirectUri",
+            "resourceStem", "apimName", "gatewayOrigin", "credentialManagerRedirectUri",
+            "credentialIdentityRedirectUri",
         }:
             raise ValueError()
     except (ValueError, KeyError, TypeError):

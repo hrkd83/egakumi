@@ -342,12 +342,10 @@ class ProtocolConfigurationTests(unittest.TestCase):
         without_realtime = self.normalize(raw)
         self.assertFalse(without_realtime["gateway"]["realtimeControlEnabled"])
         self.assertFalse(realtime_enabled(without_realtime))
-        self.assertNotIn("grpc", without_realtime["gateway"])
         raw["gateway"]["realtimeControlEnabled"] = True
         actual = self.normalize(raw)
         self.assertTrue(actual["gateway"]["realtimeControlEnabled"])
         self.assertTrue(realtime_enabled(actual))
-        self.assertNotIn("grpc", actual["gateway"])
         self.assertEqual(actual["apiDefinitions"], [])
         raw["gateway"]["realtimeControlEnabled"] = "true"
         with self.assertRaisesRegex(configuration.ConfigurationError, "realtimeControlEnabled"):
@@ -363,8 +361,8 @@ class ProtocolConfigurationTests(unittest.TestCase):
             if change == "mixedQuery": api["websocket"]["queryParameters"] = {"model": "unapproved"}
             with self.subTest(change=change), self.assertRaises(configuration.ConfigurationError): self.normalize(raw)
 
-    def test_retired_grpc_api_and_proto_contract_are_explicitly_rejected(self):
-        for field, value in (("apiType", "grpc"), ("grpc", {"definition": 'syntax = "proto3";'})):
+    def test_unknown_api_type_and_contract_field_are_rejected(self):
+        for field, value in (("apiType", "unsupported"), ("unrecognizedSettings", {})):
             raw = bound_external_coverage()
             raw["apiDefinitions"][0][field] = value
             with self.subTest(field=field), self.assertRaises(configuration.ConfigurationError):
@@ -1110,7 +1108,6 @@ public static class ExpandedPolicyFixture {
    if(item["key"]!=null) { c.Subscription=new Named {Id=(string)item["key"]};c.Product=new Named {Id="tool-users"};c.Request.Headers["Ocp-Apim-Subscription-Key"]=new [] {"fixture-not-a-secret"}; }
    if(item["authenticated"]!=null)c.Variables["gatewayCommonAuthenticationValidated"]=(bool)item["authenticated"];
    if(item["api"]!=null)c.Api.Id=(string)item["api"];
-   if(item["grpc"]!=null)c.Variables["coreNativeGrpc"]=(bool)item["grpc"];
    string mode=(string)item["mode"];
    // 固定queryの試験にも、先行モデル準備が返す空文字を渡します。
    if(mode=="query")c.Variables["gatewayProtocolModel"]="";
@@ -1166,11 +1163,13 @@ class ExpandedPolicyTests(unittest.TestCase):
             cls.dedicated_target_cases[identifier] = original
             cases.append({'id': identifier, 'mode': 'target-decision',
                           'config': {'operationConstraints': {patch['operation']: {'kind': kind}}}, **patch})
-        for name, headers, api in (("missing", {}, "gui-added-api"), ("spoof", {"Host": "trusted.example.com", "X-Core-L7-Ingress": "invented"}, "gui-added-api"),
-                                   ("grpc-header", {"Content-Type": "application/grpc", "coreNativeGrpc": "true"}, "gui-added-api"),
-                                   ("valid", {"X-Core-L7-Ingress": "fixture-ingress-proof"}, "gui-added-api"),
-                                   ("duplicate", {"X-Core-L7-Ingress": ["fixture-ingress-proof", "fixture-ingress-proof"]}, "gui-added-api"), ("grpc", {}, "grpc-api")):
-            cases.append({"id": "ingress-" + name, "mode": "ingress", "headers": headers, "api": api, "grpc": name == "grpc"})
+        for name, headers in (
+            ("missing", {}),
+            ("spoof", {"Host": "trusted.example.com", "X-Core-L7-Ingress": "invented"}),
+            ("valid", {"X-Core-L7-Ingress": "fixture-ingress-proof"}),
+            ("duplicate", {"X-Core-L7-Ingress": ["fixture-ingress-proof", "fixture-ingress-proof"]}),
+        ):
+            cases.append({"id": "ingress-" + name, "mode": "ingress", "headers": headers, "api": "gui-added-api"})
         for name, query in (("missing", {}), ("fixed", {"model": "approved", "api-version": "2026-01-01"}),
                              ("target", {"model": "unapproved"}), ("agent", {"agent_id": "other"}),
                              ("duplicate", {"model": ["approved", "unapproved"]})):
@@ -1501,9 +1500,10 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                     self.assertEqual(observation["rejection"]["reason"], "Invalid request body" if status == 400 else "API target is not authorized")
                     self.assertEqual(observation["rejection"]["requestIdHeader"], "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
-    def test_l4_listener_cannot_bypass_l7_proof_for_normal_api(self):
-        for name in ("missing", "spoof", "duplicate", "grpc-header", "grpc"): self.assertTrue(self.results["ingress-" + name]["result"])
-        for name in ("valid",): self.assertFalse(self.results["ingress-" + name]["result"])
+    def test_api_requires_valid_l7_ingress_proof(self):
+        for name in ("missing", "spoof", "duplicate"):
+            self.assertTrue(self.results["ingress-" + name]["result"])
+        self.assertFalse(self.results["ingress-valid"]["result"])
 
     def test_code_interpreter_items_are_rejected_only_at_responses_input_array_root(self):
         for identifier, (original, status, reads) in self.responses_code_interpreter_cases.items():

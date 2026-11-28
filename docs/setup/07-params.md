@@ -12,12 +12,12 @@ Core初回構築では、`portal.publicHostName`を設定し、`portal.authentic
 
 | 場所 | 管理するもの |
 | --- | --- |
-| `.local/<environment>/params.local.json` | 導入先ごとのID・公開名・IP計画・連絡先、アプリClient IDと秘密ファイル参照 |
+| `.local/<environment>/params.local.json` | 導入先ごとのID・公開名・IP計画・連絡先、アプリClient ID、追加OAuth接続の秘密ファイル参照 |
 | `infra/config/test.json`／`infra/config/production.json` | 構築資材が提供する検証・本番の標準値。初回構築ではそのまま参照する |
 | `.local/<environment>/secrets/` | 対話入力や保護された鍵生成で保存する秘密ファイル |
 | 資材のコード・API正本 | 固定の通信・認証契約、標準API、params/configから導出する内部設定 |
 
-ファイル参照は**そのJSONのあるフォルダーを基準に解決**します。準備コマンドは選択したprofileの参照をparamsへ設定します。生成先ではconfigを`../../infra/config/test.json`または`../../infra/config/production.json`、秘密を`./secrets/...`で参照します。`.local/`と`.azure/`はチェックアウト直下だけに置き、リンクと所有者専用権限を確認します。実値を公開example・コード・作業記録へ書き込まず、秘密値をJSONへ直接記載しません。
+準備コマンドは選択したprofileの参照をparamsへ設定します。configの参照は `../../infra/config/test.json` または `../../infra/config/production.json` です。Tools・Credentialのシークレット、管理VMのSSH公開鍵、Firewallの公開ルートCA証明書のファイル名はconfigで定義します。4ファイルは、選択したparamsと同じ環境の `secrets/` に配置します。`.local/`と`.azure/`はチェックアウト直下だけに置き、リンクと所有者専用権限を確認します。実値を公開example・コード・作業記録へ書き込まず、秘密値をJSONへ直接記載しません。
 
 エディター向けのSchemaは、[公開paramsの例](../../params/)の隣に[params用](../../params/params.schema.json)、[標準config](../../infra/config/)の隣に[config用](../../infra/config/options.schema.json)を置いています。[configuration schema](../../infra/config/configuration.schema.json)は、API配列・完全なprovider・導出値を含む内部合成形式の参照です。内部形式の項目を、そのまま公開params/configへ追加することはできません。
 
@@ -46,17 +46,17 @@ APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確
 2. `network.addressSpaces`と`network.subnetPrefixes`をIP計画へ合わせる。[公開例の割り当て](../reference/configuration/parameters.md#公開例のvnet割り当て)を参考に、導入先で使用可能な範囲を確認する。
 3. Gateway／Portalの公開FQDN、APIM発行者、監視通知先、ACME連絡先を記入する。証明書DNS名は公開FQDN2件から自動生成する。
 4. 第05章と第06章で確認したDNS側Subscription IDとUAMIの完全なResource IDを設定する。DNS-01プラグインは資材でAzureへ固定する。
-5. `management.adminUsername`とSSH公開鍵参照を設定する。保守時の本人権限は[管理VMの運用](../operations/management-vm-access.md)に従う。
-6. `credentialProviders.graphDelegated.clientId`にToolsアプリのClient IDを設定し、`clientSecretFile`の保護参照を確認する。
-7. `gateway.authentication.entra.audience`にAPIアプリのClient IDを設定する。`gateway.authentication.credentialLogin.identity`にはCredentialアプリの`clientId`と、Tools用とは異なる`clientSecretFile`を設定する。
+5. `management.adminUsername`を設定する。保守時の本人権限は[管理VMの運用](../operations/management-vm-access.md)に従う。
+6. `credentialProviders.graphDelegated.clientId`にToolsアプリのClient IDを設定する。
+7. `gateway.authentication.entra.audience`にAPIアプリのClient IDを設定する。`gateway.authentication.credentialLogin.identity`にはCredentialアプリの`clientId`を設定する。
 
 ### 基盤用Entraアプリの登録情報を記入する
 
 | 役割 | paramsに置く値 |
 | --- | --- |
 | API | `gateway.authentication.entra.audience` |
-| Tools | `credentialProviders.graphDelegated.clientId`と`clientSecretFile` |
-| Credential | `gateway.authentication.credentialLogin.identity.clientId`と`clientSecretFile`。Tools用とは別のファイル |
+| Tools | `credentialProviders.graphDelegated.clientId` |
+| Credential | `gateway.authentication.credentialLogin.identity.clientId` |
 | Portal | 公開証明書登録後に`portal.authentication.tenantId`と`clientId`を追加 |
 
 すべてのアプリでApplication (client) IDを使い、認証用`entraTenantId`に登録します。API試用はこの基盤構成で既定有効です。試用をメンテナンスで一時停止する場合は`portal.apiAuthentication.enabled`を`false`にしてPortalだけ再配備します。通常のOBO初回は保護stateの証明書を固定します。管理者が別版を発行・Entra登録済みの場合だけ、`gateway.authentication.entra.obo.keyId`と公開証明書DERのSHA-256の`certificateThumbprint`を組で指定します。

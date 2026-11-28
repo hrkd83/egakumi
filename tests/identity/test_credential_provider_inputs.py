@@ -31,10 +31,10 @@ class CredentialProviderInputsTests(unittest.TestCase):
             "displayName": "Delegated Graph connection",
             "scopes": "openid profile email offline_access https://graph.microsoft.com/User.Read",
             "pool": {"count": 12, "capacity": 8000},
+            "clientSecretFile": "./secrets/graph-client.secret",
         }}
         self.registrations = {"graphDelegated": {
             "clientId": "22222222-2222-4222-8222-222222222222",
-            "clientSecretFile": "./synthetic-secrets/graph-client.secret",
         }}
 
     def compose(self):
@@ -163,7 +163,7 @@ class CredentialProviderInputsTests(unittest.TestCase):
         with mock.patch("builtins.open", side_effect=AssertionError("must not read files")), \
                 mock.patch.object(Path, "open", side_effect=AssertionError("must not read files")):
             providers = self.compose()
-        self.assertEqual(providers[0]["clientSecretFile"], self.registrations["graphDelegated"]["clientSecretFile"])
+        self.assertEqual(providers[0]["clientSecretFile"], self.options["graphDelegated"]["clientSecretFile"])
         self.assertEqual(providers[1]["clientSecretFile"], registration["clientSecretFile"])
 
     def test_inputs_and_mutable_output_fields_do_not_alias(self):
@@ -181,8 +181,8 @@ class CredentialProviderInputsTests(unittest.TestCase):
 
     def test_requires_both_standard_inputs_and_each_standard_field(self):
         for target_name, fields in (
-            ("options", ("displayName", "scopes", "pool")),
-            ("registrations", ("clientId", "clientSecretFile")),
+            ("options", ("displayName", "scopes", "pool", "clientSecretFile")),
+            ("registrations", ("clientId",)),
         ):
             prefix = "config" if target_name == "options" else "params"
             target = getattr(self, target_name)
@@ -214,12 +214,12 @@ class CredentialProviderInputsTests(unittest.TestCase):
                     target.pop(field)
 
     def test_rejects_config_credentials_and_params_definition_fields(self):
-        for field in ("clientId", "clientSecretFile", "oauthTenantId"):
+        for field in ("clientId", "oauthTenantId"):
             with self.subTest(owner="config", field=field):
                 self.options["graphDelegated"][field] = "synthetic-private-value"
                 self.assert_failure("config.credentialProviders.graphDelegated")
                 self.options["graphDelegated"].pop(field)
-        for field in ("displayName", "scopes", "pool"):
+        for field in ("displayName", "scopes", "pool", "clientSecretFile"):
             with self.subTest(owner="params", field=field):
                 self.registrations["graphDelegated"][field] = "synthetic-private-value"
                 self.assert_failure("params.credentialProviders.graphDelegated")

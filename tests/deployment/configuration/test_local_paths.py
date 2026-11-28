@@ -135,7 +135,9 @@ class LocalPreparationTests(unittest.TestCase):
                          self.root / "params/params.schema.json")
         self.assertEqual(raw["environmentName"], "alpha")
         self.assertEqual(raw["services"]["apimInstanceId"], "m8q3r2")
-        self.assertEqual(raw["management"]["sshPublicKeyFile"], "./secrets/management-ssh.pub")
+        self.assertNotIn("sshPublicKeyFile", raw["management"])
+        normalized = load_configuration_source(paths.params)
+        self.assertEqual(normalized["management"]["sshPublicKeyFile"], str(paths.secrets / "management-ssh.pub"))
         self.assertEqual(stat.S_IMODE(paths.params.stat().st_mode), 0o600)
         raw["productName"] = "synthetic-product"
         standard_reference = raw["configFile"]

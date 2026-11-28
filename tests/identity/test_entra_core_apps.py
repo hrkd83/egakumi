@@ -32,7 +32,7 @@ class EntraCoreAppsTests(unittest.TestCase):
         self.params['gateway']['authentication']['entra']['audience'] = client('api')
         self.params['credentialProviders']['graphDelegated']['clientId'] = client('tools')
         self.params['gateway']['authentication']['credentialLogin'] = {
-            'identity': {'clientId': client('credential'), 'clientSecretFile': './secrets/broker-oidc.txt'}}
+            'identity': {'clientId': client('credential')}}
 
     def configured(self):
         path = self.root / 'params.json'

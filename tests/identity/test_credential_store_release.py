@@ -82,17 +82,6 @@ class CredentialStoreReleaseTests(CleanupFixture, unittest.TestCase):
         self.assertEqual(len(transport.mutations()), 2)
         self.assertTrue(any(item["status"] == "retained-protection" for item in result["softDeletedServices"]))
 
-    def test_api_center_read_failure_stays_visible_beside_internal_release_unknown(self):
-        self.credential_transport()
-        transport = FakeTransport(self.tombstones())
-        collection = self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices"
-        transport.forced["GET", collection] = 403
-        result = self.post(transport)
-        self.assertEqual(result["resourceCleanupStatus"], "complete-with-unverified-api-center-retention")
-        self.assertEqual(result["apiCenterRetention"]["status"], "unverified")
-        self.assertFalse(result["apiCenterRetention"]["listReadVerified"])
-        self.assertEqual(result["credentialManager"]["status"], "unverified")
-
     def test_no_configured_cm_does_not_claim_account_release_or_change_result(self):
         result = self.post(FakeTransport())
         self.assertEqual(result["status"], "complete")

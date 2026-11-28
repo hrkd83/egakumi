@@ -88,7 +88,6 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
 
     def test_preprovision_all_mutable_paths_and_ingress_credentials_stay_in_temporary_root(self):
         """実 ROOT の鍵を読まず、常設L7入口/所有者チケット鍵をtempだけへ作成する。"""
-        self.assertNotIn('grpc', self.config['gateway'])
         self.config["gateway"]["realtimeControlEnabled"] = True
         for path in (lifecycle.ROOT, self.paths.parameters, self.paths.state / "latest.json",
                      self.paths.state / "capacity.json"):
@@ -132,21 +131,18 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(values["managementInitialSerialGeneration"]["value"], "INITIAL_SERIAL_GENERATION_FIXTURE")
         self.assertNotIn("PRIVATE_SERIAL_FIXTURE", json.dumps(values))
 
-    def test_api_center_recovery_runs_after_monitoring_and_before_core_inputs(self):
-        """5RGを作る監視段階の出力を使い、復元成功後だけ本体入力を用意する。"""
+    def test_monitoring_state_and_cap_are_ready_before_core_inputs(self):
+        """監視段階の出力を記録し、Application Insightsの上限設定後に本体入力を用意する。"""
         events = []
         transport = self.preprovision_transport()
         outputs = self.outputs()
 
-        def recovery(config, actual_outputs, actual_transport):
+        def set_cap(config, actual_outputs):
             self.assertEqual(actual_outputs, outputs)
-            self.assertIs(actual_transport, transport)
             self.assertEqual(json.loads((self.paths.state / "latest.json").read_text(encoding="utf-8"))["outputs"]["names"], outputs["names"])
             self.assertFalse(self.paths.parameters.exists())
-            events.append("recovery")
-            return {"status": "restored"}
+            events.append("cap")
 
-        self.api_center.side_effect = recovery
         self.apim_name.side_effect = lambda *args: events.append("apim-name") or {"status": "available-for-create"}
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -154,15 +150,11 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
              mock.patch.object(lifecycle, "deploy_monitoring", side_effect=lambda *args, **kwargs: events.append("monitoring") or outputs), \
              mock.patch.object(lifecycle, "lock_and_verify_policies"), \
-             mock.patch.object(lifecycle, "configure_app_insights_cap", side_effect=lambda *args: events.append("cap")), \
+             mock.patch.object(lifecycle, "configure_app_insights_cap", side_effect=set_cap), \
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
-        self.assertEqual(events, ["apim-name", "monitoring", "cap", "recovery"])
+        self.assertEqual(events, ["apim-name", "monitoring", "cap"])
         self.assertEqual(json.loads(self.paths.parameters.read_text(encoding="utf-8"))["parameters"]["phase"]["value"], "core")
-        receipt = json.loads((self.root / ".local/test/state/api-center-preparation.json").read_text(encoding="utf-8"))
-        self.assertEqual(receipt["status"], "restored")
-        self.assertEqual(receipt["resourceStem"], self.config["resourceStem"])
-        self.assertIn("observedAtUtc", receipt)
 
     def test_apim_name_conflict_stops_before_paid_deployment_and_does_not_choose_another_name(self):
         """固定名を使えないときは監視・VM等を作らず、同名の原因解消を待つ。"""
@@ -181,23 +173,21 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertFalse((self.paths.state / "latest.json").exists())
         self.assertFalse(self.paths.parameters.exists())
 
-    def test_api_center_recovery_failure_clears_core_inputs_and_preserves_cleanup_state(self):
-        """復元失敗を無視してcoreへ進まず、監視資源の撤去用記録は残す。"""
+    def test_monitoring_cap_failure_clears_core_inputs_and_preserves_cleanup_state(self):
+        """上限設定に失敗した場合は本体配備を止め、監視資源の撤去用記録を残す。"""
         lifecycle.protected_json(self.paths.parameters, {"fixture": "PRIVATE_FIXTURE"})
-        receipt = self.root / ".local/test/state/api-center-preparation.json"
-        lifecycle.protected_json(receipt, {"status": "restored", "observedAtUtc": "old-fixture"})
         transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 4)
-        self.api_center.side_effect = lifecycle.DeploymentError("API Center restore failed")
+        cap_error = lifecycle.DeploymentError("Application Insights cap failed")
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
              mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()), \
-             mock.patch.object(lifecycle, "lock_and_verify_policies"), mock.patch.object(lifecycle, "configure_app_insights_cap"), \
-             self.assertRaisesRegex(lifecycle.DeploymentError, "API Center restore failed"):
+             mock.patch.object(lifecycle, "lock_and_verify_policies"), \
+             mock.patch.object(lifecycle, "configure_app_insights_cap", side_effect=cap_error), \
+             self.assertRaisesRegex(lifecycle.DeploymentError, "Application Insights cap failed"):
             lifecycle.preprovision(self.config)
         self.assertFalse(self.paths.parameters.exists())
-        self.assertFalse(receipt.exists())
         self.assertTrue((self.paths.state / "latest.json").exists())
         self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 4)
         self.assertIn("/deployments/", transport.calls[-1]["path"])

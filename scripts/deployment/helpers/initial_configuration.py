@@ -20,7 +20,7 @@ def apply_initial_configuration(configuration: dict, *, fail) -> dict:
     # 空の内部配列は、Coreの投影とGateway公開で同じ標準API正本を読む指定。
     result["apiDefinitions"] = []
     result["authorization"] = {
-        key: [] for key in ("projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders")
+        key: [] for key in ("projectAdministrators", "projectDevelopers", "foundryReaders")
     }
     network = section(result, "network", "network")
     firewall = section(network, "firewall", "network.firewall")

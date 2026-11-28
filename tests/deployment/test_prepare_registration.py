@@ -15,16 +15,14 @@ CORE = REPOSITORY
 spec = importlib.util.spec_from_file_location("prepare_registration", CORE / "scripts/setup/prepare_registration.py")
 registration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(registration)
-INPUT = {"productName": "egakumi", "environmentName": "test", "apiCenterLocation": "eastus",
+INPUT = {"productName": "egakumi", "environmentName": "test",
          "services": {"apimInstanceId": "k7m2q9"}, "gateway": {"publicHostName": "gateway.example.com"}}
 EXPECTED = {
     "resourceStem": "test-egakumi",
     "apimName": "apim-test-egakumi-k7m2q9",
-    "apiCenterName": "apic-test-egakumi",
     "gatewayOrigin": "https://gateway.example.com",
     "credentialManagerRedirectUri": "https://authorization-manager.consent.azure-apim.net/redirect/apim/apim-test-egakumi-k7m2q9",
     "credentialIdentityRedirectUri": "https://gateway.example.com/auth/connections/browser/identity-callback",
-    "apiCenterPortalRedirectUri": "https://apic-test-egakumi.portal.eastus.azure-apicenter.ms",
 }
 
 
@@ -43,7 +41,7 @@ class RegistrationTests(unittest.TestCase):
     def test_invalid_naming_inputs_fail_before_compiler_or_secret_read(self):
         cases = []
         for key, value in (("productName", "Upper"), ("productName", "1sample"),
-                           ("environmentName", "test--bad"), ("apiCenterLocation", "East US")):
+                           ("environmentName", "test--bad")):
             cases.append({**INPUT, key: value})
         for value in (None, "", "ABC123", "12345", "1234567", "ab-c12"):
             cases.append({**INPUT, "services": {"apimInstanceId": value}})

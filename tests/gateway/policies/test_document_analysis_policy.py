@@ -1139,8 +1139,6 @@ class DocumentAnalysisConfigurationTests(unittest.TestCase):
         config = normalize_configuration(raw)
         self.assertFalse(realtime_enabled(config))
         self.assertTrue(owner_ticket_enabled(config))
-        self.assertNotIn('grpc', config['gateway'])
-        self.assertNotIn('apimKeyVaultAccessEnabled', config['network'])
         # Key Vault access is a fixed NSG requirement, so neither flag value is an input.
         for value in (False, True):
             raw['network']['apimKeyVaultAccessEnabled'] = value

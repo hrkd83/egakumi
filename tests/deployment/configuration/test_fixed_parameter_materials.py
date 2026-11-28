@@ -141,21 +141,14 @@ class FixedParameterMaterialsTests(unittest.TestCase):
                     self.assertEqual(reader.resolve(template["outputs"]["applicationGateway"]["value"]["wafPolicyId"], parameters), "")
                     self.assertNotIn("firewallPolicy", properties)
 
-    def test_enterprise_grants_are_removed_but_constructed_service_id_grants_remain(self):
+    def test_azure_roles_are_scoped_to_the_apim_and_foundry_project_identities(self):
         template = self.templates["bindings"]
-        self.assertFalse(set(template["parameters"]) & {
-            "projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders"})
         grants = [item for item in resources(template)
                   if item["type"] == "Microsoft.Authorization/roleAssignments"]
-        parameters = {"names": {"keyVault": "synthetic-kv", "publicTlsVault": "synthetic-kv-tls", "foundry": "synthetic-ai",
-                                "apim": "synthetic-apim", "apiCenter": "synthetic-catalog"},
+        parameters = {"names": {"keyVault": "synthetic-kv", "foundry": "synthetic-ai"},
                       "principalIds": {"apim": "11111111-1111-4111-8111-111111111111",
-                                       "project": "22222222-2222-4222-8222-222222222222",
-                                       "apiCenter": "33333333-3333-4333-8333-333333333333"},
-                      "certificateIdentityPrincipalId": "44444444-4444-4444-8444-444444444444",
-                      "publicCertificateName": "test-tls", "ownerTicketEnabled": False,
-                      "speechEnabled": True, "grantApimFoundryModelsAccess": True,
-                      "enableApiCenterIntegration": True}
+                                       "project": "22222222-2222-4222-8222-222222222222"},
+                      "speechEnabled": True, "grantApimFoundryModelsAccess": True}
         reader = expression(template)
         actual = [reader.resolve(item["properties"], parameters) for item in grants]
         expected = {
@@ -165,7 +158,6 @@ class FixedParameterMaterialsTests(unittest.TestCase):
                                                  "f2dc8367-1007-4938-bd23-fe263f013447",
                                                  "a97b65f3-24c7-4388-baec-2e87135dc908"},
             parameters["principalIds"]["project"]: {"53ca6127-db72-4b80-b1b0-d745d6d5456d"},
-            parameters["principalIds"]["apiCenter"]: {"71522526-b88f-4d52-b57f-d31fc3546d0d"},
         }
         roles = {}
         for item in actual:

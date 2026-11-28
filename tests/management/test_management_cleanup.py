@@ -15,7 +15,7 @@ from deployment.helpers.configuration import load_configuration
 
 
 from tests.support.cleanup_fixtures import (
-    CleanupFixture, FakeTransport, ApiCenterListTransport, ModelTransport,
+    CleanupFixture, FakeTransport, ModelTransport,
     CredentialTransport, ProviderGetInconsistencyTransport, InventoryTransport, ManagementTransport,
 )
 

@@ -136,11 +136,6 @@ class LifecycleFixture:
                 lifecycle.build_bicep_configuration(config), phase, preserve_collection).items()})
         self.diagnostics = diagnostic.start()
         self.addCleanup(diagnostic.stop)
-        # 復元のHTTP分岐は専用テストで検査し、他のhook試験では追加Azure要求をさせない。
-        api_center = mock.patch.object(lifecycle, "ensure_api_center_available",
-                                       return_value={"status": "available-for-create"})
-        self.api_center = api_center.start()
-        self.addCleanup(api_center.stop)
         # 取り込み変換のHTTP/readbackは専用テストが担当し、他のhook試験へARM要求を追加しません。
         privacy_read = mock.patch.object(lifecycle, "read_workspace_privacy_link", return_value="")
         privacy_read.start()
@@ -261,7 +256,7 @@ class LifecycleFixture:
         svc = self.config["resourceGroupNames"]["svc"]
         prefix = f"/subscriptions/{sub}/resourceGroups/{svc}/providers/"
         return {
-            "names": {"apiCenter": "apic-" + self.config["resourceStem"], "apim": "apim-" + self.config["resourceStem"] + "-abc123"},
+            "names": {"apim": "apim-" + self.config["resourceStem"] + "-abc123"},
             "resourceGroups": self.config["resourceGroupNames"],
             "monitoring": {"workspaceId": f"/subscriptions/{sub}/resourceGroups/{self.config['resourceGroupNames']['monitor']}/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi"},
             "auditStorage": {"immutabilityMode": "Disabled"},

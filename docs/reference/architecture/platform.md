@@ -17,7 +17,7 @@
 
 ## 構築後の保守
 
-[証明書の運用](../../operations/certificate-jobs.md)、[API Centerのカタログ管理](../../operations/platform-settings.md#api-centerのカタログ管理)、[監視と基盤設定](../../operations/platform-settings.md)を参照してください。稼働中のAPIとPortalの更新は[個別配備と再開](../../operations/deployment.md)で行います。
+[証明書の運用](../../operations/certificate-jobs.md)と[監視・基盤設定](../../operations/platform-settings.md)を参照してください。稼働中のAPIとPortalの更新は[個別配備と再開](../../operations/deployment.md)で行います。
 
 ## 公開入口と内部HTTPS
 

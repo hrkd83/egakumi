@@ -1,4 +1,4 @@
-// Key Vault、Foundry と共有プロジェクト、モデル、内部 APIM、API Center を作成します。
+// Key Vault、Foundry と共有プロジェクト、モデル、内部 APIM を作成します。
 // サービス本体の作成と、通信・権限・API 公開は分離しています。公開準備中の API は拒否します。
 // Key Vault と Foundry の通常データ通信は後続の Private Endpoint と Azure RBAC を使います。
 // APIM の管理処理に必要な Key Vault の trusted services 例外だけを条件付きで許可します。
@@ -14,11 +14,6 @@ param names object
 param location string
 @description('Foundry とモデルの配置リージョン。モデル提供状況と利用枠を事前確認します。')
 param foundryLocation string = 'eastus2'
-@description('API Center を配置するリージョン。基盤ネットワークとは別の対応リージョンを指定できます。')
-param apiCenterLocation string = 'eastus'
-@allowed(['Free', 'Standard'])
-@description('API Center の料金プラン。Free でも Portal の基本検索・閲覧は利用できます。Standard の費用・APIM連携特典は別途確認します。')
-param apiCenterSkuName string = 'Free'
 @description('製品・環境・所有者等を整理するタグ。資格情報や個人情報を入れません。')
 param tags object
 @description('Azureリソースが属するテナントのID。Key Vaultのテナント設定に使用します。')
@@ -184,26 +179,6 @@ resource apim 'Microsoft.ApiManagement/service@2024-05-01' = {
   }
 }
 
-// API の発見・参照のためのカタログ本体。API 実行の中継装置ではありません。
-resource apiCenter 'Microsoft.ApiCenter/services@2024-03-01' = {
-  name: names.apiCenter
-  location: apiCenterLocation
-  tags: tags
-  identity: { type: 'SystemAssigned' }
-  // 作成 API は SKU を要求します。現行の Bicep 型には未収録のため当該行だけ抑制します。
-  // Azure CLI も同じ API 版で top-level sku.name を明示します。
-  // https://github.com/Azure/azure-cli-extensions/blob/main/src/apic-extension/azext_apic_extension/aaz/latest/apic/_create.py
-  #disable-next-line BCP187
-  sku: { name: apiCenterSkuName }
-  properties: {}
-}
-// カタログ項目を整理する既定 Workspace。APIM の Workspace 機能とは別です。
-resource workspace 'Microsoft.ApiCenter/services/workspaces@2024-03-01' = {
-  parent: apiCenter
-  name: 'default'
-  properties: { title: 'Platform APIs', description: 'API definitions and public gateway endpoints.' }
-}
-
 // Key Vault の監査ログを検索先と同一リージョンの監査保存先に出力します。
 resource vaultLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-audit'
@@ -251,8 +226,8 @@ resource apimMetrics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' 
   properties: diagnosticSettingProperties['apim-metrics']
 }
 
-output serviceResourceIds object = { keyVault: vault.id, foundry: foundry.id, project: project.id, apim: apim.id, apiCenter: apiCenter.id }
-output principalIds object = { foundry: foundry.identity.principalId, project: project.identity.principalId, apim: apim.identity.principalId, apiCenter: apiCenter.identity.principalId }
+output serviceResourceIds object = { keyVault: vault.id, foundry: foundry.id, project: project.id, apim: apim.id }
+output principalIds object = { foundry: foundry.identity.principalId, project: project.identity.principalId, apim: apim.identity.principalId }
 output foundryEndpoint string = 'https://${foundry.name}.services.ai.azure.com'
 output foundryOpenAiEndpoint string = 'https://${foundry.name}.openai.azure.com'
 output projectEndpoint string = 'https://${foundry.name}.services.ai.azure.com/api/projects/${project.name}'

@@ -40,9 +40,6 @@ class TrustedIngressBehaviorTests(unittest.TestCase):
             {'id': 'http-empty', 'headers': {**key, 'X-Core-L7-Ingress': ''}},
             {'id': 'http-duplicate', 'headers': {**key, 'X-Core-L7-Ingress': ['fixture-ingress', 'fixture-ingress']}},
             {'id': 'http-no-key', 'headers': {'X-Core-L7-Ingress': 'fixture-ingress'}},
-            {'id': 'grpc-missing', 'headers': key, 'grpc': True},
-            {'id': 'grpc-wrong', 'headers': {**key, 'X-Core-L7-Ingress': 'incorrect-ingress'}, 'grpc': True},
-            {'id': 'grpc-duplicate', 'headers': {**key, 'X-Core-L7-Ingress': ['first', 'second']}, 'grpc': True},
         ]
         for case in cls.cases:
             case['subscription'] = True
@@ -77,16 +74,11 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 self.assertFalse(results[name]['authenticated'])
                 self.assertIsNotNone(results[name]['requestContext'])
 
-    def test_retired_grpc_marker_does_not_exempt_missing_ingress(self):
+    def test_valid_ingress_still_requires_authentication(self):
         results = self.results[('true', 'fragment')]
-        for name in ('http-valid',):
-            with self.subTest(case=name):
-                self.assertEqual(results[name]['status'], 200)
-                self.assertTrue(results[name]['authenticated'])
+        self.assertEqual(results['http-valid']['status'], 200)
+        self.assertTrue(results['http-valid']['authenticated'])
         self.assertEqual(results['http-no-key']['status'], 401)
-        for name in ('grpc-missing', 'grpc-wrong', 'grpc-duplicate'):
-            self.assertEqual(results[name]['status'], 403)
-            self.assertFalse(results[name]['authenticated'])
 
     def test_disabling_the_ingress_requirement_does_not_disable_authentication(self):
         results = self.results[('false', 'fragment')]

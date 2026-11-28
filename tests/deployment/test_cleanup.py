@@ -11,7 +11,7 @@ from deployment.helpers.configuration import load_configuration
 
 
 from tests.support.cleanup_fixtures import (
-    CleanupFixture, FakeTransport, ApiCenterListTransport, ModelTransport,
+    CleanupFixture, FakeTransport, ModelTransport,
     CredentialTransport, ProviderGetInconsistencyTransport, InventoryTransport, ManagementTransport,
 )
 
@@ -145,10 +145,10 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
             [(call["method"], call["id"]) for call in mutations],
         )
         expected_reads = ({cleanup._rg_id(self.configuration, kind) for kind in ("id", "nw", "monitor", "svc", "maint")}
-                          | set(resources) | {self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices"})
+                          | set(resources))
         self.assertTrue(all(call["id"] in expected_reads for call in transport.calls if call["method"] == "GET"))
         self.assertEqual(set(result), {"phase", "status", "resourceGroups", "applicationInfrastructure",
-                                       "softDeletedServices", "apiCenterRetention"})
+                                       "softDeletedServices"})
         self.assertTrue(all("/roleDefinitions/" not in call["id"] for call in transport.calls))
         self.assertTrue(all("graph.microsoft" not in call["id"] for call in transport.calls))
 
@@ -165,100 +165,6 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         transport = FakeTransport()
         self.assert_code("invalid-state", lambda: self.post(transport))
         self.assertFalse(transport.calls)
-
-    def test_api_center_empty_list_is_verified_absence_without_purge(self):
-        transport = FakeTransport()
-        result = self.post(transport)
-        self.assertEqual(result["status"], "complete")
-        retention = result["apiCenterRetention"]
-        self.assertEqual(retention["status"], "absent")
-        self.assertEqual(retention["lookup"], "resource-group-deletedServices-list")
-        self.assertTrue(retention["listReadVerified"])
-        self.assertFalse(retention["purgeRequested"])
-        self.assertFalse(transport.mutations())
-
-    def test_api_center_retention_records_real_deadlines_without_changing_it(self):
-        tombstone = self.api_center_tombstone()
-        collection = self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices"
-        transport = FakeTransport({**self.tombstones(), collection: {"value": [tombstone]}})
-        result = self.post(transport)
-        self.assertEqual(result["status"], "complete-with-api-center-retention")
-        retention = result["apiCenterRetention"]
-        self.assertEqual(retention["status"], "retained-soft-delete")
-        self.assertEqual(retention["softDeletionDate"], tombstone["properties"]["softDeletionDate"])
-        self.assertEqual(retention["scheduledPurgeDate"], tombstone["properties"]["scheduledPurgeDate"])
-        self.assertEqual(retention["deletedResourceId"], tombstone["id"])
-        self.assertFalse(retention["purgeRequested"])
-        api_center_calls = [c for c in transport.calls if "Microsoft.ApiCenter" in c["id"]]
-        self.assertEqual([(c["method"], c["id"]) for c in api_center_calls], [("GET", collection)])
-        self.assertEqual(len(transport.mutations()), 3)
-
-    def test_api_center_other_deleted_names_are_not_reported_as_ours_or_changed(self):
-        tombstone = self.api_center_tombstone()
-        tombstone["id"] = tombstone["id"].rsplit("/", 1)[0] + "/another-service"
-        tombstone["name"] = "another-service"
-        collection = self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices"
-        transport = FakeTransport({collection: {"value": [tombstone]}})
-        result = self.post(transport)
-        self.assertEqual(result["apiCenterRetention"]["status"], "absent")
-        self.assertFalse(transport.mutations())
-
-    def test_api_center_retention_is_recorded_only_after_all_safe_pages(self):
-        collection = self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices"
-        next_link = "https://management.azure.com" + collection + "?api-version=2024-06-01-preview&$skiptoken=fixture"
-        transport = ApiCenterListTransport(collection, [
-            {"value": [self.api_center_tombstone()], "nextLink": next_link}, {"value": []}])
-        result = self.post(transport)
-        self.assertEqual(result["apiCenterRetention"]["status"], "retained-soft-delete")
-        self.assertFalse(transport.pages)
-        self.assertEqual(sum(c["id"] == collection for c in transport.calls), 2)
-        self.assertFalse(transport.mutations())
-
-    def test_api_center_unsafe_or_cyclic_pagination_is_unverified(self):
-        collection = self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices"
-        path = collection + "?api-version=2024-06-01-preview"
-        for next_link in ("https://example.invalid/steal", path.replace("rg-test-egakumi", "rg-other"),
-                          "https://management.azure.com" + path, "https://management.azure.com:bad" + path,
-                          path.replace("2024-06-01-preview", "2024-03-15-preview"), "", 17):
-            with self.subTest(next_link=next_link):
-                transport = ApiCenterListTransport(collection, [
-                    {"value": [self.api_center_tombstone()], "nextLink": next_link}], self.tombstones())
-                result = self.post(transport)
-                self.assertEqual(result["apiCenterRetention"]["status"], "unverified")
-                self.assertFalse(result["apiCenterRetention"]["listReadVerified"])
-                self.assertEqual(result["apiCenterRetention"]["reasonCode"], "api-center-retention-unverified")
-                self.assertEqual(sum(c["id"] == collection for c in transport.calls), 1)
-                self.assertEqual(len(transport.mutations()), 3)
-
-    def test_api_center_mismatches_missing_deadlines_and_bad_pages_are_unverified(self):
-        tombstone = self.api_center_tombstone()
-        wrong_id = {**tombstone, "id": tombstone["id"].replace("rg-test-egakumi", "rg-other")}
-        wrong_type = {**tombstone, "type": "Microsoft.ApiManagement/deletedServices"}
-        wrong_name = {**tombstone, "name": "another-service"}
-        missing_dates = {**tombstone, "properties": {}}
-        invalid_dates = {**tombstone, "properties": {"softDeletionDate": "unknown", "scheduledPurgeDate": "unknown"}}
-        pages = [{}, {"value": None}, {"value": [None]}, {"value": [wrong_id]}, {"value": [wrong_type]},
-                 {"value": [wrong_name]}, {"value": [missing_dates]}, {"value": [invalid_dates]},
-                 {"value": [tombstone, tombstone]}]
-        collection = self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices"
-        for page in pages:
-            with self.subTest(page=page):
-                transport = ApiCenterListTransport(collection, [page], self.tombstones())
-                result = self.post(transport)
-                self.assertEqual(result["apiCenterRetention"]["status"], "unverified")
-                self.assertFalse(result["apiCenterRetention"]["purgeRequested"])
-                self.assertEqual(len(transport.mutations()), 3)
-                self.assertTrue(all("Microsoft.ApiCenter" not in c["id"] for c in transport.mutations()))
-
-    def test_api_center_missing_bicep_name_never_guesses_a_name_or_blocks_other_purges(self):
-        for names in (None, {}, {"apiCenter": "apic-foreign-test-abc123"}):
-            with self.subTest(names=names):
-                self.state["outputs"]["names"] = names
-                transport = FakeTransport(self.tombstones())
-                result = self.post(transport)
-                self.assertEqual(result["apiCenterRetention"]["status"], "unverified")
-                self.assertEqual(len(transport.mutations()), 3)
-                self.assertFalse(any("Microsoft.ApiCenter" in c["id"] for c in transport.calls))
 
     def test_rg_still_present_blocks_every_postdown_mutation(self):
         group = cleanup._rg_id(self.configuration, "maint")

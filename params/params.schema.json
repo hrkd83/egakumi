@@ -20,7 +20,6 @@
     "firewallTlsInspection",
     "location",
     "foundryLocation",
-    "apiCenterLocation",
     "tags",
     "portal"
   ],
@@ -85,16 +84,11 @@
           "additionalProperties": false,
           "description": "標準Graph委任接続用egakumi-toolsの登録情報です。テナントはentraTenantIdから決まります。",
           "required": [
-            "clientId",
-            "clientSecretFile"
+            "clientId"
           ],
           "properties": {
             "clientId": {
               "$ref": "#/$defs/guid"
-            },
-            "clientSecretFile": {
-              "type": "string",
-              "minLength": 1
             }
           }
         },
@@ -198,19 +192,10 @@
           "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
           "maxLength": 32,
           "description": "Linux管理VMのローカル管理者名。root/admin等の予約名は不可。"
-        },
-        "sshPublicKeyFile": {
-          "type": "string",
-          "minLength": 1,
-          "description": "SSH公開鍵の必須入力兼生成先。相対参照はparamsファイル基準です。明示された保護入力にある有効なOpenSSH RSA 2048bit以上またはEd25519公開鍵1件は、対応秘密鍵なしでも再利用できます。鍵対がともに存在しない場合の生成先はチェックアウト直下.local/<environment>/secrets/配下に限定し、リンクと所有者専用権限を確認します。秘密鍵だけが既存、公開鍵が無効、外部参照の生成先が未作成の場合は上書きせず停止します。生成した鍵対は失敗/down後も保持します。",
-          "examples": [
-            "./secrets/management-ssh.pub"
-          ]
         }
       },
       "required": [
-        "adminUsername",
-        "sshPublicKeyFile"
+        "adminUsername"
       ]
     },
     "monitoring": {
@@ -264,20 +249,15 @@
       "additionalProperties": false,
       "required": [
         "managedIdentityResourceId",
-        "intermediateCaSecretId",
-        "rootCaCertificateFile"
+        "intermediateCaSecretId"
       ],
-      "description": "Firewall TLS検査の専用マネージドID、バージョン付き中間CA参照、App Gateway用ルート証明書。",
+      "description": "Firewall TLS検査用の専用マネージドIDとバージョン付き中間CA参照。",
       "properties": {
         "managedIdentityResourceId": {
           "type": "string",
           "minLength": 1
         },
         "intermediateCaSecretId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "rootCaCertificateFile": {
           "type": "string",
           "minLength": 1
         }
@@ -392,11 +372,6 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9]+$",
       "description": "Foundryとモデルを配置するAzureリージョン。利用枠・モデル提供地域を確認します。"
-    },
-    "apiCenterLocation": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9]+$",
-      "description": "API Centerを配置するAzureリージョン。対応地域を確認します。"
     },
     "tags": {
       "type": "object",
@@ -527,17 +502,12 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "clientId",
-        "clientSecretFile"
+        "clientId"
       ],
       "description": "CMの外部API用clientから独立したegakumi-credentialです。テナントはentraTenantIdから決まります。",
       "properties": {
         "clientId": {
           "$ref": "#/$defs/guid"
-        },
-        "clientSecretFile": {
-          "type": "string",
-          "minLength": 1
         }
       }
     },

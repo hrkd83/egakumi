@@ -79,8 +79,7 @@ def _verify_down(config: dict, state: dict, receipt: dict) -> None:
         if receipt.get(key) != state.get(key):
             raise ValueError("The postdown record belongs to a different APIM instance")
     result = receipt.get("result", {})
-    completed = {"complete", "complete-with-unverified-api-center-retention",
-                 "complete-with-protected-retention", "complete-with-api-center-retention"}
+    completed = {"complete", "complete-with-protected-retention"}
     cleanup_status = result.get("status") if isinstance(result, dict) else None
     if cleanup_status == "resources-absent-with-unverified-credential-manager-release":
         cleanup_status = result.get("resourceCleanupStatus")

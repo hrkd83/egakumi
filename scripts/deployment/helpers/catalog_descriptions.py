@@ -1,9 +1,9 @@
-"""公開 API 契約から、APIM とカタログに表示する接続説明だけを作る。
+"""公開 API 契約から、APIM に表示する接続説明を作る。
 
 Azure への通信や設定変更は行わない。native azd と API だけの再公開が同じ
 関数を使い、公開 FQDN/port・認証・Product・モデル情報の二重管理を防ぐ。
 裏側 URL、主体 ID、認証値、秘密ファイル、入力/応答本文は説明へ含めない。
-API Center の description 上限 1,000 文字を超える説明は配備前に拒否する。
+説明は1,000文字以内にまとめる。
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _authentication(api, *, generated_mcp=False):
 def _endpoint(config, api, *, generated_mcp=False):
     """実設定の公開入口だけから接続先を作る。内部APIM/Foundry名は使わない。
 
-    URL と日本語の補足の間には空白を置く。カタログの自動リンクが括弧や説明文を
+    URL と日本語の補足の間には空白を置く。自動リンクが括弧や説明文を
     URL の一部として取り込み、コピーした接続先が壊れることを防ぐ。
     """
     host = config["gateway"]["publicHostName"]
@@ -113,8 +113,6 @@ def _protocol_note(config, api, *, generated_mcp=False):
 
 def describe_api(config, api, *, generated_mcp=False):
     """同じ契約から最大1,000文字の説明を作り、元の設定を変更しない。"""
-    if api.get("apiType") == "grpc" or "grpc" in api:
-        raise ValueError("Native gRPC catalog inputs have been retired")
     category = CATEGORIES.get(api["productId"], "API Gateway")
     service_class = api.get("serviceClass", "sample" if api["name"].startswith("sample-") else "platform")
     category_line = f"区分: {category} / Product={api['productId']}。提供区分: {SERVICE_CLASSES[service_class]}。"

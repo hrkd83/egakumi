@@ -32,13 +32,12 @@ python3 -I -B scripts/setup/prepare_registration.py --config "$DEPLOY_PARAMS_FIL
 
 1. 「証明書とシークレット」→「クライアント シークレット」→「新しいクライアント シークレット」を開きます。用途の分かる説明と組織の方針に合う有効期限を設定して追加します。
 2. 発行直後に表示される「値（Value）」を組織の保護された秘密保管先に保存します。「シークレットID」は認証に使いません。有効期限と更新担当を記録します。 [クライアントシークレットの発行](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials)
-3. [第07章](07-params.md)で同じ環境のparamsに下表を設定します。[第08章の `azd up`](08-provision-core.md) で「CM接続: graph-delegated」の欄に値を非表示入力すると、環境別の秘密ファイルに保存されます。paramsにはファイル参照だけを置きます。
+3. [第07章](07-params.md)で同じ環境のparamsに下表を設定します。[第08章の `azd up`](08-provision-core.md) で「CM接続: graph-delegated」の欄に値を非表示入力すると、共通configで定義した `.local/<environment>/secrets/entra-client-secret.txt` に保存されます。
 
 | paramsの項目 | 設定する値 |
 | --- | --- |
 | `entraTenantId` | API・Tools・Credentialで共通の認証用テナントID |
 | `credentialProviders.graphDelegated.clientId` | `egakumi-tools` のアプリケーション（クライアント）ID |
-| `credentialProviders.graphDelegated.clientSecretFile` | 標準は `./secrets/entra-client-secret.txt` |
 
 Coreの構築前に、準備したAPIM名とWeb戻り先、委任 `User.Read`、クライアントID、シークレットの有効期限を照合します。接続の動作は[Gateway配備後](11-deploy-gateway.md#5-本人接続を試験する)に確認します。
 

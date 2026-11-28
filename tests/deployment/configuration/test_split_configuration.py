@@ -94,29 +94,53 @@ class SplitConfigurationTests(unittest.TestCase):
                 self.sources(**{owner: {"management": {"loginAssignments": []}}})
 
     def test_references_resolve_from_the_enterprise_parameters_directory(self):
-        # 鍵や資格情報の保存先も企業入力です。標準configへコピーしません。
         dns = {key: value for key, value in fixture()["certificate"].items()
                if key in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId")}
         graph_options = {"displayName": "Synthetic Graph", "scopes": ["User.Read"],
-                         "pool": {"count": 1, "capacity": 1}}
+                         "pool": {"count": 1, "capacity": 1}, "clientSecretFile": "secrets/oauth.txt"}
         result = self.sources(
-            {"certificate": {"mode": "dnsPlugin"}, "credentialProviders": {"graphDelegated": graph_options}},
-            {"management": {"sshPublicKeyFile": "key.pub"},
-             "certificate": dns,
+            {"certificate": {"mode": "dnsPlugin"}, "credentialProviders": {"graphDelegated": graph_options},
+             "management": {"sshPublicKeyFile": "secrets/key.pub"}},
+            {"certificate": dns,
              "entraTenantId": "99999999-9999-4999-8999-999999999999",
              "credentialProviders": {"graphDelegated": {
-                 "clientId": "66666666-6666-4666-8666-666666666666", "clientSecretFile": "oauth.txt"}}},
+                 "clientId": "66666666-6666-4666-8666-666666666666"}}},
         )
         # AzureのリソースIDは端末上のファイルパスへ変換しない。
         self.assertEqual(result["certificate"]["azureDnsManagedIdentityResourceId"], dns["azureDnsManagedIdentityResourceId"])
         self.assertEqual(result["certificate"]["azureDnsSubscriptionId"], dns["azureDnsSubscriptionId"])
-        self.assertEqual(result["management"]["sshPublicKeyFile"], str(self.parameters.parent / "key.pub"))
-        self.assertEqual(result["credentialProviders"][0]["clientSecretFile"], str(self.parameters.parent / "oauth.txt"))
+        self.assertEqual(result["management"]["sshPublicKeyFile"], str(self.parameters.parent / "secrets/key.pub"))
+        self.assertEqual(result["credentialProviders"][0]["clientSecretFile"], str(self.parameters.parent / "secrets/oauth.txt"))
 
     def test_combined_internal_configuration_remains_supported(self):
         self.write(self.parameters, {"management": {"sshPublicKeyFile": "key.pub"}})
         result = load_configuration_source(self.parameters)
         self.assertEqual(result["management"]["sshPublicKeyFile"], str(self.parameters.parent / "key.pub"))
+
+    def test_parameters_cannot_override_standard_local_paths(self):
+        for field, value in (
+            ("sshPublicKeyFile", {"management": {"sshPublicKeyFile": "secrets/alternate.pub"}}),
+            ("rootCaCertificateFile", {"firewallTlsInspection": {"rootCaCertificateFile": "secrets/alternate.cer"}}),
+            ("clientSecretFile", {"gateway": {"authentication": {"credentialLogin": {
+                "identity": {"clientSecretFile": "secrets/alternate.txt"}}}}}),
+        ):
+            with self.subTest(field=field), self.assertRaisesRegex(ConfigurationError, field):
+                self.sources(parameters=value)
+
+    def test_standard_paths_cannot_leave_the_environment_secrets_directory(self):
+        for value in ("../secrets/key.pub", "secrets/../key.pub", "/secrets/key.pub", "secrets/nested/key.pub"):
+            with self.subTest(value=value), self.assertRaisesRegex(ConfigurationError, "management.sshPublicKeyFile"):
+                self.sources(options={"management": {"sshPublicKeyFile": value}})
+
+    def test_linked_standard_secrets_directory_is_rejected(self):
+        self.parameters.parent.mkdir()
+        self.options.parent.mkdir()
+        try:
+            (self.parameters.parent / "secrets").symlink_to(self.options.parent, target_is_directory=True)
+        except (NotImplementedError, OSError):
+            self.skipTest("Creating directory links is unavailable on this platform")
+        with self.assertRaisesRegex(ConfigurationError, "symbolic links"):
+            self.sources(options={"management": {"sshPublicKeyFile": "secrets/key.pub"}})
 
     def test_unknown_manifest_metadata_is_rejected(self):
         with self.assertRaisesRegex(ConfigurationError, "unsupported field.*configFiles"):
@@ -170,7 +194,7 @@ class SplitConfigurationTests(unittest.TestCase):
                 loaded = load_configuration(self.parameters)
                 self.assertEqual(loaded["services"]["projectDisplayName"], "core-platform")
                 self.assertTrue(loaded["services"]["grantApimFoundryModelsAccess"])
-                self.assertEqual(loaded["management"]["sshPublicKeyFile"], str((CORE / "secrets/management-ssh.pub").resolve()))
+                self.assertEqual(loaded["management"]["sshPublicKeyFile"], str((CORE / "params/secrets/management-ssh.pub").resolve()))
                 arm = build_bicep_configuration(loaded)
                 self.assertNotIn("configFile", arm)
                 self.assertNotIn("$schema", arm)
@@ -353,7 +377,7 @@ class SplitConfigurationTests(unittest.TestCase):
         for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
             raw[key] = "11111111-1111-4111-8111-111111111111"
         adopt_azure_dns_references(raw)
-        for key in ("location", "foundryLocation", "apiCenterLocation"):
+        for key in ("location", "foundryLocation"):
             missing = copy.deepcopy(raw)
             del missing[key]
             with self.subTest(missing=key), self.assertRaisesRegex(ConfigurationError, key):
@@ -514,7 +538,7 @@ class SplitSchemaTests(unittest.TestCase):
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"):
             sample[key] = "11111111-1111-4111-8111-111111111111"
         adopt_azure_dns_references(sample)
-        for region in ("location", "foundryLocation", "apiCenterLocation"):
+        for region in ("location", "foundryLocation"):
             missing = copy.deepcopy(sample)
             del missing[region]
             with self.subTest(region=region), self.assertRaises(jsonschema.ValidationError):

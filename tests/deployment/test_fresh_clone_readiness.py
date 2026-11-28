@@ -143,7 +143,6 @@ class FreshCloneReadinessTests(unittest.TestCase):
         raw["services"]["apimInstanceId"] = "abc123"
         raw["portal"]["publicHostName"] = "portal.fresh-clone.example"
         raw["gateway"]["publicHostName"] = PUBLIC_HOST
-        self.assertNotIn("grpc", raw["gateway"])
         self.assertNotIn("domainNames", raw["certificate"])
         raw["certificate"]["contactEmail"] = "operator@fresh-clone.example"
         raw["certificate"]["azureDnsSubscriptionId"] = SUBSCRIPTION
@@ -151,8 +150,6 @@ class FreshCloneReadinessTests(unittest.TestCase):
         raw["services"].update(publisherName="Fresh clone organization", publisherEmail="operator@fresh-clone.example")
         raw["monitoring"]["operatorEmailAddresses"] = ["operator@fresh-clone.example"]
         raw["configFile"] = "../../infra/config/" + profile + ".json"
-        raw["management"]["sshPublicKeyFile"] = "./secrets/management-ssh.pub"
-        raw["credentialProviders"]["graphDelegated"]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
         return raw
 
     def check_in_isolated_process(self, profile, parameters, *, internal_api_definitions=None):

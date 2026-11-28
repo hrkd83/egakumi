@@ -55,10 +55,6 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9]+$"
     },
-    "apiCenterLocation": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9]+$"
-    },
     "tags": {
       "type": "object",
       "additionalProperties": {
@@ -301,36 +297,6 @@
           ],
           "default": "standard"
         },
-        "apiCenterSkuName": {
-          "type": "string",
-          "enum": [
-            "Free",
-            "Standard"
-          ],
-          "default": "Free",
-          "description": "API Centerの料金プラン。基本PortalはFreeでも利用可能。Standardの料金・APIM連携特典は事前確認します。"
-        },
-        "catalogEnvironmentKind": {
-          "type": "string",
-          "enum": [
-            "development",
-            "production",
-            "staging",
-            "testing"
-          ]
-        },
-        "catalogLifecycleStage": {
-          "type": "string",
-          "enum": [
-            "deprecated",
-            "design",
-            "development",
-            "preview",
-            "production",
-            "retired",
-            "testing"
-          ]
-        },
         "modelDeployments": {
           "type": "array",
           "items": {
@@ -374,10 +340,6 @@
           "type": "string",
           "minLength": 1,
           "default": "Core platform project for shared model, agent, and tool capabilities."
-        },
-        "enableApiCenterIntegration": {
-          "type": "boolean",
-          "default": true
         },
         "grantApimSecretAccess": {
           "type": "boolean",
@@ -903,13 +865,6 @@
           "default": []
         },
         "foundryReaders": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/principal"
-          },
-          "default": []
-        },
-        "catalogReaders": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/principal"
@@ -2303,7 +2258,6 @@
     "apiDefinitions",
     "publishApis",
     "foundryLocation",
-    "apiCenterLocation",
     "portal"
   ]
 }

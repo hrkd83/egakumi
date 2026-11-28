@@ -8,7 +8,6 @@ Azureへの接続自体は呼出元から渡されたTransportに任せる。こ
 IP参照とサービス関連付けが解除されたことを確認してからazdへ引き渡す。post_downは
 RGが消えたことを確認してから、対象を限定して
 サービスの論理削除データを完全削除する。
-API Centerの同名予約は読取結果として別記し、完全削除の対象には加えない。
 保持ロックやpurge保護を回避しない。既存の保護対象は理由を返して残す。
 この処理はAzureの削除・変更を伴う。削除要求の受付だけでは課金停止や
 クォータ返却を証明できないため、確認できた範囲を結果として分けて返す。
@@ -19,7 +18,6 @@ import math
 import re
 import time
 from collections.abc import Callable, Mapping
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import parse_qs, parse_qsl, urlsplit
@@ -59,7 +57,6 @@ API = {
     "certificateVault": "2023-07-01",
     "foundry": "2025-06-01",
     "apim": "2024-05-01",
-    "apiCenter": "2024-06-01-preview",
     "resources": "2021-04-01",
     "deployments": "2022-09-01",
     "compute": "2024-11-01",
@@ -1681,76 +1678,6 @@ def _tombstone(configuration: dict, current: dict, key: str) -> str:
     return prefix + f"Microsoft.ApiManagement/locations/{location}/deletedservices/{name}"
 
 
-def _api_center_retention(configuration: dict, state: Mapping[str, Any], transport: Transport) -> dict:
-    """API Centerの削除履歴を読み、同名予約の残留を記録する。変更要求は送らない。
-
-    個別の削除済みGETではなく、今回のsvc RGの一覧を全ページ確認する。
-    名前はBicep出力から取得し、期限を確認できない状態を完全削除とは扱わない。
-    """
-    outputs = state.get("outputs")
-    names = outputs.get("names") if isinstance(outputs, Mapping) else None
-    name = names.get("apiCenter") if isinstance(names, Mapping) else None
-    if not isinstance(name, str) or name.casefold() != ("apic-" + configuration["resourceStem"]).casefold():
-        _error("api-center-retention-unverified", "API Center名のBicep出力を確認できません。")
-    scope = _rg_id(configuration, "svc") + "/providers/Microsoft.ApiCenter"
-    collection = scope + "/deletedServices"
-    target_id = collection + "/" + name
-    result = {"resourceId": scope + "/services/" + name, "deletedResourceId": target_id,
-              "status": "absent", "lookup": "resource-group-deletedServices-list", "purgeRequested": False}
-    next_page = collection + "?api-version=" + API["apiCenter"]
-    visited, seen_ids = set(), set()
-    while next_page:
-        try:
-            parsed = urlsplit(next_page)
-            if (not isinstance(next_page, str) or not next_page or parsed.fragment
-                or parsed.username or parsed.password or parsed.port not in (None, 443)
-                or parsed.scheme not in ("", "https")
-                or parsed.netloc and parsed.hostname != "management.azure.com"
-                or parsed.path.casefold() != collection.casefold()
-                or parse_qs(parsed.query).get("api-version") != [API["apiCenter"]]):
-                raise ValueError()
-            path = parsed.path + "?" + parsed.query
-        except (ValueError, AttributeError, TypeError):
-            _error("api-center-retention-unverified", "API Center削除履歴の継続先を確認できません。", collection)
-        if path in visited or len(visited) >= 100:
-            _error("api-center-retention-unverified", "API Center削除履歴が循環または上限に達しました。", collection)
-        visited.add(path)
-        read = _request(transport, "GET", collection, API["apiCenter"], path=path)
-        if read["statusCode"] == 404:
-            # RGの消滅後は一覧URLも404になり得る。個別資源の不存在とは同一視しない。
-            return {**result, "status": "unverified", "listReadVerified": False, "httpStatus": 404,
-                    "reasonCode": "api-center-deleted-list-not-readable",
-                    "reason": "API Center削除履歴の一覧が404のため、同名予約の有無は未確認です。"}
-        page = _expect_read(read, collection)
-        if page is None or not isinstance(page.get("value"), list):
-            _error("api-center-retention-unverified", "API Center削除履歴を取得できず、残留なしとは判定していません。", collection)
-        for item in page["value"]:
-            item_name = item.get("name") if isinstance(item, Mapping) else None
-            item_id = item.get("id") if isinstance(item, Mapping) else None
-            if (not isinstance(item_name, str) or re.fullmatch(r"[a-zA-Z0-9-]{3,90}", item_name) is None
-                or not isinstance(item_id, str) or item_id.casefold() != (collection + "/" + item_name).casefold()
-                or str(item.get("type", "")).casefold() != "microsoft.apicenter/deletedservices"
-                or item_id.casefold() in seen_ids):
-                _error("api-center-retention-mismatch", "API Center削除履歴のID・名前・種類が不正です。", collection)
-            seen_ids.add(item_id.casefold())
-            if item_id.casefold() == target_id.casefold():
-                properties = item.get("properties")
-                try:
-                    deleted_at = properties["softDeletionDate"]
-                    purge_at = properties["scheduledPurgeDate"]
-                    deleted_time = datetime.fromisoformat(deleted_at.replace("Z", "+00:00"))
-                    purge_time = datetime.fromisoformat(purge_at.replace("Z", "+00:00"))
-                    if deleted_time.utcoffset() is None or purge_time.utcoffset() is None or purge_time < deleted_time:
-                        raise ValueError()
-                except (ValueError, TypeError, KeyError, AttributeError):
-                    _error("api-center-retention-unverified", "API Center削除履歴の保持期限を確認できません。", target_id)
-                result.update({"status": "retained-soft-delete", "softDeletionDate": deleted_at, "scheduledPurgeDate": purge_at})
-        next_page = page.get("nextLink")
-        if next_page is not None and (not isinstance(next_page, str) or not next_page):
-            _error("api-center-retention-unverified", "API Center削除履歴の継続先が不正です。", collection)
-    return {**result, "listReadVerified": True}
-
-
 def _credential_manager_release(configuration: dict) -> dict | None:
     """公開資源の消失から、観測できない内部storeの解放を推定しない。
 
@@ -1841,23 +1768,11 @@ def post_down(config_path: str | Path, state: Mapping[str, Any], transport: Tran
                          wait_seconds=wait_seconds, sleep=sleep)
         service_results.append({"kind": key, "resourceId": tombstone_id, "status": "absent", "httpStatus": 404})
 
-    # RG消滅後は、そのRGの削除履歴一覧自体が読めない場合があります。
-    # 所有サービスの必須purgeを先に完了し、API Centerの確認不能は別項目へ記録します。
-    # 404や権限不足を「完全削除済み」や「永久残留」と決め付けず、RGも再作成しません。
-    try:
-        api_center_retention = _api_center_retention(configuration, state, transport)
-    except CleanupError as error:
-        api_center_retention = {"status": "unverified", "reasonCode": error.code,
-                                "reason": str(error), "lookupResourceId": error.resource_id,
-                                "listReadVerified": False, "purgeRequested": False}
-
     retained = any(item["status"].startswith("retained") for item in service_results)
-    status = ("complete-with-unverified-api-center-retention" if api_center_retention["status"] == "unverified"
-              else "complete-with-protected-retention" if retained else "complete-with-api-center-retention"
-              if api_center_retention["status"] == "retained-soft-delete" else "complete")
+    status = "complete-with-protected-retention" if retained else "complete"
     result = {"phase": "postdown", "status": status, "resourceGroups": group_results,
               "applicationInfrastructure": infrastructure_results,
-              "softDeletedServices": service_results, "apiCenterRetention": api_center_retention}
+              "softDeletedServices": service_results}
     credential_manager = _credential_manager_release(configuration)
     if credential_manager is not None:
         apim = next((item for item in service_results if item["kind"] == "apim"), {})

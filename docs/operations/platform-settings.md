@@ -204,13 +204,9 @@ AppGWのautoscaleとContainer Appのrevision変更は、
 待機中は読取と記録を進め、同じ環境への更新を並行実行しない。
 各業務のために環境を再構築せず、試験用の設定変更は最後にまとめて確認・回収する。
 
-## API Centerのカタログ管理
+## APIMのAPI定義
 
-API Center本体とAPIM同期はCoreで管理します。運用担当者はAzure Portalで同期元・API説明・仕様・認証条件・公開URLを確認し、`authorization.catalogReaders`で指定した閲覧者のAzure RBACを照合します。API Center Portalを独自に公開する場合は、そのクライアント登録と閲覧権限を別途設計します。
-
-API Centerで利用する機能と同期上限を確認し、Azureポータルの **Overview → Manage plan** のプランと`services.apiCenterSkuName`を合わせます。 [Portal設定](https://learn.microsoft.com/en-us/azure/api-center/set-up-api-center-portal) · [料金プラン](https://learn.microsoft.com/en-us/azure/api-center/overview#standard-plan-benefit-when-api-center-linked-to-api-management)
-
-API説明はAPIMの公開契約から生成し、API Centerへ同期します。区分、Productと購読要件、公開URL、操作・上限・モデル、CMの接続条件を示し、内部URL・主体ID・秘密は掲載しません。説明は1,000文字までです。同期は最大24時間かかり得ます。公開ApiSources APIに強制同期actionはなく、再PUTによる即時同期も保証しません。説明・仕様Download・実runtime URIを別々に確認します。[APIM同期](https://learn.microsoft.com/en-us/azure/api-center/synchronize-api-management-apis)
+AzureポータルのAPIMで、API説明・仕様・認証条件・公開URLを確認します。初回配備時の説明は公開契約から生成し、Productと購読要件、操作・上限・モデル、CMの接続条件を示します。
 
 公開接続には、APIの説明とruntime URIに記載された`https://`／`wss://`を使います。購読キーとCM接続セッションはTLSで保護された公開URLへ送信してください。
 

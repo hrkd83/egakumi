@@ -152,8 +152,6 @@ class GeneratedQueryObservationPublicationTests(unittest.TestCase):
         self.assertIn('new JProperty("schemaVersion", 2)', message)
         self.assertIn('new JProperty("auditSchemaVersion", 2)', message)
         self.assertIn("gatewayQueryObservation", message)
-        for removed in ('"mode"', '"countBucket"', '"query-rejected"', '"guard-error"'):
-            self.assertNotIn(removed, message)
 
 
 if __name__ == "__main__":

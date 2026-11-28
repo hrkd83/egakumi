@@ -60,8 +60,8 @@ class SplitCliTests(unittest.TestCase):
         self.parameters["certificate"]["azureDnsManagedIdentityResourceId"] = DNS_IDENTITY
         # 企業固有の参照はparamsだけに置きます。標準configの配置や合成先が
         # 異なるフォルダーでも、同じSSH・CM参照とDNS用IDを保持することを調べます。
-        self.parameters["management"]["sshPublicKeyFile"] = "secrets/nonexistent-protected/management.pub"
-        self.parameters["credentialProviders"]["graphDelegated"]["clientSecretFile"] = "secrets/nonexistent-protected/connection.txt"
+        self.options["management"]["sshPublicKeyFile"] = "secrets/nonexistent-management.pub"
+        self.options["credentialProviders"]["graphDelegated"]["clientSecretFile"] = "secrets/nonexistent-connection.txt"
         self.config = self.config_directory / "options.json"
         self.source = self.parameter_directory / "params.local.json"
         self.config.write_text(json.dumps(self.options))

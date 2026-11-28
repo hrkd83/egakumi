@@ -1658,7 +1658,6 @@ class DataWafTests(unittest.TestCase):
         variables = copy.deepcopy(template['variables'])
         parameters = {key: copy.deepcopy(item.get('defaultValue', 'fixture')) for key, item in template['parameters'].items()}
         parameters.update(resourceStem='test-fixture', wafPolicyIdentifier='abc123', location='japaneast', publishedApiPaths=[CHAT],
-                          grpcEnabled=True,
                           wafCustomRules=[{'name': 'retain-custom', 'priority': 1, 'action': 'Block'}],
                           wafExclusions=[{'matchVariable': 'RequestHeaderValues', 'selectorMatchOperator': 'Equals', 'selector': 'Existing'}])
         evaluate = lambda item, index=0: CompiledExpression('[true()]', variables).resolve(item, parameters, index)

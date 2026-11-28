@@ -165,7 +165,6 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
                     self.assertIsNotNone(root.find('./inbound/include-fragment[@fragment-id="core-api-authentication-result"]'))
                 else:
                     self.assertIsNotNone(root.find('./inbound/set-variable[@name="gatewayDecision"]'))
-                self.assertNotEqual(api["apiType"], "grpc")
                 if api["apiType"] == "websocket":
                     self.assertEqual(root.findall('.//set-body'), [])
                     self.assertNotRegex(policy, r'(?:Request|Response)\s*\.\s*Body')

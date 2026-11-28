@@ -101,7 +101,6 @@ var serviceNames = {
   foundry: 'aif-${stem}'
   project: 'proj-${stem}'
   apim: 'apim-${stem}-${configuration.services.apimInstanceId}'
-  apiCenter: 'apic-${stem}'
 }
 
 // Every phase declares the same five groups for native azd down. Keep their
@@ -125,7 +124,7 @@ resource monitorGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   location: location
   tags: union(tags, { layer: 'monitor' })
 }
-// APIM・Foundry・Key Vault・API Center・PortalのACR/CAE/CAをまとめるサービスRG。
+// APIM・Foundry・Key Vault・PortalのACR/CAE/CAをまとめるサービスRG。
 resource svcGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: 'rg-${stem}-svc'
   location: location
@@ -219,8 +218,6 @@ module services 'modules/services/services.bicep' = if (deployCore) {
     names: serviceNames
     location: location
     foundryLocation: configuration.foundryLocation
-    apiCenterLocation: configuration.apiCenterLocation
-    apiCenterSkuName: servicesConfig.?apiCenterSkuName ?? 'Free'
     tags: tags
     tenantId: configuration.azureTenantId
     apimSubnetId: network!.outputs.subnetIds.apim
@@ -385,9 +382,6 @@ module serviceBindings 'modules/services/service-bindings.bicep' = if (deployCor
     grantApimSecretAccess: true
     speechEnabled: servicesConfig.?speechEnabled ?? false
     grantApimFoundryModelsAccess: servicesConfig.?grantApimFoundryModelsAccess ?? false
-    enableApiCenterIntegration: servicesConfig.enableApiCenterIntegration
-    catalogEnvironmentKind: servicesConfig.catalogEnvironmentKind
-    catalogLifecycleStage: servicesConfig.catalogLifecycleStage
   }
   dependsOn: [networkBindings]
 }
@@ -818,7 +812,6 @@ output names object = {
   foundry: serviceNames.foundry
   project: serviceNames.project
   apim: serviceNames.apim
-  apiCenter: serviceNames.apiCenter
 }
 output monitoring object = monitoring.outputs.monitoring
 output auditStorage object = monitoring.outputs.storage

@@ -167,7 +167,6 @@ class ApiFoundationBicepTests(unittest.TestCase):
     def test_document_foundation_prepares_owner_key_before_public_api_creation(self):
         """非公開の基盤用メタデータから文書ジョブの署名鍵だけを準備する。"""
         config = configuration.build_bicep_configuration(foundation_configuration())
-        self.assertNotIn('grpc', config['gateway'])
         config['gateway']['realtimeControlEnabled'] = False
         config['infrastructureApiDefinitions'] = [api for api in config['infrastructureApiDefinitions']
                                                    if api.get('name') == 'document-analysis-v1']

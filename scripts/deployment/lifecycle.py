@@ -26,8 +26,7 @@ azd upとazd provisionは同じ構築フローを使う。本体構築の前提�
      証明書参照用マネージドID、監視・監査の保存先を先行構築する。
      完了後、実際のリソースIDなどを.local/<environment>/state/latest.jsonへ記録する。
   6. 監査ログの保持ロックを設定に応じて適用・確認し、Application Insightsの
-     日次上限を設定する。API Centerの利用可否も確認し、同名の対象が
-     論理削除されていれば復元する。
+     日次上限を設定する。
   7. 既存のNSG・ルート・APIM設定・PortalのCAの実在を再確認する。API公開時に
      追加されたFirewallの宛先も読み、今回の構築入力へ引き継ぐ。秘密情報を含む
      一時ファイルとして、アクセスを制限した.local/<environment>/generated/main.parameters.jsonを再生成する。
@@ -141,7 +140,7 @@ ROOT = REPOSITORY
 PROJECT_NAME = "ai-workforce-core"
 PROVIDERS = (
     "Microsoft.Network", "Microsoft.ManagedIdentity", "Microsoft.KeyVault",
-    "Microsoft.CognitiveServices", "Microsoft.ApiManagement", "Microsoft.ApiCenter",
+    "Microsoft.CognitiveServices", "Microsoft.ApiManagement",
     "Microsoft.OperationalInsights", "Microsoft.Insights", "Microsoft.Storage",
     "Microsoft.Compute", "Microsoft.AlertsManagement",
     "Microsoft.App", "Microsoft.ContainerRegistry", "Microsoft.Sql",
@@ -1280,102 +1279,6 @@ def configure_app_insights_cap(config: dict, outputs: dict) -> None:
     })
 
 
-def ensure_api_center_available(config: dict, outputs: dict, transport: ArmTransport) -> dict:
-    """今回の同名API Centerだけを確認し、論理削除されていれば同名へ復元する。
-
-    名前は監視段階のBicep出力を正本にする。別RG・別名の削除履歴には触れず、
-    全ページを確認してから復元する。復元後も実資源のID・場所・所有タグを
-    読み直し、要求が受け付けられただけでは成功としない。
-    """
-    names = outputs.get("names")
-    name = names.get("apiCenter") if isinstance(names, dict) else None
-    if not isinstance(name, str) or name.casefold() != ("apic-" + config["resourceStem"]).casefold():
-        raise DeploymentError("Bicep did not return the expected API Center name")
-    scope = f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['svc']}/providers/Microsoft.ApiCenter"
-    service_id = scope + "/services/" + name
-    live_path = service_id + "?api-version=2024-03-01"
-    expected_tags = {"product": config["productName"], "environment": config["environmentName"],
-                     "azd-env-name": config["environmentName"]}
-
-    def verify_live(response: dict) -> str:
-        """所有識別を確認してから、Azureが返した構築状態を限定した値で扱う。"""
-        body = require_success(response, "Read API Center", allowed=(200,))
-        if (not isinstance(body, dict)
-                or str(body.get("id", "")).casefold() != service_id.casefold()
-                or str(body.get("name", "")).casefold() != name.casefold()
-                or str(body.get("type", "")).casefold() != "microsoft.apicenter/services"
-                or not same_azure_location(body.get("location"), config["apiCenterLocation"])
-                or not isinstance(body.get("tags"), dict)
-                or any(body["tags"].get(key) != value for key, value in expected_tags.items())):
-            raise DeploymentError("API Center identity, location or ownership tags do not match this environment")
-        properties = body.get("properties")
-        state = properties.get("provisioningState") if isinstance(properties, dict) else None
-        if state not in ("Succeeded", "Accepted", "Creating", "Updating"):
-            raise DeploymentError("API Center provisioning state could not be confirmed")
-        return state
-
-    live = transport.request("GET", live_path)
-    if live.get("statusCode") == 200:
-        if verify_live(live) != "Succeeded":
-            raise DeploymentError("API Center is still being changed; inspect it before retrying")
-        return {"status": "existing", "resourceId": service_id}
-    require_success(live, "Check API Center existence", allowed=(404,))
-
-    # Subscription全体の削除済み一覧ではなく、今回のsvc RGの一覧だけを読む。
-    # nextLinkも同じARMホスト・同じ一覧・同じAPI版に限定し、外部URLへ認証を送らない。
-    deleted_path = scope + "/deletedServices"
-    next_page = deleted_path + "?api-version=2024-06-01-preview"
-    visited, seen_ids = set(), set()
-    found = False
-    while next_page:
-        try:
-            uri = urlparse(next_page if next_page.startswith("https://") else "https://management.azure.com" + next_page)
-            port = uri.port
-        except ValueError:
-            raise DeploymentError("API Center deleted-service pagination could not be verified") from None
-        if (uri.scheme != "https" or uri.hostname != "management.azure.com"
-                or uri.username is not None or uri.password is not None or port not in (None, 443)
-                or uri.fragment or uri.path.casefold() != deleted_path.casefold()
-                or parse_qs(uri.query).get("api-version") != ["2024-06-01-preview"]
-                or uri.geturl() in visited or len(visited) >= 100):
-            raise DeploymentError("API Center deleted-service pagination could not be verified")
-        visited.add(uri.geturl())
-        page = require_success(transport.request("GET", uri.geturl()), "Read deleted API Centers", allowed=(200,))
-        entries = page.get("value") if isinstance(page, dict) else None
-        if not isinstance(entries, list):
-            raise DeploymentError("API Center deleted-service list is malformed")
-        for entry in entries:
-            entry_name = entry.get("name") if isinstance(entry, dict) else None
-            entry_id = entry.get("id") if isinstance(entry, dict) else None
-            if (not isinstance(entry_name, str) or re.fullmatch(r"[a-zA-Z0-9-]{3,90}", entry_name) is None
-                    or not isinstance(entry_id, str)
-                    or entry_id.casefold() != (deleted_path + "/" + entry_name).casefold()
-                    or str(entry.get("type", "")).casefold() != "microsoft.apicenter/deletedservices"
-                    or entry_id.casefold() in seen_ids):
-                raise DeploymentError("API Center deleted-service identity could not be verified")
-            seen_ids.add(entry_id.casefold())
-            found = found or entry_name.casefold() == name.casefold()
-        next_page = page.get("nextLink")
-        if next_page is not None and (not isinstance(next_page, str) or not next_page):
-            raise DeploymentError("API Center deleted-service continuation is malformed")
-    if not found:
-        return {"status": "available-for-create", "resourceId": service_id}
-
-    # restore=trueは既存の同名資源を戻す操作。他の設定変更は後続Bicepが担当する。
-    require_success(transport.request("PUT", service_id + "?api-version=2024-06-01-preview",
-        body={"location": config["apiCenterLocation"], "properties": {"restore": True}}),
-        "Restore the owned API Center", allowed=(200, 201, 202))
-    for attempt in range(60):
-        actual = transport.request("GET", live_path)
-        if actual.get("statusCode") == 200 and verify_live(actual) == "Succeeded":
-            return {"status": "restored", "resourceId": service_id}
-        if actual.get("statusCode") != 200:
-            require_success(actual, "Read restored API Center", allowed=(404,))
-        if attempt < 59:
-            time.sleep(5)
-    raise DeploymentError("API Center restore is still pending; inspect it before retrying")
-
-
 def _preprovision(config: dict) -> None:
     """検査→Provider登録→固定名・利用枠確認→監査基盤→コア入力の順に準備する。
 
@@ -1474,15 +1377,6 @@ def _preprovision(config: dict) -> None:
           "Notifications > Resend. Verify the recipient status and actual test-email delivery separately.")
     lock_and_verify_policies(outputs["auditStorage"], transport)
     configure_app_insights_cap(config, outputs)
-    # 監視段階で5RGを作った後なら、同じsvc RG内の論理削除を照合・復元できる。
-    # 公開名を変更せず、事前登録したEntra Portalの戻り先もそのまま使う。
-    api_center_receipt = local_paths(config, ROOT).state / "api-center-preparation.json"
-    api_center_receipt.unlink(missing_ok=True)
-    protected_json(api_center_receipt, {
-        **ensure_api_center_available(config, outputs, transport),
-        "subscriptionId": config["subscriptionId"], "resourceStem": config["resourceStem"],
-        "observedAtUtc": datetime.now(timezone.utc).isoformat(),
-    })
     # 第5段階: 最後にコア構築用のsecure入力を生成する。通常のazd provisionへ
     # 引き渡し、成功後またはhook失敗時にこの生成ファイルを回収する。
     verify_core_network_before_deployment(config, transport)
