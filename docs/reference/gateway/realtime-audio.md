@@ -1,10 +1,10 @@
-# Egakumi Coreの音声通信と遅延評価
+# egakumiの音声通信と遅延評価
 
-本書は現行Coreの音声経路と、遅延・品質を切り分けて確認する方法をまとめます。公開経路と接続方式の正本は [API定義](../../../apps/api-gateway/apis/)、Portalの接続・音声処理は [apps/portal](../../../apps/portal/)、モデル選択は [モデル一覧](foundry-model-catalog.md)を参照してください。過去の端末や一回の試行で観測した遅延・ポートを、全環境の保証値や必須構成として扱いません。
+本書は現行基盤の音声経路と、遅延・品質を切り分けて確認する方法をまとめます。公開経路と接続方式の正本は [API定義](../../../apps/api-gateway/apis/)、Portalの接続・音声処理は [apps/portal](../../../apps/portal/)、モデル選択は [モデル一覧](foundry-model-catalog.md)を参照してください。過去の端末や一回の試行で観測した遅延・ポートを、全環境の保証値や必須構成として扱いません。
 
 ## 現行の通信経路
 
-Coreは共通のApp Gateway・Firewall・Internal APIMと、FoundryへのPrivate Endpointを持ちます。PortalはCore内のContainer Appであり、サーバー側からサインインした利用者のBearerでGatewayへ要求します。
+基盤は共通のApp Gateway・Firewall・Internal APIMと、FoundryへのPrivate Endpointを持ちます。Portalは基盤内のContainer Appであり、サーバー側からサインインした利用者のBearerでGatewayへ要求します。
 
 | 接続 | 制御・要求の経路 | 音声の経路 |
 | --- | --- | --- |
@@ -62,7 +62,7 @@ Portalの受信PCMキュー・先読み、ミュート・割込み・履歴処�
 
 端末の社内proxy、VPN、Wi-Fi、NAT、UDP許可と実際のICE候補を確認します。サービスごとの公式条件と実測を使い、過去に見えたポートを別製品や別リージョンへ共用しません。FirewallやWAFを一律に無効化することを検証の前提にしません。
 
-Coreの共通`foundryLocation`はモデル・Speech等の接続先へ影響します。地域を変更するときは、選んだ全モデルの版・SKU・利用枠・提供容量、Voice Live/Speechの対応条件、PE・DNS・MI権限を確認します。PEを日本に作ることと、上流モデルの処理地域を日本へ移すことを混同しません。
+共通設定の`foundryLocation`はモデル・Speech等の接続先へ影響します。地域を変更するときは、選んだ全モデルの版・SKU・利用枠・提供容量、Voice Live/Speechの対応条件、PE・DNS・MI権限を確認します。PEを日本に作ることと、上流モデルの処理地域を日本へ移すことを混同しません。
 
 ## 受入
 

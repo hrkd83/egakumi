@@ -9,7 +9,7 @@
 | `tests/certificates/portal-auth-certificate-offline.ps1` | 合成RSA鍵・公開証明書をメモリー内で用意。Self・非exportable・新鍵生成方針・公開鍵対応を照合し、他鍵、disabled、private JWK、version未固定、現行版廃止を拒否。保存intentから不明POSTを再送せず再開 |
 | `tests/certificates/test_certificate_jobs.py` | 専用Jobの配備と初回実行順序、非公開イメージ、対象実行と結果の照合、開始応答不明からの再開 |
 | `tests/certificates/test_portal_auth_certificate.py` | 初期構築ではClient ID不要、登録後の入力と公開DERの照合、証明書Jobの同一操作IDでの再開、実行前の登録確認、切替・受入・旧証明書の削除確認 |
-| `tests/portal/test_portal_authentication_infra.py` | Bicepコンパイル、CoreとPortal本体の資源責任、専用ID、鍵scope権限、secretと証明書の設定、ジョブ・DB・Gateway既存設定 |
+| `tests/portal/test_portal_authentication_infra.py` | Bicepコンパイル、基盤とPortal本体の資源責任、専用ID、鍵scope権限、secretと証明書の設定、ジョブ・DB・Gateway既存設定 |
 | `tests/certificates/test_portal_certificate_initialization.py` | ACA Jobが保存した初期状態の読取り、必要なJobが未作成の場合の停止、明示した保護runtimeと環境の照合、排他 |
 | Portalの認証・Graphテスト | client assertionの固定宛先・thumbprint・短命性・digest署名・秘密非露出、ログインのtid/oid、Graphの本人照合、既存セッション・実行用SQL権限 |
 
@@ -19,7 +19,7 @@
 
 | 順序 | 操作・観測 | 合格条件 |
 | --- | --- | --- |
-| 1 | Portalの`authentication`を省略して`azd up`（`azd provision`でも同じCore工程） | CoreとPortalの初期Container Appが作成され、初回の公開証明書2枚を取得できる。Portalバックエンドのヘルスは本体の配備後に判定する |
+| 1 | Portalの`authentication`を省略して`azd up`（`azd provision`でも同じ基盤の構築工程） | 基盤とPortalの初期Container Appが作成され、初回の公開証明書2枚を取得できる。Portalバックエンドのヘルスは本体の配備後に判定する |
 | 2 | ACA証明書Jobの結果とKey Vault | 非公開ACRの承認済みイメージから専用Jobが実行され、Portal署名証明書の生成と終了成功を確認。Self/RSA3072/非exportable/reuse_key=false |
 | 3 | 公開証明書と保護state | `.cer`の取得、version固定keyId、thumbprint・期限と現物一致。VM/ACA/ローカルへ秘密鍵/PFXが渡らない |
 | 4 | 同じ初期構築を再実行 | 証明書のcurrentと鍵版が維持される。本体配備済みの場合は初期サンプルへ戻らない |

@@ -67,5 +67,5 @@ resource brokerKey 'Microsoft.ApiManagement/service/namedValues@2024-05-01' = {
 resource brokerBackend 'Microsoft.ApiManagement/service/backends@2024-05-01' = {
   parent: apim
   name: 'credential-broker'
-  properties: { title: 'Core credential broker', protocol: 'http', url: credentialBrokerUrl, tls: { validateCertificateChain: true, validateCertificateName: true } }
+  properties: { title: 'Credential Broker', protocol: 'http', url: credentialBrokerUrl, tls: { validateCertificateChain: true, validateCertificateName: true } }
 }

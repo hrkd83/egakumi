@@ -2,7 +2,7 @@
 
 前：[12. Portalを配備](12-deploy-portal.md) · [README](../../README.md)
 
-[Core](08-provision-core.md)、[Entra登録](09-egakumi-portal.md)、[Gateway](11-deploy-gateway.md)、[Portal](12-deploy-portal.md)の各工程で成功を確認した環境を対象にします。配備結果と実際のAPI・認証・運用の確認を、それぞれ記録します。
+[基盤](08-build-infra.md)、[Entra登録](09-egakumi-portal.md)、[Gateway](11-deploy-gateway.md)、[Portal](12-deploy-portal.md)の各工程で成功を確認した環境を対象にします。配備結果と実際のAPI・認証・運用の確認を、それぞれ記録します。
 
 ## 配備結果・公開DNS・TLS
 

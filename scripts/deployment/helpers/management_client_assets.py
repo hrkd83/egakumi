@@ -76,14 +76,14 @@ def management_client_inventory(config, state):
     """旧stateを推定で補わず、今回の構築出力と一致した内部inventoryだけを返す。"""
     if (not isinstance(state, dict) or any(state.get(key) != config[key]
             for key in ('subscriptionId', 'azureTenantId', 'resourceStem'))):
-        raise ValueError('Management client Core state differs from the selected configuration')
+        raise ValueError('The management client deployment state differs from the selected configuration')
     value = state.get('outputs', {}).get('managementClientInventory')
     if not isinstance(value, dict) or not value:
-        raise ValueError('Current Core management client inventory is required; complete the Core deployment')
+        raise ValueError('The management client inventory is required. Complete infrastructure deployment')
     try:
         value = deepcopy(validate_inventory(value))
     except (ValueError, RuntimeError, TypeError, KeyError):
-        raise ValueError('The constructed Core management client inventory is invalid') from None
+        raise ValueError('The provisioned management client inventory is invalid') from None
     vm = ('/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['maint']
           + '/providers/Microsoft.Compute/virtualMachines/vm-' + config['resourceStem'] + '-mgmt')
     if (value['subscriptionId'] != config['subscriptionId'] or value['azureTenantId'] != config['azureTenantId']
@@ -118,7 +118,7 @@ def management_client_inventory(config, state):
             or str(monitoring.get('workspaceId', '')).casefold() != value['workspace']['id'].casefold()
             or monitoring.get('workspaceCustomerId') != value['workspace']['customerId']
             or not isinstance(storage.get('containerIds'), list)):
-        raise ValueError('Management client identity and monitoring targets require their matching constructed Core outputs')
+        raise ValueError('Management client identity and monitoring targets require matching infrastructure deployment outputs')
     expected_accounts = {}
     for collector, suffix in (('collectJapan', 'jp'), ('collectFoundry', 'us')):
         account_id = monitor + 'Microsoft.Storage/storageAccounts/st' + config['resourceStem'].replace('-', '') + suffix

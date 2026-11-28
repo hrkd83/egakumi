@@ -310,8 +310,8 @@
         "versionUpgradeOption": "NoAutoUpgrade"
       }
     ],
-    "projectDisplayName": "core-platform",
-    "projectDescription": "Core platform project for shared model, agent, and tool capabilities.",
+    "projectDisplayName": "egakumi",
+    "projectDescription": "Shared project for model, agent, and tool capabilities.",
     "speechEnabled": true,
     "grantApimFoundryModelsAccess": true
   },

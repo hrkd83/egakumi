@@ -4,21 +4,21 @@
 
 PortalはMicrosoft Entraでサインインし、Model GatewayとTool Gatewayを本人の `Gateway.Invoke` アクセストークンで試す画面です。Microsoft Graphの本人プロフィールはGatewayからBrokerのOBOを通じて取得します。例外発行の購読キーについては[APIMの購読運用](../operations/access-and-keys.md)を参照してください。
 
-## CoreとPortal配備の分担
+## 基盤とPortal配備の分担
 
 | 工程 | 作成・更新するもの |
 | --- | --- |
-| [Core構築](08-provision-core.md) | 共通SQLサーバーとPrivate Endpoint、ACR、Container Apps環境、初期Container App、Portalの実行IDと認証用公開証明書 |
+| [基盤構築](08-build-infra.md) | 共通SQLサーバーとPrivate Endpoint、ACR、Container Apps環境、初期Container App、Portalの実行IDと認証用公開証明書 |
 | [Entra登録](09-egakumi-portal.md)と[Gateway配備](11-deploy-gateway.md) | Portalの専用アプリ登録・証明書と委任の設定、APIMのAPIとポリシー、Brokerの配備 |
 | Portal配備 | PortalのSQLデータベース、SQL初期化ジョブ、認証と試用に必要なKey Vault参照、Gateway宛のFirewall許可、PortalのContainer App |
 
-Coreが作る初期Container AppにはMicrosoftの初期イメージが載ります。公開App Gatewayが使うHTTPSプローブは `/api/health` のHTTP 200を要求するため、Portal本体の配備まではバックエンドが異常と判定されます。
+基盤が作る初期Container AppにはMicrosoftの初期イメージが載ります。公開App Gatewayが使うHTTPSプローブは `/api/health` のHTTP 200を要求するため、Portal本体の配備まではバックエンドが異常と判定されます。
 
 実装は [apps/portal](../../apps/portal/) にあり、[deploy](../../apps/portal/deploy/) にBicepとビルド処理、[sql](../../apps/portal/sql/) にSQLマイグレーションがあります。端末とCIは同じ [deploy_portal.py](../../scripts/deployment/deploy_portal.py) を使います。
 
 ## 配備する
 
-Core、Entra登録、Gateway配備が完了したら、同じ環境の保護paramsと `.local/<environment>/state/latest.json` を使います。設定するEntra値と証明書については[第09章](09-egakumi-portal.md)を参照してください。
+基盤、Entra登録、Gateway配備が完了したら、同じ環境の保護paramsと `.local/<environment>/state/latest.json` を使います。設定するEntra値と証明書については[第09章](09-egakumi-portal.md)を参照してください。
 
 対象Azure環境へログインし、Python 3.11以上とBicep CLIを使える端末で、リポジトリのルートから計画を確認して実行します。
 
@@ -32,7 +32,7 @@ python3 -B scripts/deployment/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --
 3. 認証コールバックのWAF設定、Portalサブネットから公開GatewayへのHTTPS許可、Key VaultとマネージドIDの設定を配備し、Portal本体をdigest指定のイメージへ更新します。
 4. Portalの正常なリビジョン、App GatewayのHTTPSバックエンドとプローブ、公開 `/api/health` を確認します。Container Appsの `/api/health/ready` はSQLを検査し、配備コマンドは公開 `/api/health/api-auth` でSQLと試用の暗号鍵を確認します。
 
-終了コード `0` と今回の配備に対応する `.local/<environment>/state/portal-deployment.json` の `status: deployed`、`publicHealthVerified: true` を確認します。途中で失敗した場合は、同じ環境の入力でPortal配備を再試行できます。別の完了済みCore記録を使う場合は `--state-file` または `--deployment-name`、既存イメージを使う場合は `--image-digest sha256:<digest>` を指定します。
+終了コード `0` と今回の配備に対応する `.local/<environment>/state/portal-deployment.json` の `status: deployed`、`publicHealthVerified: true` を確認します。途中で失敗した場合は、同じ環境の入力でPortal配備を再試行できます。別の完了済みの基盤の配備記録を使う場合は `--state-file` または `--deployment-name`、既存イメージを使う場合は `--image-digest sha256:<digest>` を指定します。
 
 ## 認証と保存データ
 

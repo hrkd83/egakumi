@@ -25,7 +25,7 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 公開クライアントの初期IPv4範囲は`0.0.0.0/0`固定。サービス・タグはAzureが管理する範囲であり、
 そのサービスへの認証・認可を意味しない。同じタグを使う複数の用途は説明で区別する。
 
-企業のIP制限、独自DNS、ハブ＆スポーク、管理VMのSSH接続元は、Core構築後に環境ごとの要件に合わせてAzureポータルで設定する。 [企業ネットワークとの接続](../setup/10-hub-spoke.md) · [管理VMへの本人接続](management-vm-access.md)
+企業のIP制限、独自DNS、ハブ＆スポーク、管理VMのSSH接続元は、基盤構築後に環境ごとの要件に合わせてAzureポータルで設定する。 [企業ネットワークとの接続](../setup/10-hub-spoke.md) · [管理VMへの本人接続](management-vm-access.md)
 
 | Bicep | 定義区間 |
 | --- | --- |
@@ -254,7 +254,7 @@ Network Isolationの例外をSKU名だけで適用しない。
 ACAの公開HTTPSは、NSGの`Internet`タグ宛TCP443とFirewallの宛先制御を組み合わせる。
 基盤パッケージ配布のCDNを個別サービスタグで網羅できないため、固定の`0.0.0.0/0` UDRで構築Firewallへ転送し、
 Firewallの許可条件に一致しない通信はそこで拒否する。ACAサブネットの既定送信アクセスとルート表のBGP伝搬は無効にする。
-CoreとNSG限定配備は、既存の関連付けと経路を検査し、Firewallを迂回できる設定を検出した場合は停止する。
+基盤とNSG限定配備は、既存の関連付けと経路を検査し、Firewallを迂回できる設定を検出した場合は停止する。
 ACRのログイン・専用データエンドポイントにはPrivate Endpointの全IP、共有SQLにはProxy接続のTCP1433を使う。
 [ACAのFirewall要件](https://learn.microsoft.com/en-us/azure/container-apps/use-azure-firewall) · [ACRのデータエンドポイント](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-firewall-rules#allow-access-to-rest-and-data-endpoints)
 
@@ -268,7 +268,7 @@ DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と�
 
 ## 新規構築と構築の再開
 
-新規構築は同じ固定Bicepと[正式構築手順](../setup/08-provision-core.md)を使う。
+新規構築は同じ固定Bicepと[正式構築手順](../setup/08-build-infra.md)を使う。
 同じNSGの子ルールへの書込は、`batchSize(1)`と`dependsOn`で直列化する。
 モジュールは`network → networkBindings → portalNetwork → portal → portalNetworkBindings → credentialNetwork`の
 順で実行し、各モジュール内でも同じNSGを更新する子ルールに依存関係を置く。
@@ -276,4 +276,4 @@ ACAの末尾Denyは、共有SQL向けNSG許可と所有Firewall規則が完了�
 既存NSGの親は再PUTせず、タグは専用Tags API、ルールは子リソースで更新する。
 この順序と固定ルールの全条件をコンパイル済み資材で確認し、新規構築と再適用で同じ定義を使う。
 
-構築を再開する場合、`azd up`のCore配備前に、作成済みNSGの規則名と条件を現行の定義と照合する。各規則の照合に必要な割当IPとPrivate Endpointだけを読み取るため、後続資源の未作成は許容する。現行定義にない規則や、優先度・ポート・アドレスが異なる規則を検知した場合は、規則に変更を加えず停止する。Core配備後は、全規則・関連付け・実IPを読み戻して一致を確認する。
+構築を再開する場合、`azd up`の基盤配備前に、作成済みNSGの規則名と条件を現行の定義と照合する。各規則の照合に必要な割当IPとPrivate Endpointだけを読み取るため、後続資源の未作成は許容する。現行定義にない規則や、優先度・ポート・アドレスが異なる規則を検知した場合は、規則に変更を加えず停止する。基盤配備後は、全規則・関連付け・実IPを読み戻して一致を確認する。

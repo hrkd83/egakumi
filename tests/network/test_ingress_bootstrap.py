@@ -213,7 +213,7 @@ class IngressBootstrapTests(unittest.TestCase):
         self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET", "POST", "GET"])
 
     def test_empty_public_array_prepares_standard_document_signing_before_metadata_exists(self):
-        """Coreが公開APIをまだ展開していなくても、標準文書APIの鍵は必要になる。"""
+        """公開APIを配備する前の基盤構築で、標準文書APIの鍵が必要になる。"""
         self.config.pop("infrastructureApiDefinitions")
         self.assertEqual(self.config["apiDefinitions"], [])
         self.assertNotIn("infrastructureApiDefinitions", self.config)

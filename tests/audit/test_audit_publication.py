@@ -247,7 +247,7 @@ class AuditPublicationTests(unittest.TestCase):
      operation['urlTemplate']='/chat/completions'
      constraint.update(kind='bodyModel',outputTokenParameter='max_completion_tokens')
     api=configuration.normalize_configuration(raw,base_directory=CORE/'infra/config')['apiDefinitions'][0]
-    # 公開fixtureと同じく、Core接続先だけ独立した合成URLへ解決します。
+    # 公開fixtureと同じく、基盤の接続先だけ独立した合成URLへ解決します。
     api.setdefault('backendUrl','https://backend.example.invalid')
     api['operations'][0]['backendOverride'].setdefault('backendUrl','https://backend.example.invalid')
     self.parameters['apiDefinitions']=[api]

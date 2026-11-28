@@ -1,6 +1,6 @@
 # egakumi AI Gateway Portal
 
-EgakumiのAIモデルとツールAPIのガイドを確認し、Microsoft Entraでサインインした本人のBearerトークンで試用できます。
+egakumiのAIモデルとツールAPIのガイドを確認し、Microsoft Entraでサインインした本人のBearerトークンで試用できます。
 
 ## できること
 
@@ -47,7 +47,7 @@ PortalへのサインインとGateway APIの試用を別の認証取引として
 
 ## Azureへ導入・更新する
 
-新規導入はCore、Entraの公開証明書登録、Gateway、Portalの順です。Portal配備では管理VMでイメージを作り、SQL初期化ジョブの完了後に認証と試用のContainer Appを配備します。[Portal配備手順](../../docs/setup/12-deploy-portal.md)
+新規導入は基盤、Entraの公開証明書登録、Gateway、Portalの順です。Portal配備では管理VMでイメージを作り、SQL初期化ジョブの完了後に認証と試用のContainer Appを配備します。[Portal配備手順](../../docs/setup/12-deploy-portal.md)
 
 更新・再試行は構築に使用したparamsとstateで、リポジトリのルートから計画を確認して実行します。
 

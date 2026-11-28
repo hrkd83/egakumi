@@ -313,7 +313,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
         self.exercise_prepared_core_hook(existing_secret=True)
 
     def exercise_prepared_core_hook(self, *, existing_secret=False):
-        """証明書登録前の初回Coreで秘密を準備し、最初のAzure操作直前で停止する。"""
+        """証明書登録前の初回基盤構築で秘密を準備し、最初のAzure操作直前で停止する。"""
         source = self.clone_public_inputs()
         params = json.loads(source.read_text())
         params["gateway"]["authentication"]["entra"].pop("obo")

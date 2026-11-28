@@ -163,7 +163,7 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
         path = self.paths.state / "latest.json"
         lifecycle.protected_json(path, {**self.state, 'resourceStem': 'another-environment'})
         before = path.read_bytes()
-        with self.assertRaisesRegex(lifecycle.DeploymentError, 'different Core environment'):
+        with self.assertRaisesRegex(lifecycle.DeploymentError, 'different infrastructure environment'):
             lifecycle._save_deployment_state(self.config, self.outputs())
         self.assertEqual(path.read_bytes(), before)
 

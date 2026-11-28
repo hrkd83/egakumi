@@ -12,7 +12,7 @@ Azure Portalでユーザー割り当てマネージドIDを先に作成し、そ
 | --- | --- | --- |
 | ID作成先のSubscription | `<IDENTITY_SUBSCRIPTION>` | IDを作成・保持するSubscription |
 | ID作成先のSubscription ID | `<IDENTITY_SUBSCRIPTION_ID>` | IDのリソースIDに含まれるSubscriptionのGUID |
-| IDの作成先RG | `<IDENTITY_RESOURCE_GROUP>` | Coreの構築・撤去対象RGとは別にIDを保持 |
+| IDの作成先RG | `<IDENTITY_RESOURCE_GROUP>` | 基盤の構築・撤去対象RGとは別にIDを保持 |
 | マネージドID名 | `<DNS_MANAGED_IDENTITY_NAME>` | 公開TLS Jobへ紐づけるユーザー割り当てID |
 | IDのリージョン | `<IDENTITY_LOCATION>` | IDの配置リージョン |
 | DNS側のSubscription | `<DNS_SUBSCRIPTION>` | 公開DNSゾーンを保持するSubscription |
@@ -110,7 +110,7 @@ DNSゾーンを別Subscriptionに置いている場合、paramsへ設定するDN
 
 ## 5. 構築前にparamsへ設定する
 
-次の[params](07-params.md)で、環境別の`.local/<environment>/params.local.json`に次の2項目を設定します。その後に[Core構築](08-provision-core.md)へ進みます。
+次の[params](07-params.md)で、環境別の`.local/<environment>/params.local.json`に次の2項目を設定します。その後に[基盤構築](08-build-infra.md)へ進みます。
 
 | paramsへ設定する項目 | 確認する値 |
 | --- | --- |
@@ -119,7 +119,7 @@ DNSゾーンを別Subscriptionに置いている場合、paramsへ設定するDN
 
 設定先は`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`です。`azd up`では準備済みの参照を検査し、不足・不正があれば構築前に停止します。
 
-構築資材は初回発行の前に指定したIDを公開TLS Jobへ紐づけます。初回取得・定期更新ではそのIDでDNSのTXTを作成し、認証後に該当の検証値を回収します。公開TLS用Key VaultへのアクセスにはJob専用の実行IDを使います。IDとDNS権限は外部の事前準備資源として維持し、Coreの`azd down`で削除する構成にはしません。
+構築資材は初回発行の前に指定したIDを公開TLS Jobへ紐づけます。初回取得・定期更新ではそのIDでDNSのTXTを作成し、認証後に該当の検証値を回収します。公開TLS用Key VaultへのアクセスにはJob専用の実行IDを使います。IDとDNS権限は外部の事前準備資源として維持し、基盤の`azd down`で削除する構成にはしません。
 
 入力の形式検査やロール割り当ての登録確認は、実際の証明書発行・更新の成功確認とは別です。構築後の証明書・更新timerの確認は[運用手順](../operations/README.md)を参照してください。
 

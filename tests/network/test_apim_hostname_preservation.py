@@ -238,7 +238,7 @@ class ApimHostnameBicepTests(unittest.TestCase):
                              or resource["type"] == "Microsoft.ApiManagement/service/policies"
                              for resource in nested_resources))
         # The deferred AppGW deployment must use the observed APIM host,
-        # which is exported by the Core that owns the APIM service PUT.
+        # which is exported by the infrastructure template that owns the APIM service PUT.
         gateway_plan = template["outputs"]["gatewayPlan"]["value"]
         self.assertIn("'apimHostName'", gateway_plan)
         self.assertIn(".outputs.apimGatewayHost.value", gateway_plan)

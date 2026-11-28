@@ -323,7 +323,7 @@ class ApiPublicationSizeTests(unittest.TestCase):
         dedicated = [product for product in products if product["name"].endswith("/core-entra-model-users")]
         self.assertEqual(len(dedicated), 1)
         self.assertEqual(dedicated[0]["properties"], {
-            "displayName": "Core Entra model users", "description": "core-owned-entra-model-users-v1",
+            "displayName": "Entra model users", "description": "core-owned-entra-model-users-v1",
             "subscriptionRequired": False, "state": "notPublished"})
         protected = [product for product in products if product not in dedicated]
         self.assertTrue(protected)

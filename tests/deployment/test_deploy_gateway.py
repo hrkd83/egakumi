@@ -93,7 +93,7 @@ class GatewayDeploymentTests(unittest.TestCase):
                 'keyUrl': key_url, 'certificateThumbprint': 'A' * 43,
             })
             for wrong_url in (key_url.rsplit('/', 1)[0], key_url.replace('gateway-obo', 'portal-auth'), key_url + '?other=value'):
-                with self.subTest(wrong_url=wrong_url), self.assertRaisesRegex(ValueError, 'selected Core vault'):
+                with self.subTest(wrong_url=wrong_url), self.assertRaisesRegex(ValueError, 'selected infrastructure vault'):
                     entra['obo']['keyId'] = wrong_url
                     gateway_obo_settings(config, workspace)
 
@@ -171,7 +171,7 @@ class GatewayDeploymentTests(unittest.TestCase):
             config["publishApis"]=True
             state["outputs"]["ingressSecrets"][field]=value
             with self.subTest(field=field),self.isolated_cli(config,state) as (arguments,observed):
-                with self.assertRaisesRegex(ValueError,"update the Core"): gateway.main(arguments)
+                with self.assertRaisesRegex(ValueError,"Deploy the infrastructure"): gateway.main(arguments)
                 for boundary in ("source_bundle","run_json","transport","build_image","deploy_release","publication_plan"):
                     observed[boundary].assert_not_called()
 

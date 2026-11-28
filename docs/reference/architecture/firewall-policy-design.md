@@ -177,7 +177,7 @@ TLS検査によるURLの記録は、取り込み前の変換を通るLog Analyti
 | 判断ID | 判断・採用理由 | 影響範囲 |
 | --- | --- | --- |
 | `FW-D01` | Firewallを通過する通信だけを登録する。将来の経路変更用やNSG通信の記録目的だけではFW許可を作らない | Broker内部VIPとSQL／Key Vault PEへのVNet内の直接通信は、NSGとサービス認可で制御 |
-| `FW-D02` | 配備する機能ごとに資材で規則を管理する | Brokerは接続プロファイルの件数にかかわらず配備。証明書Jobの規則もCoreで配備 |
+| `FW-D02` | 配備する機能ごとに資材で規則を管理する | Brokerは接続プロファイルの件数にかかわらず配備。証明書Jobの規則も基盤で配備 |
 | `FW-D04` | AppGWからAPIM／ACAへTLS検査付きHTTPS443 | Firewallは検査後に再暗号化し、対向NSGはFirewallの送信元を許可する |
 | `FW-D05` | APIM NTPはAPIMサブネット・UDP123・宛先`*`を維持し、管理VMはホストPHCを使う | APIMはDNS回答差を回避するNSG328と組み合わせる。管理VMのPHC／VMBusは仮想ホストからの非IP連携 |
 | `FW-D06` | 同じHTTPSでもEntra／ARM／Monitor／build等の用途を規則名で分離する | 同じタグやNetwork RuleとApplication Ruleの重複を明記し、特定の後段規則hitは保証しない |

@@ -11,7 +11,7 @@ def maintenance_metadata(subscription_id):
 
 
 def client_inventory(config):
-    """Core資材の実出力に相当する独立した合成inventory。"""
+    """基盤の配備出力に相当する独立した合成inventory。"""
     base = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/'
     service = base + config['resourceGroupNames']['svc'] + '/providers/'
     monitor = base + config['resourceGroupNames']['monitor'] + '/providers/'
@@ -31,7 +31,7 @@ def client_inventory(config):
 
 
 def client_core_outputs(config):
-    """inventoryと同じ構築資源を返す、監視/VM/監査の合成Core出力。"""
+    """inventoryと同じ構築資源を返す、監視・VM・監査の合成配備出力。"""
     inventory = client_inventory(config)
     accounts = inventory['auditStorage']
     broker = inventory['environments'][1]

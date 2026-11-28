@@ -2,11 +2,11 @@
 
 前：[04. egakumi-credentialの登録](04-entra-credential.md) · [README](../../README.md) · 次：[06. DNS用マネージドIDの準備](06-dns-identity.md)
 
-Gateway・Portalの公開名を管理するAzure Public DNSゾーンと、証明書の発行・自動更新に使うユーザー割り当てマネージドID（UAMI）を事前に用意します。CoreのIaCは、この公開ゾーン・DNS用ID・DNS側のロール割り当てを作成しません。
+Gateway・Portalの公開名を管理するAzure Public DNSゾーンと、証明書の発行・自動更新に使うユーザー割り当てマネージドID（UAMI）を事前に用意します。基盤のIaCは、この公開ゾーン・DNS用ID・DNS側のロール割り当てを作成しません。
 
 証明書はAzure Public DNSでDNS-01認証を行い、専用ACAの公開TLS JobがDNS用UAMIで取得・更新します。
 
-公開ゾーン・ドメイン・DNS用IDはCoreとは独立した前提資源です。既存資源は対象と権限を照合して再利用します。新規に準備する場合はDNS担当者が費用・保持条件を確認します。これらはCoreの`azd down`では削除しません。
+公開ゾーン・ドメイン・DNS用IDは基盤とは独立した前提資源です。既存資源は対象と権限を照合して再利用します。新規に準備する場合はDNS担当者が費用・保持条件を確認します。これらは基盤の`azd down`では削除しません。
 
 ## 1. 公開名を決める
 
@@ -41,7 +41,7 @@ Gateway・Portalの公開名を管理するAzure Public DNSゾーンと、証明
 | NS | 構築前にDNS担当者が委任 | 対象ゾーンへの問い合わせをAzureへ届ける |
 | Entra所有確認TXT | Entraのドメイン確認で必要な場合 | テナントのドメイン所有確認。証明書処理では削除しない |
 | `_acme-challenge`のTXT | 証明書の取得・更新時に公開TLS Jobが自動作成・回収 | DNS-01認証 |
-| Gateway・PortalのAエイリアス | CoreのAppGW Public IP作成後にhookが設定 | 対象環境の公開入口へ接続 |
+| Gateway・PortalのAエイリアス | 基盤のAppGW Public IP作成後にhookが設定 | 対象環境の公開入口へ接続 |
 
 DNS-01はTXTで検証するため、AレコードをAppGWへ向ける前でも証明書を取得できます。config側でAzure提供DNSに固定する、VNetやFirewallの名前解決とは別の準備です。
 
@@ -49,9 +49,9 @@ DNS-01はTXTで検証するため、AレコードをAppGWへ向ける前でも�
 
 [Azure DNS用マネージドIDの事前手順](06-dns-identity.md)に従い、次を準備します。
 
-1. Coreの構築・撤去対象とは別のRGに、DNS用UAMIを作成します。DNSと証明書用ACA Jobで同じEntraテナントを使います。
+1. 基盤の構築・撤去対象とは別のRGに、DNS用UAMIを作成します。DNSと証明書用ACA Jobで同じEntraテナントを使います。
 2. 公開ゾーンがあるDNS専用RGで、UAMIへ組み込みの**DNS Zone Contributor**を付与します。このロールはRG内の全公開ゾーンとTXT以外のレコード編集にも及ぶため、対象スコープを確認します。
-3. Core構築実行者がACA Jobを作成・更新し、既存UAMIを割り当てられることを確認します。ID側の権限例は**Managed Identity Operator**です。
+3. 基盤構築実行者がACA Jobを作成・更新し、既存UAMIを割り当てられることを確認します。ID側の権限例は**Managed Identity Operator**です。
 4. DNS側Subscription IDと、UAMIの完全なリソースIDを控え、構築前にparamsへ記入します。UAMIのClient IDやObject IDを指定する欄ではありません。
 
 | 控える値 | paramsの保存先 |
@@ -59,11 +59,11 @@ DNS-01はTXTで検証するため、AレコードをAppGWへ向ける前でも�
 | `<DNS_SUBSCRIPTION_ID>` | `certificate.azureDnsSubscriptionId` |
 | `<DNS_MANAGED_IDENTITY_RESOURCE_ID>` | `certificate.azureDnsManagedIdentityResourceId` |
 
-Coreは事前作成したUAMIを証明書用ACA Jobへ割り当てます。JobはそのIDを指定してAzure DNSを更新し、用途別の実行IDでKey Vaultへアクセスします。DNS用のアプリ登録やclient secretは不要です。
+基盤は事前作成したUAMIを証明書用ACA Jobへ割り当てます。JobはそのIDを指定してAzure DNSを更新し、用途別の実行IDでKey Vaultへアクセスします。DNS用のアプリ登録やclient secretは不要です。
 
 ## 4. 基盤構築に渡す入力を確認する
 
-[第07章](07-params.md)でparamsを完成させ、[第08章](08-provision-core.md)で`azd up`を実行します。証明書modeはconfigの`dnsPlugin`、DNS-01プラグインは資材固定のAzureです。公開plugin・domainNames入力は空でも拒否し、DNS名はGateway／Portal公開名から生成します。
+[第07章](07-params.md)でparamsを完成させ、[第08章](08-build-infra.md)で`azd up`を実行します。証明書modeはconfigの`dnsPlugin`、DNS-01プラグインは資材固定のAzureです。公開plugin・domainNames入力は空でも拒否し、DNS名はGateway／Portal公開名から生成します。
 
 DNS側Subscription IDとUAMIのリソースIDは、[07. params](07-params.md)で環境別paramsへ必ず事前設定します。`azd up`では準備済みの参照を検査し、不足・不正があれば構築前に停止します。
 
@@ -77,7 +77,7 @@ CM用Entraアプリのclient secretが必要な構成では、その秘密入力
 
 `postprovision`は、公開ホスト名に最も長く一致するAzure DNSゾーンを探し、Gateway・PortalのAエイリアスを対象環境のAppGW Public IPリソースへ接続します。構築実行者には、ゾーンの読取とAレコード編集の権限が必要です。既存TTL・メタデータは保持し、別サービスを参照するレコードや同名CNAMEがあれば停止します。結果は`.local/<environment>/state/public-dns.json`へ保存します。
 
-Core完了後は公開DNS、ブラウザーからのTLS接続、証明書のSAN・期限、公開TLS Jobの実行履歴を確認します。Portalの画面とヘルスは本体配備後に確認します。 [初回構築の受入](13-verify-deployment.md)
+基盤構築の完了後は公開DNS、ブラウザーからのTLS接続、証明書のSAN・期限、公開TLS Jobの実行履歴を確認します。Portalの画面とヘルスは本体配備後に確認します。 [初回構築の受入](13-verify-deployment.md)
 
 標準configは12時間ごとに確認し、残日数30日以内で更新します。UAMIの存続、公開TLS Jobへの関連付け、DNS権限、専用ACA環境からDNS API・Key Vaultへの接続を維持してください。証明書の更新と、AppGWが公開ホストごとに返す証明書の反映は別々に確認します。 [運用手順](../operations/secrets-and-certificates.md#dns用マネージドidと権限を更新する)
 
@@ -87,4 +87,4 @@ Core完了後は公開DNS、ブラウザーからのTLS接続、証明書のSAN�
 - Gateway・Portalの公開名、SAN、ACME連絡先を決めた。
 - DNS用UAMI、DNS側のロール、構築実行者のID割り当て・Aレコード編集権限を準備した。
 - DNS側Subscription IDとUAMIのリソースIDを、構築前に環境別paramsへ設定できる。
-- 公開ゾーン・DNS用IDをCoreの`azd down`後も保持する方針を確認した。
+- 公開ゾーン・DNS用IDを基盤の`azd down`後も保持する方針を確認した。

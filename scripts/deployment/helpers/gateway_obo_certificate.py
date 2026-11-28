@@ -43,7 +43,7 @@ def deployment_settings(config, workspace):
     else:
         state = workspace.checked(workspace.state / 'gateway-obo-certificate.json')
         if not state.is_file():
-            raise ValueError('Complete Core and register the Gateway OBO public certificate before deploying Gateway')
+            raise ValueError('Complete infrastructure deployment and register the Gateway OBO public certificate before deploying Gateway')
         check_private_permissions(state)
         record = json.loads(state.read_text(encoding='utf-8'))
         binding = {**owner(config), 'apiClientId': entra['audience']}
@@ -54,7 +54,7 @@ def deployment_settings(config, workspace):
         fingerprint = hashlib.sha256(base64.b64decode(cert['publicCertificate'], validate=True)).digest()
     expected = application_vault_origin(config["resourceStem"]) + f"/keys/{CERTIFICATE_NAME}/"
     if not re.fullmatch(re.escape(expected) + r'[a-f0-9]{32}', key_url) or len(fingerprint) != 32:
-        raise ValueError('Gateway OBO requires the fixed signing key of the selected Core vault')
+        raise ValueError('Gateway OBO requires the fixed signing key of the selected infrastructure vault')
     return {'tenantId': config['entraTenantId'], 'clientId': entra['audience'], 'keyUrl': key_url,
             'certificateThumbprint': base64.urlsafe_b64encode(fingerprint).decode('ascii').rstrip('=')}
 

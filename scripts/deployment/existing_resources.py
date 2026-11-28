@@ -1,4 +1,4 @@
-"""Coreの再実行で保持するネットワーク・APIM・Portalの既存設定を読み取る。"""
+"""基盤の再配備で保持するネットワーク・APIM・Portalの既存設定を読み取る。"""
 from __future__ import annotations
 
 import copy
@@ -33,7 +33,7 @@ def discover_existing_network_security_groups(config: dict, transport: ArmTransp
         name = f"nsg-{config['resourceStem']}-{suffix}"
         resource_id = prefix + name
         response = transport.request("GET", resource_id + "?api-version=2025-01-01")
-        body = require_success(response, "Read existing core network security group", allowed=(200, 404))
+        body = require_success(response, "Read existing network security group", allowed=(200, 404))
         if response["statusCode"] == 404:
             continue
         tags = body.get("tags") if isinstance(body, dict) else None
@@ -68,7 +68,7 @@ def discover_existing_route_table_routes(config: dict, transport: ArmTransport) 
         name = f"rt-{config['resourceStem']}-{suffix}"
         resource_id = prefix + name
         response = transport.request("GET", resource_id + "?api-version=2025-01-01")
-        body = require_success(response, "Read existing core route table", allowed=(200, 404))
+        body = require_success(response, "Read existing route table", allowed=(200, 404))
         if response["statusCode"] == 404:
             existing[name] = []
             continue
@@ -228,7 +228,7 @@ def discover_existing_apim_hostnames(config: dict, transport: ArmTransport, *, c
     prefix = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/"
               f"{config['resourceGroupNames']['svc']}/providers/Microsoft.ApiManagement/service")
     listed = transport.request("GET", prefix + "?api-version=2024-05-01")
-    inventory = require_success(listed, "Read existing core API Management inventory", allowed=(200, 404))
+    inventory = require_success(listed, "Read existing API Management inventory", allowed=(200, 404))
     if listed["statusCode"] == 404:
         return {}
     if not isinstance(inventory, dict) or not isinstance(inventory.get("value"), list) or inventory.get("nextLink"):

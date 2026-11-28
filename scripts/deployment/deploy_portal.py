@@ -58,22 +58,22 @@ def deployment_inputs(config, state, image_digest=None, *, workspace=None):
         raise ValueError('Use an immutable sha256 image digest')
     if (any(state.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem'))
             or state.get('apimInstanceId') != apim_instance_id(config)):
-        raise ValueError('Core deployment state differs from the selected configuration')
+        raise ValueError('Infrastructure deployment state differs from the selected configuration')
     stem = config['resourceStem']
     outputs = state.get('outputs', {})
     if not isinstance(outputs, dict):
-        raise ValueError('Current Core deployment outputs are required')
+        raise ValueError('Current infrastructure deployment outputs are required')
     if outputs.get('names', {}).get('apim') != apim_name(config):
-        raise ValueError('Core APIM name differs from the selected construction instance')
+        raise ValueError('The provisioned APIM name differs from the selected construction instance')
     gateway = outputs.get('gateway')
     if (not isinstance(gateway, dict)
             or not isinstance(gateway.get('publicUrl'), str) or not gateway['publicUrl']):
-        raise ValueError('Current Core Gateway public URL output is required')
+        raise ValueError('The current Gateway public URL output is required')
     # load_configurationで検証済みの公開ホストと正式出力を厳密に照合します。
     # 別ホストやポート・パス等を持つURLを補完・正規化して配備を続けません。
     gateway_origin = 'https://' + config['gateway']['publicHostName']
     if gateway['publicUrl'] != gateway_origin:
-        raise ValueError('Core Gateway public URL differs from the selected configuration')
+        raise ValueError('The provisioned Gateway public URL differs from the selected configuration')
     portal = outputs.get('portal', {})
     svc = group_scope(config) + '/providers/'
     identities = f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['id']}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/"
@@ -101,7 +101,7 @@ def deployment_inputs(config, state, image_digest=None, *, workspace=None):
     if not authentication or not all(authentication.get(key) for key in ('tenantId', 'clientId', 'keyId', 'certificateThumbprint')):
         raise ValueError('Complete the dedicated Portal Entra registration and load the issued certificate state before deploying')
     if not authentication['keyId'].startswith('https://' + f'kv-{stem}.vault.azure.net/keys/'):
-        raise ValueError('Portal authentication key must belong to the selected Core vault')
+        raise ValueError('Portal authentication key must belong to the selected infrastructure vault')
     auth_identity = portal.get('authIdentity')
     if not isinstance(auth_identity, dict) or str(auth_identity.get('id', '')).lower() != (identities + f'id-{stem}-portal-auth').lower():
         raise ValueError('The dedicated authentication identity is missing from the initial foundation')
@@ -117,7 +117,7 @@ def deployment_inputs(config, state, image_digest=None, *, workspace=None):
         'authentication': authentication, 'authIdentity': auth_identity,
         'apiAuthentication': api_authentication,
         'publicOrigin': 'https://' + config['portal']['publicHostName'],
-        # Core出力との一致を確認した公開ドメインを使い、共通購読キーは配備しません。
+        # 基盤の配備出力との一致を確認した公開ドメインを使い、共通購読キーは配備しません。
         'gatewayOrigin': gateway_origin,
         'networkResourceGroup': config['resourceGroupNames']['nw'],
         'portalPrefix': config['network']['subnetPrefixes']['portal'],
@@ -330,7 +330,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True)
     parser.add_argument('--state-file', type=Path)
-    parser.add_argument('--deployment-name', help='Completed Core subscription deployment, when using CI or no local state file')
+    parser.add_argument('--deployment-name', help='Completed infrastructure deployment at subscription scope, when using CI or no local state file')
     parser.add_argument('--image-digest', help='Use an already registered portal image instead of building it')
     parser.add_argument('--certificate-slot', choices=('current', 'candidate', 'previous'), default='current')
     parser.add_argument('--execute', action='store_true')
@@ -344,7 +344,7 @@ def main(argv=None):
         result = run_json(['az', 'deployment', 'sub', 'show', '--name', args.deployment_name,
             '--subscription', config['subscriptionId'], '-o', 'json'])
         if result.get('properties', {}).get('provisioningState') != 'Succeeded':
-            raise ValueError('Select a successfully completed Core deployment')
+            raise ValueError('Select a successfully completed infrastructure deployment')
         state = state_from_outputs(config,
             {key: value['value'] for key, value in result.get('properties', {}).get('outputs', {}).items()})
     else:
@@ -402,5 +402,5 @@ if __name__ == '__main__':
     try:
         raise SystemExit(main())
     except (ValueError, OSError, KeyError, DeploymentError, subprocess.SubprocessError) as error:
-        detail = str(error) if isinstance(error, (ValueError, DeploymentError)) else 'check the selected configuration and completed Core state'
+        detail = str(error) if isinstance(error, (ValueError, DeploymentError)) else 'check the selected configuration and completed infrastructure deployment state'
         raise SystemExit('Portal deployment stopped: ' + detail) from None

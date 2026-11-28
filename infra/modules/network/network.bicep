@@ -52,7 +52,7 @@ var subnetPrefixes = config.?subnetPrefixes ?? {
   portal: '10.40.3.0/26'
   broker: '10.40.3.64/26'
 }
-// The separated certificate subnet is supplied by the validated Core input.
+// The validated infrastructure input defines the dedicated certificate subnet.
 var certificateEnabled = contains(subnetPrefixes, 'certificate')
 // Initial VNet and Firewall upstream DNS use Azure-provided resolution.
 var dnsServers = []

@@ -88,7 +88,7 @@ resource brokerRegistryOut 'Microsoft.Network/networkSecurityGroups/securityRule
 }
 
 resource policy 'Microsoft.Network/firewallPolicies@2025-01-01' existing = { name: firewallPolicyName }
-// Coreの通信規則が揃った後、Portal用の独立した規則グループを設定します。
+// 基盤の通信規則が揃った後、Portal用の独立した規則グループを設定します。
 resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-01' = {
   parent: policy
   name: 'rcg-portal'

@@ -9,7 +9,7 @@
 
 ## 正本と変更対象を決める
 
-1. 共通手順でparams・Core state・認証先・APIM識別子を照合する。
+1. 共通手順でparams・基盤の配備記録・認証先・APIM識別子を照合する。
    現在のモデル名・版・形式・SKU・容量・更新方針を保護記録へ控える。
 2. paramsの`configFile`が参照するconfig正本の`services.modelDeployments`で、
    `name`が完全一致する一件を選ぶ。モデル設定はconfigの担当項目であり、

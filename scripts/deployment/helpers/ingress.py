@@ -30,7 +30,7 @@ def require_shared_ingress(config: dict, outputs: dict) -> None:
             or applied.get("l7IngressEnabled") is not True
             or not isinstance(applied.get("publicHostName"), str)
             or applied["publicHostName"].casefold() != host.casefold()):
-        raise ValueError("The permanent HTTP(S) ingress protection must be provisioned before API publication; update the Core first")
+        raise ValueError("Deploy the infrastructure before API publication to provision permanent HTTP(S) ingress protection")
 
 
 def realtime_enabled(config: dict) -> bool:
@@ -44,7 +44,7 @@ def owner_ticket_enabled(config: dict) -> bool:
     """Realtimeまたは文書ジョブの所有者を署名で確認する機能の有無を読む。"""
     definitions = config.get("infrastructureApiDefinitions")
     if definitions is None:
-        # 空の公開API配列は標準APIの後続公開を意味します。CoreのBicep入力と
+        # 空の公開API配列は標準APIの後続公開を意味します。基盤のBicep入力と
         # 同じ正本から文書機能を調べ、公開前の鍵準備を漏らしません。
         from catalog.standard_apis import infrastructure_api_definitions
         definitions = infrastructure_api_definitions(config.get("apiDefinitions", []))
@@ -342,7 +342,7 @@ def verify_endpoint(config: dict, outputs: dict, transport, *, sleep=time.sleep,
                     "trustBoundary": "AppGW HTTP(S) rewrite and APIM ingress validation"}
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise ValueError("API Management endpoint/HTTP2 readback is still pending; verify the Core deployment")
+            raise ValueError("API Management endpoint and HTTP/2 readback is still pending. Verify the infrastructure deployment")
         sleep(min(10, remaining))
 
 

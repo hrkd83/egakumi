@@ -110,12 +110,12 @@ class OperationContext:
 
     @property
     def state_path(self) -> Path:
-        """現在のCore配備記録の場所を返す。"""
+        """現在の基盤の配備記録の場所を返す。"""
         return self.workspace.state / "latest.json"
 
     @classmethod
     def load(cls, config_path: str | Path, *, runtime_root: str | Path | None = None) -> OperationContext:
-        """保護入力とCore stateを照合する。Azure通信・入力の上書きはしない。"""
+        """保護入力と基盤の配備記録をローカルで照合する。"""
         try:
             config = load_configuration(config_path)
             # An isolated source checkout may use another explicitly selected
@@ -138,7 +138,7 @@ class OperationContext:
                 raise ValueError("The selected APIM instance differs")
             return cls(checked, config, state, workspace)
         except (CleanupError, ValueError, OSError, KeyError, TypeError):
-            raise OperationError("Check the selected protected inputs and Core state") from None
+            raise OperationError("Check the selected protected inputs and infrastructure deployment state") from None
 
     def locked(self):
         """現在の環境に対して共通の運用ロックを取得する。"""
@@ -188,7 +188,7 @@ class OperationContext:
         try:
             return self._resource_path(self.state["serviceResourceIds"][key])
         except (KeyError, TypeError):
-            raise OperationError("The service is missing from Core state") from None
+            raise OperationError("The service is missing from the infrastructure deployment state") from None
 
     def verify_resource(self, resource_id: str, api_version: str,
                         expected_type: str | None = None) -> dict:

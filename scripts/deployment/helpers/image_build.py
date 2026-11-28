@@ -15,7 +15,7 @@ def build_targets(config, state, *, output, command):
     registry = 'acr' + stem.replace('-', '')
     if (state['outputs'][output]['registryName'] != registry
             or state['outputs'].get('managementVm', {}).get('id', '').lower() != vm_id.lower()):
-        raise ValueError('Core output does not identify the configured management VM and registry')
+        raise ValueError('Infrastructure outputs do not identify the configured management VM and registry')
     return {'vmId': vm_id,
             'registryId': base + '/resourceGroups/' + groups['svc'] + '/providers/Microsoft.ContainerRegistry/registries/' + registry,
             'registryServer': registry + '.azurecr.io',

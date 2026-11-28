@@ -11,7 +11,7 @@ def rate_publication_fixture():
     template = compile_bicep("apps/api-gateway/api-publication.bicep")
     config = configuration.normalize_configuration(bound_external_coverage(), base_directory=CORE / "infra/config")
     api_definitions = copy.deepcopy(config["apiDefinitions"])
-    # Publication uses resolved Core URLs. Keep explicit external endpoints.
+    # Resolve provisioned service URLs and retain explicit external endpoints.
     for api in api_definitions:
         api.setdefault("backendUrl", "https://backend.example.invalid" + api.get("backendPath", ""))
         for operation in api["operations"]:

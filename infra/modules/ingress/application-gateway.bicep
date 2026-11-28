@@ -4,7 +4,7 @@
 
 targetScope = 'resourceGroup'
 
-@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+@description('正式CLIが既存設定を照合して生成する診断設定の書き込みプロパティ。内部入力です。')
 param diagnosticSettingProperties object
 
 @minLength(1)
@@ -37,7 +37,7 @@ param apimPrivateIp string
 @minLength(4)
 @description('内部 APIM の既定ホスト名。通常 API の Host ヘッダーとヘルスチェックに使います。')
 param apimHostName string
-@description('Core管理ポータルの必須公開ホスト。')
+@description('Portalの必須公開ホスト。')
 @minLength(4)
 param portalHostName string
 @description('internal ACA環境の実VIP。AppGWからFirewall経由で接続します。')
@@ -134,7 +134,6 @@ var useSpeechWafPolicy = createWafPolicy && !empty(speechPaths)
 // 本人確認callbackはAPIの公開一覧が空でも必要なため、構築するWAFで保護します。
 var useGatewayAuthWafPolicy = createWafPolicy && !contains(dataGatewayPaths, '/auth/connections/browser/identity-callback')
 // APIと本人確認callbackの完全パスにだけ、用途別のWAF調整を適用します。
-// Consoleは独立したホスティングのため、そのcallbackをCoreのWAF例外へ追加しません。
 var useProtocolWafPolicies = useSpeechWafPolicy || useDocumentWafPolicy || useGatewayAuthWafPolicy || !empty(dataGatewayPaths)
 // WAF ログにも認証値が残らないよう、ヘッダー・cookie・引数の既知の秘密項目をマスクします。
 var defaultScrubbingRules = [for variable in ['RequestHeaderNames', 'RequestCookieNames', 'RequestArgNames', 'RequestJSONArgNames', 'RequestPostArgNames']: {

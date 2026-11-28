@@ -98,29 +98,29 @@ def prepare_plan(config: dict, state: dict) -> dict:
     entra = entra_authentication_settings(config)
     expected_groups = {layer: f"rg-{config['resourceStem']}-{layer}" for layer in LAYERS}
     if config.get("resourceGroupNames") != expected_groups or state.get("resourceGroupNames") != expected_groups:
-        raise ValueError("Exactly the five selected core groups are required")
+        raise ValueError("Exactly the five selected infrastructure resource groups are required")
     for key in ("subscriptionId", "azureTenantId", "resourceStem"):
         _assert_same(state.get(key), config[key], "Deployment state")
     if state.get("apimInstanceId") != apim_instance_id(config):
         raise ValueError("Deployment state belongs to a different APIM construction instance")
     outputs = state.get("outputs", {})
     if outputs.get("resourceGroups") != expected_groups:
-        raise ValueError("Core output groups differ from the selected environment")
+        raise ValueError("Infrastructure deployment groups differ from the selected environment")
     output_names = outputs.get("names")
-    # 公開処理が使う資源名を現在の設定から導出し、Core出力と照合する。
+    # 公開処理が使う資源名を現在の設定から導出し、基盤の配備出力と照合する。
     stem = config["resourceStem"]
     names = {"apim": apim_name(config), "keyVault": "kv-" + stem,
         "foundry": "aif-" + stem, "project": "proj-" + stem}
     if not isinstance(output_names, dict) or any(output_names.get(key) != name for key, name in names.items()):
-        raise ValueError("Core service names differ from the selected naming policy")
+        raise ValueError("Infrastructure service names differ from the selected naming policy")
     service_types = {"apim": "Microsoft.ApiManagement/service", "keyVault": "Microsoft.KeyVault/vaults",
                      "foundry": "Microsoft.CognitiveServices/accounts"}
     resource_ids = {key: _scope(config, "svc") + "/providers/" + kind + "/" + names[key]
                     for key, kind in service_types.items()}
     for key, expected in resource_ids.items():
         _assert_same(state.get("serviceResourceIds", {}).get(key), expected, "Cleanup resource")
-        _assert_same(outputs.get("cleanup", {}).get("serviceResourceIds", {}).get(key), expected, "Core cleanup output")
-        _assert_same(outputs.get("services", {}).get(key), expected, "Core service output")
+        _assert_same(outputs.get("cleanup", {}).get("serviceResourceIds", {}).get(key), expected, "Infrastructure cleanup output")
+        _assert_same(outputs.get("services", {}).get(key), expected, "Infrastructure service output")
     public_url = "https://" + config["gateway"]["publicHostName"]
     _assert_same(outputs.get("endpoints", {}).get("public", "").rstrip("/"), public_url, "Public Gateway URL")
     foundry_host = names["foundry"] + ".services.ai.azure.com"
@@ -146,7 +146,7 @@ def prepare_plan(config: dict, state: dict) -> dict:
             raise ValueError("API publication supports HTTP, WebSocket and MCP API types")
         if not _same(api.get("subscriptionKeyHeader"), authentication["core-subscription-key-header"]):
             raise ValueError("API key headers must match the foundation gateway.authentication settings")
-    # 初期CoreとAPI再公開が同じ業務設定・同じTLS/FQDN検査から宛先を生成します。
+    # 基盤の初回構築とAPI再公開が、同じ業務設定とTLS/FQDN検査から宛先を生成します。
     resolved, external_hosts = [], generated_apim_service_fqdns(config)
     bases = {"foundryOpenAi": _foundry_openai_origin(names["foundry"]) + "/openai/v1",
              "foundryCognitive": "https://" + names["foundry"] + ".cognitiveservices.azure.com",
@@ -941,7 +941,7 @@ def verify_backend_secret_access(config, definitions, vault_id, apim, transport)
     try:
         uuid.UUID(principal)
     except (ValueError, TypeError, AttributeError):
-        raise ValueError("Core API Management system identity is not prepared") from None
+        raise ValueError("API Management system identity is not ready") from None
     role_id = ("/subscriptions/" + config["subscriptionId"]
                + "/providers/Microsoft.Authorization/roleDefinitions/4633458b-17de-408a-b874-0445c86b69e6")
     for name in sorted(core_names):
@@ -1160,17 +1160,17 @@ def _diagnostic_entries(entries):
     if entries is None:
         return {}
     if not isinstance(entries, list):
-        raise ValueError("Core audit diagnostic categories are invalid")
+        raise ValueError("Audit diagnostic categories are invalid")
     result = {}
     for entry in entries:
         if not isinstance(entry, dict) or not isinstance(entry.get("enabled"), bool):
-            raise ValueError("Core audit diagnostic categories are invalid")
+            raise ValueError("Audit diagnostic categories are invalid")
         keys = [key for key in ("category", "categoryGroup") if entry.get(key)]
         if len(keys) != 1 or not isinstance(entry[keys[0]], str):
-            raise ValueError("Core audit diagnostic categories are invalid")
+            raise ValueError("Audit diagnostic categories are invalid")
         key = (keys[0], entry[keys[0]].casefold())
         if key in result:
-            raise ValueError("Core audit diagnostic categories are duplicated")
+            raise ValueError("Audit diagnostic categories are duplicated")
         result[key] = entry
     return result
 
@@ -1192,24 +1192,24 @@ def _read_websocket_diagnostics(plan, state, transport):
     """構築済みの監査設定と保存先を確認する。秘密値や別の診断設定は読まない。"""
     resource_id = plan["webSocketDiagnostics"]["resourceId"]
     body = require_success(transport.request("GET", resource_id + "?api-version=" + MONITOR_API),
-                           "Read existing Core audit diagnostics")
-    _assert_same(body.get("id"), resource_id, "Core audit diagnostic setting")
+                           "Read existing audit diagnostics")
+    _assert_same(body.get("id"), resource_id, "Audit diagnostic setting")
     properties = body.get("properties")
     # このAPIの書込契約にある項目をすべて保持する。未知の項目を黙って捨てない。
     # https://learn.microsoft.com/rest/api/monitor/diagnostic-settings/create-or-update
     writable = {"workspaceId", "storageAccountId", "eventHubAuthorizationRuleId", "eventHubName",
                 "serviceBusRuleId", "marketplacePartnerId", "logAnalyticsDestinationType", "logs", "metrics"}
     if not isinstance(properties, dict) or set(properties) - writable - {"provisioningState"}:
-        raise ValueError("Core audit diagnostic properties require review")
+        raise ValueError("Audit diagnostic properties require review")
     outputs = state.get("outputs", {})
     workspace_id = outputs.get("monitoring", {}).get("workspaceId")
     storage_id = outputs.get("auditStorage", {}).get("collectJapan", {}).get("id")
     if not workspace_id or not storage_id:
-        raise ValueError("Core audit destinations are missing from the deployment state")
-    _assert_same(properties.get("workspaceId"), workspace_id, "Core audit workspace")
-    _assert_same(properties.get("storageAccountId"), storage_id, "Core audit storage")
+        raise ValueError("Audit destinations are missing from the deployment state")
+    _assert_same(properties.get("workspaceId"), workspace_id, "Audit workspace")
+    _assert_same(properties.get("storageAccountId"), storage_id, "Audit storage")
     if not isinstance(properties.get("logs"), list):
-        raise ValueError("Core audit diagnostic categories are invalid")
+        raise ValueError("Audit diagnostic categories are invalid")
     _diagnostic_entries(properties["logs"])
     if "metrics" in properties:
         _diagnostic_entries(properties["metrics"])
@@ -1262,7 +1262,7 @@ def enable_websocket_diagnostics(plan, state, transport, *, sleep, deadline):
             result["updated"] = True
             return result
         sleep(5)
-    raise DeploymentError("WebSocket diagnostic update could not be confirmed; check Core audit settings before retrying")
+    raise DeploymentError("WebSocket diagnostic update could not be confirmed; check the audit settings before retrying")
 
 
 def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, timeout_seconds=7200, checkpoint=None,
@@ -1295,7 +1295,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
     identity = require_success(transport.request("GET", plan["identityId"] + "?api-version=2023-01-31"), "Read existing certificate identity")
     _owned(identity, plan["identityId"], config, "Certificate identity")
     if identity.get("properties", {}).get("clientId") != state["outputs"]["certificateIdentity"]["clientId"]:
-        raise ValueError("The certificate identity was recreated; core bindings must be reconciled first")
+        raise ValueError("The certificate identity was recreated; reconcile its infrastructure bindings first")
     fw = plan["firewall"]
     policy = require_success(transport.request("GET", fw["policyId"] + "?api-version=" + NETWORK_API), "Read owned Firewall policy")
     _owned(policy, fw["policyId"], config, "Firewall policy")
@@ -1324,7 +1324,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         try:
             uuid.UUID(principal)
         except (ValueError, TypeError, AttributeError):
-            raise ValueError("Core API Management system identity is not prepared") from None
+            raise ValueError("API Management system identity is not ready") from None
         assignments = require_success(transport.request("GET", foundry_id + "/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01&$filter=principalId%20eq%20%27" + principal + "%27"), "Read prepared model invocation roles")
         if assignments.get("nextLink") or not isinstance(assignments.get("value"), list):
             raise ValueError("Model role inventory is incomplete; no API changes were attempted")
@@ -1365,9 +1365,9 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         try:
             uuid.UUID(managed.get("principalId"))
         except (ValueError, TypeError, AttributeError):
-            raise ValueError("Core API Management system identity is not prepared") from None
+            raise ValueError("API Management system identity is not ready") from None
         if "SystemAssigned" not in {value.strip() for value in str(managed.get("type", "")).split(",")}:
-            raise ValueError("Core API Management system identity is not prepared")
+            raise ValueError("API Management system identity is not ready")
         name = secret_id.rsplit("/", 1)[-1]
         named = require_success(transport.request("GET", plan["apimId"] + "/namedValues/" + name + "?api-version=" + APIM_API), "Read prepared ingress secret reference")
         kv = named.get("properties", {}).get("keyVault", {})

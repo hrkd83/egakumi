@@ -1,4 +1,4 @@
-"""Validate the shared Core workflow and its handoff without starting Azure work."""
+"""Validate the shared infrastructure deployment workflow and its handoff without starting Azure work."""
 import contextlib
 import io
 import json
@@ -52,8 +52,10 @@ def hook_arguments(name, script):
 
 
 class UpWorkflowTests(LifecycleFixture, unittest.TestCase):
-    def test_up_uses_only_the_shared_core_provision_workflow(self):
+    def test_up_uses_only_the_shared_infrastructure_provision_workflow(self):
         project = (ROOT / "azure.yaml").read_text(encoding="utf-8")
+        declared_names = re.findall(r"^name: (\S+)$", project, re.MULTILINE)
+        self.assertEqual(declared_names, [lifecycle.PROJECT_NAME])
         workflows = project.split("workflows:\n", 1)[1].split("hooks:\n", 1)[0]
         self.assertEqual(workflows.split(), ["up:", "-", "azd:", "provision"])
         self.assertEqual(set(hooks()), {"preprovision", "postprovision", "predown", "postdown"})
@@ -61,7 +63,7 @@ class UpWorkflowTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(hook_arguments("preprovision", "lifecycle.py"), ["preprovision"])
         self.assertEqual(hook_arguments("postprovision", "lifecycle.py"), ["postprovision"])
 
-    def test_core_completion_saves_state_for_individual_deployments(self):
+    def test_infrastructure_completion_saves_state_for_individual_deployments(self):
         selected = self.paths.root / "company inputs" / "selected.local.json"
         lifecycle.private_parent(selected, self.root)
         selected.write_text("{}", encoding="utf-8")

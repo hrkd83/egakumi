@@ -1,4 +1,4 @@
-"""Compile management-client assets and validate the Core and app inventories."""
+"""Compile management-client assets and validate the infrastructure and app inventories."""
 import base64
 import copy
 import re

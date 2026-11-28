@@ -9,7 +9,7 @@ __pycache__/
 .venv-*/
 .DS_Store
 
-# Core sample portal
+# Portal dependencies and build output
 apps/portal/node_modules/
 apps/portal/.next/
 

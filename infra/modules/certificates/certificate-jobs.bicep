@@ -1,4 +1,4 @@
-// Core creates the private environment and its dependencies first. Apply this
+// Provisioning creates the private environment and its dependencies first. Apply this
 // template only after a digest was pushed and the temporary writer was removed.
 targetScope = 'resourceGroup'
 param jobPlan object

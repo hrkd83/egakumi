@@ -1,18 +1,18 @@
-# Egakumi
+# egakumi
 
 > **WIP / Work in Progress（開発中）**
 >
 > 本リポジトリは、設計・実装・検証を継続している開発中のプロジェクトです。仕様・API・構成・導入手順には未完成・未検証の部分があり、互換性を保たない変更を行う場合があります。公開資料や勉強会動画の存在は、本番利用に向けた検証の完了を意味しません。本番利用前に、導入先でセキュリティ・権限・動作・構築／撤去・費用を評価・検証してください。
 
-Egakumiは、AIを企業・組織の「働き手」として迎え、既存の業務環境・権限・運用につなぐための構想と共通基盤です。人がAIに相談する体験から、AIが働きかけるバディ、専門AIチームへの業務委託へと発展する体験を目指します。
+egakumiは、AIを企業・組織の「働き手」として迎え、既存の業務環境・権限・運用につなぐための構想と共通基盤です。人がAIに相談する体験から、AIが働きかけるバディ、専門AIチームへの業務委託へと発展する体験を目指します。
 
-このリポジトリでは、その土台となる **Egakumi Core** を公開しています。企業でAIを利用するための接続、APIの保護と認証、利用制限、監視・監査を、Azure上で構築・運用するための資材です。将来の体験構想と、このCoreが提供する機能の範囲は区別して説明します。
+このモノレポには、企業でAIを利用するための接続、APIの保護と認証、利用制限、監視・監査をAzure上で構築・運用する資材をまとめています。
 
 [勉強会動画](docs/videos.md) · [初回構築の手順](#新規クローンから構築する) · [Apache 2.0](LICENSE) · [素材・商標の扱い](MEDIA-LICENSES.md)
 
 変更に着手する前に、[リポジトリ共通ルール（AGENTS.md）](AGENTS.md)と[開発ルール](DEVELOPMENT.md)を確認してください。**企業・実環境固有の情報は、Git管理する資材・公開文書・画像・ログ・コミット履歴へ含めません。** 資材はこの1つのcheckoutを正本として使い、実設定・秘密・記録はルートの`.local/<environment>/`、azd専用情報は`.azure/`へ保護保存します。この2領域はGit・公開用の配布物へ含めません。
 
-## Egakumi Coreの構成
+## egakumiの構成
 
 Application Gateway・Azure Firewall・API Management・Private Endpointで保護したFoundryを中心に、AIモデル・PII・文書解析とCMによる本人OAuth接続の正式APIを公開するAzure基盤です。BicepとAzure Developer CLIで構築・撤去し、外部サービス向けの汎用protocol中継も備えます。
 
@@ -30,7 +30,7 @@ PortalはEntraサインインと本人のBearerによるAPI試用を提供しま
 
 ## 新規クローンから構築する
 
-**`azd up` はCoreを構築して終了します。** このリポジトリでは `azd provision` と同じ処理です。CoreはAPIM本体、Foundryとモデル、ACA環境、ネットワーク・通信制御、Private Endpoint、認証用の公開証明書などを準備します。基盤用のEntraアプリはAPI・Tools・Credential・Portalの4つです。GatewayとPortal本体は、証明書をEntraに登録してから別々に配備します。
+**`azd up` は基盤を構築して終了します。** このリポジトリでは `azd provision` と同じ処理です。基盤はAPIM本体、Foundryとモデル、ACA環境、ネットワーク・通信制御、Private Endpoint、認証用の公開証明書などを準備します。基盤用のEntraアプリはAPI・Tools・Credential・Portalの4つです。GatewayとPortal本体は、証明書をEntraに登録してから別々に配備します。
 
 | 順番 | 手順 | この段階で行うこと |
 | --- | --- | --- |
@@ -41,8 +41,8 @@ PortalはEntraサインインと本人のBearerによるAPI試用を提供しま
 | 05 | [公開DNSの準備](docs/setup/05-public-dns.md) | Azure Public DNSゾーンを用意し、NSを委任 |
 | 06 | [DNS用マネージドIDの準備](docs/setup/06-dns-identity.md) | 証明書の発行と更新に使うIDを作成し、DNSの操作権限を付与 |
 | 07 | [paramsを完成させる](docs/setup/07-params.md) | 導入先のID・公開名・IPと、Entra・DNSの準備結果をひな型へ反映 |
-| 08 | [Coreを構築する](docs/setup/08-provision-core.md) | `azd up` で共用基盤、Portal初期サンプル、認証用公開証明書2枚を準備 |
-| 09 | [Core構築後のEntra登録](docs/setup/09-egakumi-portal.md) | `egakumi-api` にGraph OBO用証明書を登録し、`egakumi-portal` を作成・証明書登録してparamsを追記 |
+| 08 | [基盤を構築する](docs/setup/08-build-infra.md) | `azd up` で共用基盤、Portal初期サンプル、認証用公開証明書2枚を準備 |
+| 09 | [基盤構築後のEntra登録](docs/setup/09-egakumi-portal.md) | `egakumi-api` にGraph OBO用証明書を登録し、`egakumi-portal` を作成・証明書登録してparamsを追記 |
 | 10 | [ハブ＆スポーク接続（任意）](docs/setup/10-hub-spoke.md) | 必要な環境でピアリング・DNS・経路・Firewallを整え、Gateway・Portalの配備前に通信を確認 |
 | 11 | [Gatewayを個別配備する](docs/setup/11-deploy-gateway.md) | `deploy_gateway.py` でBroker・CMと、APIMのAPI・ポリシー・バックエンド・製品を配備 |
 | 12 | [Portalを個別配備する](docs/setup/12-deploy-portal.md) | `deploy_portal.py` で認証DB・SQL権限・Portal本体を配備し、Portal本体で初期サンプルを置き換え |
@@ -50,7 +50,7 @@ PortalはEntraサインインと本人のBearerによるAPI試用を提供しま
 
 検証・本番の標準configはそのまま使います。既定値を確認したい場合や、変更が必要な場合に参照してください。 [configリファレンス](docs/reference/configuration/config-options.md)
 
-Core完了からPortal本体の配備までは、App GatewayでPortalバックエンドが異常表示でも進めます。Portalの `/api/health` が HTTP 200 を返すことは、第12章の配備後に確認します。
+基盤構築の完了からPortal本体の配備までは、App GatewayでPortalバックエンドが異常表示でも進めます。Portalの `/api/health` が HTTP 200 を返すことは、第12章の配備後に確認します。
 
 Azure基盤は `azureTenantId`、ユーザー認証は `entraTenantId` で指定します。基盤の監査ログはAzure Monitorへ集約します。 [テナントの設定](docs/setup/07-params.md#azureとentraのテナント指定)
 
@@ -63,8 +63,8 @@ Azure基盤は `azureTenantId`、ユーザー認証は `entraTenantId` で指定
 | 用途 | 通信経路・配置 |
 | --- | --- |
 | APIのHTTPS入口 | 利用端末またはPortalサーバー → AppGW:443 → Firewall → Internal APIM → Foundry PE／登録済みbackend |
-| PortalのHTTPS入口 | 利用端末 → AppGW:443 → Core内Portal。API実行はPortalサーバーがGatewayを呼び出す |
-| 汎用外部中継（個別連携時） | APIM → 許可した外向き経路 → 外部REST／MCP／A2A。サンプル入口はCore標準APIに含めない |
+| PortalのHTTPS入口 | 利用端末 → AppGW:443 → 基盤内Portal。API実行はPortalサーバーがGatewayを呼び出す |
+| 汎用外部中継（個別連携時） | APIM → 許可した外向き経路 → 外部REST／MCP／A2A。サンプル入口はGatewayの標準APIに含めない |
 | WebSocket音声 | 制御・音声をAppGW → Firewall → APIMで中継 |
 | WebRTC音声 | 接続準備・制御はGateway。音声本体は端末とAzureの間 |
 | 運用 | Linux管理VM、Key Vault、Log Analytics／Application Insights、監査Storage |
@@ -94,7 +94,7 @@ RGと共通基盤用マネージドIDは`azd up`が作成します。[管理ポ�
 | Portal・Broker | Portal用とBroker用のContainer Apps環境、各アプリのレプリカとCPU・メモリー、SQL初期化・定期ジョブ、非公開ACRとイメージ保存 |
 | 監査 | 各サービスの診断設定、Log Analyticsの90日保持、本番監査Storageの約7年WORM、FoundryのApplication Insights接続 |
 | 永続化・運用 | 共用SQLサーバー内のPortal／credentials DB、管理VMとディスク、Key Vault、LAW／App Insights、ログexport、監査Storageと保持・複製、アラート・通知 |
-| Core外の共有資源 | 公開DNS・ドメイン、企業ハブ・ExpressRoute／VPN・中央DNS等、採用する共有資源 |
+| 基盤外の共有資源 | 公開DNS・ドメイン、企業ハブ・ExpressRoute／VPN・中央DNS等、採用する共有資源 |
 
 標準構成は [test.json](infra/config/test.json)・[production.json](infra/config/production.json)、アプリ資源は [Gateway Bicep](apps/api-gateway/deploy/)・[Portal Bicep](apps/portal/deploy/)で確認できます。導入・変更時に、これらを含む全資源で見積もり、稼働後は対象Subscriptionの利用額と照合します。撤去後も保護・保持により残るデータや共有資源の費用を確認します。
 
@@ -115,7 +115,7 @@ RGと共通基盤用マネージドIDは`azd up`が作成します。[管理ポ�
 
 ## ライセンスと開発方針
 
-本プロジェクトの独自ソフトウェア・文書・図は [Apache License 2.0](LICENSE) で提供します。第三者のライブラリ・素材は各権利者の条件に従い、音楽・人物イラスト・ブランド素材・音声サンプルなどの扱いは [MEDIA-LICENSES.md](MEDIA-LICENSES.md) を参照してください。Egakumiの名称・ロゴについて、商標の使用許諾を与えるものではありません。
+本プロジェクトの独自ソフトウェア・文書・図は [Apache License 2.0](LICENSE) で提供します。第三者のライブラリ・素材は各権利者の条件に従い、音楽・人物イラスト・ブランド素材・音声サンプルなどの扱いは [MEDIA-LICENSES.md](MEDIA-LICENSES.md) を参照してください。egakumiの名称・ロゴについて、商標の使用許諾を与えるものではありません。
 
 設定例は架空値であり、実環境での動作確認を示すものではありません。実環境の設定・作業記録は環境別の`.local/<environment>/`へ保護保存し、公開側へ転載せず、[共通ルール](AGENTS.md)に従ってください。
 

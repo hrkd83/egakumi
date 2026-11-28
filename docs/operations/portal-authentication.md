@@ -18,7 +18,7 @@ KVの最新証明書GETはpolicyを含みますが、版指定GETは証明書本
 
 ## 実行前の照合
 
-同じcheckoutの`DEPLOY_PARAMS_FILE`、azd環境、Coreの`state/latest.json`、`state/portal-auth-certificate.json`を選択してください。[対象環境と保護入力](common.md)に従って、params・Coreの所有記録・証明書Jobと対象Key Vaultを照合します。
+同じcheckoutの`DEPLOY_PARAMS_FILE`、azd環境、基盤の配備記録 `state/latest.json`、`state/portal-auth-certificate.json`を選択してください。[対象環境と保護入力](common.md)に従って、params・基盤の所有記録・証明書Jobと対象Key Vaultを照合します。
 
 `scripts/operations/portal_auth_certificate.py`は既定で計画を表示します。Azure変更には`--execute`が必要です。値や公開証明書本文は画面へ出しません。Job構成では固定イメージdigestと今回の実行を照合します。
 
@@ -28,9 +28,9 @@ python3 -B scripts/operations/portal_auth_certificate.py prepare --config "$DEPL
 
 ## 初期証明書の発行と確認
 
-新規構築は[Coreの初回構築](../setup/08-provision-core.md)で`azd up`を使います。`azd provision`でも同じCore工程を実行できます。Coreが署名用ID、証明書Job用の運用IDと権限、専用ACA環境とプライベート接続を準備します。非公開ACRへ登録した固定イメージでPortal署名Jobの`Initialize`を実行します。`postprovision`が公開`.cer`と初期証明書stateを収集します。専用Portal EntraアプリのClient IDはこの段階で不要です。初期発行・取得が失敗した場合は構築完了処理を停止し、Coreの作成記録を保持して生成した秘密入り入力を回収します。
+新規構築は[基盤の初回構築](../setup/08-build-infra.md)で`azd up`を使います。`azd provision`でも同じ基盤の構築工程を実行できます。基盤が署名用ID、証明書Job用の運用IDと権限、専用ACA環境とプライベート接続を準備します。非公開ACRへ登録した固定イメージでPortal署名Jobの`Initialize`を実行します。`postprovision`が公開`.cer`と初期証明書stateを収集します。専用Portal EntraアプリのClient IDはこの段階で不要です。初期発行・取得が失敗した場合は構築完了処理を停止し、基盤の配備記録を保持して生成した秘密入り入力を回収します。
 
-構築後に保存済みの初期証明書stateを確認する場合は、`initialize`を実行します。CoreのACA Job構成と初期状態をローカルで確認するコマンドです。途中の発行を再開する場合は、同じ保護入力で`azd up`を実行してください。
+構築後に保存済みの初期証明書stateを確認する場合は、`initialize`を実行します。基盤のACA Job構成と初期状態をローカルで確認するコマンドです。途中の発行を再開する場合は、同じ保護入力で`azd up`を実行してください。
 
 ```sh
 python3 -B scripts/operations/portal_auth_certificate.py initialize --config "$DEPLOY_PARAMS_FILE"

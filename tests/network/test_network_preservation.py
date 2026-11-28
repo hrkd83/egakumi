@@ -355,7 +355,7 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
                 mock.patch.object(lifecycle, "deploy_monitoring", return_value=self.outputs()), \
                 mock.patch.object(lifecycle, "lock_and_verify_policies"), mock.patch.object(lifecycle, "configure_app_insights_cap"), \
-                self.assertRaisesRegex(lifecycle.DeploymentError, "Read existing core route table"):
+                self.assertRaisesRegex(lifecycle.DeploymentError, "Read existing route table"):
             lifecycle.preprovision(self.config)
         self.assertFalse(self.paths.parameters.exists())
         self.assertTrue((self.paths.state / "latest.json").exists())

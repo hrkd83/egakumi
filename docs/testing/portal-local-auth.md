@@ -131,4 +131,4 @@ PORTAL_LOCAL_SQL_ENV_FILE="$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admi
 
 ローカル開発を終了して戻り先が不要になったら、開発用Entraアプリから追加したlocalhostの戻り先だけを削除します。使用中の公開戻り先と証明書は保持します。データを破棄する操作は自動では行いません。
 
-Azure用の`sqldb-<環境>-<製品>-portal`は、[Portal配備コマンド](../setup/12-deploy-portal.md)が共通SQLサーバー上に作成します。同じ配備処理が手動SQL初期化ジョブを起動し、テーブルと実行用IDの権限を準備してからアプリを更新します。この配備は構築済みのCoreを再利用します。ローカルのDB・`portal/runtime.env`・管理者資格情報をAzureへコピーしません。
+Azure用の`sqldb-<環境>-<製品>-portal`は、[Portal配備コマンド](../setup/12-deploy-portal.md)が共通SQLサーバー上に作成します。同じ配備処理が手動SQL初期化ジョブを起動し、テーブルと実行用IDの権限を準備してからアプリを更新します。この配備は構築済みの基盤を再利用します。ローカルのDB・`portal/runtime.env`・管理者資格情報をAzureへコピーしません。

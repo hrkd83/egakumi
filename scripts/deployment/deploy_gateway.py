@@ -65,11 +65,11 @@ def foundation_inputs(config, state):
     """現在のinfraが保存した共通基盤出力だけを参照する。"""
     if (any(state.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem'))
             or state.get('apimInstanceId') != apim_instance_id(config)):
-        raise ValueError('Core deployment state differs from the selected configuration')
+        raise ValueError('Infrastructure deployment state differs from the selected configuration')
     output, stem = state['outputs'], config['resourceStem']
     foundation = output.get('gatewayFoundation')
     if not isinstance(foundation, dict) or not foundation:
-        raise ValueError('Current infrastructure gatewayFoundation output is required; use the current Core deployment state')
+        raise ValueError('Load the current infrastructure deployment state to get the required gatewayFoundation output')
     require_shared_ingress(config, output)
     foundation = copy.deepcopy(foundation)
     expected = {
@@ -81,18 +81,18 @@ def foundation_inputs(config, state):
     }
     for name, value in expected.items():
         if foundation.get(name) != value:
-            raise ValueError('Core foundation differs from this environment: ' + name)
+            raise ValueError('Foundation output differs from this environment: ' + name)
     subnet_id = subnet_resource_id(config, 'broker')
     for name, value in (('brokerEnvironmentId', broker_environment_id(config)), ('brokerSubnetId', subnet_id)):
         if str(foundation.get(name, '')).casefold() != value.casefold():
-            raise ValueError('Core foundation differs from this environment: ' + name)
+            raise ValueError('Foundation output differs from this environment: ' + name)
     if not re.fullmatch(r'[a-z0-9-]+(?:\.[a-z0-9-]+)+\.azurecontainerapps\.io', str(foundation.get('brokerEnvironmentDomain', ''))):
-        raise ValueError('Core foundation must record the private Broker environment domain')
+        raise ValueError('The foundation output must record the private Broker environment domain')
     identity = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['id']}"
                 f'/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-{stem}-credential-schema')
     schema = foundation.get('schemaIdentity')
     if not isinstance(schema, dict) or str(schema.get('id', '')).lower() != identity.lower():
-        raise ValueError('Core schema identity differs from this environment')
+        raise ValueError('The provisioned schema identity differs from this environment')
     management_client_inventory(config, state)
     vault = 'https://' + expected['vaultName'] + '.vault.azure.net/secrets/'
     features = output.get('ingressSecrets', {})
@@ -137,7 +137,7 @@ def verify_foundation(config, foundation, transport):
             or properties.get('publicNetworkAccess') not in (None, 'Disabled')
             or vnet.get('internal') is not True
             or str(vnet.get('infrastructureSubnetId', '')).casefold() != foundation['brokerSubnetId'].casefold()):
-        raise ValueError('The dedicated private Broker environment or its subnet differs from Core state')
+        raise ValueError('The dedicated private Broker environment or its subnet differs from the infrastructure deployment state')
     verify_broker_workload_bindings(config, foundation['brokerEnvironmentId'], transport)
 
 
@@ -272,7 +272,7 @@ def main(argv=None, *, _locked_workspace=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--state-file', type=Path)
-    parser.add_argument('--deployment-name', help='Completed Core subscription deployment for CI or a missing local state')
+    parser.add_argument('--deployment-name', help='Completed infrastructure deployment at subscription scope for CI or a missing local state')
     parser.add_argument('--image-digest', help='Use an existing credential-broker image by immutable sha256 digest')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--execute', action='store_true')
@@ -306,13 +306,13 @@ def run_gateway(args, source, workspace):
     publication_record = workspace.checked(workspace.state / 'gateway-api-source.json')
     stage_path = workspace.checked(workspace.state / 'gateway-api-closed-stage.json')
     if args.deployment_name:
-        # 計画時も、このオプションを使った場合に限りCore配備を読み取ります。
+        # 計画時も、このオプションを使った場合に限り基盤の配備記録を読み取ります。
         from deployment.helpers.configuration import load_configuration
         initial = load_configuration(args.config)
         deployed = run_json(['az', 'deployment', 'sub', 'show', '--name', args.deployment_name,
                              '--subscription', initial['subscriptionId'], '-o', 'json'])
         if deployed.get('properties', {}).get('provisioningState') != 'Succeeded':
-            raise ValueError('Select a successfully completed Core deployment')
+            raise ValueError('Select a successfully completed infrastructure deployment')
         state = state_from_outputs(initial, {key: value['value'] for key, value in deployed['properties']['outputs'].items()})
     else:
         state = json.loads(args.state_file.read_text(encoding='utf-8'))
@@ -412,5 +412,5 @@ if __name__ == '__main__':
     try:
         raise SystemExit(main())
     except (ValueError, OSError, KeyError, TypeError, DeploymentError, OperationError, subprocess.SubprocessError) as error:
-        detail = str(error) if isinstance(error, (ValueError, DeploymentError, OperationError)) else 'check the selected configuration and completed Core state'
+        detail = str(error) if isinstance(error, (ValueError, DeploymentError, OperationError)) else 'check the selected configuration and completed infrastructure deployment state'
         raise SystemExit('Gateway deployment stopped: ' + detail) from None

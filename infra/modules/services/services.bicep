@@ -5,7 +5,7 @@
 
 targetScope = 'resourceGroup'
 
-@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+@description('正式CLIが実状態を照合して生成した、同名の基盤診断設定の書込properties。')
 param diagnosticSettingProperties object
 
 @description('親モジュールで確定したサービス名の組。別モジュールでも同じ資源を参照するために使います。')
@@ -52,9 +52,9 @@ param applicationInsightsConnectionString string = ''
 @description('配備するモデル名・版・SKU・利用枠等の一覧。APIM のモデル公開設定と組で検証します。')
 param modelDeployments array = []
 @description('Foundry 共有プロジェクトの画面上の表示名。物理リソース名とは分けて管理します。')
-param projectDisplayName string = 'core-platform'
+param projectDisplayName string = 'egakumi'
 @description('Foundry 共有プロジェクトの用途説明。モデルや Agent をどの目的で配置するかを示します。')
-param projectDescription string = 'Core platform project for shared model, agent, and tool capabilities.'
+param projectDescription string = 'Shared project for model, agent, and tool capabilities.'
 
 // 証明書と接続資格情報の格納先。通常のデータ操作は RBAC と PE で保護します。
 // APIM の custom hostname 証明書取得は、VNet から到達できても trusted services

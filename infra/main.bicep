@@ -8,7 +8,7 @@ targetScope = 'subscription'
 @description('params と config を結合・検証した公開設定。秘密情報は別の secure パラメーターから渡します。')
 param configuration object
 @allowed(['monitoring', 'core'])
-@description('監視保存先だけを先に作る monitoring と、残りをつなぐ core の段階。どちらも azd up の中で実行します。')
+@description('監視保存先の準備と共用基盤の配備を分ける内部パラメーター。どちらも azd up の中で実行します。')
 param phase string = 'core'
 @description('管理 VM の SSH 公開鍵。秘密鍵は渡さず、手元で安全に保持します。')
 @secure()
@@ -49,7 +49,7 @@ param existingApimCustomProperties object = {}
 param existingPortalApp bool = false
 @description('監視先から読み取った取り込み変換DCRの実ID。再配備時の関連付けを保持する内部入力です。')
 param existingWorkspaceDataCollectionRuleResourceId string = ''
-@description('正式CLIが所有・既存宛先・分類・転送範囲を照合して生成するCore診断properties。内部入力です。')
+@description('正式CLIが所有・既存宛先・分類・転送範囲を照合して生成する基盤の診断設定プロパティ。内部入力です。')
 param diagnosticSettingProperties object
 
 // 名前は「種類-環境名-製品名」を基本に１か所で組み立てます。
@@ -387,7 +387,7 @@ module serviceBindings 'modules/services/service-bindings.bicep' = if (deployCor
 }
 
 
-// 共通SQLサーバーとスキーマ管理IDだけをCoreが所有します。
+// 基盤は共通SQLサーバーとスキーマ管理IDを管理します。
 // Gatewayの接続台帳DB・実行ID・CM定義はアプリ配備工程で作成します。
 module credentialIdentities 'modules/services/shared-sql-identity.bicep' = if (deployCore) {
   name: '${stem}-credential-identities'
@@ -422,7 +422,7 @@ module auditConfiguration 'modules/management/management-audit.bicep' = if (depl
   dependsOn: [networkBindings]
 }
 
-// 公開TLSとPortalの署名証明書はCoreの後段に起動する専用Jobが扱います。
+// 公開TLSとPortalの署名証明書は基盤構築の後段で起動する専用Jobが扱います。
 module certificateJobIdentities 'modules/certificates/certificate-identities.bicep' = if (deployCore) {
   name: '${stem}-certificate-job-identities'
   scope: idGroup
@@ -642,7 +642,7 @@ module credentialNetwork 'modules/network/credential-broker-network.bicep' = if 
   dependsOn: [portalNetworkBindings, brokerDns]
 }
 
-// Coreで実際に構築した対象だけを渡します。App配備は後段で作成したJobを追加します。
+// 基盤構築で作成した対象を渡します。アプリ配備は後段で作成したJobを追加します。
 var managementClientInventory = deployCore ? {
   schemaVersion: 1
   subscriptionId: subscription().subscriptionId
@@ -672,7 +672,7 @@ module managementClient 'modules/management/management-maintenance-client.bicep'
   // PyPI/OSパッケージの既存の構築用経路とVMの初期設定が完成してから準備します。
   dependsOn: [credentialNetwork, auditConfiguration, auditPrivateDnsLink]
 }
-// The native Core produces only nonsecret plans. Verified Job completion gates
+// The native infrastructure deployment produces nonsecret plans. Verified Job completion gates
 // public-ingress.bicep in postprovision; an ARM Job PUT is not a successful run.
 var useIngressSecrets = true
 var certificateSecretUri = deployCore ? 'https://${certificateStorage!.outputs.vaultName}${environment().suffixes.keyvaultDns}/secrets/${certConfig.certificateName}/' : ''
@@ -828,7 +828,7 @@ output managementClientInventory object = managementClientInventory
 output services object = deployCore ? services!.outputs.serviceResourceIds : {}
 output endpoints object = deployCore ? { foundry: services!.outputs.foundryEndpoint, project: services!.outputs.projectEndpoint, public: '' } : {}
 output managementVm object = deployCore ? management!.outputs.managementVm : {}
-// 初回404と元のCore入力・出力を再開時に照合する非秘密の世代証跡。秘密はOSProfileへ渡しません。
+// 初回404と元の基盤配備の入出力を再開時に照合する非秘密の世代証跡。秘密はOSProfileへ渡しません。
 output managementInitialSerialCreation object = deployCore && !empty(managementInitialSerialGeneration) ? {
   generation: managementInitialSerialGeneration
   coreDeploymentId: subscriptionResourceId('Microsoft.Resources/deployments', deployment().name)
@@ -847,7 +847,7 @@ output ingressSecrets object = deployCore ? {
   publicHostName: gatewayConfig.publicHostName
   namedValueId: '${services!.outputs.serviceResourceIds.apim}/namedValues/core-l7-ingress-secret'
 } : { enabled: false }
-// Expected IDs are available even if the subsequent core deployment fails.
+// Keep expected IDs available if subsequent infrastructure provisioning fails.
 // Cleanup verifies the actual resources at these exact IDs before acting.
 // down は以下の今回分の ID を照合してから後処理します。名前が似た別環境を列挙削除するための出力ではありません。
 output cleanup object = {

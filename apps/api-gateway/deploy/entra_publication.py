@@ -47,7 +47,7 @@ SECTIONS = ("inbound", "backend", "outbound", "on-error")
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
 OPERATION_BACKEND_IDENTIFIER = re.compile(r"op-[A-Za-z0-9]+-backend(?:-secret)?", re.IGNORECASE)
 PENDING = ("Accepted", "Creating", "Updating", "InProgress")
-OPEN_PRODUCT_PROPERTIES = {"displayName": "Core Entra model users", "description": "core-owned-entra-model-users-v1",
+OPEN_PRODUCT_PROPERTIES = {"displayName": "Entra model users", "description": "core-owned-entra-model-users-v1",
                            "subscriptionRequired": False, "state": "notPublished"}
 OPEN_PRODUCT_POLICY = '<policies><inbound><base /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
 PRM_GUARD = (REPOSITORY / 'apps/api-gateway/policies/snippets/request/mcp-metadata-guard/mcp-metadata-guard.xml').read_text(encoding='utf-8')
@@ -692,7 +692,7 @@ def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: Po
             observed_id = item.get("id") if isinstance(item, dict) else None
             product_id = product_aliases.get(observed_id) if isinstance(observed_id, str) else None
             if product_id is None or product_id in seen:
-                raise ValueError("Initial activation permits only generated Core Products")
+                raise ValueError("Initial activation permits only generated products")
             seen.add(product_id)
             product = _read(transport, product_id, snapshot)
             if product_id == open_product_id:
@@ -1075,7 +1075,7 @@ def read_fresh_publication(plan, transport):
             for resource_id, expected in resources.items():
                 body = _read(transport, resource_id, snapshot)
                 if not _resource_properties_match(resource_id, _properties({"body": body}), expected):
-                    raise ValueError("The existing global " + kind + " differs from its approved Core expectation")
+                    raise ValueError("The existing global " + kind + " differs from the approved infrastructure settings")
     return snapshot
 
 
@@ -1211,7 +1211,7 @@ def merge_sources(previous, current):
 
 
 def complete_named_value_expectations(manifest, plan, transport):
-    """生成元で到達する既知Core接続だけをmetadata readbackで補完する。
+    """生成元が参照する既知の接続だけを、配備済みのメタデータで補完する。
 
     Portalが所有するprofile接続は型/URL/Key Vault参照を検査し、その値を保持する。
     secret本体のlistValueは呼ばない。未知の任意NamedValueを信頼しない。
@@ -1256,11 +1256,11 @@ def complete_named_value_expectations(manifest, plan, transport):
         if resource_id in expected:
             continue
         if name not in {*secret_names, "core-subscription-key-header", "core-l7-ingress-enabled", "core-credential-broker-url"}:
-            raise ValueError("A NamedValue reference has no generated or approved Core connection expectation")
+            raise ValueError("A NamedValue reference has no generated or approved connection settings")
         body = _read(transport, resource_id, {})
         properties = body.get("properties", {})
         if properties.get("displayName") != name:
-            raise ValueError("Core connection NamedValue ownership differs")
+            raise ValueError("Connection NamedValue ownership differs")
         l7_enabled = bool(plan["parameters"]["l7IngressSecretIdentifier"]["value"])
         if name == "core-l7-ingress-secret" and not l7_enabled:
             if properties.get("secret") is not False or properties.get("keyVault") or properties.get("value") != "ingress-disabled":
@@ -1268,26 +1268,26 @@ def complete_named_value_expectations(manifest, plan, transport):
             expected[resource_id] = {"displayName": name, "secret": False, "value": "ingress-disabled"}
         elif name in secret_names:
             if properties.get("secret") is not True:
-                raise ValueError("Core connection secrets must remain secret NamedValues")
+                raise ValueError("Connection credentials must remain secret NamedValues")
             kv = properties.get("keyVault")
             if (not isinstance(kv, dict) or kv.get("secretIdentifier") != vault + secret_names[name]
                     or kv.get("identityClientId") is not None or kv.get("lastStatus", {}).get("code", "").lower() != "success"):
-                raise ValueError("Core connection Key Vault references must match the provisioned system identity")
+                raise ValueError("Connection Key Vault references must match the provisioned system identity")
             expected[resource_id] = {"displayName": name, "secret": True, "keyVault": {"secretIdentifier": vault + secret_names[name]}}
         else:
             value = properties.get("value")
             if properties.get("secret") is not False or properties.get("keyVault") or not isinstance(value, str):
-                raise ValueError("Core connection public settings are invalid")
+                raise ValueError("Public connection settings are invalid")
             if name == "core-subscription-key-header":
                 if value != plan["commonAuthentication"][name]:
-                    raise ValueError("Core key header differs from the foundation")
+                    raise ValueError("The key header differs from the deployed configuration")
             elif name == "core-l7-ingress-enabled":
                 if value != ("true" if l7_enabled else "false"):
                     raise ValueError("L7 ingress activation differs from the prepared foundation")
             else:
                 parsed = urlsplit(value)
                 if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment or parsed.query:
-                    raise ValueError("Core connection endpoints must be fixed credential-free HTTPS URLs")
+                    raise ValueError("Connection endpoints must be fixed credential-free HTTPS URLs")
                 app_name = "ca-" + plan["resourceStem"] + "-credentials"
                 app_id = apim_id.split("/providers/", 1)[0] + "/providers/Microsoft.App/containerApps/" + app_name
                 application = require_success(transport.request("GET", app_id + "?api-version=2025-01-01"),
@@ -1302,7 +1302,7 @@ def complete_named_value_expectations(manifest, plan, transport):
                 if (not isinstance(fqdn, str) or not re.fullmatch(r"[a-z0-9.-]+\.azurecontainerapps\.io", fqdn)
                         or not fqdn.startswith(app_name + ".") or parsed.hostname != fqdn
                         or parsed.path or parsed.port not in (None, 443)):
-                    raise ValueError("Core connection endpoints must belong to the owned private application and fixed path")
+                    raise ValueError("Connection endpoints must belong to the owned private application and fixed path")
             expected[resource_id] = {"displayName": name, "secret": False, "value": value}
     expected_backends = copy.deepcopy(manifest.backends)
     for name in sorted(backend_references):
@@ -1311,7 +1311,7 @@ def complete_named_value_expectations(manifest, plan, transport):
         if resource_id in expected_backends:
             continue
         if name != "credential-broker" or not plan.get("credentialLogin"):
-            raise ValueError("A backend reference has no generated or approved Core connection expectation")
+            raise ValueError("A backend reference has no generated or approved connection settings")
         endpoint = expected.get(apim_id + "/namedValues/core-credential-broker-url", {}).get("value")
         if not endpoint:
             raise ValueError("The Credential Broker backend must bind the verified private application")

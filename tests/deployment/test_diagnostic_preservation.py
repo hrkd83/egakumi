@@ -1,4 +1,4 @@
-"""同名Core診断の保持と、書込前に止める転送拡大を合成応答だけで確認する。"""
+"""基盤の同名診断設定の保持と、書き込み前の転送範囲の検査を合成応答で確認する。"""
 import copy
 from pathlib import Path
 import unittest

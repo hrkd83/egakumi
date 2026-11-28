@@ -11,7 +11,7 @@ _UNVERIFIED_ROUTE = "ACA public HTTPS requires the owned Firewall route without 
 
 def validate_aca_route_snapshot(routes, firewall_subnet, app_gateway_subnet, *,
                                 firewall_ip=None, require_default=False):
-    """Check ACA's IPv4 UDRs. A partially constructed Core may lack its default child."""
+    """Check ACA's IPv4 UDRs. A partial deployment may lack its default route."""
     observed = set()
     try:
         subnet = IPv4Network(firewall_subnet)

@@ -52,13 +52,13 @@ def _same(actual, expected, label):
 def _bindings(config, state):
     """設定から決めたFoundryの名前とIDを配備記録で検証してURLを組み立てる。"""
     if not isinstance(state, dict) or not isinstance(state.get("outputs"), dict):
-        raise ValueError("Standard API publication requires a completed core deployment record")
+        raise ValueError("Standard API publication requires a completed infrastructure deployment record")
     for key in ("subscriptionId", "azureTenantId", "resourceStem"):
-        _same(state.get(key), config[key], "Core deployment " + key)
+        _same(state.get(key), config[key], "Infrastructure deployment " + key)
     outputs = state["outputs"]
     for actual in (state.get("resourceGroupNames"), outputs.get("resourceGroups")):
         if actual != config["resourceGroupNames"]:
-            raise ValueError("Core deployment resource groups differ from the selected environment")
+            raise ValueError("Infrastructure deployment resource groups differ from the selected environment")
     foundry_name = "aif-" + config["resourceStem"]
     resource_id = (
         "/subscriptions/" + config["subscriptionId"]

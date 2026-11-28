@@ -27,7 +27,7 @@ ENTRA_NAMED_VALUES = ("core-entra-tenant-id", "core-entra-api-audience",
                       "core-entra-required-scope", "core-entra-user-limits")
 MIGRATION_REQUIRED = (
     "APIM common authentication settings are incompatible. Check the foundation NamedValues and "
-    "reconcile existing Core policy blocks with apps/api-gateway/policies/service.xml before publishing APIs."
+    "reconcile existing managed policy blocks with apps/api-gateway/policies/service.xml before publishing APIs."
 )
 MANAGED_BLOCKS = {"inbound": (REQUEST_CONTEXT_ID, TRUSTED_INGRESS_ID, BROWSER_EXCEPTION_ID, COMMON_AUTHENTICATION_ID, AUTHENTICATED_SUBJECT_ID),
                   "outbound": ("core-response-request-id",),
@@ -303,7 +303,7 @@ def _merge_common_authentication_policy(policy: str | None, login: dict | None =
                                        activating_entra_authentication: bool = False) -> tuple[str, bool]:
     """共通処理を各セクションの先頭に置き、既存の追加処理とコメントを保持する。
 
-    Core の ID が付いた既存ブロックは期待値と照合する。変更されている場合は、
+    共通ポリシーの ID が付いた既存ブロックは期待値と照合する。変更されている場合は、
     管理者が差分を確認して統合できるよう公開前に停止する。
     """
     expected = _document(render_service_policy(login, entra=entra))

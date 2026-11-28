@@ -99,7 +99,7 @@ def perform(ctx, state, action, args):
     phase = state['phase']
     retry_failed = getattr(args, 'resume_failed_worker', False)
     if not ctx.state['outputs'].get('certificateBootstrap'):
-        raise OperationError('Complete the Core certificate job before rotating the Portal certificate')
+        raise OperationError('Complete the initial certificate job before rotating the Portal certificate')
 
     def invoke(action, arguments):
         return run_job_worker(ctx, state, action, arguments, retry_failed=retry_failed)

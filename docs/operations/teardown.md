@@ -1,6 +1,6 @@
 # 環境の撤去と再構築
 
-[対象環境と記録](common.md) · [構築手順](../setup/08-provision-core.md) · [撤去処理](../../scripts/deployment/helpers/cleanup.py)
+[対象環境と記録](common.md) · [構築手順](../setup/08-build-infra.md) · [撤去処理](../../scripts/deployment/helpers/cleanup.py)
 
 ## 撤去する
 
@@ -15,9 +15,9 @@ AZD_NON_INTERACTIVE=false azd down --environment "$DEPLOY_ENVIRONMENT"
 
 上の指定はこのコマンドだけ対話を有効にします。表示された所有RGの削除確認には対象を照合して`Y`を入力します。`predown`はその確認より先に削除を始めるため、実行前の対象照合は省略しません。非対話の既定回答で停止した場合も、作成済みの先行回収記録を保持して同じ入力から再開します。
 
-azd本体でKey Vault・Foundryの完全削除を確認された場合は`N`を選びます。続くCoreの`postdown`が対象IDと保護設定を照合します。
+azd本体でKey Vault・Foundryの完全削除を確認された場合は`N`を選びます。続く基盤の`postdown`が対象IDと保護設定を照合します。
 
-Coreの`postdown`は`--purge`の有無にかかわらず、対象のKey Vault・Foundry・APIMの論理削除記録を照合して、保護設定が許すものを完全削除します。Key Vaultのpurge protectionや監査WORMを解除する指定ではありません。
+基盤の`postdown`は`--purge`の有無にかかわらず、対象のKey Vault・Foundry・APIMの論理削除記録を照合して、保護設定が許すものを完全削除します。Key Vaultのpurge protectionや監査WORMを解除する指定ではありません。
 
 azd本体の撤去も`infra/main.bicepparam`を評価するため、`predown`は同じ環境の`generated/main.parameters.json`へ秘密なしの撤去用入力を再生成します。azd環境の`EGAKUMI_ARM_PARAMETERS_FILE`にはその相対パスだけを保持し、秘密値を`.env`へ追加しません。生成入力はazd本体の撤去が終わるまで保持し、`postdown`で回収します。再試行に必要な元のparams・secret・stateは消しません。
 
@@ -49,7 +49,7 @@ Locked WORMがある場合は変更前に停止します。Unlockedでも構成�
    ```
 
 3. [ToolsのWeb戻り先の確認](../setup/03-entra-tools.md#cmのweb戻り先を確認する)に従い、その環境のCM用Web戻り先1件を新しいURIへ置き換え、保存後に確認する。Gateway・Portalの公開名を継続する場合は、その2件の戻り先、アプリの権限・同意、有効なsecretを保持する。
-4. 同じparams・azd環境で[構築手順](../setup/08-provision-core.md)を進める。撤去済みの識別子のまま、新規構築を開始しない。
+4. 同じparams・azd環境で[構築手順](../setup/08-build-infra.md)を進める。撤去済みの識別子のまま、新規構築を開始しない。
 
 APIMと用途別WAFポリシーが、新しい共通の識別子を使います。環境名、公開ホスト名、その他の資源名は維持します。
 

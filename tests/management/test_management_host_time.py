@@ -1,4 +1,4 @@
-"""Read-only Core gate: prove PHC preparation before retiring NTP networking."""
+"""Read-only infrastructure check: prove PHC preparation before retiring NTP networking."""
 from copy import deepcopy
 import json
 import unittest

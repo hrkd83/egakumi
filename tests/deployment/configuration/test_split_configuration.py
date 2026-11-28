@@ -192,7 +192,7 @@ class SplitConfigurationTests(unittest.TestCase):
             self.write(self.parameters, raw)
             with self.subTest(name=name):
                 loaded = load_configuration(self.parameters)
-                self.assertEqual(loaded["services"]["projectDisplayName"], "core-platform")
+                self.assertEqual(loaded["services"]["projectDisplayName"], "egakumi")
                 self.assertTrue(loaded["services"]["grantApimFoundryModelsAccess"])
                 self.assertEqual(loaded["management"]["sshPublicKeyFile"], str((CORE / "params/secrets/management-ssh.pub").resolve()))
                 arm = build_bicep_configuration(loaded)
@@ -201,7 +201,7 @@ class SplitConfigurationTests(unittest.TestCase):
                 self.assertNotIn("sshPublicKeyFile", arm["management"])
                 self.assertNotIn("pluginArgumentsFile", arm["certificate"])
 
-    def test_project_default_uses_core_platform(self):
+    def test_project_defaults_use_egakumi_display_name(self):
         raw = load_configuration_source(CORE / "params/test.example.json")
         raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
         raw["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
@@ -210,8 +210,9 @@ class SplitConfigurationTests(unittest.TestCase):
         raw["services"].pop("projectDisplayName")
         raw["services"].pop("projectDescription")
         normalized = normalize_configuration(raw)
-        self.assertEqual(normalized["services"]["projectDisplayName"], "core-platform")
-        self.assertIn("Core platform", normalized["services"]["projectDescription"])
+        self.assertEqual(normalized["services"]["projectDisplayName"], "egakumi")
+        self.assertEqual(normalized["services"]["projectDescription"],
+                         "Shared project for model, agent, and tool capabilities.")
 
     def test_ip_parameters_merge_with_operational_config_and_fixed_ranges(self):
         result = self.sources({"network": {"firewall": {"sku": "Premium", "idpsMode": "Deny"}}},

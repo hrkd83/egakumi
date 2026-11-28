@@ -73,7 +73,7 @@ pwsh -NoProfile -File scripts/deployment/helpers/set-app-insights-cap.ps1 -Check
 
 AzureのOwner権限だけでEntraのアプリ作成・管理者同意ができるとは限りません。標準の初期配置はClaudeを含まず、Claudeの購入許可や規約同意を準備する必要はありません。ロックや監査保持の解除権限としてOwnerを扱いません。
 
-`management.encryptionAtHost=true`の場合、Coreは通常のRP登録に加えて`Microsoft.Compute/EncryptionAtHost`を自動登録します。機能が既に登録済みなら再登録せず、登録中なら完了を待ちます。その後、Compute RPを再登録して反映を確認します。前回の中断後やポータルでの登録後も反映確認を省かないため、Compute RPの再登録は機能登録済みの場合も実行します。構築担当には機能・RP登録の権限が必要です。ポータルでの事前登録は必須ではありません。
+`management.encryptionAtHost=true`の場合、基盤は通常のRP登録に加えて`Microsoft.Compute/EncryptionAtHost`を自動登録します。機能が既に登録済みなら再登録せず、登録中なら完了を待ちます。その後、Compute RPを再登録して反映を確認します。前回の中断後やポータルでの登録後も反映確認を省かないため、Compute RPの再登録は機能登録済みの場合も実行します。構築担当には機能・RP登録の権限が必要です。ポータルでの事前登録は必須ではありません。
 
 ## 1-4. 導入先の値を決める
 

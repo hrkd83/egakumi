@@ -1,6 +1,6 @@
 # Claude Code向けにFoundryのClaudeを公開する
 
-Azureポータルから、Coreと同じFoundryに配備したClaudeモデルをGatewayのAnthropic Messages APIとして公開する例です。事前にCoreとGatewayを配備します。Egakumi Portalの試用カタログには初期構築のAPI定義を使います。`manual-claude-messages`と`models/claude`は公開用の例です。この例のIDと上限を使う場合は、[貼り付け用のXML](claude-messages.xml)を開き、全文をコピーして使えます。
+Azureポータルから、基盤のFoundryに配備したClaudeモデルをGatewayのAnthropic Messages APIとして公開する例です。事前に基盤とGatewayを配備します。Portalの試用カタログには初期構築のAPI定義を使います。`manual-claude-messages`と`models/claude`は公開用の例です。この例のIDと上限を使う場合は、[貼り付け用のXML](claude-messages.xml)を開き、全文をコピーして使えます。
 
 ## FoundryとAPIMバックエンド
 
@@ -16,7 +16,7 @@ Azureポータルから、Coreと同じFoundryに配備したClaudeモデルをG
 3. 利用するClaude Codeと配備モデルで必要性・対応を確認した場合は、Operation ID`count-tokens`で`POST /v1/messages/count_tokens`を登録し、JSONにも`method`を`POST`、`backendPath`を`/anthropic/v1/messages/count_tokens`とする別操作を追加してXMLを再生成します。実応答と監査を確認してから利用者へ案内します。 [FoundryのClaude機能一覧](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models)
 4. **Products**でキー用`manual-model-users`を購読必須・未公開にし、手動APIを追加します。キーが必要な場合に基盤管理者が専用購読を発行します。本人Bearerを使う場合は公開の購読不要Product`manual-entra-users`へ追加し、対象クライアントに組織のEntra設定で`Gateway.Invoke`の委任許可・同意を用意します。両方のProductのポリシーは共通処理を`<base />`で継承します。共通Entraの変更が反映されたことを実効ポリシーで確認します。 [共通のProduct設定](README.md#apiとproductを設定する)
 
-入口で受け取った購読ヘッダー、`x-api-key`、Gateway用`Authorization`、内部制御用のヘッダーを除去し、APIM自身のマネージドIDでCoreのFoundryへ接続します。別のFoundry資源を公開する場合は、その資源専用の固定経路と権限を設計します。
+入口で受け取った購読ヘッダー、`x-api-key`、Gateway用`Authorization`、内部制御用のヘッダーを除去し、APIM自身のマネージドIDで基盤のFoundryへ接続します。別のFoundry資源を公開する場合は、その資源専用の固定経路と権限を設計します。
 
 ## Application GatewayとWAF
 

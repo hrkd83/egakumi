@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AI Workforce 標準設定・任意オプション",
+  "title": "egakumi 標準設定・任意オプション",
   "description": "企業固有情報を含まない標準動作設定です。infra/configのtest.jsonまたはproduction.jsonを正本として使い、コピーは不要です。",
   "type": "object",
   "additionalProperties": false,
@@ -157,13 +157,13 @@
         "projectDisplayName": {
           "type": "string",
           "minLength": 1,
-          "default": "core-platform",
+          "default": "egakumi",
           "description": "Foundryプロジェクトの表示名。リソース識別名は基盤命名規則から別に作成します。"
         },
         "projectDescription": {
           "type": "string",
           "minLength": 1,
-          "default": "Core platform project for shared model, agent, and tool capabilities."
+          "default": "Shared project for model, agent, and tool capabilities."
         },
         "grantApimSecretAccess": {
           "type": "boolean",

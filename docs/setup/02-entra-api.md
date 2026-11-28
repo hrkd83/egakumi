@@ -88,11 +88,11 @@ v2のAPI向けアクセストークンでは、APIMが検証する`aud`は`<API_
 
 ## 5. Graphの委任許可を設定する
 
-Graphの委任 `User.Read` と管理者同意は、Coreで生成したOBO用公開証明書の登録と併せて行います。 [09. APIのOBO設定](09-egakumi-portal.md#apiのobo用公開証明書を登録する)
+Graphの委任 `User.Read` と管理者同意は、基盤で生成したOBO用公開証明書の登録と併せて行います。 [09. APIのOBO設定](09-egakumi-portal.md#apiのobo用公開証明書を登録する)
 
-## 6. Core配備後にOBO用の公開証明書を登録する
+## 6. 基盤構築後にOBO用の公開証明書を登録する
 
-[第09章](09-egakumi-portal.md#apiのobo用公開証明書を登録する)で、Coreが出力した公開証明書の登録と照合を行います。
+[第09章](09-egakumi-portal.md#apiのobo用公開証明書を登録する)で、基盤が出力した公開証明書の登録と照合を行います。
 
 OBO証明書を手動更新する場合は、同じ証明書名で新しい非エクスポート鍵版を作り、公開CERを先にegakumi-apiへ追加します。保護paramsに版固定の `gateway.authentication.entra.obo.keyId` と、同じ公開証明書のSHA-256指紋 `certificateThumbprint` を設定します。Gateway再配備後にGraphの接続を確認し、切り戻しが不要になってから古い証明書を回収します。
 

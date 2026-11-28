@@ -472,7 +472,7 @@ def _normalize_api_backend(api: dict, p: str, api_type: str, entra_tenant_id: st
         _fail(p + ".backendAuthentication.mode", "anonymous backend mode requires an explicitly registered external service")
     if auth_mode == "keyVaultHeader":
         if backend != "external":
-            _fail(p + ".backendAuthentication.mode", "core Foundry disables local key authentication; a registered external key backend is required")
+            _fail(p + ".backendAuthentication.mode", "requires a registered external key backend because the shared Foundry service disables local key authentication")
         header_name = _string(backend_auth.get("headerName"), p + ".backendAuthentication.headerName", maximum=128)
         if not re.fullmatch(r"[A-Za-z0-9-]+", header_name) or header_name.lower() in ("host", "content-length", "content-type", "x-core-l7-ingress"):
             _fail(p + ".backendAuthentication.headerName", "must be a dedicated backend credential header")
@@ -843,7 +843,7 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
                 effective.update(copy.deepcopy(override))
                 if effective["backendService"] != "external":
                     if "backendUrl" in override:
-                        _fail(q + ".backendOverride.backendUrl", "is derived from the selected Core service")
+                        _fail(q + ".backendOverride.backendUrl", "is derived from the selected infrastructure service")
                     effective.pop("backendUrl", None)
                 _, effective_auth, effective_mode = _normalize_api_backend(effective, q + ".backendOverride", "http", entra_tenant_id)
                 if effective_mode not in ("managedIdentity", "speechEntra", "none"):
@@ -1058,7 +1058,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     if "$comment" in c:
         _string(c["$comment"], "$comment", maximum=4096)
     if c.get("schemaVersion") != 1 or isinstance(c.get("schemaVersion"), bool):
-        _fail("schemaVersion", "must be 1 for the new core configuration")
+        _fail("schemaVersion", "must be 1 for the infrastructure configuration")
     for key, limit in (("productName", 24), ("environmentName", 12)):
         value = _string(c.get(key), key, maximum=limit)
         if not NAME.fullmatch(value):
@@ -1106,7 +1106,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     _bool(s.setdefault("grantApimSecretAccess", False), "services.grantApimSecretAccess")
     _bool(s.setdefault("speechEnabled", False), "services.speechEnabled")
     _bool(s.setdefault("grantApimFoundryModelsAccess", False), "services.grantApimFoundryModelsAccess")
-    for key, default in (("projectDisplayName", "core-platform"), ("projectDescription", "Core platform project for shared model, agent, and tool capabilities.")):
+    for key, default in (("projectDisplayName", "egakumi"), ("projectDescription", "Shared project for model, agent, and tool capabilities.")):
         _string(s.setdefault(key, default), "services." + key)
     models = _list(s.setdefault("modelDeployments", []), "services.modelDeployments")
     # この基盤のFoundryは1リソースです。配備できるモデル数の上限を
@@ -1462,7 +1462,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     if not any(name == host or (name.startswith("*.") and host.split(".", 1)[1] == name[2:]) for name in cert["domainNames"]):
         _fail("certificate.domainNames", "must cover the Portal hostname")
     _validate_separated_entra_apps(c, portal, authentication, providers)
-    # Coreの最初の変更より前に、API公開と同じFW表現可能性を検査します。
+    # 基盤の最初の変更より前に、API公開と同じFW表現可能性を検査します。
     # 内部生成値を公開設定へ保存せず、秘密やURLをエラーへ含めません。
     from .firewall_destinations import generated_apim_service_fqdns
     try:

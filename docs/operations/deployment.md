@@ -12,11 +12,11 @@
 | Portalのみ | `python3 -B scripts/operations/release.py --component portal --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`で反映 |
 | 両アプリを順に更新 | `python3 -B scripts/operations/release.py --component all --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`でGateway→Portalを実行 |
 
-初回配備とCore構築途中の再試行は[構築手順](../setup/08-provision-core.md)に従ってください。構築後のGateway・Portal更新は上表の入口を使い、保護されたCore配備記録を参照します。計画はローカルで生成し、反映する場合は同じコマンドに `--execute` を付けます。
+初回配備と基盤構築途中の再試行は[構築手順](../setup/08-build-infra.md)に従ってください。構築後のGateway・Portal更新は上表の入口を使い、保護された基盤の配備記録を参照します。計画はローカルで生成し、反映する場合は同じコマンドに `--execute` を付けます。
 
-アプリ配備の入口 `deploy_gateway.py` と `deploy_portal.py` で `--deployment-name` を明示すると、計画時も指定した成功済みCore配備のoutputsをAzureから読み取ります。この指定はアプリ配備に使います。
+アプリ配備の入口 `deploy_gateway.py` と `deploy_portal.py` で `--deployment-name` を明示すると、計画時も指定した成功済み基盤配備の出力をAzureから読み取ります。この指定はアプリ配備に使います。
 
-Gatewayは、採用時のBrokerイメージ作成・DB／CM配備・SQL初期化・起動確認の後に、API・Product・ポリシー・WAFを反映します。Portalはイメージ作成・DB／権限・SQL初期化を経て同じContainer Appを更新し、公開`/api/health`を確認します。イメージは管理VMで作成し、Core内の非公開ACRへ登録します。確認済みのソースとdigestが一致する場合は既存のビルド結果を再利用します。
+Gatewayは、採用時のBrokerイメージ作成・DB／CM配備・SQL初期化・起動確認の後に、API・Product・ポリシー・WAFを反映します。Portalはイメージ作成・DB／権限・SQL初期化を経て同じContainer Appを更新し、公開`/api/health`を確認します。イメージは管理VMで作成し、基盤内の非公開ACRへ登録します。確認済みのソースとdigestが一致する場合は既存のビルド結果を再利用します。
 
 更新前に、対象revision、params・非秘密の設定hash、現在のアプリrevision・digest、必要なDBバックアップ、API／ポリシーの変更点を記録します。SQL初期化・migration失敗時はアプリや後続APIの公開へ進みません。復旧は原因を直して同じ入口を再実行し、自動ロールバックが完了したものとして扱いません。
 
@@ -31,7 +31,7 @@ API・Product・WAFを変更する場合は[APIMの運用](apim.md)を確認し�
 3. Gatewayで停止した場合はGatewayを再試行し、その成功後にPortalを実行する。Portalで停止した場合はPortalの専用コマンドから再開できる。
 4. アプリの稼働・公開ヘルス・イメージdigestと、変更対象の業務動作を確認して記録する。
 
-同じAPI範囲を更新する途中でAPIMのARM配備が `Failed` になり、`state/gateway-api-closed-stage.json` がある場合は、原因を解消して次のコマンドを使います。同じコード・params・Core stateと、前回成功時の `state/gateway-api-source.json` が必要です。APIM上のポリシー、ルーティング、Productの現物を照合し、Bearer対象のProductが閉じたままであることを確認してから、API配備とGatewayのWAF設定を再開します。
+同じAPI範囲を更新する途中でAPIMのARM配備が `Failed` になり、`state/gateway-api-closed-stage.json` がある場合は、原因を解消して次のコマンドを使います。同じコード・params・基盤の配備記録と、前回成功時の `state/gateway-api-source.json` が必要です。APIM上のポリシー、ルーティング、Productの現物を照合し、Bearer対象のProductが閉じたままであることを確認してから、API配備とGatewayのWAF設定を再開します。
 
 ```sh
 python3 -B scripts/deployment/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute --resume-closed-stage

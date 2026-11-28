@@ -512,7 +512,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             outputs = lifecycle.deploy_monitoring(self.config, preserve_collection=False)
         request = transport.calls[0]
         self.assertEqual(request["method"], "PUT")
-        self.assertEqual(request["body"]["tags"], {"azd-env-name": "test", "azd-project-name": "ai-workforce-core", "azd-layer-name": ""})
+        self.assertEqual(request["body"]["tags"], {"azd-env-name": "test", "azd-project-name": "egakumi", "azd-layer-name": ""})
         self.assertEqual(request["body"]["properties"]["parameters"]["phase"]["value"], "monitoring")
         self.assertEqual(request["body"]["properties"]["parameters"]["existingNetworkSecurityGroupNames"]["value"], [])
         self.assertEqual(request["body"]["properties"]["parameters"]["existingRouteTableRoutes"]["value"], {})

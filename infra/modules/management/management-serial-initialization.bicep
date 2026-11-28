@@ -1,4 +1,4 @@
-// 正式CLIのCore完了後だけ使用する初期ローカル認証資材。公開params/configの作成フラグはありません。
+// 正式CLIが基盤構築の完了後に使う初期ローカル認証資材です。
 // VM UUIDとSAMI/tenantを保護pending記録へ確定した後、元の初期世代だけを指定します。
 targetScope = 'resourceGroup'
 param vmName string

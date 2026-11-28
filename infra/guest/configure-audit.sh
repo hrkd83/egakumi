@@ -218,7 +218,7 @@ for path in [config, *files(confdir, '*.conf')]:
                                 for i in range(0, len(options), 2))):
                         raise SystemExit('Unknown PHC source configuration requires manual review')
                     disable = True
-        updated.append('# Disabled by core Azure host time: ' + line if disable else line)
+        updated.append('# Disabled for Azure host time: ' + line if disable else line)
     if path == config:
         if managed_count > 1:
             raise SystemExit('Duplicate managed PHC sources require manual review')
