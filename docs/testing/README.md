@@ -13,5 +13,6 @@
 | 更新、資格情報の保守、復旧 | [運用テスト](operations-tests.md) |
 | テスト用の利用者・権限 | [Entraテストデータ](entra-fixtures.md) |
 | 例外キーの利用量を観測する | [利用量観測と上限](subscription-limits.md) |
+| 3万人想定のGateway・本文監査の容量を測る | [容量計画と負荷試験](gateway-capacity.md) |
 
 ローカル試験は[開発手順](../../DEVELOPMENT.md#テストの実行方法)を参照してください。環境の結果や証跡は同じ環境の `.local/<environment>/evidence/` に保存します。
